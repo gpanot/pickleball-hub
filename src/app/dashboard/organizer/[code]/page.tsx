@@ -2,6 +2,8 @@
 
 import { useState, useEffect, use, useMemo } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { clearOrganizerSession, isOrganizerUnlocked } from "@/lib/dashboard-session";
 import { FillRateBar } from "@/components/FillRateBar";
 import { FillRateTrendChart, RevenueChart, CompetitorPriceChart } from "@/components/DashboardCharts";
 import { formatVND } from "@/lib/utils";
@@ -66,7 +68,9 @@ const RIVAL_STORAGE_KEY = "pickleball-hub:org-rivals";
 
 export default function OrganizerDashboardPage({ params }: { params: Promise<{ code: string }> }) {
   const { code } = use(params);
-  const clubId = parseInt(code);
+  const router = useRouter();
+  const clubId = parseInt(code, 10);
+  const [sessionOk, setSessionOk] = useState(false);
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -82,6 +86,18 @@ export default function OrganizerDashboardPage({ params }: { params: Promise<{ c
   const [rankingSortDir, setRankingSortDir] = useState<"asc" | "desc">("desc");
 
   useEffect(() => {
+    if (!Number.isFinite(clubId) || clubId <= 0) {
+      router.replace("/dashboard/organizer");
+      return;
+    }
+    if (!isOrganizerUnlocked()) {
+      router.replace("/dashboard/organizer");
+      return;
+    }
+    setSessionOk(true);
+  }, [router, clubId]);
+
+  useEffect(() => {
     const saved = localStorage.getItem(RIVAL_STORAGE_KEY);
     if (saved) {
       try { setRivalIds(JSON.parse(saved)); } catch { /* ignore */ }
@@ -89,6 +105,7 @@ export default function OrganizerDashboardPage({ params }: { params: Promise<{ c
   }, []);
 
   useEffect(() => {
+    if (!sessionOk) return;
     async function load() {
       const dataRes = await fetch(`/api/dashboard/organizer?clubId=${clubId}`);
       if (dataRes.ok) {
@@ -103,9 +120,10 @@ export default function OrganizerDashboardPage({ params }: { params: Promise<{ c
     fetch("/api/clubs").then((r) => r.json()).then((d) => {
       setAllClubs((d.clubs || []).filter((c: ClubOption) => c.id !== clubId));
     }).catch(() => {});
-  }, [clubId]);
+  }, [clubId, sessionOk]);
 
   useEffect(() => {
+    if (!sessionOk) return;
     if (rivalIds.length === 0) { setRivalData([]); return; }
     setRivalLoading(true);
     const ids = [clubId, ...rivalIds].join(",");
@@ -114,7 +132,7 @@ export default function OrganizerDashboardPage({ params }: { params: Promise<{ c
       .then((d) => setRivalData(d.clubs || []))
       .catch(() => setRivalData([]))
       .finally(() => setRivalLoading(false));
-  }, [rivalIds, clubId]);
+  }, [rivalIds, clubId, sessionOk]);
 
   function toggleRival(id: number) {
     setRivalIds((prev) => {
@@ -122,6 +140,11 @@ export default function OrganizerDashboardPage({ params }: { params: Promise<{ c
       localStorage.setItem(RIVAL_STORAGE_KEY, JSON.stringify(next));
       return next;
     });
+  }
+
+  function handleLogout() {
+    clearOrganizerSession();
+    router.push("/dashboard/organizer");
   }
 
   const filteredRivalClubs = useMemo(() => {
@@ -219,7 +242,7 @@ export default function OrganizerDashboardPage({ params }: { params: Promise<{ c
     }
   }
 
-  if (loading) {
+  if (!sessionOk || loading) {
     return (
       <div className="mx-auto max-w-6xl px-4 py-6">
         <div className="animate-pulse space-y-4">
@@ -283,7 +306,7 @@ export default function OrganizerDashboardPage({ params }: { params: Promise<{ c
           <h1 className="text-xl sm:text-2xl font-bold truncate">{club.name}</h1>
           <p className="text-sm text-muted">Organizer Dashboard</p>
         </div>
-        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3 shrink-0 justify-end">
           <span className="text-xs bg-primary/10 text-primary px-3 py-1 rounded-full font-medium">
             {club.numMembers.toLocaleString()} members
           </span>
@@ -293,6 +316,13 @@ export default function OrganizerDashboardPage({ params }: { params: Promise<{ c
           >
             Switch club
           </Link>
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="text-xs text-muted hover:text-red-600 dark:hover:text-red-400 transition px-3 py-2 rounded border border-card-border hover:border-red-400/40 min-h-[44px] flex items-center"
+          >
+            Log out
+          </button>
         </div>
       </div>
 

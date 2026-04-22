@@ -2,6 +2,8 @@
 
 import { useState, useEffect, use, useMemo } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { clearVenueSession, isVenueUnlocked } from "@/lib/dashboard-session";
 import { HourlyUtilizationChart } from "@/components/DashboardCharts";
 import { FillRateBar } from "@/components/FillRateBar";
 import { formatVND } from "@/lib/utils";
@@ -31,7 +33,9 @@ const RIVAL_STORAGE_KEY = "pickleball-hub:venue-rivals";
 
 export default function VenueDashboardPage({ params }: { params: Promise<{ code: string }> }) {
   const { code } = use(params);
-  const venueId = parseInt(code);
+  const router = useRouter();
+  const venueId = parseInt(code, 10);
+  const [sessionOk, setSessionOk] = useState(false);
   const [data, setData] = useState<VenueData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -44,6 +48,18 @@ export default function VenueDashboardPage({ params }: { params: Promise<{ code:
   const [rivalSearch, setRivalSearch] = useState("");
 
   useEffect(() => {
+    if (!Number.isFinite(venueId) || venueId <= 0) {
+      router.replace("/dashboard/venue");
+      return;
+    }
+    if (!isVenueUnlocked()) {
+      router.replace("/dashboard/venue");
+      return;
+    }
+    setSessionOk(true);
+  }, [router, venueId]);
+
+  useEffect(() => {
     const saved = localStorage.getItem(RIVAL_STORAGE_KEY);
     if (saved) {
       try { setRivalIds(JSON.parse(saved)); } catch { /* ignore */ }
@@ -51,6 +67,7 @@ export default function VenueDashboardPage({ params }: { params: Promise<{ code:
   }, []);
 
   useEffect(() => {
+    if (!sessionOk) return;
     async function load() {
       const dataRes = await fetch(`/api/dashboard/venue?venueId=${venueId}`);
       if (dataRes.ok) {
@@ -65,9 +82,10 @@ export default function VenueDashboardPage({ params }: { params: Promise<{ code:
     fetch("/api/venues").then((r) => r.json()).then((d) => {
       setAllVenues((d.venues || []).filter((v: VenueOption) => v.id !== venueId));
     }).catch(() => {});
-  }, [venueId]);
+  }, [venueId, sessionOk]);
 
   useEffect(() => {
+    if (!sessionOk) return;
     if (rivalIds.length === 0) { setRivalData([]); return; }
     setRivalLoading(true);
     const ids = [venueId, ...rivalIds].join(",");
@@ -76,7 +94,7 @@ export default function VenueDashboardPage({ params }: { params: Promise<{ code:
       .then((d) => setRivalData(d.venues || []))
       .catch(() => setRivalData([]))
       .finally(() => setRivalLoading(false));
-  }, [rivalIds, venueId]);
+  }, [rivalIds, venueId, sessionOk]);
 
   function toggleRival(id: number) {
     setRivalIds((prev) => {
@@ -84,6 +102,11 @@ export default function VenueDashboardPage({ params }: { params: Promise<{ code:
       localStorage.setItem(RIVAL_STORAGE_KEY, JSON.stringify(next));
       return next;
     });
+  }
+
+  function handleLogout() {
+    clearVenueSession();
+    router.push("/dashboard/venue");
   }
 
   const filteredRivalVenues = useMemo(() => {
@@ -121,7 +144,7 @@ export default function VenueDashboardPage({ params }: { params: Promise<{ code:
     return [myEntry, ...others].sort((a, b) => b.sessions - a.sessions);
   }, [data, allVenues, venueId]);
 
-  if (loading) {
+  if (!sessionOk || loading) {
     return (
       <div className="mx-auto max-w-6xl px-4 py-6">
         <div className="animate-pulse space-y-4">
@@ -178,12 +201,21 @@ export default function VenueDashboardPage({ params }: { params: Promise<{ code:
           <p className="text-sm text-muted truncate">{venue.address}</p>
           <p className="text-xs text-muted mt-1">Venue Dashboard</p>
         </div>
-        <Link
-          href="/dashboard/venue"
-          className="text-xs text-muted hover:text-primary transition px-3 py-2 rounded border border-card-border hover:border-primary/30 min-h-[44px] flex items-center shrink-0 self-start"
-        >
-          Switch venue
-        </Link>
+        <div className="flex flex-wrap gap-2 shrink-0 self-start justify-end">
+          <Link
+            href="/dashboard/venue"
+            className="text-xs text-muted hover:text-primary transition px-3 py-2 rounded border border-card-border hover:border-primary/30 min-h-[44px] flex items-center"
+          >
+            Switch venue
+          </Link>
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="text-xs text-muted hover:text-red-600 dark:hover:text-red-400 transition px-3 py-2 rounded border border-card-border hover:border-red-400/40 min-h-[44px] flex items-center"
+          >
+            Log out
+          </button>
+        </div>
       </div>
 
       {/* Tabs */}
