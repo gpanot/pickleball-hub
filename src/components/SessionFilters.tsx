@@ -151,7 +151,11 @@ export function SessionFilters({
     }`;
 
   const toggleFree = () => {
-    update("maxPrice", filters.maxPrice === "0" ? "" : "0");
+    if (filters.maxPrice === "0") {
+      onChange({ ...filters, maxPrice: "", availability: "" });
+    } else {
+      onChange({ ...filters, maxPrice: "0", availability: "available,filling" });
+    }
   };
 
   const toggleFilling = () => {

@@ -132,12 +132,19 @@ export default function HomePage() {
   }, [filters.timeSlot, filters.maxPrice, filters.search, filters.foodDrink]);
 
   const filtered = useMemo(() => {
-    let result = [...sessions];
+    const nowMinutes = (() => {
+      const vn = new Date(Date.now() + 7 * 60 * 60 * 1000);
+      return vn.getUTCHours() * 60 + vn.getUTCMinutes();
+    })();
+
+    let result = sessions.filter((s) => timeToMinutes(s.startTime) >= nowMinutes);
 
     if (filters.availability === "available") {
       result = result.filter((s) => s.fillRate < 0.75);
     } else if (filters.availability === "filling") {
       result = result.filter((s) => s.fillRate >= 0.75 && s.fillRate < 1);
+    } else if (filters.availability === "available,filling") {
+      result = result.filter((s) => s.fillRate < 1);
     } else if (filters.availability === "full") {
       result = result.filter((s) => s.fillRate >= 1);
     }

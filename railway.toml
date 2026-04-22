@@ -3,4 +3,4 @@ builder = "dockerfile"
 dockerfilePath = "scraper/Dockerfile"
 
 [deploy]
-cronSchedule = "0 1 * * *"
+cronSchedule = "0 6,23 * * *"
