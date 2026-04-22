@@ -137,12 +137,58 @@ async function main() {
     const sessions = await source.session.findMany({
       where: { scrapedDate: date },
       include: {
-        club: { select: { reclubId: true } },
+        club: {
+          select: {
+            reclubId: true,
+            name: true,
+            slug: true,
+            sportId: true,
+            communityId: true,
+            numMembers: true,
+          },
+        },
         venue: true,
         snapshots: { orderBy: { scrapedAt: "desc" }, take: 1 },
       },
     });
 
+    const sourceClubs = new Map<number, {
+      reclubId: number;
+      name: string;
+      slug: string;
+      sportId: number | null;
+      communityId: number | null;
+      numMembers: number;
+    }>();
+    for (const s of sessions) {
+      if (!sourceClubs.has(s.club.reclubId)) {
+        sourceClubs.set(s.club.reclubId, s.club);
+      }
+    }
+    let createdClubs = 0;
+    for (const c of sourceClubs.values()) {
+      if (reclubToTargetId.has(c.reclubId)) continue;
+      const upsertedClub = await target.club.upsert({
+        where: { reclubId: c.reclubId },
+        create: {
+          reclubId: c.reclubId,
+          name: c.name,
+          slug: c.slug || `club-${c.reclubId}`,
+          sportId: c.sportId,
+          communityId: c.communityId,
+          numMembers: c.numMembers,
+        },
+        update: {
+          name: c.name,
+          slug: c.slug || `club-${c.reclubId}`,
+          sportId: c.sportId,
+          communityId: c.communityId,
+          numMembers: c.numMembers,
+        },
+      });
+      reclubToTargetId.set(c.reclubId, upsertedClub.id);
+      createdClubs++;
+    }
     let upserted = 0;
     let skippedClub = 0;
     let snapshots = 0;
@@ -249,6 +295,7 @@ async function main() {
       WHERE s.scraped_date = ${date}
     `;
 
+    console.log(`Clubs synced on target: +${createdClubs}`);
     console.log(`Upserted sessions: ${upserted} (skipped missing club on target: ${skippedClub})`);
     console.log(`Inserted snapshots: ${snapshots}`);
     console.log(`Target sessions for ${date}: ${countTargetAfter}`);

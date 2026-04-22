@@ -279,8 +279,7 @@ export default function HomePage() {
         const db = distKm(b);
         if (da !== db) return da - db;
         return a.startTime.localeCompare(b.startTime);
-      })
-      .slice(0, 3);
+      });
   }, [sessions, userLocation]);
 
   const mapPins = useMemo(() => {
@@ -310,8 +309,9 @@ export default function HomePage() {
     <div className="mx-auto min-w-0 max-w-7xl px-2 py-4 sm:px-6 sm:py-6 lg:px-8">
       <div className="mb-4 sm:mb-6">
         <h1 className="text-xl sm:text-2xl font-bold mb-1">
-          <span className="text-primary">Pickleball</span> Sessions{" "}
-          {dayTab === "today" ? "Today" : "Tomorrow"}
+          <span className="text-primary">Pickleball</span>{" "}
+          <span className="text-emerald-500">FREE</span>{" "}
+          Sessions {dayTab === "today" ? "Today" : "Tomorrow"}
         </h1>
         <p className="text-sm text-muted">
           Ho Chi Minh City — {formatDayLabel(activeDate)}
@@ -349,11 +349,15 @@ export default function HomePage() {
         </div>
       )}
 
-      {dayTab === "today" && freeTonightCards.length > 0 && (
+      {freeTonightCards.length > 0 && (
         <section className="mb-4 min-w-0">
-          <h2 className="mb-2 text-sm font-semibold text-foreground">Free Tonight</h2>
+          <h2 className="mb-2 text-sm font-semibold text-foreground">
+            {dayTab === "today" ? "Free Tonight" : "Free Tomorrow Night"}
+          </h2>
           <p className="mb-2 text-xs text-muted">
-            Free sessions from 6:00 PM with spots left — nearest first
+            {dayTab === "today"
+              ? "Free sessions from 6:00 PM with spots left — nearest first"
+              : "Free sessions tomorrow from 6:00 PM with spots left — nearest first"}
           </p>
           <div className="flex gap-3 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {freeTonightCards.map((s) => {
