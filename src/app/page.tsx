@@ -1,65 +1,466 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import { useState, useEffect, useMemo, useCallback, type FormEvent } from "react";
+import dynamic from "next/dynamic";
+import { SessionCard } from "@/components/SessionCard";
+import { SessionFilters, type FilterState } from "@/components/SessionFilters";
+import {
+  formatVND,
+  parseSessionType,
+  hasFoodDrinkPerk,
+  haversineKm,
+  formatDistanceKm,
+} from "@/lib/utils";
+
+function timeToMinutes(t: string): number {
+  const [h, m] = t.split(":").map(Number);
+  return (h || 0) * 60 + (m || 0);
+}
+
+const MapView = dynamic(() => import("@/components/MapView").then((m) => m.MapView), {
+  ssr: false,
+  loading: () => <div className="h-[calc(100dvh-200px)] min-h-[300px] rounded-xl bg-gray-100 dark:bg-gray-800 animate-pulse" />,
+});
+
+function SearchIcon({ className }: { className?: string }) {
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden
+    >
+      <circle cx="11" cy="11" r="8" />
+      <path d="m21 21-4.35-4.35" />
+    </svg>
+  );
+}
+
+type Session = {
+  id: number;
+  referenceCode: string;
+  name: string;
+  startTime: string;
+  endTime: string;
+  durationMin: number;
+  maxPlayers: number;
+  feeAmount: number;
+  costPerHour: number | null;
+  skillLevelMin: number | null;
+  skillLevelMax: number | null;
+  perks: string[];
+  eventUrl: string;
+  status: string;
+  joined: number;
+  waitlisted: number;
+  fillRate: number;
+  club: { name: string; slug: string };
+  venue: { name: string; address: string; latitude: number; longitude: number } | null;
+};
+
+export default function HomePage() {
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [viewMode, setViewMode] = useState<"list" | "map">("list");
+  const [filters, setFilters] = useState<FilterState>({
+    timeSlot: "",
+    maxPrice: "",
+    availability: "",
+    foodDrink: "",
+    sessionType: "",
+    search: "",
+    sortBy: "time",
+  });
+
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
+
+  const [searchDraft, setSearchDraft] = useState("");
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
+  const [freeTonightDetail, setFreeTonightDetail] = useState<Session | null>(null);
+
+  useEffect(() => {
+    setSearchDraft(filters.search);
+  }, [filters.search]);
+
+  useEffect(() => {
+    if (!freeTonightDetail) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setFreeTonightDetail(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [freeTonightDetail]);
+
+  useEffect(() => {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      (pos) =>
+        setUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      () => {},
+      { enableHighAccuracy: false, timeout: 10000, maximumAge: 300_000 },
+    );
+  }, []);
+
+  useEffect(() => {
+    async function load() {
+      setLoading(true);
+      try {
+        const params = new URLSearchParams();
+        if (filters.timeSlot) params.set("timeSlot", filters.timeSlot);
+        if (filters.maxPrice === "0") {
+          params.set("freeOnly", "true");
+        } else if (filters.maxPrice) {
+          params.set("maxPrice", filters.maxPrice);
+        }
+        if (filters.search) params.set("search", filters.search);
+        if (filters.foodDrink) params.set("hasPerks", filters.foodDrink);
+
+        const res = await fetch(`/api/sessions?${params.toString()}`);
+        const data = await res.json();
+        setSessions(data.sessions || []);
+      } catch {
+        setSessions([]);
+      }
+      setLoading(false);
+    }
+    load();
+  }, [filters.timeSlot, filters.maxPrice, filters.search, filters.foodDrink]);
+
+  const filtered = useMemo(() => {
+    let result = [...sessions];
+
+    if (filters.availability === "available") {
+      result = result.filter((s) => s.fillRate < 0.75);
+    } else if (filters.availability === "filling") {
+      result = result.filter((s) => s.fillRate >= 0.75 && s.fillRate < 1);
+    } else if (filters.availability === "full") {
+      result = result.filter((s) => s.fillRate >= 1);
+    }
+
+    if (filters.sessionType) {
+      result = result.filter((s) => parseSessionType(s.name) === filters.sessionType);
+    }
+
+    if (filters.foodDrink === "true") {
+      result = result.filter((s) => hasFoodDrinkPerk(s.perks));
+    }
+
+    const distanceKm = (session: Session) => {
+      if (
+        !userLocation ||
+        !session.venue?.latitude ||
+        !session.venue?.longitude
+      ) {
+        return Number.POSITIVE_INFINITY;
+      }
+      return haversineKm(
+        userLocation.lat,
+        userLocation.lng,
+        session.venue.latitude,
+        session.venue.longitude,
+      );
+    };
+
+    switch (filters.sortBy) {
+      case "price":
+        result.sort((a, b) => a.feeAmount - b.feeAmount);
+        break;
+      case "costPerHour":
+        result.sort((a, b) => (a.costPerHour || 999999) - (b.costPerHour || 999999));
+        break;
+      case "fillRate":
+        result.sort((a, b) => b.fillRate - a.fillRate);
+        break;
+      case "available":
+        result.sort((a, b) => a.fillRate - b.fillRate);
+        break;
+      case "nearby":
+        if (userLocation) {
+          result.sort((a, b) => distanceKm(a) - distanceKm(b));
+        } else {
+          result.sort((a, b) => a.startTime.localeCompare(b.startTime));
+        }
+        break;
+      default:
+        result.sort((a, b) => a.startTime.localeCompare(b.startTime));
+    }
+
+    return result;
+  }, [
+    sessions,
+    filters.availability,
+    filters.sortBy,
+    filters.sessionType,
+    filters.foodDrink,
+    userLocation,
+  ]);
+
+  const handleFilterChange = useCallback((newFilters: FilterState) => {
+    setFilters(newFilters);
+  }, []);
+
+  const applyMobileSearch = useCallback(() => {
+    const q = searchDraft.trim();
+    setFilters((f) => ({ ...f, search: q }));
+    setMobileSearchOpen(false);
+  }, [searchDraft]);
+
+  const onMobileSearchSubmit = (e: FormEvent) => {
+    e.preventDefault();
+    applyMobileSearch();
+  };
+
+  /** Free, has spots, start at or after 18:00; nearest first, max 3 */
+  const freeTonightCards = useMemo(() => {
+    const min18 = 18 * 60;
+    const eligible = sessions.filter((s) => {
+      if (s.feeAmount !== 0) return false;
+      if (s.fillRate >= 1) return false;
+      return timeToMinutes(s.startTime) >= min18;
+    });
+
+    const distKm = (s: Session) => {
+      if (!userLocation || !s.venue?.latitude || !s.venue?.longitude) {
+        return Number.POSITIVE_INFINITY;
+      }
+      return haversineKm(
+        userLocation.lat,
+        userLocation.lng,
+        s.venue.latitude,
+        s.venue.longitude,
+      );
+    };
+
+    return [...eligible]
+      .sort((a, b) => {
+        const da = distKm(a);
+        const db = distKm(b);
+        if (da !== db) return da - db;
+        return a.startTime.localeCompare(b.startTime);
+      })
+      .slice(0, 3);
+  }, [sessions, userLocation]);
+
+  const mapPins = useMemo(() => {
+    return filtered
+      .filter((s) => s.venue?.latitude && s.venue?.longitude)
+      .map((s) => ({
+        lat: s.venue!.latitude,
+        lng: s.venue!.longitude,
+        label: `${s.club.name} - ${s.startTime}`,
+        fillRate: s.fillRate,
+        price: formatVND(s.feeAmount),
+        popup: "",
+        eventUrl: s.eventUrl,
+        venueName: s.venue!.name,
+        clubName: s.club.name,
+        time: `${s.startTime} - ${s.endTime}`,
+        joined: s.joined,
+        maxPlayers: s.maxPlayers,
+      }));
+  }, [filtered]);
+
+  const totalPlayers = sessions.reduce((sum, s) => sum + s.joined, 0);
+
+  return (
+    <div className="mx-auto min-w-0 max-w-7xl px-2 py-4 sm:px-6 sm:py-6 lg:px-8">
+      <div className="mb-4 sm:mb-6">
+        <h1 className="text-xl sm:text-2xl font-bold mb-1">
+          <span className="text-primary">Pickleball</span> Sessions Today
+        </h1>
+        <p className="text-sm text-muted">
+          Ho Chi Minh City — {sessions.length} sessions, {totalPlayers.toLocaleString()} players
+        </p>
+      </div>
+
+      {freeTonightCards.length > 0 && (
+        <section className="mb-4 min-w-0">
+          <h2 className="mb-2 text-sm font-semibold text-foreground">Free Tonight</h2>
+          <p className="mb-2 text-xs text-muted">
+            Free sessions from 6:00 PM with spots left — nearest first
           </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+          <div className="flex gap-3 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {freeTonightCards.map((s) => {
+              const distKm =
+                userLocation &&
+                s.venue?.latitude != null &&
+                s.venue?.longitude != null
+                  ? haversineKm(
+                      userLocation.lat,
+                      userLocation.lng,
+                      s.venue.latitude,
+                      s.venue.longitude,
+                    )
+                  : null;
+              const spotsLeft = Math.max(0, s.maxPlayers - s.joined);
+              return (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => setFreeTonightDetail(s)}
+                  className="flex w-[min(280px,calc(100vw-3rem))] shrink-0 flex-col rounded-xl border border-card-border bg-card p-3 text-left shadow-sm transition hover:border-primary/40 hover:shadow-md"
+                >
+                  <div className="mb-1 flex flex-wrap items-center gap-1">
+                    <span className="inline-flex rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-primary">
+                      Free · From 6pm
+                    </span>
+                    <span className="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold tabular-nums text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300">
+                      {spotsLeft} left
+                    </span>
+                  </div>
+                  <span className="line-clamp-2 text-sm font-semibold leading-snug">{s.name}</span>
+                  <span className="mt-1 text-xs text-muted">
+                    {s.startTime} – {s.endTime} · {s.club.name}
+                  </span>
+                  {s.venue && (
+                    <span className="mt-0.5 line-clamp-1 text-xs text-muted/90">
+                      📍 {s.venue.name}
+                    </span>
+                  )}
+                  {distKm != null && (
+                    <span className="mt-1 text-xs font-medium text-primary">
+                      {formatDistanceKm(distKm)} away
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      <SessionFilters
+        filters={filters}
+        onChange={handleFilterChange}
+        sessionCount={filtered.length}
+        hasUserLocation={!!userLocation}
+      />
+
+      <div className="mt-4 flex min-w-0 flex-col gap-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setViewMode("list")}
+            className={`shrink-0 rounded-lg px-4 py-2.5 text-sm font-medium transition min-h-[44px] sm:py-1.5 ${
+              viewMode === "list"
+                ? "bg-primary text-white"
+                : "border border-card-border bg-card hover:border-primary/30"
+            }`}
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
+            List
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode("map")}
+            className={`shrink-0 rounded-lg px-4 py-2.5 text-sm font-medium transition min-h-[44px] sm:py-1.5 ${
+              viewMode === "map"
+                ? "bg-primary text-white"
+                : "border border-card-border bg-card hover:border-primary/30"
+            }`}
+          >
+            Map
+          </button>
+          <div className="min-w-0 flex-1" aria-hidden />
+          <div className="flex shrink-0 sm:hidden">
+            {!mobileSearchOpen ? (
+              <button
+                type="button"
+                onClick={() => setMobileSearchOpen(true)}
+                className={`flex h-11 w-11 items-center justify-center rounded-lg border border-card-border bg-card transition hover:border-primary/40 ${
+                  filters.search ? "border-primary/50 ring-1 ring-primary/20" : ""
+                }`}
+                aria-label="Open search"
+              >
+                <SearchIcon className="h-5 w-5 text-foreground" />
+              </button>
+            ) : null}
+          </div>
+        </div>
+        {mobileSearchOpen ? (
+          <form onSubmit={onMobileSearchSubmit} className="flex gap-2 sm:hidden">
+            <input
+              type="text"
+              placeholder="Sessions, clubs, addresses…"
+              value={searchDraft}
+              onChange={(e) => setSearchDraft(e.target.value)}
+              autoFocus
+              className="min-w-0 flex-1 rounded-lg border border-card-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+            <button
+              type="submit"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-primary text-white transition hover:bg-primary-dark"
+              aria-label="Apply search"
+            >
+              <SearchIcon className="h-5 w-5" />
+            </button>
+            <button
+              type="button"
+              onClick={applyMobileSearch}
+              className="flex h-11 min-w-[44px] shrink-0 items-center justify-center rounded-lg border border-card-border bg-card px-2 text-sm text-muted transition hover:bg-primary/5"
+            >
+              Done
+            </button>
+          </form>
+        ) : null}
+      </div>
+
+      <div className="mt-4 min-w-0">
+        {loading ? (
+          <div className="grid min-w-0 items-stretch gap-2 sm:gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="h-48 rounded-xl bg-card border border-card-border animate-pulse" />
+            ))}
+          </div>
+        ) : viewMode === "map" ? (
+          <MapView pins={mapPins} className="h-[calc(100dvh-200px)] min-h-[300px] w-full" showLocateButton />
+        ) : filtered.length === 0 ? (
+          <div className="text-center py-16 text-muted">
+            <p className="text-lg mb-2">No sessions found</p>
+            <p className="text-sm">Try adjusting your filters or check back later.</p>
+          </div>
+        ) : (
+          <div className="grid min-w-0 items-stretch gap-2 sm:gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {filtered.map((s) => (
+              <SessionCard key={s.id} session={s} userLocation={userLocation} />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {freeTonightDetail ? (
+        <div
+          className="fixed inset-0 z-[100] flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4"
+          role="presentation"
+          onClick={() => setFreeTonightDetail(null)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="free-tonight-dialog-title"
+            className="max-h-[min(92dvh,900px)] w-full max-w-lg overflow-y-auto rounded-t-2xl border border-card-border bg-background p-4 shadow-xl sm:rounded-2xl"
+            onClick={(e) => e.stopPropagation()}
           >
-            Documentation
-          </a>
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <h2 id="free-tonight-dialog-title" className="text-lg font-bold">
+                Session details
+              </h2>
+              <button
+                type="button"
+                onClick={() => setFreeTonightDetail(null)}
+                className="rounded-lg px-3 py-1.5 text-sm text-muted transition hover:bg-primary/10 hover:text-foreground"
+              >
+                Close
+              </button>
+            </div>
+            <SessionCard session={freeTonightDetail} userLocation={userLocation} />
+          </div>
         </div>
-      </main>
+      ) : null}
     </div>
   );
 }

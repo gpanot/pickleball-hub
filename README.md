@@ -1,36 +1,102 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# HCM Pickleball Hub
 
-## Getting Started
+Smart pickleball session finder and analytics platform for Ho Chi Minh City. Built on top of Reclub data.
 
-First, run the development server:
+## Features
+
+### For Players (Public)
+- Smart session finder with map view and list view
+- Filters: time slot, skill level, price, availability, perks
+- Sort by cost/hour, fill rate, start time, or price
+- "Best value" highlight showing cheapest available session
+- Club directory with aggregated stats
+- Individual club profiles with schedules and venue maps
+
+### For Organizers (Access Code)
+- Fill rate trends over 30 days
+- Revenue estimation (daily/weekly)
+- Competitive analysis: your pricing vs market average per time slot
+- Algorithmic recommendations (underperforming sessions, scheduling gaps)
+
+### For Venue Owners (Access Code)
+- Court utilization heatmap (hour-by-hour)
+- Dead hours identification
+- Club performance breakdown
+- Revenue per club
+- Opportunity alerts
+
+## Quick Start
+
+### Prerequisites
+- Node.js 20+
+- PostgreSQL database (local or Railway)
+- Python 3.10+ with `psycopg2-binary` (for the ingest script)
+
+### Setup
 
 ```bash
+cd pickleball-hub
+npm install
+
+# Copy env and set your DATABASE_URL
+cp .env.example .env
+# Edit .env with your PostgreSQL connection string
+
+# Push schema to database
+npx prisma db push
+
+# Generate Prisma client
+npx prisma generate
+
+# Seed database from CSV (loads hcm_pickleball_today.csv)
+npx tsx scripts/seed.ts
+
+# Start dev server
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open http://localhost:3000
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Demo Access Codes
+After seeding, use these to test dashboards:
+- **Organizer**: `DEMO-ORG-001`
+- **Venue**: `DEMO-VEN-001`
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Data Pipeline
 
-## Learn More
+### Daily Ingest (Python)
+```bash
+export DATABASE_URL="postgresql://..."
+pip install psycopg2-binary
+python ingest.py
+```
 
-To learn more about Next.js, take a look at the following resources:
+Scrapes all HCM pickleball sessions from Reclub API and upserts into PostgreSQL.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### Seed from CSV (TypeScript)
+```bash
+npx tsx scripts/seed.ts
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Loads `hcm_pickleball_today.csv` into the database. Useful for local development.
 
-## Deploy on Vercel
+## Tech Stack
+- **Next.js 16** (App Router, Server Components)
+- **Tailwind CSS**
+- **Prisma** (PostgreSQL ORM)
+- **Recharts** (dashboard charts)
+- **Leaflet** + OpenStreetMap (maps)
+- **Python** (data ingestion)
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Project Structure
+```
+pickleball-hub/
+  src/
+    app/            # Next.js pages and API routes
+    components/     # Shared UI components
+    lib/            # Database client, queries, utilities
+    generated/      # Prisma generated client
+  prisma/           # Schema and migrations
+  scripts/          # Seed and utility scripts
+  ingest.py         # Python scraper + DB writer
+```

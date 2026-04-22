@@ -1,0 +1,124 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Club {
+  id          Int       @id @default(autoincrement())
+  reclubId    Int       @unique @map("reclub_id")
+  name        String
+  slug        String    @unique
+  sportId     Int?      @map("sport_id")
+  communityId Int?      @map("community_id")
+  numMembers  Int       @default(0) @map("num_members")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  sessions    Session[]
+  dailyStats  ClubDailyStat[]
+  accessCodes AccessCode[]
+
+  @@map("clubs")
+}
+
+model Venue {
+  id        Int       @id @default(autoincrement())
+  name      String
+  address   String
+  latitude  Float
+  longitude Float
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  sessions  Session[]
+  accessCodes AccessCode[]
+
+  @@index([latitude, longitude])
+  @@map("venues")
+}
+
+model Session {
+  id             Int       @id @default(autoincrement())
+  referenceCode  String    @map("reference_code")
+  name           String
+  clubId         Int       @map("club_id")
+  venueId        Int?      @map("venue_id")
+  startTime      String    @map("start_time")
+  endTime        String    @map("end_time")
+  durationMin    Int       @map("duration_min")
+  maxPlayers     Int       @map("max_players")
+  feeAmount      Int       @default(0) @map("fee_amount")
+  feeCurrency    String    @default("VND") @map("fee_currency")
+  costPerHour    Float?    @map("cost_per_hour")
+  privacy        String    @default("public")
+  status         String    @default("active")
+  skillLevelMin  Float?    @map("skill_level_min")
+  skillLevelMax  Float?    @map("skill_level_max")
+  perks          String[]  @default([])
+  eventUrl       String    @map("event_url")
+  scrapedDate    String    @map("scraped_date")
+
+  club           Club      @relation(fields: [clubId], references: [id])
+  venue          Venue?    @relation(fields: [venueId], references: [id])
+  snapshots      DailySnapshot[]
+
+  @@unique([referenceCode, scrapedDate])
+  @@index([scrapedDate])
+  @@index([clubId])
+  @@index([venueId])
+  @@index([startTime])
+  @@map("sessions")
+}
+
+model DailySnapshot {
+  id         Int      @id @default(autoincrement())
+  sessionId  Int      @map("session_id")
+  scrapedAt  DateTime @default(now()) @map("scraped_at")
+  joined     Int      @default(0)
+  waitlisted Int      @default(0)
+
+  session    Session  @relation(fields: [sessionId], references: [id])
+
+  @@index([sessionId])
+  @@index([scrapedAt])
+  @@map("daily_snapshots")
+}
+
+model AccessCode {
+  id         Int       @id @default(autoincrement())
+  code       String    @unique
+  entityType String    @map("entity_type")
+  clubId     Int?      @map("club_id")
+  venueId    Int?      @map("venue_id")
+  label      String
+  createdAt  DateTime  @default(now()) @map("created_at")
+  expiresAt  DateTime? @map("expires_at")
+
+  club       Club?     @relation(fields: [clubId], references: [id])
+  venue      Venue?    @relation(fields: [venueId], references: [id])
+
+  @@map("access_codes")
+}
+
+model ClubDailyStat {
+  id             Int      @id @default(autoincrement())
+  clubId         Int      @map("club_id")
+  date           String
+  totalSessions  Int      @default(0) @map("total_sessions")
+  totalCapacity  Int      @default(0) @map("total_capacity")
+  totalJoined    Int      @default(0) @map("total_joined")
+  avgFillRate    Float    @default(0) @map("avg_fill_rate")
+  avgFee         Float    @default(0) @map("avg_fee")
+  revenueEstimate Float   @default(0) @map("revenue_estimate")
+
+  club           Club     @relation(fields: [clubId], references: [id])
+
+  @@unique([clubId, date])
+  @@index([date])
+  @@map("club_daily_stats")
+}

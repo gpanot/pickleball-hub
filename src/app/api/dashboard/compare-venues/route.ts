@@ -1,0 +1,22 @@
+import { NextRequest, NextResponse } from "next/server";
+import { getVenueComparison } from "@/lib/queries";
+
+export async function GET(request: NextRequest) {
+  const ids = request.nextUrl.searchParams.get("ids");
+  if (!ids) {
+    return NextResponse.json({ error: "ids required" }, { status: 400 });
+  }
+
+  const venueIds = ids.split(",").map(Number).filter(Boolean);
+  if (venueIds.length === 0) {
+    return NextResponse.json({ error: "No valid IDs" }, { status: 400 });
+  }
+
+  try {
+    const data = await getVenueComparison(venueIds);
+    return NextResponse.json({ venues: data });
+  } catch (error) {
+    console.error("Error comparing venues:", error);
+    return NextResponse.json({ error: "Failed to compare venues" }, { status: 500 });
+  }
+}
