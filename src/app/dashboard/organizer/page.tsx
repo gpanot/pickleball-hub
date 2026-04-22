@@ -130,14 +130,11 @@ export default function OrganizerGatePage() {
                 id="org-code"
                 type="text"
                 autoComplete="off"
-                placeholder="e.g. DEMO-ORG-001"
+                placeholder="Your access code"
                 value={accessCode}
                 onChange={(e) => setAccessCode(e.target.value)}
                 className="w-full rounded-lg border border-card-border bg-background px-4 py-3 text-sm outline-none focus:border-primary"
               />
-              <p className="mt-1 text-xs text-muted">
-                Demo: use <span className="font-mono text-foreground">DEMO-ORG-001</span> after seeding the database.
-              </p>
             </div>
             {verifyError ? <p className="text-sm text-red-600 dark:text-red-400">{verifyError}</p> : null}
             <button

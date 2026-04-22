@@ -57,10 +57,8 @@ npm run dev
 
 Open http://localhost:3000
 
-### Demo Access Codes
-After seeding, use these to test dashboards:
-- **Organizer**: `DEMO-ORG-001`
-- **Venue**: `DEMO-VEN-001`
+### Dashboard access codes
+Codes are stored in the database and verified server-side. For local development you can create placeholder codes with `npm run db:demo-codes` (requires data in `clubs` and `venues` first).
 
 ## Data Pipeline
 
