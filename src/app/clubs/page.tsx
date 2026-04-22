@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useLayoutEffect, useMemo } from "react";
 import dynamic from "next/dynamic";
 import { ClubStatsCard } from "@/components/ClubStatsCard";
 import { formatVND } from "@/lib/utils";
+import { fetchPublicApiJson, readPublicApiCache } from "@/lib/public-api-cache";
 
 const MAP_HEIGHT_CLASS =
   "min-h-[300px] sm:min-h-[560px] h-[calc(100dvh-260px)] max-h-[900px] w-full";
@@ -36,12 +37,29 @@ export default function ClubsPage() {
   const [sortBy, setSortBy] = useState("members");
   const [viewMode, setViewMode] = useState<"grid" | "map">("grid");
 
-  useEffect(() => {
-    fetch("/api/clubs")
-      .then((r) => r.json())
-      .then((d) => setClubs(d.clubs || []))
-      .catch(() => setClubs([]))
-      .finally(() => setLoading(false));
+  useLayoutEffect(() => {
+    const url = "/api/clubs";
+    const cached = readPublicApiCache<{ clubs: Club[] }>(url);
+    if (cached) {
+      setClubs(cached.clubs || []);
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    fetchPublicApiJson<{ clubs: Club[] }>(url)
+      .then((d) => {
+        if (!cancelled) setClubs(d.clubs || []);
+      })
+      .catch(() => {
+        if (!cancelled) setClubs([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const filtered = useMemo(() => {

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessions, type SessionFilters } from "@/lib/queries";
+import { CACHE_CONTROL_PUBLIC_LISTINGS } from "@/lib/http-cache-headers";
 
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
@@ -21,7 +22,10 @@ export async function GET(request: NextRequest) {
 
   try {
     const sessions = await getSessions(filters);
-    return NextResponse.json({ sessions, count: sessions.length });
+    return NextResponse.json(
+      { sessions, count: sessions.length },
+      { headers: { "Cache-Control": CACHE_CONTROL_PUBLIC_LISTINGS } },
+    );
   } catch (error) {
     console.error("Error fetching sessions:", error);
     return NextResponse.json({ error: "Failed to fetch sessions" }, { status: 500 });

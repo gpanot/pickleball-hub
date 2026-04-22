@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getClubBySlug } from "@/lib/queries";
+import { CACHE_CONTROL_PUBLIC_LISTINGS } from "@/lib/http-cache-headers";
 
 export async function GET(
   _request: NextRequest,
@@ -12,7 +13,7 @@ export async function GET(
     if (!club) {
       return NextResponse.json({ error: "Club not found" }, { status: 404 });
     }
-    return NextResponse.json(club);
+    return NextResponse.json(club, { headers: { "Cache-Control": CACHE_CONTROL_PUBLIC_LISTINGS } });
   } catch (error) {
     console.error("Error fetching club:", error);
     return NextResponse.json({ error: "Failed to fetch club" }, { status: 500 });

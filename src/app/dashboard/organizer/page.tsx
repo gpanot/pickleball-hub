@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useLayoutEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
   SELECTED_CLUB_KEY,
@@ -9,6 +9,7 @@ import {
   clearOrganizerSession,
 } from "@/lib/dashboard-session";
 import { formatVND } from "@/lib/utils";
+import { fetchPublicApiJson, readPublicApiCache } from "@/lib/public-api-cache";
 
 type ClubOption = {
   id: number;
@@ -16,6 +17,13 @@ type ClubOption = {
   slug: string;
   numMembers: number;
   totalSessionsWeek: number;
+  /** Present on /api/clubs payload (used for preview + rivals). */
+  sessionsToday?: number;
+  totalJoined?: number;
+  totalCapacity?: number;
+  avgFee?: number;
+  avgFeeToday?: number;
+  revenueEstimate?: number;
 };
 
 type PreviewClub = {
@@ -147,21 +155,49 @@ export default function OrganizerGatePage() {
     if (saved) setSelectedClubId(saved);
   }, [unlocked]);
 
-  useEffect(() => {
-    fetch("/api/clubs")
-      .then((r) => r.json())
-      .then((d) => {
-        const all = d.clubs || [];
-        const sorted = [...all].sort((a: ClubOption, b: ClubOption) => a.name.localeCompare(b.name));
-        setClubs(sorted);
+  useLayoutEffect(() => {
+    const url = "/api/clubs";
+    const applyPayload = (all: ClubOption[]) => {
+      const sorted = [...all].sort((a, b) => a.name.localeCompare(b.name));
+      setClubs(sorted);
+      const top5 = [...all]
+        .sort((a, b) => (b.totalJoined ?? 0) - (a.totalJoined ?? 0))
+        .slice(0, 5)
+        .map((c) => ({
+          id: c.id,
+          name: c.name,
+          numMembers: c.numMembers,
+          sessionsToday: c.sessionsToday ?? 0,
+          totalJoined: c.totalJoined ?? 0,
+          totalCapacity: c.totalCapacity ?? 0,
+          avgFeeToday: c.avgFeeToday ?? c.avgFee ?? 0,
+          revenueEstimate: c.revenueEstimate ?? 0,
+        }));
+      setPreviewClubs(top5);
+    };
 
-        const top5 = [...all]
-          .sort((a: PreviewClub, b: PreviewClub) => b.totalJoined - a.totalJoined)
-          .slice(0, 5);
-        setPreviewClubs(top5);
+    const cached = readPublicApiCache<{ clubs: ClubOption[] }>(url);
+    if (cached) {
+      applyPayload(cached.clubs || []);
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    fetchPublicApiJson<{ clubs: ClubOption[] }>(url)
+      .then((d) => {
+        if (cancelled) return;
+        applyPayload(d.clubs || []);
       })
-      .catch(() => setClubs([]))
-      .finally(() => setLoading(false));
+      .catch(() => {
+        if (!cancelled) setClubs([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   async function handleVerify(e: React.FormEvent) {

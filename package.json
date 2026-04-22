@@ -8,7 +8,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "db:demo-codes": "npx tsx scripts/upsert-demo-access-codes.ts"
+    "db:demo-codes": "npx tsx scripts/upsert-demo-access-codes.ts",
+    "db:migrate-scrape-day": "npx tsx scripts/migrate-scrape-day.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",

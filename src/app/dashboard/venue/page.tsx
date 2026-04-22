@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useLayoutEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
   SELECTED_VENUE_KEY,
@@ -9,6 +9,7 @@ import {
   clearVenueSession,
 } from "@/lib/dashboard-session";
 import { formatVND } from "@/lib/utils";
+import { fetchPublicApiJson, readPublicApiCache } from "@/lib/public-api-cache";
 
 type VenueOption = {
   id: number;
@@ -143,33 +144,47 @@ export default function VenueGatePage() {
     if (saved) setSelectedVenueId(saved);
   }, [unlocked]);
 
-  useEffect(() => {
-    fetch("/api/venues")
-      .then((r) => r.json())
-      .then((d) => {
-        const all: VenueOption[] = d.venues || d || [];
+  useLayoutEffect(() => {
+    let cancelled = false;
+    const venuesUrl = "/api/venues";
+
+    (async () => {
+      setLoading(true);
+      try {
+        const vPayload =
+          readPublicApiCache<{ venues: VenueOption[] }>(venuesUrl) ??
+          (await fetchPublicApiJson<{ venues: VenueOption[] }>(venuesUrl));
+        const all: VenueOption[] = vPayload.venues || [];
+        if (cancelled) return;
         const sorted = [...all].sort((a, b) => a.name.localeCompare(b.name));
         setVenues(sorted);
 
         const candidates = [...all]
           .sort((a, b) => (b._count?.sessions ?? 0) - (a._count?.sessions ?? 0))
           .slice(0, 20);
-        if (candidates.length > 0) {
-          const ids = candidates.map((v) => v.id).join(",");
-          fetch(`/api/dashboard/compare-venues?ids=${ids}`)
-            .then((r) => r.json())
-            .then((cd) => {
-              const venues: PreviewVenue[] = cd.venues || [];
-              const with3 = venues.filter((v) => v.sessionsToday === 3);
-              const pick = with3.length >= 5 ? with3.slice(0, 5) : venues.slice(0, 5);
-              pick.sort((a, b) => a.name.localeCompare(b.name));
-              setPreviewVenues(pick);
-            })
-            .catch(() => {});
-        }
-      })
-      .catch(() => setVenues([]))
-      .finally(() => setLoading(false));
+        if (candidates.length === 0) return;
+
+        const ids = candidates.map((v) => v.id).join(",");
+        const cmpUrl = `/api/dashboard/compare-venues?ids=${ids}`;
+        const cPayload =
+          readPublicApiCache<{ venues: PreviewVenue[] }>(cmpUrl) ??
+          (await fetchPublicApiJson<{ venues: PreviewVenue[] }>(cmpUrl));
+        if (cancelled) return;
+        const cmpVenues: PreviewVenue[] = cPayload.venues || [];
+        const with3 = cmpVenues.filter((v) => v.sessionsToday === 3);
+        const pick = with3.length >= 5 ? with3.slice(0, 5) : cmpVenues.slice(0, 5);
+        pick.sort((a, b) => a.name.localeCompare(b.name));
+        setPreviewVenues(pick);
+      } catch {
+        if (!cancelled) setVenues([]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   async function handleVerify(e: React.FormEvent) {

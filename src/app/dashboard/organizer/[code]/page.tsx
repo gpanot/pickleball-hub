@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useEffect, use, useMemo } from "react";
+import { useState, useEffect, useLayoutEffect, use, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { clearOrganizerSession, isOrganizerUnlocked } from "@/lib/dashboard-session";
 import { FillRateBar } from "@/components/FillRateBar";
 import { FillRateTrendChart, RevenueChart, CompetitorPriceChart } from "@/components/DashboardCharts";
 import { formatVND } from "@/lib/utils";
+import { fetchPublicApiJson, readPublicApiCache } from "@/lib/public-api-cache";
 
 type DashboardData = {
   club: { id: number; name: string; slug: string; numMembers: number };
@@ -104,34 +105,73 @@ export default function OrganizerDashboardPage({ params }: { params: Promise<{ c
     }
   }, []);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!sessionOk) return;
-    async function load() {
-      const dataRes = await fetch(`/api/dashboard/organizer?clubId=${clubId}`);
-      if (dataRes.ok) {
-        setData(await dataRes.json());
-      } else {
-        setError("Failed to load dashboard data");
-      }
-      setLoading(false);
-    }
-    load();
+    let cancelled = false;
+    const orgUrl = `/api/dashboard/organizer?clubId=${clubId}`;
+    const clubsUrl = "/api/clubs";
 
-    fetch("/api/clubs").then((r) => r.json()).then((d) => {
-      setAllClubs((d.clubs || []).filter((c: ClubOption) => c.id !== clubId));
-    }).catch(() => {});
+    const orgHit = readPublicApiCache<DashboardData>(orgUrl);
+    const clubsHit = readPublicApiCache<{ clubs: ClubOption[] }>(clubsUrl);
+    if (orgHit && clubsHit) {
+      setData(orgHit);
+      setAllClubs((clubsHit.clubs || []).filter((c) => c.id !== clubId));
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    (async () => {
+      try {
+        const [org, clubsPayload] = await Promise.all([
+          orgHit ? Promise.resolve(orgHit) : fetchPublicApiJson<DashboardData>(orgUrl),
+          clubsHit ? Promise.resolve(clubsHit) : fetchPublicApiJson<{ clubs: ClubOption[] }>(clubsUrl),
+        ]);
+        if (cancelled) return;
+        setData(org);
+        setAllClubs((clubsPayload.clubs || []).filter((c) => c.id !== clubId));
+      } catch {
+        if (!cancelled) setError("Failed to load dashboard data");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [clubId, sessionOk]);
 
   useEffect(() => {
     if (!sessionOk) return;
-    if (rivalIds.length === 0) { setRivalData([]); return; }
-    setRivalLoading(true);
+    if (rivalIds.length === 0) {
+      setRivalData([]);
+      setRivalLoading(false);
+      return;
+    }
     const ids = [clubId, ...rivalIds].join(",");
-    fetch(`/api/dashboard/compare-clubs?ids=${ids}`)
-      .then((r) => r.json())
-      .then((d) => setRivalData(d.clubs || []))
-      .catch(() => setRivalData([]))
-      .finally(() => setRivalLoading(false));
+    const url = `/api/dashboard/compare-clubs?ids=${ids}`;
+    const hit = readPublicApiCache<{ clubs: RivalClub[] }>(url);
+    if (hit) {
+      setRivalData(hit.clubs || []);
+      setRivalLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setRivalLoading(true);
+    fetchPublicApiJson<{ clubs: RivalClub[] }>(url)
+      .then((d) => {
+        if (!cancelled) setRivalData(d.clubs || []);
+      })
+      .catch(() => {
+        if (!cancelled) setRivalData([]);
+      })
+      .finally(() => {
+        if (!cancelled) setRivalLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [rivalIds, clubId, sessionOk]);
 
   function toggleRival(id: number) {

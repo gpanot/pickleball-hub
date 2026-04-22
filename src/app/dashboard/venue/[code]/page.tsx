@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useEffect, use, useMemo } from "react";
+import { useState, useEffect, useLayoutEffect, use, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { clearVenueSession, isVenueUnlocked } from "@/lib/dashboard-session";
 import { HourlyUtilizationChart } from "@/components/DashboardCharts";
 import { FillRateBar } from "@/components/FillRateBar";
 import { formatVND } from "@/lib/utils";
+import { fetchPublicApiJson, readPublicApiCache } from "@/lib/public-api-cache";
 
 type VenueData = {
   venue: { id: number; name: string; address: string; latitude: number; longitude: number };
@@ -66,34 +67,73 @@ export default function VenueDashboardPage({ params }: { params: Promise<{ code:
     }
   }, []);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!sessionOk) return;
-    async function load() {
-      const dataRes = await fetch(`/api/dashboard/venue?venueId=${venueId}`);
-      if (dataRes.ok) {
-        setData(await dataRes.json());
-      } else {
-        setError("Failed to load dashboard data");
-      }
-      setLoading(false);
-    }
-    load();
+    let cancelled = false;
+    const venueUrl = `/api/dashboard/venue?venueId=${venueId}`;
+    const venuesListUrl = "/api/venues";
 
-    fetch("/api/venues").then((r) => r.json()).then((d) => {
-      setAllVenues((d.venues || []).filter((v: VenueOption) => v.id !== venueId));
-    }).catch(() => {});
+    const venueHit = readPublicApiCache<VenueData>(venueUrl);
+    const venuesHit = readPublicApiCache<{ venues: VenueOption[] }>(venuesListUrl);
+    if (venueHit && venuesHit) {
+      setData(venueHit);
+      setAllVenues((venuesHit.venues || []).filter((v) => v.id !== venueId));
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    (async () => {
+      try {
+        const [vdata, listPayload] = await Promise.all([
+          venueHit ? Promise.resolve(venueHit) : fetchPublicApiJson<VenueData>(venueUrl),
+          venuesHit ? Promise.resolve(venuesHit) : fetchPublicApiJson<{ venues: VenueOption[] }>(venuesListUrl),
+        ]);
+        if (cancelled) return;
+        setData(vdata);
+        setAllVenues((listPayload.venues || []).filter((v) => v.id !== venueId));
+      } catch {
+        if (!cancelled) setError("Failed to load dashboard data");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [venueId, sessionOk]);
 
   useEffect(() => {
     if (!sessionOk) return;
-    if (rivalIds.length === 0) { setRivalData([]); return; }
-    setRivalLoading(true);
+    if (rivalIds.length === 0) {
+      setRivalData([]);
+      setRivalLoading(false);
+      return;
+    }
     const ids = [venueId, ...rivalIds].join(",");
-    fetch(`/api/dashboard/compare-venues?ids=${ids}`)
-      .then((r) => r.json())
-      .then((d) => setRivalData(d.venues || []))
-      .catch(() => setRivalData([]))
-      .finally(() => setRivalLoading(false));
+    const url = `/api/dashboard/compare-venues?ids=${ids}`;
+    const hit = readPublicApiCache<{ venues: RivalVenue[] }>(url);
+    if (hit) {
+      setRivalData(hit.venues || []);
+      setRivalLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setRivalLoading(true);
+    fetchPublicApiJson<{ venues: RivalVenue[] }>(url)
+      .then((d) => {
+        if (!cancelled) setRivalData(d.venues || []);
+      })
+      .catch(() => {
+        if (!cancelled) setRivalData([]);
+      })
+      .finally(() => {
+        if (!cancelled) setRivalLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [rivalIds, venueId, sessionOk]);
 
   function toggleRival(id: number) {

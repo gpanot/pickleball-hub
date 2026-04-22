@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback, type FormEvent } from "react";
+import { useState, useEffect, useLayoutEffect, useMemo, useCallback, type FormEvent } from "react";
 import dynamic from "next/dynamic";
 import { SessionCard } from "@/components/SessionCard";
 import { SessionFilters, type FilterState } from "@/components/SessionFilters";
@@ -10,17 +10,13 @@ import {
   hasFoodDrinkPerk,
   haversineKm,
   formatDistanceKm,
+  vnCalendarDateString,
 } from "@/lib/utils";
+import { fetchPublicApiJson, readPublicApiCache } from "@/lib/public-api-cache";
 
 function timeToMinutes(t: string): number {
   const [h, m] = t.split(":").map(Number);
   return (h || 0) * 60 + (m || 0);
-}
-
-function vnDate(offsetDays = 0) {
-  const vn = new Date(Date.now() + 7 * 60 * 60 * 1000);
-  vn.setUTCDate(vn.getUTCDate() + offsetDays);
-  return vn.toISOString().split("T")[0];
 }
 
 function formatDayLabel(dateStr: string): string {
@@ -81,8 +77,8 @@ export default function HomePage() {
   const [viewMode, setViewMode] = useState<"list" | "map">("list");
   const [dayTab, setDayTab] = useState<"today" | "tomorrow">("today");
 
-  const todayStr = useMemo(() => vnDate(0), []);
-  const tomorrowStr = useMemo(() => vnDate(1), []);
+  const todayStr = useMemo(() => vnCalendarDateString(0), []);
+  const tomorrowStr = useMemo(() => vnCalendarDateString(1), []);
   const activeDate = dayTab === "today" ? todayStr : tomorrowStr;
   const [filters, setFilters] = useState<FilterState>({
     timeSlot: "",
@@ -123,30 +119,42 @@ export default function HomePage() {
     );
   }, []);
 
-  useEffect(() => {
-    async function load() {
-      setLoading(true);
-      try {
-        const params = new URLSearchParams();
-        params.set("date", activeDate);
-        if (filters.timeSlot) params.set("timeSlot", filters.timeSlot);
-        if (filters.maxPrice === "0") {
-          params.set("freeOnly", "true");
-        } else if (filters.maxPrice) {
-          params.set("maxPrice", filters.maxPrice);
-        }
-        if (filters.search) params.set("search", filters.search);
-        if (filters.foodDrink) params.set("hasPerks", filters.foodDrink);
-
-        const res = await fetch(`/api/sessions?${params.toString()}`);
-        const data = await res.json();
-        setSessions(data.sessions || []);
-      } catch {
-        setSessions([]);
-      }
-      setLoading(false);
+  useLayoutEffect(() => {
+    const params = new URLSearchParams();
+    params.set("date", activeDate);
+    if (filters.timeSlot) params.set("timeSlot", filters.timeSlot);
+    if (filters.maxPrice === "0") {
+      params.set("freeOnly", "true");
+    } else if (filters.maxPrice) {
+      params.set("maxPrice", filters.maxPrice);
     }
-    load();
+    if (filters.search) params.set("search", filters.search);
+    if (filters.foodDrink) params.set("hasPerks", filters.foodDrink);
+
+    const url = `/api/sessions?${params.toString()}`;
+    const cached = readPublicApiCache<{ sessions: Session[] }>(url);
+    if (cached) {
+      setSessions(cached.sessions || []);
+      setLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setLoading(true);
+    fetchPublicApiJson<{ sessions: Session[] }>(url)
+      .then((data) => {
+        if (!cancelled) setSessions(data.sessions || []);
+      })
+      .catch(() => {
+        if (!cancelled) setSessions([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [activeDate, filters.timeSlot, filters.maxPrice, filters.search, filters.foodDrink]);
 
   const filtered = useMemo(() => {
@@ -295,6 +303,8 @@ export default function HomePage() {
   }, [filtered]);
 
   const totalPlayers = sessions.reduce((sum, s) => sum + s.joined, 0);
+  const tomorrowPendingSync =
+    dayTab === "tomorrow" && !loading && sessions.length === 0;
 
   return (
     <div className="mx-auto min-w-0 max-w-7xl px-2 py-4 sm:px-6 sm:py-6 lg:px-8">
@@ -304,9 +314,40 @@ export default function HomePage() {
           {dayTab === "today" ? "Today" : "Tomorrow"}
         </h1>
         <p className="text-sm text-muted">
-          Ho Chi Minh City — {formatDayLabel(activeDate)} — {sessions.length} sessions, {totalPlayers.toLocaleString()} players
+          Ho Chi Minh City — {formatDayLabel(activeDate)}
+          {tomorrowPendingSync ? (
+            <> — no sessions loaded for this date yet</>
+          ) : (
+            <>
+              {" "}
+              — {sessions.length} sessions, {totalPlayers.toLocaleString()} players
+            </>
+          )}
         </p>
       </div>
+
+      {tomorrowPendingSync && (
+        <div
+          className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100"
+          role="status"
+        >
+          <p className="font-semibold text-amber-900 dark:text-amber-50">Tomorrow&apos;s list is empty in our database</p>
+          <p className="mt-1 text-xs leading-relaxed text-amber-900/90 dark:text-amber-100/90">
+            Sessions are stored per calendar day on the server. After each Reclub sync (about 6 AM and 1 PM HCMC),
+            the next day&apos;s rows appear here. If production has not ingested tomorrow yet, you will see zero
+            until that run completes — check{" "}
+            <a
+              href="https://reclub.co"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-medium underline underline-offset-2 hover:text-amber-950 dark:hover:text-white"
+            >
+              Reclub
+            </a>{" "}
+            for live bookings in the meantime.
+          </p>
+        </div>
+      )}
 
       {dayTab === "today" && freeTonightCards.length > 0 && (
         <section className="mb-4 min-w-0">
@@ -478,8 +519,25 @@ export default function HomePage() {
           <MapView pins={mapPins} className="h-[calc(100dvh-200px)] min-h-[300px] w-full" showLocateButton />
         ) : filtered.length === 0 ? (
           <div className="text-center py-16 text-muted">
-            <p className="text-lg mb-2">No sessions found</p>
-            <p className="text-sm">Try adjusting your filters or check back later.</p>
+            {sessions.length === 0 && dayTab === "tomorrow" ? (
+              <>
+                <p className="text-lg mb-2 text-foreground">No sessions to show yet</p>
+                <p className="text-sm max-w-md mx-auto">
+                  Tomorrow&apos;s listings appear here after each sync from Reclub. See the note above for timing,
+                  or open Reclub to browse what&apos;s already published.
+                </p>
+              </>
+            ) : sessions.length === 0 ? (
+              <>
+                <p className="text-lg mb-2">No sessions found</p>
+                <p className="text-sm">Try another day or check back after the next data update.</p>
+              </>
+            ) : (
+              <>
+                <p className="text-lg mb-2">No sessions match your filters</p>
+                <p className="text-sm">Try adjusting your filters or clear search.</p>
+              </>
+            )}
           </div>
         ) : (
           <div className="grid min-w-0 items-stretch gap-2 sm:gap-4 sm:grid-cols-2 lg:grid-cols-3">

@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useEffect, use } from "react";
+import { useState, useLayoutEffect, use } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { FillRateBar } from "@/components/FillRateBar";
-import { formatVND } from "@/lib/utils";
+import { formatVND, vnCalendarDateString } from "@/lib/utils";
+import { readPublicApiCache, writePublicApiCache } from "@/lib/public-api-cache";
 
 const MapView = dynamic(() => import("@/components/MapView").then((m) => m.MapView), {
   ssr: false,
@@ -50,12 +51,32 @@ export default function ClubProfilePage({ params }: { params: Promise<{ slug: st
   const [club, setClub] = useState<ClubDetail | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetch(`/api/clubs/${slug}`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then(setClub)
-      .catch(() => setClub(null))
-      .finally(() => setLoading(false));
+  useLayoutEffect(() => {
+    const url = `/api/clubs/${encodeURIComponent(slug)}`;
+    const cached = readPublicApiCache<ClubDetail>(url);
+    if (cached) {
+      setClub(cached);
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    fetch(url)
+      .then((r) => (r.ok ? r.json() as Promise<ClubDetail> : null))
+      .then((data) => {
+        if (cancelled) return;
+        if (data) writePublicApiCache(url, data);
+        setClub(data);
+      })
+      .catch(() => {
+        if (!cancelled) setClub(null);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [slug]);
 
   if (loading) {
@@ -77,7 +98,7 @@ export default function ClubProfilePage({ params }: { params: Promise<{ slug: st
   }
 
   const todaySessions = club.sessions.filter(
-    (s) => s.scrapedDate === new Date().toISOString().split("T")[0]
+    (s) => s.scrapedDate === vnCalendarDateString(0),
   );
   const recentStats = club.dailyStats.slice(0, 7);
   const avgFillRate = recentStats.length > 0

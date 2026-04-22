@@ -1,4 +1,5 @@
 import { prisma } from "./db";
+import { vnCalendarDateString } from "./utils";
 
 export interface SessionFilters {
   date?: string;
@@ -14,7 +15,7 @@ export interface SessionFilters {
 }
 
 export async function getSessions(filters: SessionFilters = {}) {
-  const today = filters.date || new Date().toISOString().split("T")[0];
+  const today = filters.date || vnCalendarDateString(0);
 
   const where: Record<string, unknown> = {
     scrapedDate: today,
@@ -107,7 +108,7 @@ export async function getSessions(filters: SessionFilters = {}) {
 }
 
 export async function getClubs() {
-  const todayStr = new Date().toISOString().split("T")[0];
+  const todayStr = vnCalendarDateString(0);
 
   const clubs = await prisma.club.findMany({
     include: {
@@ -230,7 +231,7 @@ export async function getOrganizerAnalytics(clubId: number) {
     include: {
       dailyStats: { orderBy: { date: "desc" }, take: 30 },
       sessions: {
-        where: { scrapedDate: new Date().toISOString().split("T")[0] },
+        where: { scrapedDate: vnCalendarDateString(0) },
         include: {
           venue: true,
           snapshots: { orderBy: { scrapedAt: "desc" }, take: 1 },
@@ -247,7 +248,7 @@ export async function getOrganizerAnalytics(clubId: number) {
     return { ...s, joined: snap?.joined ?? 0, waitlisted: snap?.waitlisted ?? 0 };
   });
 
-  const today = new Date().toISOString().split("T")[0];
+  const today = vnCalendarDateString(0);
   const competitors = await prisma.session.findMany({
     where: {
       scrapedDate: today,
@@ -278,7 +279,7 @@ export async function getOrganizerAnalytics(clubId: number) {
 }
 
 export async function getClubComparison(clubIds: number[]) {
-  const today = new Date().toISOString().split("T")[0];
+  const today = vnCalendarDateString(0);
 
   const clubs = await prisma.club.findMany({
     where: { id: { in: clubIds } },
@@ -325,7 +326,7 @@ export async function getClubComparison(clubIds: number[]) {
 }
 
 export async function getVenueComparison(venueIds: number[]) {
-  const today = new Date().toISOString().split("T")[0];
+  const today = vnCalendarDateString(0);
 
   const venues = await prisma.venue.findMany({
     where: { id: { in: venueIds } },
@@ -393,7 +394,7 @@ export async function getVenueAnalytics(venueId: number) {
 
   if (!venue) return null;
 
-  const today = new Date().toISOString().split("T")[0];
+  const today = vnCalendarDateString(0);
   const todaySessions = venue.sessions
     .filter((s) => s.scrapedDate === today)
     .map((s) => {

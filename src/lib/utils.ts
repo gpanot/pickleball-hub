@@ -1,6 +1,13 @@
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
 
+/** Calendar YYYY-MM-DD in Vietnam (UTC+7), aligned with `Session.scraped_date` and scrapers. */
+export function vnCalendarDateString(offsetDays = 0): string {
+  const vn = new Date(Date.now() + 7 * 60 * 60 * 1000);
+  vn.setUTCDate(vn.getUTCDate() + offsetDays);
+  return vn.toISOString().split("T")[0];
+}
+
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }

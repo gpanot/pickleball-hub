@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getVenueComparison } from "@/lib/queries";
+import { CACHE_CONTROL_PUBLIC_LISTINGS } from "@/lib/http-cache-headers";
 
 export async function GET(request: NextRequest) {
   const ids = request.nextUrl.searchParams.get("ids");
@@ -14,7 +15,10 @@ export async function GET(request: NextRequest) {
 
   try {
     const data = await getVenueComparison(venueIds);
-    return NextResponse.json({ venues: data });
+    return NextResponse.json(
+      { venues: data },
+      { headers: { "Cache-Control": CACHE_CONTROL_PUBLIC_LISTINGS } },
+    );
   } catch (error) {
     console.error("Error comparing venues:", error);
     return NextResponse.json({ error: "Failed to compare venues" }, { status: 500 });
