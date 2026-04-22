@@ -17,6 +17,18 @@ function timeToMinutes(t: string): number {
   return (h || 0) * 60 + (m || 0);
 }
 
+function vnDate(offsetDays = 0) {
+  const vn = new Date(Date.now() + 7 * 60 * 60 * 1000);
+  vn.setUTCDate(vn.getUTCDate() + offsetDays);
+  return vn.toISOString().split("T")[0];
+}
+
+function formatDayLabel(dateStr: string): string {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const dt = new Date(y, m - 1, d);
+  return dt.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+}
+
 const MapView = dynamic(() => import("@/components/MapView").then((m) => m.MapView), {
   ssr: false,
   loading: () => <div className="h-[calc(100dvh-200px)] min-h-[300px] rounded-xl bg-gray-100 dark:bg-gray-800 animate-pulse" />,
@@ -67,6 +79,11 @@ export default function HomePage() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<"list" | "map">("list");
+  const [dayTab, setDayTab] = useState<"today" | "tomorrow">("today");
+
+  const todayStr = useMemo(() => vnDate(0), []);
+  const tomorrowStr = useMemo(() => vnDate(1), []);
+  const activeDate = dayTab === "today" ? todayStr : tomorrowStr;
   const [filters, setFilters] = useState<FilterState>({
     timeSlot: "",
     maxPrice: "",
@@ -111,6 +128,7 @@ export default function HomePage() {
       setLoading(true);
       try {
         const params = new URLSearchParams();
+        params.set("date", activeDate);
         if (filters.timeSlot) params.set("timeSlot", filters.timeSlot);
         if (filters.maxPrice === "0") {
           params.set("freeOnly", "true");
@@ -129,15 +147,18 @@ export default function HomePage() {
       setLoading(false);
     }
     load();
-  }, [filters.timeSlot, filters.maxPrice, filters.search, filters.foodDrink]);
+  }, [activeDate, filters.timeSlot, filters.maxPrice, filters.search, filters.foodDrink]);
 
   const filtered = useMemo(() => {
-    const nowMinutes = (() => {
-      const vn = new Date(Date.now() + 7 * 60 * 60 * 1000);
-      return vn.getUTCHours() * 60 + vn.getUTCMinutes();
-    })();
+    let result = [...sessions];
 
-    let result = sessions.filter((s) => timeToMinutes(s.startTime) >= nowMinutes);
+    if (dayTab === "today") {
+      const nowMinutes = (() => {
+        const vn = new Date(Date.now() + 7 * 60 * 60 * 1000);
+        return vn.getUTCHours() * 60 + vn.getUTCMinutes();
+      })();
+      result = result.filter((s) => timeToMinutes(s.startTime) >= nowMinutes);
+    }
 
     if (filters.availability === "available") {
       result = result.filter((s) => s.fillRate < 0.75);
@@ -200,6 +221,7 @@ export default function HomePage() {
     return result;
   }, [
     sessions,
+    dayTab,
     filters.availability,
     filters.sortBy,
     filters.sessionType,
@@ -278,14 +300,15 @@ export default function HomePage() {
     <div className="mx-auto min-w-0 max-w-7xl px-2 py-4 sm:px-6 sm:py-6 lg:px-8">
       <div className="mb-4 sm:mb-6">
         <h1 className="text-xl sm:text-2xl font-bold mb-1">
-          <span className="text-primary">Pickleball</span> Sessions Today
+          <span className="text-primary">Pickleball</span> Sessions{" "}
+          {dayTab === "today" ? "Today" : "Tomorrow"}
         </h1>
         <p className="text-sm text-muted">
-          Ho Chi Minh City — {sessions.length} sessions, {totalPlayers.toLocaleString()} players
+          Ho Chi Minh City — {formatDayLabel(activeDate)} — {sessions.length} sessions, {totalPlayers.toLocaleString()} players
         </p>
       </div>
 
-      {freeTonightCards.length > 0 && (
+      {dayTab === "today" && freeTonightCards.length > 0 && (
         <section className="mb-4 min-w-0">
           <h2 className="mb-2 text-sm font-semibold text-foreground">Free Tonight</h2>
           <p className="mb-2 text-xs text-muted">
@@ -372,6 +395,34 @@ export default function HomePage() {
           >
             Map
           </button>
+
+          <div className="mx-1 h-6 w-px bg-card-border shrink-0" />
+
+          <div className="flex shrink-0 items-center rounded-lg border border-card-border bg-card p-0.5">
+            <button
+              type="button"
+              onClick={() => setDayTab("today")}
+              className={`rounded-md px-3 py-1.5 text-xs font-semibold transition min-h-[32px] ${
+                dayTab === "today"
+                  ? "bg-primary text-white shadow-sm"
+                  : "text-muted hover:text-foreground"
+              }`}
+            >
+              Today
+            </button>
+            <button
+              type="button"
+              onClick={() => setDayTab("tomorrow")}
+              className={`rounded-md px-3 py-1.5 text-xs font-semibold transition min-h-[32px] ${
+                dayTab === "tomorrow"
+                  ? "bg-primary text-white shadow-sm"
+                  : "text-muted hover:text-foreground"
+              }`}
+            >
+              Tomorrow
+            </button>
+          </div>
+
           <div className="min-w-0 flex-1" aria-hidden />
           <div className="flex shrink-0 sm:hidden">
             {!mobileSearchOpen ? (

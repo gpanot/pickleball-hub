@@ -39,9 +39,23 @@ HEADERS = {
 
 VN_TZ = timezone(timedelta(hours=7))
 NOW = datetime.now(VN_TZ)
-TODAY_STR = NOW.strftime("%Y-%m-%d")
-START_OF_DAY = NOW.replace(hour=0, minute=0, second=0, microsecond=0)
-END_OF_DAY = NOW.replace(hour=23, minute=59, second=59, microsecond=0)
+
+# Accept optional --date YYYY-MM-DD argument to scrape a specific day
+_target_date = None
+for i, arg in enumerate(sys.argv[1:], 1):
+    if arg == "--date" and i < len(sys.argv) - 1:
+        _target_date = sys.argv[i + 1]
+    elif arg.startswith("--date="):
+        _target_date = arg.split("=", 1)[1]
+
+if _target_date:
+    _target_day = datetime.strptime(_target_date, "%Y-%m-%d").replace(tzinfo=VN_TZ)
+else:
+    _target_day = NOW
+
+TODAY_STR = _target_day.strftime("%Y-%m-%d")
+START_OF_DAY = _target_day.replace(hour=0, minute=0, second=0, microsecond=0)
+END_OF_DAY = _target_day.replace(hour=23, minute=59, second=59, microsecond=0)
 START_TS = int(START_OF_DAY.timestamp())
 END_TS = int(END_OF_DAY.timestamp())
 
@@ -237,6 +251,13 @@ def upsert_clubs(cur, meets):
 
     id_map = {}
     for c in clubs.values():
+        cur.execute(
+            "SELECT id FROM clubs WHERE slug = %s AND reclub_id != %s",
+            (c["slug"], c["reclub_id"]),
+        )
+        if cur.fetchone():
+            c["slug"] = f"{c['slug']}-{c['reclub_id']}"
+
         cur.execute("""
             INSERT INTO clubs (reclub_id, name, slug, sport_id, community_id, num_members, updated_at)
             VALUES (%(reclub_id)s, %(name)s, %(slug)s, %(sport_id)s, %(community_id)s, %(num_members)s, NOW())
@@ -265,8 +286,8 @@ def upsert_venues(cur, meets):
             key = (round(lat, 6), round(lng, 6))
             if key not in raw_venues:
                 raw_venues[key] = {
-                    "name": loc.get("name", ""),
-                    "address": loc.get("address", ""),
+                    "name": loc.get("name") or "",
+                    "address": loc.get("address") or "",
                     "latitude": lat,
                     "longitude": lng,
                 }
@@ -287,8 +308,7 @@ def upsert_venues(cur, meets):
                            venue_list[j]["latitude"], venue_list[j]["longitude"]) < 50:
                 cluster.append(venue_list[j])
                 used.add(j)
-        # Use the venue with the longest name as canonical
-        canonical = max(cluster, key=lambda x: len(x["name"]))
+        canonical = max(cluster, key=lambda x: len(x["name"] or ""))
         clusters.append(canonical)
 
     coord_to_id = {}
@@ -461,14 +481,37 @@ def main():
 
     print("=" * 65)
     print("  PICKLEBALL HUB INGEST")
-    print(f"  Date: {NOW.strftime('%A, %B %d, %Y')} (Vietnam time)")
+    print(f"  Target: {_target_day.strftime('%A, %B %d, %Y')} (Vietnam time)")
     print("=" * 65)
 
     # Step 1: Scrape
-    print("\n[1/5] Gathering club IDs...")
+    print("\n[1/6] Gathering club IDs from API...")
     club_map = get_all_club_ids()
 
-    print(f"\n[2/5] Fetching today's HCM events from {len(club_map)} clubs...")
+    # Also load clubs already known in the DB (from previous runs)
+    print("\n[2/6] Loading known clubs from database...")
+    conn_pre = psycopg2.connect(DATABASE_URL)
+    cur_pre = conn_pre.cursor()
+    cur_pre.execute("SELECT reclub_id, name, slug, sport_id, community_id, num_members FROM clubs")
+    db_clubs = cur_pre.fetchall()
+    cur_pre.close()
+    conn_pre.close()
+    added = 0
+    for row in db_clubs:
+        rid = row[0]
+        if rid not in club_map:
+            club_map[rid] = {
+                "id": rid,
+                "name": row[1] or "",
+                "slug": row[2] or "",
+                "communityId": row[4],
+                "sportId": row[3],
+                "numMembers": row[5] or 0,
+            }
+            added += 1
+    print(f"    Added {added} clubs from DB ({len(club_map)} total)")
+
+    print(f"\n[3/6] Fetching events from {len(club_map)} clubs...")
     all_meets = fetch_all_events(club_map)
 
     # Filter to pickleball only (sport_id=36) if we have the data
@@ -491,18 +534,17 @@ def main():
         print("  No pickleball events found!")
         return
 
-    # Step 2: Upsert to database
-    print(f"\n[3/5] Connecting to database...")
+    print(f"\n[4/6] Connecting to database...")
     conn = psycopg2.connect(DATABASE_URL)
     cur = conn.cursor()
 
     try:
-        print("\n[4/5] Upserting data...")
+        print("\n[5/6] Upserting data...")
         club_id_map = upsert_clubs(cur, pickleball_meets)
         venue_coord_map = upsert_venues(cur, pickleball_meets)
         upsert_sessions_and_snapshots(cur, pickleball_meets, club_id_map, venue_coord_map)
 
-        print("\n[5/5] Computing aggregates...")
+        print("\n[6/6] Computing aggregates...")
         compute_club_daily_stats(cur)
 
         conn.commit()

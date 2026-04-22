@@ -93,7 +93,7 @@ export function SessionCard({ session, userLocation }: SessionCardProps) {
           <FillRateBar joined={s.joined} maxPlayers={s.maxPlayers} waitlisted={s.waitlisted} />
           {showWaitWarning && (
             <div className="mt-2 min-w-0 break-words rounded-md border border-orange-200 bg-orange-50 px-2.5 py-1.5 text-xs font-medium text-orange-700 dark:border-orange-800 dark:bg-orange-900/20 dark:text-orange-300">
-              ⚠️ Likely long wait between games
+              ⚠️ Likely wait between games 15-20min
             </div>
           )}
         </div>
