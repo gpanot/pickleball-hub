@@ -16,7 +16,7 @@ type VenueData = {
     durationMin: number; maxPlayers: number; feeAmount: number;
     joined: number; waitlisted: number; club: { name: string; slug: string };
   }[];
-  clubBreakdown: { name: string; sessions: number; totalJoined: number; totalCapacity: number }[];
+  clubBreakdown: { slug: string; name: string; sessions: number; totalJoined: number; totalCapacity: number }[];
   hourlyUtilization: { hour: number; sessions: number; totalPlayers: number }[];
 };
 
@@ -367,7 +367,7 @@ export default function VenueDashboardPage({ params }: { params: Promise<{ code:
             ) : (
               <div className="space-y-2">
                 {clubBreakdown.sort((a, b) => b.sessions - a.sessions).map((c) => (
-                  <div key={c.name} className="rounded-lg border border-card-border p-3">
+                  <div key={c.slug} className="rounded-lg border border-card-border p-3">
                     <div className="flex items-center gap-3">
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium truncate">{c.name}</p>

@@ -557,12 +557,12 @@ export async function getVenueAnalytics(venueId: number) {
       return { ...s, joined: snap?.joined ?? 0, waitlisted: snap?.waitlisted ?? 0 };
     });
 
-  const clubBreakdown: Record<string, { name: string; sessions: number; totalJoined: number; totalCapacity: number }> = {};
+  const clubBreakdown: Record<string, { slug: string; name: string; sessions: number; totalJoined: number; totalCapacity: number }> = {};
   for (const s of allSessions) {
     const snap = s.snapshots[0];
-    const key = s.club.slug;
+    const key = s.club.slug || `club-${s.clubId}`;
     if (!clubBreakdown[key]) {
-      clubBreakdown[key] = { name: s.club.name, sessions: 0, totalJoined: 0, totalCapacity: 0 };
+      clubBreakdown[key] = { slug: key, name: s.club.name, sessions: 0, totalJoined: 0, totalCapacity: 0 };
     }
     clubBreakdown[key].sessions++;
     clubBreakdown[key].totalJoined += snap?.joined ?? 0;
