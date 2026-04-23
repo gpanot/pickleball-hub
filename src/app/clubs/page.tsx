@@ -1,10 +1,12 @@
 "use client";
 
-import { useState, useLayoutEffect, useMemo } from "react";
+import { useState, useEffect, useLayoutEffect, useMemo } from "react";
 import dynamic from "next/dynamic";
 import { ClubStatsCard } from "@/components/ClubStatsCard";
 import { formatVND } from "@/lib/utils";
 import { fetchPublicApiJson, readPublicApiCache } from "@/lib/public-api-cache";
+
+const PAGE_SIZE = 50;
 
 const MAP_HEIGHT_CLASS =
   "min-h-[300px] sm:min-h-[560px] h-[calc(100dvh-260px)] max-h-[900px] w-full";
@@ -68,6 +70,11 @@ export default function ClubsPage() {
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState("members");
   const [viewMode, setViewMode] = useState<"grid" | "map">("grid");
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+  }, [search, sortBy]);
 
   useLayoutEffect(() => {
     const url = "/api/clubs";
@@ -215,11 +222,24 @@ export default function ClubsPage() {
           <p className="text-sm">Try adjusting your search.</p>
         </div>
       ) : (
-        <div className="grid gap-3 sm:gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {filtered.map((c) => (
-            <ClubStatsCard key={c.id} club={c} />
-          ))}
-        </div>
+        <>
+          <div className="grid gap-3 sm:gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {filtered.slice(0, visibleCount).map((c) => (
+              <ClubStatsCard key={c.id} club={c} />
+            ))}
+          </div>
+          {filtered.length > visibleCount && (
+            <div className="mt-6 flex justify-center">
+              <button
+                type="button"
+                onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}
+                className="rounded-lg border border-card-border bg-card px-6 py-3 text-sm font-medium text-foreground transition hover:border-primary/40 hover:shadow-sm min-h-[44px]"
+              >
+                Show more ({filtered.length - visibleCount} remaining)
+              </button>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

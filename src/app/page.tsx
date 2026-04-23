@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useLayoutEffect, useMemo, useCallback, type FormEvent } from "react";
+import { useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef, type FormEvent } from "react";
 import dynamic from "next/dynamic";
 import { SessionCard } from "@/components/SessionCard";
 import { SessionFilters, type FilterState } from "@/components/SessionFilters";
@@ -13,6 +13,8 @@ import {
   vnCalendarDateString,
 } from "@/lib/utils";
 import { fetchPublicApiJson, readPublicApiCache } from "@/lib/public-api-cache";
+
+const PAGE_SIZE = 50;
 
 function timeToMinutes(t: string): number {
   const [h, m] = t.split(":").map(Number);
@@ -71,6 +73,49 @@ type Session = {
   venue: { name: string; address: string; latitude: number; longitude: number } | null;
 };
 
+function TimeGroupedList({
+  groups,
+  visibleCount,
+  userLocation,
+}: {
+  groups: Map<string, Session[]>;
+  visibleCount: number;
+  userLocation: { lat: number; lng: number } | null;
+}) {
+  let rendered = 0;
+  const entries = Array.from(groups.entries());
+
+  return (
+    <div className="space-y-4">
+      {entries.map(([startTime, group]) => {
+        if (rendered >= visibleCount) return null;
+        const remaining = visibleCount - rendered;
+        const visible = group.slice(0, remaining);
+        rendered += visible.length;
+
+        return (
+          <div key={startTime}>
+            <div className="sticky top-12 sm:top-14 z-20 -mx-2 px-2 py-1.5 backdrop-blur-md bg-background/80 border-b border-card-border/30">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-primary bg-primary/10 px-2.5 py-1 rounded-full">
+                  From {startTime.replace(/^0/, "")}
+                </span>
+                <span className="text-xs text-muted">{group.length} session{group.length !== 1 ? "s" : ""}</span>
+                <div className="flex-1 border-t border-card-border/50" />
+              </div>
+            </div>
+            <div className="grid min-w-0 items-stretch gap-2 sm:gap-4 sm:grid-cols-2 lg:grid-cols-3 mt-2">
+              {visible.map((s) => (
+                <SessionCard key={s.id} session={s} userLocation={userLocation} />
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function HomePage() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
@@ -96,6 +141,16 @@ export default function HomePage() {
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [freeTonightDetail, setFreeTonightDetail] = useState<Session | null>(null);
   const [timeFilter, setTimeFilter] = useState<"fromNow" | "past">("fromNow");
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 639px)");
+    setIsMobile(mq.matches);
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
 
   useEffect(() => {
     setSearchDraft(filters.search);
@@ -167,7 +222,8 @@ export default function HomePage() {
     let result = [...sessions];
 
     if (dayTab === "today") {
-      if (timeFilter === "fromNow") {
+      const effectiveFilter = isMobile ? "fromNow" : timeFilter;
+      if (effectiveFilter === "fromNow") {
         result = result.filter((s) => timeToMinutes(s.startTime) >= vnNowMinutes);
       } else {
         result = result.filter((s) => timeToMinutes(s.startTime) < vnNowMinutes);
@@ -237,6 +293,7 @@ export default function HomePage() {
     sessions,
     dayTab,
     timeFilter,
+    isMobile,
     vnNowMinutes,
     filters.availability,
     filters.sortBy,
@@ -256,7 +313,7 @@ export default function HomePage() {
   }, [filtered]);
 
   const hasTimeGroups = useMemo(
-    () => Array.from(timeGroupedSessions.values()).some((g) => g.length >= 2),
+    () => timeGroupedSessions.size > 0,
     [timeGroupedSessions],
   );
 
@@ -269,6 +326,10 @@ export default function HomePage() {
     if (dayTab !== "today") return 0;
     return sessions.filter((s) => timeToMinutes(s.startTime) < vnNowMinutes).length;
   }, [sessions, dayTab, vnNowMinutes]);
+
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+  }, [dayTab, timeFilter, filters]);
 
   const handleFilterChange = useCallback((newFilters: FilterState) => {
     setFilters(newFilters);
@@ -339,7 +400,7 @@ export default function HomePage() {
     dayTab === "tomorrow" && !loading && sessions.length === 0;
 
   return (
-    <div className="mx-auto min-w-0 max-w-7xl px-2 py-4 sm:px-6 sm:py-6 lg:px-8">
+    <div className="mx-auto min-w-0 max-w-7xl overflow-x-hidden px-2 py-4 sm:px-6 sm:py-6 lg:px-8">
       <div className="mb-4 sm:mb-6">
         <h1 className="text-xl sm:text-2xl font-bold mb-1">
           <span className="text-primary">Pickleball</span>{" "}
@@ -450,7 +511,7 @@ export default function HomePage() {
       />
 
       <div className="mt-4 flex min-w-0 flex-col gap-2">
-        <div className="flex min-w-0 items-center gap-2">
+        <div className="flex min-w-0 items-center gap-2 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <button
             type="button"
             onClick={() => setViewMode("list")}
@@ -502,7 +563,7 @@ export default function HomePage() {
           </div>
 
           {dayTab === "today" && (
-            <>
+            <div className="hidden sm:contents">
               <div className="mx-1 h-6 w-px bg-card-border shrink-0" />
               <div className="flex shrink-0 items-center rounded-lg border border-card-border bg-card p-0.5">
                 <button
@@ -528,7 +589,7 @@ export default function HomePage() {
                   Past ({pastCount})
                 </button>
               </div>
-            </>
+            </div>
           )}
 
           <div className="min-w-0 flex-1" aria-hidden />
@@ -607,31 +668,28 @@ export default function HomePage() {
             )}
           </div>
         ) : hasTimeGroups ? (
-          <div className="space-y-4">
-            {Array.from(timeGroupedSessions.entries()).map(([startTime, group]) => (
-              <div key={startTime}>
-                {group.length >= 2 && (
-                  <div className="mb-2 flex items-center gap-2">
-                    <span className="text-xs font-semibold text-primary bg-primary/10 px-2.5 py-1 rounded-full">
-                      From {startTime.replace(/^0/, "")}
-                    </span>
-                    <span className="text-xs text-muted">{group.length} sessions</span>
-                    <div className="flex-1 border-t border-card-border/50" />
-                  </div>
-                )}
-                <div className="grid min-w-0 items-stretch gap-2 sm:gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  {group.map((s) => (
-                    <SessionCard key={s.id} session={s} userLocation={userLocation} />
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
+          <TimeGroupedList
+            groups={timeGroupedSessions}
+            visibleCount={visibleCount}
+            userLocation={userLocation}
+          />
         ) : (
           <div className="grid min-w-0 items-stretch gap-2 sm:gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {filtered.map((s) => (
+            {filtered.slice(0, visibleCount).map((s) => (
               <SessionCard key={s.id} session={s} userLocation={userLocation} />
             ))}
+          </div>
+        )}
+
+        {!loading && viewMode === "list" && filtered.length > visibleCount && (
+          <div className="mt-6 flex justify-center">
+            <button
+              type="button"
+              onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}
+              className="rounded-lg border border-card-border bg-card px-6 py-3 text-sm font-medium text-foreground transition hover:border-primary/40 hover:shadow-sm min-h-[44px]"
+            >
+              Show more ({filtered.length - visibleCount} remaining)
+            </button>
           </div>
         )}
       </div>
