@@ -62,7 +62,7 @@ type RankingClubRow = {
   revenueEstimate: number;
 };
 
-type RankingSortKey = "sessionsToday" | "players" | "fillRate" | "avgFee" | "revenueEstimate";
+type RankingSortKey = "members" | "sessionsToday" | "players" | "fillRate" | "avgFee" | "revenueEstimate";
 
 type Tab = "dashboard" | "ranking" | "rivals";
 const RIVAL_STORAGE_KEY = "pickleball-hub:org-rivals";
@@ -83,8 +83,9 @@ export default function OrganizerDashboardPage({ params }: { params: Promise<{ c
   const [rivalLoading, setRivalLoading] = useState(false);
   const [rivalSearch, setRivalSearch] = useState("");
   const [rankingSearch, setRankingSearch] = useState("");
-  const [rankingSortKey, setRankingSortKey] = useState<RankingSortKey>("players");
+  const [rankingSortKey, setRankingSortKey] = useState<RankingSortKey>("revenueEstimate");
   const [rankingSortDir, setRankingSortDir] = useState<"asc" | "desc">("desc");
+  const [rankingVisible, setRankingVisible] = useState(100);
 
   useEffect(() => {
     if (!Number.isFinite(clubId) || clubId <= 0) {
@@ -244,6 +245,9 @@ export default function OrganizerDashboardPage({ params }: { params: Promise<{ c
     rows.sort((a, b) => {
       let cmp = 0;
       switch (rankingSortKey) {
+        case "members":
+          cmp = a.numMembers - b.numMembers;
+          break;
         case "sessionsToday":
           cmp = a.sessionsToday - b.sessionsToday;
           break;
@@ -272,6 +276,10 @@ export default function OrganizerDashboardPage({ params }: { params: Promise<{ c
     () => [...rivalData].sort((a, b) => a.name.localeCompare(b.name)),
     [rivalData],
   );
+
+  useEffect(() => {
+    setRankingVisible(100);
+  }, [rankingSearch, rankingSortKey, rankingSortDir]);
 
   function handleRankingSort(key: RankingSortKey) {
     if (key === rankingSortKey) {
@@ -482,7 +490,13 @@ export default function OrganizerDashboardPage({ params }: { params: Promise<{ c
                 <tr className="border-b border-card-border text-muted">
                   <th className="text-left py-2 pr-2 font-medium w-8">#</th>
                   <th className="text-left py-2 pr-3 font-medium">Club</th>
-                  <th className="text-center py-2 px-2 font-medium">Members</th>
+                  <RankingSortTh
+                    label="Members"
+                    sortKey="members"
+                    activeKey={rankingSortKey}
+                    dir={rankingSortDir}
+                    onSort={handleRankingSort}
+                  />
                   <RankingSortTh
                     label="Sessions"
                     sortKey="sessionsToday"
@@ -528,7 +542,7 @@ export default function OrganizerDashboardPage({ params }: { params: Promise<{ c
                     </td>
                   </tr>
                 ) : (
-                  displayedRanking.map((c, i) => {
+                  displayedRanking.slice(0, rankingVisible).map((c, i) => {
                     const isMe = c.id === clubId;
                     return (
                       <tr key={c.id} className={`border-b border-card-border/50 ${isMe ? "bg-primary/5 font-semibold" : ""}`}>
@@ -552,6 +566,15 @@ export default function OrganizerDashboardPage({ params }: { params: Promise<{ c
               </tbody>
             </table>
           </div>
+          {rankingVisible < displayedRanking.length && (
+            <button
+              type="button"
+              onClick={() => setRankingVisible((v) => v + 100)}
+              className="mt-4 w-full rounded-lg border border-card-border py-2.5 text-sm text-muted hover:text-foreground hover:border-primary/40 transition"
+            >
+              Show more ({displayedRanking.length - rankingVisible} remaining)
+            </button>
+          )}
         </Section>
       )}
 

@@ -3,4 +3,6 @@ builder = "dockerfile"
 dockerfilePath = "scraper/Dockerfile"
 
 [deploy]
-cronSchedule = "0 6,23 * * *"
+# Runs at 7:00 AM and 11:00 PM Vietnam time (0:00 and 16:00 UTC).
+# The entrypoint (run.sh) decides whether to also refresh clubs (Mon/Wed only).
+cronSchedule = "0 0,16 * * *"

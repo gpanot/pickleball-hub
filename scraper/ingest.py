@@ -40,24 +40,38 @@ HEADERS = {
 VN_TZ = timezone(timedelta(hours=7))
 NOW = datetime.now(VN_TZ)
 
-# Accept optional --date YYYY-MM-DD argument to scrape a specific day
-_target_date = None
+# Accept optional --date YYYY-MM-DD argument(s) to scrape specific days.
+# Multiple --date flags are supported. Without any, defaults to today + tomorrow.
+_explicit_dates = []
 for i, arg in enumerate(sys.argv[1:], 1):
     if arg == "--date" and i < len(sys.argv) - 1:
-        _target_date = sys.argv[i + 1]
+        _explicit_dates.append(sys.argv[i + 1])
     elif arg.startswith("--date="):
-        _target_date = arg.split("=", 1)[1]
+        _explicit_dates.append(arg.split("=", 1)[1])
 
-if _target_date:
-    _target_day = datetime.strptime(_target_date, "%Y-%m-%d").replace(tzinfo=VN_TZ)
+if _explicit_dates:
+    TARGET_DAYS = [
+        datetime.strptime(d, "%Y-%m-%d").replace(tzinfo=VN_TZ) for d in _explicit_dates
+    ]
 else:
-    _target_day = NOW
+    TARGET_DAYS = [NOW, NOW + timedelta(days=1)]
 
-TODAY_STR = _target_day.strftime("%Y-%m-%d")
-START_OF_DAY = _target_day.replace(hour=0, minute=0, second=0, microsecond=0)
-END_OF_DAY = _target_day.replace(hour=23, minute=59, second=59, microsecond=0)
-START_TS = int(START_OF_DAY.timestamp())
-END_TS = int(END_OF_DAY.timestamp())
+# Legacy globals kept for the per-day loop (set before each pass)
+TODAY_STR = None
+START_OF_DAY = None
+END_OF_DAY = None
+START_TS = None
+END_TS = None
+
+
+def set_target_day(day):
+    """Configure the global date variables for a scrape pass."""
+    global TODAY_STR, START_OF_DAY, END_OF_DAY, START_TS, END_TS
+    TODAY_STR = day.strftime("%Y-%m-%d")
+    START_OF_DAY = day.replace(hour=0, minute=0, second=0, microsecond=0)
+    END_OF_DAY = day.replace(hour=23, minute=59, second=59, microsecond=0)
+    START_TS = int(START_OF_DAY.timestamp())
+    END_TS = int(END_OF_DAY.timestamp())
 
 PICKLEBALL_SPORT_ID = 36
 SPORT_IDS_TO_SCAN = [1, 4, 5, 10, 11, 20, 24, 30, 33, 36, 37, 40, 42, 55, 62]
@@ -275,6 +289,49 @@ def get_all_club_ids():
                         "numMembers": c.get("numMembers", 0),
                     }
         time.sleep(0.05)
+
+    # [c] Load from hcm_pickleball_clubs.json (comprehensive list from scan)
+    json_paths = [
+        os.path.join(os.path.dirname(__file__), "..", "..", "hcm_pickleball_clubs.json"),
+        os.path.join(os.path.dirname(__file__), "..", "hcm_pickleball_clubs.json"),
+    ]
+    added_from_json = 0
+    for jp in json_paths:
+        jp = os.path.abspath(jp)
+        if os.path.exists(jp):
+            try:
+                with open(jp, "r") as f:
+                    json_clubs = json.load(f)
+                if isinstance(json_clubs, dict):
+                    for cid_str, c in json_clubs.items():
+                        cid = int(cid_str) if isinstance(cid_str, str) else c.get("id")
+                        if cid and cid not in club_map:
+                            club_map[cid] = {
+                                "id": cid,
+                                "name": c.get("name", ""),
+                                "slug": c.get("slug", ""),
+                                "communityId": c.get("communityId", COMMUNITY_ID),
+                                "sportId": c.get("sportId"),
+                                "numMembers": c.get("numMembers", 0),
+                            }
+                            added_from_json += 1
+                elif isinstance(json_clubs, list):
+                    for c in json_clubs:
+                        cid = c.get("id")
+                        if cid and cid not in club_map:
+                            club_map[cid] = {
+                                "id": cid,
+                                "name": c.get("name", ""),
+                                "slug": c.get("slug", ""),
+                                "communityId": c.get("communityId", COMMUNITY_ID),
+                                "sportId": c.get("sportId"),
+                                "numMembers": c.get("numMembers", 0),
+                            }
+                            added_from_json += 1
+                print(f"  [c] Loaded {added_from_json} extra clubs from {os.path.basename(jp)}")
+                break
+            except Exception as e:
+                print(f"  [c] Warning: could not load {jp}: {e}")
 
     print(f"      {len(club_map)} total clubs")
     return club_map
@@ -602,23 +659,79 @@ def compute_club_daily_stats(cur):
 
 # ─── Main ─────────────────────────────────────────────────────────────
 
+def ingest_day(day, club_map):
+    """Run the full ingest pipeline for a single day."""
+    set_target_day(day)
+
+    print(f"\n{'─' * 65}")
+    print(f"  Ingesting: {day.strftime('%A, %B %d, %Y')} (Vietnam time)")
+    print(f"{'─' * 65}")
+
+    print(f"\n  Fetching events from {len(club_map)} clubs...")
+    all_meets = fetch_all_events(club_map)
+
+    pickleball_meets = {}
+    other_meets = {}
+    for ref, m in all_meets.items():
+        if m.get("sportId") == PICKLEBALL_SPORT_ID or m.get("_sportId") == PICKLEBALL_SPORT_ID:
+            pickleball_meets[ref] = m
+        else:
+            other_meets[ref] = m
+
+    for ref, m in other_meets.items():
+        if not m.get("sportId") and not m.get("_sportId"):
+            pickleball_meets[ref] = m
+
+    print(f"    Pickleball sessions: {len(pickleball_meets)} / {len(all_meets)} total")
+
+    if not pickleball_meets:
+        print("  No pickleball events found for this day — skipping.")
+        return 0
+
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
+
+    try:
+        print("\n  Upserting data...")
+        club_id_map = upsert_clubs(cur, pickleball_meets)
+        venue_coord_map = upsert_venues(cur, pickleball_meets)
+        upsert_sessions_and_snapshots(cur, pickleball_meets, club_id_map, venue_coord_map)
+
+        print("\n  Computing aggregates...")
+        compute_club_daily_stats(cur)
+
+        conn.commit()
+        print(f"\n  SUCCESS: Ingested {len(pickleball_meets)} sessions for {TODAY_STR}")
+        return len(pickleball_meets)
+
+    except Exception as e:
+        conn.rollback()
+        print(f"\n  ERROR: {e}")
+        raise
+    finally:
+        cur.close()
+        conn.close()
+
+
 def main():
     if not DATABASE_URL:
         print("ERROR: DATABASE_URL environment variable not set.")
         print("  Export it or add to .env: DATABASE_URL=postgresql://user:pass@host:port/db")
         sys.exit(1)
 
+    day_labels = ", ".join(d.strftime("%Y-%m-%d") for d in TARGET_DAYS)
     print("=" * 65)
     print("  PICKLEBALL HUB INGEST")
-    print(f"  Target: {_target_day.strftime('%A, %B %d, %Y')} (Vietnam time)")
+    print(f"  Days: {day_labels} (Vietnam time)")
     print("=" * 65)
 
-    # Step 1: Scrape
-    print("\n[1/6] Gathering club IDs from API...")
+    # Build the shared club map once (reused for all days)
+    set_target_day(TARGET_DAYS[0])
+
+    print("\n[1/3] Gathering club IDs from API...")
     club_map = get_all_club_ids()
 
-    # Also load clubs already known in the DB (from previous runs)
-    print("\n[2/6] Loading known clubs from database...")
+    print("\n[2/3] Loading known clubs from database...")
     conn_pre = psycopg2.connect(DATABASE_URL)
     cur_pre = conn_pre.cursor()
     cur_pre.execute("SELECT reclub_id, name, slug, sport_id, community_id, num_members FROM clubs")
@@ -640,54 +753,14 @@ def main():
             added += 1
     print(f"    Added {added} clubs from DB ({len(club_map)} total)")
 
-    print(f"\n[3/6] Fetching events from {len(club_map)} clubs...")
-    all_meets = fetch_all_events(club_map)
+    print(f"\n[3/3] Ingesting {len(TARGET_DAYS)} day(s)...")
+    total = 0
+    for day in TARGET_DAYS:
+        total += ingest_day(day, club_map)
 
-    # Filter to pickleball only (sport_id=36) if we have the data
-    pickleball_meets = {}
-    other_meets = {}
-    for ref, m in all_meets.items():
-        if m.get("sportId") == PICKLEBALL_SPORT_ID or m.get("_sportId") == PICKLEBALL_SPORT_ID:
-            pickleball_meets[ref] = m
-        else:
-            other_meets[ref] = m
-
-    # Include meets whose sport we can't determine (they might be pickleball)
-    for ref, m in other_meets.items():
-        if not m.get("sportId") and not m.get("_sportId"):
-            pickleball_meets[ref] = m
-
-    print(f"    Pickleball sessions: {len(pickleball_meets)} / {len(all_meets)} total")
-
-    if not pickleball_meets:
-        print("  No pickleball events found!")
-        return
-
-    print(f"\n[4/6] Connecting to database...")
-    conn = psycopg2.connect(DATABASE_URL)
-    cur = conn.cursor()
-
-    try:
-        print("\n[5/6] Upserting data...")
-        club_id_map = upsert_clubs(cur, pickleball_meets)
-        venue_coord_map = upsert_venues(cur, pickleball_meets)
-        upsert_sessions_and_snapshots(cur, pickleball_meets, club_id_map, venue_coord_map)
-
-        print("\n[6/6] Computing aggregates...")
-        compute_club_daily_stats(cur)
-
-        conn.commit()
-        print(f"\n  SUCCESS: Ingested {len(pickleball_meets)} sessions for {TODAY_STR}")
-
-    except Exception as e:
-        conn.rollback()
-        print(f"\n  ERROR: {e}")
-        raise
-    finally:
-        cur.close()
-        conn.close()
-
-    print("=" * 65)
+    print(f"\n{'=' * 65}")
+    print(f"  DONE — {total} total sessions across {len(TARGET_DAYS)} day(s)")
+    print(f"{'=' * 65}")
 
 
 if __name__ == "__main__":

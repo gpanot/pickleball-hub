@@ -199,13 +199,105 @@ export async function getClubBySlug(slug: string) {
   return club;
 }
 
+async function buildVenueNameMap() {
+  const all = await prisma.venue.findMany({ select: { id: true, name: true, address: true } });
+  const nameToGroup = new Map<string, { ids: number[]; canonicalId: number; address: string }>();
+  for (const v of all) {
+    const key = v.name.trim().toLowerCase();
+    const existing = nameToGroup.get(key);
+    if (existing) {
+      existing.ids.push(v.id);
+    } else {
+      nameToGroup.set(key, { ids: [v.id], canonicalId: v.id, address: v.address });
+    }
+  }
+  return nameToGroup;
+}
+
+export async function resolveVenueSiblingIds(venueId: number): Promise<number[]> {
+  const venue = await prisma.venue.findUnique({ where: { id: venueId }, select: { name: true } });
+  if (!venue) return [venueId];
+  const siblings = await prisma.venue.findMany({
+    where: { name: { equals: venue.name, mode: "insensitive" } },
+    select: { id: true },
+  });
+  return siblings.map((v) => v.id);
+}
+
 export async function getVenues() {
-  return prisma.venue.findMany({
+  const today = vnCalendarDateString(0);
+  const nameMap = await buildVenueNameMap();
+
+  const allVenues = await prisma.venue.findMany({
     include: {
       _count: { select: { sessions: true } },
+      sessions: {
+        where: { scrapedDate: today },
+        include: {
+          club: true,
+          snapshots: { orderBy: { scrapedAt: "desc" }, take: 1 },
+        },
+      },
     },
-    orderBy: { name: "asc" },
   });
+
+  const venueById = new Map(allVenues.map((v) => [v.id, v]));
+  const results: ReturnType<typeof computeVenueStats>[] = [];
+
+  for (const [, group] of nameMap) {
+    const groupVenues = group.ids.map((id) => venueById.get(id)).filter(Boolean) as typeof allVenues;
+    if (groupVenues.length === 0) continue;
+
+    const canonical = groupVenues[0];
+    const allSessions = groupVenues.flatMap((v) => v.sessions);
+    const totalAllTime = groupVenues.reduce((s, v) => s + v._count.sessions, 0);
+
+    results.push(computeVenueStats(canonical, allSessions, totalAllTime));
+  }
+
+  results.sort((a, b) => a.name.localeCompare(b.name));
+  return results;
+}
+
+function computeVenueStats(
+  canonical: { id: number; name: string; address: string; latitude: number; longitude: number; createdAt: Date; updatedAt: Date },
+  todaySessions: { feeAmount: number; maxPlayers: number; startTime: string; endTime: string; club: { slug: string }; snapshots: { joined: number }[] }[],
+  totalAllTime: number,
+) {
+  const totalJoined = todaySessions.reduce((s, x) => s + (x.snapshots[0]?.joined ?? 0), 0);
+  const totalCapacity = todaySessions.reduce((s, x) => s + x.maxPlayers, 0);
+  const avgFee = todaySessions.length > 0
+    ? todaySessions.reduce((s, x) => s + x.feeAmount, 0) / todaySessions.length
+    : 0;
+  const fillRate = totalCapacity > 0 ? totalJoined / totalCapacity : 0;
+  const revenueEstimate = todaySessions.reduce((s, x) => s + (x.snapshots[0]?.joined ?? 0) * x.feeAmount, 0);
+  const uniqueClubs = new Set(todaySessions.map((s) => s.club.slug)).size;
+
+  const hourlyActive = new Set<number>();
+  for (const s of todaySessions) {
+    const startH = parseInt(s.startTime.split(":")[0]);
+    const endH = parseInt(s.endTime.split(":")[0]) || 24;
+    for (let h = startH; h < endH; h++) hourlyActive.add(h);
+  }
+
+  return {
+    id: canonical.id,
+    name: canonical.name,
+    address: canonical.address,
+    latitude: canonical.latitude,
+    longitude: canonical.longitude,
+    createdAt: canonical.createdAt,
+    updatedAt: canonical.updatedAt,
+    _count: { sessions: totalAllTime },
+    sessionsToday: todaySessions.length,
+    totalJoined,
+    totalCapacity,
+    fillRate: Math.round(fillRate * 100) / 100,
+    avgFee: Math.round(avgFee),
+    revenueEstimate,
+    uniqueClubs,
+    activeHours: hourlyActive.size,
+  };
 }
 
 export async function getVenueById(id: number) {
@@ -338,8 +430,11 @@ export async function getClubComparison(clubIds: number[]) {
 export async function getVenueComparison(venueIds: number[]) {
   const today = vnCalendarDateString(0);
 
+  const allSiblingIds = await Promise.all(venueIds.map((id) => resolveVenueSiblingIds(id)));
+  const expandedIds = [...new Set(allSiblingIds.flat())];
+
   const venues = await prisma.venue.findMany({
-    where: { id: { in: venueIds } },
+    where: { id: { in: expandedIds } },
     include: {
       sessions: {
         where: { scrapedDate: today },
@@ -351,19 +446,28 @@ export async function getVenueComparison(venueIds: number[]) {
     },
   });
 
-  return venues.map((v) => {
-    const todaySessions = v.sessions;
-    const totalJoined = todaySessions.reduce((s, x) => s + (x.snapshots[0]?.joined ?? 0), 0);
-    const totalCapacity = todaySessions.reduce((s, x) => s + x.maxPlayers, 0);
-    const avgFee = todaySessions.length > 0
-      ? todaySessions.reduce((s, x) => s + x.feeAmount, 0) / todaySessions.length
+  const venueById = new Map(venues.map((v) => [v.id, v]));
+  const results = [];
+
+  for (let i = 0; i < venueIds.length; i++) {
+    const canonicalId = venueIds[i];
+    const sibIds = allSiblingIds[i];
+    const groupVenues = sibIds.map((id) => venueById.get(id)).filter(Boolean) as typeof venues;
+    if (groupVenues.length === 0) continue;
+
+    const canonical = groupVenues.find((v) => v.id === canonicalId) ?? groupVenues[0];
+    const allSessions = groupVenues.flatMap((v) => v.sessions);
+    const totalJoined = allSessions.reduce((s, x) => s + (x.snapshots[0]?.joined ?? 0), 0);
+    const totalCapacity = allSessions.reduce((s, x) => s + x.maxPlayers, 0);
+    const avgFee = allSessions.length > 0
+      ? allSessions.reduce((s, x) => s + x.feeAmount, 0) / allSessions.length
       : 0;
     const fillRate = totalCapacity > 0 ? totalJoined / totalCapacity : 0;
-    const revenue = todaySessions.reduce((s, x) => s + (x.snapshots[0]?.joined ?? 0) * x.feeAmount, 0);
-    const uniqueClubs = new Set(todaySessions.map((s) => s.club.slug)).size;
+    const revenue = allSessions.reduce((s, x) => s + (x.snapshots[0]?.joined ?? 0) * x.feeAmount, 0);
+    const uniqueClubs = new Set(allSessions.map((s) => s.club.slug)).size;
 
     const hourlyActivity = Array.from({ length: 24 }, (_, h) => {
-      return todaySessions.filter((s) => {
+      return allSessions.filter((s) => {
         const start = parseInt(s.startTime.split(":")[0]);
         const end = parseInt(s.endTime.split(":")[0]) || 24;
         return h >= start && h < end;
@@ -371,11 +475,11 @@ export async function getVenueComparison(venueIds: number[]) {
     });
     const activeHours = hourlyActivity.filter((n) => n > 0).length;
 
-    return {
-      id: v.id,
-      name: v.name,
-      address: v.address,
-      sessionsToday: todaySessions.length,
+    results.push({
+      id: canonical.id,
+      name: canonical.name,
+      address: canonical.address,
+      sessionsToday: allSessions.length,
       totalJoined,
       totalCapacity,
       fillRate: Math.round(fillRate * 100) / 100,
@@ -383,13 +487,17 @@ export async function getVenueComparison(venueIds: number[]) {
       revenueEstimate: revenue,
       uniqueClubs,
       activeHours,
-    };
-  });
+    });
+  }
+
+  return results;
 }
 
 export async function getVenueAnalytics(venueId: number) {
-  const venue = await prisma.venue.findUnique({
-    where: { id: venueId },
+  const siblingIds = await resolveVenueSiblingIds(venueId);
+
+  const venues = await prisma.venue.findMany({
+    where: { id: { in: siblingIds } },
     include: {
       sessions: {
         orderBy: { scrapedDate: "desc" },
@@ -402,10 +510,13 @@ export async function getVenueAnalytics(venueId: number) {
     },
   });
 
-  if (!venue) return null;
+  if (venues.length === 0) return null;
+
+  const venue = venues.find((v) => v.id === venueId) ?? venues[0];
+  const allSessions = venues.flatMap((v) => v.sessions);
 
   const today = vnCalendarDateString(0);
-  const todaySessions = venue.sessions
+  const todaySessions = allSessions
     .filter((s) => s.scrapedDate === today)
     .map((s) => {
       const snap = s.snapshots[0];
@@ -413,7 +524,7 @@ export async function getVenueAnalytics(venueId: number) {
     });
 
   const clubBreakdown: Record<string, { name: string; sessions: number; totalJoined: number; totalCapacity: number }> = {};
-  for (const s of venue.sessions) {
+  for (const s of allSessions) {
     const snap = s.snapshots[0];
     const key = s.club.slug;
     if (!clubBreakdown[key]) {

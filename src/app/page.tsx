@@ -95,6 +95,7 @@ export default function HomePage() {
   const [searchDraft, setSearchDraft] = useState("");
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [freeTonightDetail, setFreeTonightDetail] = useState<Session | null>(null);
+  const [timeFilter, setTimeFilter] = useState<"fromNow" | "past">("fromNow");
 
   useEffect(() => {
     setSearchDraft(filters.search);
@@ -157,15 +158,20 @@ export default function HomePage() {
     };
   }, [activeDate, filters.timeSlot, filters.maxPrice, filters.search, filters.foodDrink]);
 
+  const vnNowMinutes = useMemo(() => {
+    const vn = new Date(Date.now() + 7 * 60 * 60 * 1000);
+    return vn.getUTCHours() * 60 + vn.getUTCMinutes();
+  }, []);
+
   const filtered = useMemo(() => {
     let result = [...sessions];
 
     if (dayTab === "today") {
-      const nowMinutes = (() => {
-        const vn = new Date(Date.now() + 7 * 60 * 60 * 1000);
-        return vn.getUTCHours() * 60 + vn.getUTCMinutes();
-      })();
-      result = result.filter((s) => timeToMinutes(s.startTime) >= nowMinutes);
+      if (timeFilter === "fromNow") {
+        result = result.filter((s) => timeToMinutes(s.startTime) >= vnNowMinutes);
+      } else {
+        result = result.filter((s) => timeToMinutes(s.startTime) < vnNowMinutes);
+      }
     }
 
     if (filters.availability === "available") {
@@ -230,12 +236,39 @@ export default function HomePage() {
   }, [
     sessions,
     dayTab,
+    timeFilter,
+    vnNowMinutes,
     filters.availability,
     filters.sortBy,
     filters.sessionType,
     filters.foodDrink,
     userLocation,
   ]);
+
+  const timeGroupedSessions = useMemo(() => {
+    const groups = new Map<string, Session[]>();
+    for (const s of filtered) {
+      const key = s.startTime;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(s);
+    }
+    return groups;
+  }, [filtered]);
+
+  const hasTimeGroups = useMemo(
+    () => Array.from(timeGroupedSessions.values()).some((g) => g.length >= 2),
+    [timeGroupedSessions],
+  );
+
+  const fromNowCount = useMemo(() => {
+    if (dayTab !== "today") return sessions.length;
+    return sessions.filter((s) => timeToMinutes(s.startTime) >= vnNowMinutes).length;
+  }, [sessions, dayTab, vnNowMinutes]);
+
+  const pastCount = useMemo(() => {
+    if (dayTab !== "today") return 0;
+    return sessions.filter((s) => timeToMinutes(s.startTime) < vnNowMinutes).length;
+  }, [sessions, dayTab, vnNowMinutes]);
 
   const handleFilterChange = useCallback((newFilters: FilterState) => {
     setFilters(newFilters);
@@ -352,7 +385,7 @@ export default function HomePage() {
       {freeTonightCards.length > 0 && (
         <section className="mb-4 min-w-0">
           <h2 className="mb-2 text-sm font-semibold text-foreground">
-            {dayTab === "today" ? "Free Tonight" : "Free Tomorrow Night"}
+            {dayTab === "today" ? `Free Tonight (${freeTonightCards.length})` : `Free Tomorrow Night (${freeTonightCards.length})`}
           </h2>
           <p className="mb-2 text-xs text-muted">
             {dayTab === "today"
@@ -468,6 +501,36 @@ export default function HomePage() {
             </button>
           </div>
 
+          {dayTab === "today" && (
+            <>
+              <div className="mx-1 h-6 w-px bg-card-border shrink-0" />
+              <div className="flex shrink-0 items-center rounded-lg border border-card-border bg-card p-0.5">
+                <button
+                  type="button"
+                  onClick={() => setTimeFilter("fromNow")}
+                  className={`rounded-md px-3 py-1.5 text-xs font-semibold transition min-h-[32px] ${
+                    timeFilter === "fromNow"
+                      ? "bg-primary text-white shadow-sm"
+                      : "text-muted hover:text-foreground"
+                  }`}
+                >
+                  From Now ({fromNowCount})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTimeFilter("past")}
+                  className={`rounded-md px-3 py-1.5 text-xs font-semibold transition min-h-[32px] ${
+                    timeFilter === "past"
+                      ? "bg-primary text-white shadow-sm"
+                      : "text-muted hover:text-foreground"
+                  }`}
+                >
+                  Past ({pastCount})
+                </button>
+              </div>
+            </>
+          )}
+
           <div className="min-w-0 flex-1" aria-hidden />
           <div className="flex shrink-0 sm:hidden">
             {!mobileSearchOpen ? (
@@ -542,6 +605,27 @@ export default function HomePage() {
                 <p className="text-sm">Try adjusting your filters or clear search.</p>
               </>
             )}
+          </div>
+        ) : hasTimeGroups ? (
+          <div className="space-y-4">
+            {Array.from(timeGroupedSessions.entries()).map(([startTime, group]) => (
+              <div key={startTime}>
+                {group.length >= 2 && (
+                  <div className="mb-2 flex items-center gap-2">
+                    <span className="text-xs font-semibold text-primary bg-primary/10 px-2.5 py-1 rounded-full">
+                      From {startTime.replace(/^0/, "")}
+                    </span>
+                    <span className="text-xs text-muted">{group.length} sessions</span>
+                    <div className="flex-1 border-t border-card-border/50" />
+                  </div>
+                )}
+                <div className="grid min-w-0 items-stretch gap-2 sm:gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {group.map((s) => (
+                    <SessionCard key={s.id} session={s} userLocation={userLocation} />
+                  ))}
+                </div>
+              </div>
+            ))}
           </div>
         ) : (
           <div className="grid min-w-0 items-stretch gap-2 sm:gap-4 sm:grid-cols-2 lg:grid-cols-3">

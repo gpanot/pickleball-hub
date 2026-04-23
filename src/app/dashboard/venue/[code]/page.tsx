@@ -27,7 +27,20 @@ type RivalVenue = {
   uniqueClubs: number; activeHours: number;
 };
 
-type VenueOption = { id: number; name: string; address: string; _count: { sessions: number } };
+type VenueOption = {
+  id: number; name: string; address: string; _count: { sessions: number };
+  sessionsToday: number; totalJoined: number; totalCapacity: number;
+  fillRate: number; avgFee: number; revenueEstimate: number;
+  uniqueClubs: number; activeHours: number;
+};
+
+type VenueRankingRow = {
+  id: number; name: string; sessionsToday: number; totalPlayers: number;
+  totalCapacity: number; fillRate: number; avgFee: number;
+  revenueEstimate: number; uniqueClubs: number; activeHours: number;
+};
+
+type VenueRankingSortKey = "sessions" | "players" | "fillRate" | "avgFee" | "revenueEstimate" | "clubs" | "activeHours";
 
 type Tab = "dashboard" | "ranking" | "rivals";
 const RIVAL_STORAGE_KEY = "pickleball-hub:venue-rivals";
@@ -47,6 +60,10 @@ export default function VenueDashboardPage({ params }: { params: Promise<{ code:
   const [rivalData, setRivalData] = useState<RivalVenue[]>([]);
   const [rivalLoading, setRivalLoading] = useState(false);
   const [rivalSearch, setRivalSearch] = useState("");
+  const [venueRankSearch, setVenueRankSearch] = useState("");
+  const [venueRankSortKey, setVenueRankSortKey] = useState<VenueRankingSortKey>("revenueEstimate");
+  const [venueRankSortDir, setVenueRankSortDir] = useState<"asc" | "desc">("desc");
+  const [venueRankVisible, setVenueRankVisible] = useState(100);
 
   useEffect(() => {
     if (!Number.isFinite(venueId) || venueId <= 0) {
@@ -164,25 +181,67 @@ export default function VenueDashboardPage({ params }: { params: Promise<{ code:
     [rivalData],
   );
 
-  const rankingVenues = useMemo(() => {
+  const rankingVenues = useMemo((): VenueRankingRow[] => {
     if (!data) return [];
-    const { venue, todaySessions } = data;
-    const totalPlayers = todaySessions.reduce((s, t) => s + t.joined, 0);
-    const myEntry: VenueOption & { totalPlayers: number; sessions: number } = {
-      id: venueId,
-      name: venue.name,
-      address: venue.address,
-      _count: { sessions: todaySessions.length },
-      totalPlayers,
-      sessions: todaySessions.length,
+    const { venue, todaySessions, clubBreakdown, hourlyUtilization } = data;
+    const tp = todaySessions.reduce((s, t) => s + t.joined, 0);
+    const tc = todaySessions.reduce((s, t) => s + t.maxPlayers, 0);
+    const avgF = todaySessions.length > 0
+      ? todaySessions.reduce((s, t) => s + t.feeAmount, 0) / todaySessions.length : 0;
+    const rev = todaySessions.reduce((s, t) => s + t.joined * t.feeAmount, 0);
+    const ah = hourlyUtilization.filter((h) => h.sessions > 0).length;
+
+    const self: VenueRankingRow = {
+      id: venueId, name: venue.name, sessionsToday: todaySessions.length,
+      totalPlayers: tp, totalCapacity: tc,
+      fillRate: tc > 0 ? tp / tc : 0, avgFee: Math.round(avgF),
+      revenueEstimate: rev, uniqueClubs: clubBreakdown.length, activeHours: ah,
     };
-    const others = allVenues.map((v) => ({
-      ...v,
-      totalPlayers: 0,
-      sessions: v._count?.sessions ?? 0,
+
+    const others: VenueRankingRow[] = allVenues.map((v) => ({
+      id: v.id, name: v.name, sessionsToday: v.sessionsToday ?? 0,
+      totalPlayers: v.totalJoined ?? 0, totalCapacity: v.totalCapacity ?? 0,
+      fillRate: v.fillRate ?? 0, avgFee: v.avgFee ?? 0,
+      revenueEstimate: v.revenueEstimate ?? 0,
+      uniqueClubs: v.uniqueClubs ?? 0, activeHours: v.activeHours ?? 0,
     }));
-    return [myEntry, ...others].sort((a, b) => b.sessions - a.sessions);
+
+    return [self, ...others];
   }, [data, allVenues, venueId]);
+
+  const displayedVenueRanking = useMemo(() => {
+    const q = venueRankSearch.trim().toLowerCase();
+    let rows = q ? rankingVenues.filter((v) => v.name.toLowerCase().includes(q)) : [...rankingVenues];
+    const dir = venueRankSortDir === "asc" ? 1 : -1;
+    rows.sort((a, b) => {
+      let cmp = 0;
+      switch (venueRankSortKey) {
+        case "sessions": cmp = a.sessionsToday - b.sessionsToday; break;
+        case "players": cmp = a.totalPlayers - b.totalPlayers; break;
+        case "fillRate": cmp = a.fillRate - b.fillRate; break;
+        case "avgFee": cmp = a.avgFee - b.avgFee; break;
+        case "revenueEstimate": cmp = a.revenueEstimate - b.revenueEstimate; break;
+        case "clubs": cmp = a.uniqueClubs - b.uniqueClubs; break;
+        case "activeHours": cmp = a.activeHours - b.activeHours; break;
+      }
+      if (cmp !== 0) return cmp * dir;
+      return a.name.localeCompare(b.name);
+    });
+    return rows;
+  }, [rankingVenues, venueRankSearch, venueRankSortKey, venueRankSortDir]);
+
+  useEffect(() => {
+    setVenueRankVisible(100);
+  }, [venueRankSearch, venueRankSortKey, venueRankSortDir]);
+
+  function handleVenueRankSort(key: VenueRankingSortKey) {
+    if (key === venueRankSortKey) {
+      setVenueRankSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setVenueRankSortKey(key);
+      setVenueRankSortDir("desc");
+    }
+  }
 
   if (!sessionOk || loading) {
     return (
@@ -376,34 +435,74 @@ export default function VenueDashboardPage({ params }: { params: Promise<{ code:
 
       {/* Ranking Tab */}
       {activeTab === "ranking" && (
-        <Section title="Venue Rankings — By Sessions Today">
-          <p className="text-xs text-muted mb-4">All venues ranked by number of sessions. Your venue is highlighted.</p>
+        <Section title="Venue Rankings — Today">
+          <p className="text-xs text-muted mb-3">
+            Metrics are for today. Search and tap column headers to sort. Your venue is highlighted.
+          </p>
+          <input
+            type="text"
+            placeholder="Search venues…"
+            value={venueRankSearch}
+            onChange={(e) => setVenueRankSearch(e.target.value)}
+            className="w-full rounded-lg border border-card-border bg-background px-3 py-2 text-sm outline-none focus:border-primary mb-4"
+          />
           <div className="overflow-x-auto -mx-4 px-4">
             <table className="w-full text-xs">
               <thead>
                 <tr className="border-b border-card-border text-muted">
                   <th className="text-left py-2 pr-2 font-medium w-8">#</th>
                   <th className="text-left py-2 pr-3 font-medium">Venue</th>
-                  <th className="text-center py-2 px-2 font-medium">Sessions</th>
+                  <VenueRankSortTh label="Sessions" sortKey="sessions" activeKey={venueRankSortKey} dir={venueRankSortDir} onSort={handleVenueRankSort} />
+                  <VenueRankSortTh label="Players" sortKey="players" activeKey={venueRankSortKey} dir={venueRankSortDir} onSort={handleVenueRankSort} />
+                  <VenueRankSortTh label="Fill Rate" sortKey="fillRate" activeKey={venueRankSortKey} dir={venueRankSortDir} onSort={handleVenueRankSort} />
+                  <VenueRankSortTh label="Avg Price" sortKey="avgFee" activeKey={venueRankSortKey} dir={venueRankSortDir} onSort={handleVenueRankSort} />
+                  <VenueRankSortTh label="Est. Revenue" sortKey="revenueEstimate" activeKey={venueRankSortKey} dir={venueRankSortDir} onSort={handleVenueRankSort} />
+                  <VenueRankSortTh label="Clubs" sortKey="clubs" activeKey={venueRankSortKey} dir={venueRankSortDir} onSort={handleVenueRankSort} />
+                  <VenueRankSortTh label="Active Hrs" sortKey="activeHours" activeKey={venueRankSortKey} dir={venueRankSortDir} onSort={handleVenueRankSort} />
                 </tr>
               </thead>
               <tbody>
-                {rankingVenues.map((v, i) => {
-                  const isMe = v.id === venueId;
-                  return (
-                    <tr key={v.id} className={`border-b border-card-border/50 ${isMe ? "bg-primary/5 font-semibold" : ""}`}>
-                      <td className="py-2 pr-2 text-muted">{i + 1}</td>
-                      <td className="py-2 pr-3">
-                        {v.name}
-                        {isMe && <span className="ml-1 text-[10px] text-primary">(You)</span>}
-                      </td>
-                      <td className="text-center py-2 px-2">{v.sessions}</td>
-                    </tr>
-                  );
-                })}
+                {displayedVenueRanking.length === 0 ? (
+                  <tr>
+                    <td colSpan={9} className="py-8 text-center text-muted text-sm">
+                      No venues match your search.
+                    </td>
+                  </tr>
+                ) : (
+                  displayedVenueRanking.slice(0, venueRankVisible).map((v, i) => {
+                    const isMe = v.id === venueId;
+                    return (
+                      <tr key={v.id} className={`border-b border-card-border/50 ${isMe ? "bg-primary/5 font-semibold" : ""}`}>
+                        <td className="py-2 pr-2 text-muted">{i + 1}</td>
+                        <td className="py-2 pr-3 max-w-[160px] truncate">
+                          {v.name}
+                          {isMe && <span className="ml-1 text-[10px] text-primary">(You)</span>}
+                        </td>
+                        <td className="text-center py-2 px-2">{v.sessionsToday}</td>
+                        <td className="text-center py-2 px-2 tabular-nums">
+                          {v.totalPlayers.toLocaleString()}/{v.totalCapacity.toLocaleString()}
+                        </td>
+                        <td className="text-center py-2 px-2">{Math.round(v.fillRate * 100)}%</td>
+                        <td className="text-center py-2 px-2">{formatVND(v.avgFee)}</td>
+                        <td className="text-center py-2 px-2">{formatVND(v.revenueEstimate)}</td>
+                        <td className="text-center py-2 px-2">{v.uniqueClubs}</td>
+                        <td className="text-center py-2 px-2">{v.activeHours}h</td>
+                      </tr>
+                    );
+                  })
+                )}
               </tbody>
             </table>
           </div>
+          {venueRankVisible < displayedVenueRanking.length && (
+            <button
+              type="button"
+              onClick={() => setVenueRankVisible((n) => n + 100)}
+              className="mt-4 w-full rounded-lg border border-card-border py-2.5 text-sm text-muted hover:text-foreground hover:border-primary/40 transition"
+            >
+              Show more ({displayedVenueRanking.length - venueRankVisible} remaining)
+            </button>
+          )}
         </Section>
       )}
 
@@ -508,6 +607,27 @@ function Section({ title, children }: { title: string; children: React.ReactNode
       <h2 className="font-semibold mb-3">{title}</h2>
       <div className="rounded-xl border border-card-border bg-card p-4">{children}</div>
     </div>
+  );
+}
+
+function VenueRankSortTh({
+  label, sortKey, activeKey, dir, onSort,
+}: {
+  label: string; sortKey: VenueRankingSortKey; activeKey: VenueRankingSortKey;
+  dir: "asc" | "desc"; onSort: (k: VenueRankingSortKey) => void;
+}) {
+  const active = activeKey === sortKey;
+  return (
+    <th className="text-center py-2 px-2 font-medium">
+      <button
+        type="button"
+        onClick={() => onSort(sortKey)}
+        className={`inline-flex items-center gap-0.5 hover:text-foreground transition ${active ? "text-primary" : "text-muted"}`}
+      >
+        <span>{label}</span>
+        {active && <span className="text-[10px] leading-none">{dir === "asc" ? "↑" : "↓"}</span>}
+      </button>
+    </th>
   );
 }
 

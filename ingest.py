@@ -276,6 +276,49 @@ def get_all_club_ids():
                     }
         time.sleep(0.05)
 
+    # [c] Load from hcm_pickleball_clubs.json (comprehensive list from scan)
+    json_paths = [
+        os.path.join(os.path.dirname(__file__), "..", "hcm_pickleball_clubs.json"),
+        os.path.join(os.path.dirname(__file__), "hcm_pickleball_clubs.json"),
+    ]
+    added_from_json = 0
+    for jp in json_paths:
+        jp = os.path.abspath(jp)
+        if os.path.exists(jp):
+            try:
+                with open(jp, "r") as f:
+                    json_clubs = json.load(f)
+                if isinstance(json_clubs, dict):
+                    for cid_str, c in json_clubs.items():
+                        cid = int(cid_str) if isinstance(cid_str, str) else c.get("id")
+                        if cid and cid not in club_map:
+                            club_map[cid] = {
+                                "id": cid,
+                                "name": c.get("name", ""),
+                                "slug": c.get("slug", ""),
+                                "communityId": c.get("communityId", COMMUNITY_ID),
+                                "sportId": c.get("sportId"),
+                                "numMembers": c.get("numMembers", 0),
+                            }
+                            added_from_json += 1
+                elif isinstance(json_clubs, list):
+                    for c in json_clubs:
+                        cid = c.get("id")
+                        if cid and cid not in club_map:
+                            club_map[cid] = {
+                                "id": cid,
+                                "name": c.get("name", ""),
+                                "slug": c.get("slug", ""),
+                                "communityId": c.get("communityId", COMMUNITY_ID),
+                                "sportId": c.get("sportId"),
+                                "numMembers": c.get("numMembers", 0),
+                            }
+                            added_from_json += 1
+                print(f"  [c] Loaded {added_from_json} extra clubs from {os.path.basename(jp)}")
+                break
+            except Exception as e:
+                print(f"  [c] Warning: could not load {jp}: {e}")
+
     print(f"      {len(club_map)} total clubs")
     return club_map
 

@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
 """
-Scan numeric group IDs on Reclub to discover all HCM pickleball clubs.
-Discovered clubs (with admin names, member counts) are upserted into Postgres.
+Refresh known pickleball clubs from the database against the Reclub API.
 
-Two-phase approach for speed:
-  Phase 1: Fast scan with COUNTS scope to find HCM pickleball clubs.
-  Phase 2: For discovered clubs, fetch USERS+ADMINS to get admin userIds,
-           then batch-fetch admin names via /players/userIds.
+Reads all existing club reclub_ids from Postgres, re-fetches each one from
+the API to get the latest name, member count, and admin list, then upserts
+the updated info back into the database.
+
+This is meant to run infrequently (e.g. Mon/Wed) since clubs don't change
+much. New club *discovery* happens via the daily ingest when clubs appear
+in community/sport features or event data.
 
 Usage:
-    DATABASE_URL=... python3 scraper/scan_clubs.py [--max-id 400000] [--workers 40]
+    DATABASE_URL=... python3 scraper/scan_clubs.py [--workers 15]
 """
 
 import os
@@ -34,14 +36,11 @@ COMMUNITY_ID = 1
 PICKLEBALL_SPORT_ID = 36
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
 
-MAX_ID = 400_000
-WORKERS = 40
+WORKERS = 15
 PLAYER_BATCH_SIZE = 50
 
 for i, arg in enumerate(sys.argv[1:], 1):
-    if arg == "--max-id" and i < len(sys.argv) - 1:
-        MAX_ID = int(sys.argv[i + 1])
-    elif arg == "--workers" and i < len(sys.argv) - 1:
+    if arg == "--workers" and i < len(sys.argv) - 1:
         WORKERS = int(sys.argv[i + 1])
 
 
@@ -58,28 +57,20 @@ def api_get(path, params=None):
         return None
 
 
-def check_group(gid):
-    url = f"{API_BASE}/groups/{gid}?scopes=COUNTS"
-    req = urllib.request.Request(url, headers=HEADERS)
-    try:
-        resp = urllib.request.urlopen(req, timeout=10)
-        data = json.loads(resp.read().decode("utf-8"))
-        cid = data.get("communityId")
-        sid = data.get("sportId")
-        counts = data.get("counts") or {}
-        total = counts.get("totalActivities", 0) if isinstance(counts, dict) else 0
-        if cid == COMMUNITY_ID and sid == PICKLEBALL_SPORT_ID and total > 0:
-            return {
-                "reclub_id": gid,
-                "name": (data.get("name") or "")[:255],
-                "slug": (data.get("slug") or "")[:255],
-                "sport_id": sid,
-                "community_id": cid,
-                "num_members": counts.get("members", 0) or 0,
-            }
-    except Exception:
-        pass
-    return None
+def fetch_club_info(gid):
+    """Fetch latest club info + member count from the API."""
+    data = api_get(f"/groups/{gid}", {"scopes": "COUNTS"})
+    if not data:
+        return None
+    counts = data.get("counts") or {}
+    return {
+        "reclub_id": gid,
+        "name": (data.get("name") or "")[:255],
+        "slug": (data.get("slug") or "")[:255],
+        "sport_id": data.get("sportId"),
+        "community_id": data.get("communityId"),
+        "num_members": (counts.get("members", 0) or 0) if isinstance(counts, dict) else 0,
+    }
 
 
 def fetch_club_admins(gid):
@@ -118,41 +109,54 @@ def main():
         sys.exit(1)
 
     print("=" * 65)
-    print("  RECLUB GROUP ID SCANNER")
-    print(f"  Range: 1 – {MAX_ID:,}   Workers: {WORKERS}")
+    print("  RECLUB CLUB REFRESHER")
+    print(f"  Workers: {WORKERS}")
     print("=" * 65)
 
-    # Phase 1: fast scan
-    found = []
-    start = time.time()
-    done = 0
-    batch_size = 5000
+    # Phase 1: load known club IDs from database
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
+    cur.execute("SELECT reclub_id FROM clubs")
+    known_ids = [row[0] for row in cur.fetchall()]
+    cur.close()
+    conn.close()
 
-    for batch_start in range(1, MAX_ID + 1, batch_size):
-        batch_end = min(batch_start + batch_size, MAX_ID + 1)
-        with concurrent.futures.ThreadPoolExecutor(max_workers=WORKERS) as ex:
-            futs = {ex.submit(check_group, gid): gid for gid in range(batch_start, batch_end)}
-            for f in concurrent.futures.as_completed(futs):
-                done += 1
-                result = f.result()
-                if result:
-                    found.append(result)
+    print(f"\n  {len(known_ids)} clubs in database — refreshing from API...")
 
-        elapsed = time.time() - start
-        rate = done / elapsed if elapsed > 0 else 0
-        eta = (MAX_ID - done) / rate if rate > 0 else 0
-        print(f"  [{done:>7,}/{MAX_ID:,}]  found {len(found)} clubs  "
-              f"({rate:.0f} req/s  ETA {eta / 60:.1f}min)")
-
-    elapsed = time.time() - start
-    print(f"\nPhase 1 complete: {len(found)} HCM pickleball clubs in {elapsed:.0f}s")
-
-    if not found:
-        print("Nothing to insert.")
+    if not known_ids:
+        print("  No clubs in DB. Run ingest first to discover clubs.")
         return
 
-    # Phase 2: fetch admins for each club
-    print(f"\nPhase 2: Fetching admins for {len(found)} clubs...")
+    # Phase 2: re-fetch each club's info from the API
+    refreshed = []
+    errors = 0
+    done = 0
+    start = time.time()
+
+    def fetch_one(gid):
+        return fetch_club_info(gid)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=WORKERS) as ex:
+        futs = {ex.submit(fetch_one, gid): gid for gid in known_ids}
+        for f in concurrent.futures.as_completed(futs):
+            done += 1
+            result = f.result()
+            if result:
+                refreshed.append(result)
+            else:
+                errors += 1
+            if done % 100 == 0 or done == len(known_ids):
+                print(f"    {done}/{len(known_ids)} fetched | {len(refreshed)} ok | {errors} errors")
+
+    elapsed = time.time() - start
+    print(f"\n  Fetched {len(refreshed)} clubs in {elapsed:.0f}s ({errors} unreachable)")
+
+    if not refreshed:
+        print("  Nothing to update.")
+        return
+
+    # Phase 3: fetch admins for each club
+    print(f"\n  Fetching admins for {len(refreshed)} clubs...")
     club_admin_ids = {}
     all_admin_ids = set()
     admin_done = 0
@@ -160,21 +164,21 @@ def main():
     def get_admins(club):
         return club["reclub_id"], fetch_club_admins(club["reclub_id"])
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=15) as ex:
-        futs = {ex.submit(get_admins, c): c for c in found}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=WORKERS) as ex:
+        futs = {ex.submit(get_admins, c): c for c in refreshed}
         for f in concurrent.futures.as_completed(futs):
             admin_done += 1
             rid, admin_ids = f.result()
             club_admin_ids[rid] = admin_ids
             all_admin_ids.update(admin_ids)
-            if admin_done % 100 == 0 or admin_done == len(found):
-                print(f"    {admin_done}/{len(found)} clubs | {len(all_admin_ids)} unique admins")
+            if admin_done % 100 == 0 or admin_done == len(refreshed):
+                print(f"    {admin_done}/{len(refreshed)} clubs | {len(all_admin_ids)} unique admins")
 
-    print(f"\nPhase 2b: Resolving {len(all_admin_ids)} admin names...")
+    print(f"\n  Resolving {len(all_admin_ids)} admin names...")
     admin_names = fetch_player_names(list(all_admin_ids))
     print(f"    Resolved {len(admin_names)} names")
 
-    # Phase 3: upsert into DB
+    # Phase 4: upsert into DB
     conn = psycopg2.connect(DATABASE_URL)
     cur = conn.cursor()
 
@@ -185,8 +189,8 @@ def main():
     """)
     conn.commit()
 
-    inserted = 0
-    for c in found:
+    updated = 0
+    for c in refreshed:
         cur.execute(
             "SELECT id FROM clubs WHERE slug = %s AND reclub_id != %s",
             (c["slug"], c["reclub_id"]),
@@ -202,18 +206,19 @@ def main():
             VALUES (%(reclub_id)s, %(name)s, %(slug)s, %(sport_id)s, %(community_id)s, %(num_members)s, %(admins)s, NOW())
             ON CONFLICT (reclub_id) DO UPDATE SET
                 name = EXCLUDED.name,
+                slug = EXCLUDED.slug,
                 num_members = EXCLUDED.num_members,
                 admins = EXCLUDED.admins,
                 updated_at = NOW()
             RETURNING id
         """, {**c, "admins": admin_name_list})
         if cur.fetchone():
-            inserted += 1
+            updated += 1
 
     conn.commit()
     cur.close()
     conn.close()
-    print(f"Upserted {inserted} clubs into database.")
+    print(f"\n  Updated {updated} clubs in database.")
 
 
 if __name__ == "__main__":
