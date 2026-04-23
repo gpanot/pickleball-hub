@@ -16,6 +16,9 @@ model Club {
   sportId     Int?      @map("sport_id")
   communityId Int?      @map("community_id")
   numMembers  Int       @default(0) @map("num_members")
+  zaloUrl     String?   @map("zalo_url")
+  phone       String?
+  admins      String[]  @default([])
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
 

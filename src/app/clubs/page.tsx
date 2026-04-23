@@ -21,6 +21,9 @@ type Club = {
   name: string;
   slug: string;
   numMembers: number;
+  zaloUrl: string | null;
+  phone: string | null;
+  admins: string[];
   avgFillRate: number;
   avgFee: number;
   totalSessionsWeek: number;
@@ -30,8 +33,37 @@ type Club = {
   longitude: number | null;
 };
 
+function formatLastUpdatedLabel(lastUpdatedAt: string | null): string {
+  if (!lastUpdatedAt) return "Updated time unavailable";
+
+  const dt = new Date(lastUpdatedAt);
+  const vnDateFmt = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Ho_Chi_Minh",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  const vnTimeFmt = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Ho_Chi_Minh",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+
+  const updatedDate = vnDateFmt.format(dt);
+  const todayDate = vnDateFmt.format(new Date());
+  const time = vnTimeFmt.format(dt).toLowerCase();
+
+  if (updatedDate === todayDate) {
+    return `Updated at ${time} today`;
+  }
+
+  return `Updated at ${time} on ${updatedDate}`;
+}
+
 export default function ClubsPage() {
   const [clubs, setClubs] = useState<Club[]>([]);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState("members");
@@ -39,20 +71,27 @@ export default function ClubsPage() {
 
   useLayoutEffect(() => {
     const url = "/api/clubs";
-    const cached = readPublicApiCache<{ clubs: Club[] }>(url);
+    const cached = readPublicApiCache<{ clubs: Club[]; lastUpdatedAt: string | null }>(url);
     if (cached) {
       setClubs(cached.clubs || []);
+      setLastUpdatedAt(cached.lastUpdatedAt ?? null);
       setLoading(false);
       return;
     }
     let cancelled = false;
     setLoading(true);
-    fetchPublicApiJson<{ clubs: Club[] }>(url)
+    fetchPublicApiJson<{ clubs: Club[]; lastUpdatedAt: string | null }>(url)
       .then((d) => {
-        if (!cancelled) setClubs(d.clubs || []);
+        if (!cancelled) {
+          setClubs(d.clubs || []);
+          setLastUpdatedAt(d.lastUpdatedAt ?? null);
+        }
       })
       .catch(() => {
-        if (!cancelled) setClubs([]);
+        if (!cancelled) {
+          setClubs([]);
+          setLastUpdatedAt(null);
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -109,6 +148,12 @@ export default function ClubsPage() {
         <h1 className="text-xl sm:text-2xl font-bold mb-1">Club Directory</h1>
         <p className="text-sm text-muted">
           {clubs.length} pickleball clubs in Ho Chi Minh City
+          {clubs.length > 0 && (
+            <>
+              {" "}
+              · {formatLastUpdatedLabel(lastUpdatedAt)}
+            </>
+          )}
         </p>
       </div>
 

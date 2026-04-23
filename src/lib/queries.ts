@@ -154,6 +154,9 @@ export async function getClubs() {
       slug: c.slug,
       numMembers: c.numMembers,
       reclubId: c.reclubId,
+      zaloUrl: c.zaloUrl,
+      phone: c.phone,
+      admins: c.admins,
       avgFillRate: Math.round(avgFillRate * 100) / 100,
       avgFee: avgFeeRounded,
       avgFeeToday: todayStat ? Math.round(todayStat.avgFee) : avgFeeRounded,
@@ -166,6 +169,13 @@ export async function getClubs() {
       longitude: venueCoords?.longitude ?? null,
     };
   });
+}
+
+export async function getClubsLastUpdatedAt() {
+  const result = await prisma.club.aggregate({
+    _max: { updatedAt: true },
+  });
+  return result._max.updatedAt;
 }
 
 export async function getClubBySlug(slug: string) {

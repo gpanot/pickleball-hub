@@ -39,9 +39,23 @@ HEADERS = {
 
 VN_TZ = timezone(timedelta(hours=7))
 NOW = datetime.now(VN_TZ)
-TODAY_STR = NOW.strftime("%Y-%m-%d")
-START_OF_DAY = NOW.replace(hour=0, minute=0, second=0, microsecond=0)
-END_OF_DAY = NOW.replace(hour=23, minute=59, second=59, microsecond=0)
+
+# Accept optional --date YYYY-MM-DD argument to scrape a specific day
+_target_date = None
+for i, arg in enumerate(sys.argv[1:], 1):
+    if arg == "--date" and i < len(sys.argv) - 1:
+        _target_date = sys.argv[i + 1]
+    elif arg.startswith("--date="):
+        _target_date = arg.split("=", 1)[1]
+
+if _target_date:
+    _target_day = datetime.strptime(_target_date, "%Y-%m-%d").replace(tzinfo=VN_TZ)
+else:
+    _target_day = NOW
+
+TODAY_STR = _target_day.strftime("%Y-%m-%d")
+START_OF_DAY = _target_day.replace(hour=0, minute=0, second=0, microsecond=0)
+END_OF_DAY = _target_day.replace(hour=23, minute=59, second=59, microsecond=0)
 START_TS = int(START_OF_DAY.timestamp())
 END_TS = int(END_OF_DAY.timestamp())
 
@@ -52,7 +66,102 @@ DATABASE_URL = os.environ.get("DATABASE_URL", "")
 
 # ─── Parsers ──────────────────────────────────────────────────────────
 
+def extract_price_from_notes(text):
+    """Extract price (VND) from notes: '80.000đ', '80,000 VND', 'Phí: 150k', etc."""
+    if not text:
+        return None
+    for pat in [
+        r"(\d{2,3})[.,](\d{3})\s*(?:đ|VND|vnđ|vnd|dong|/)",
+        r"[Pp]hí[:\s]*(\d{2,3})[.,](\d{3})",
+    ]:
+        m = re.search(pat, text, re.IGNORECASE)
+        if m:
+            return int(m.group(1)) * 1000 + int(m.group(2))
+    for pat in [r"[Pp]hí[:\s]*(\d{4,6})\b", r"(\d{5,6})\s*(?:đ|VND|vnđ|/người)"]:
+        m = re.search(pat, text, re.IGNORECASE)
+        if m:
+            val = int(m.group(1))
+            if 10000 <= val <= 500000:
+                return val
+    for pat in [r"(\d{2,3})\s*[kK]\b", r"[Pp]hí[:\s]*(\d{2,3})\s*[kK]"]:
+        m = re.search(pat, text)
+        if m:
+            val = int(m.group(1))
+            if 20 <= val <= 500:
+                return val * 1000
+    return None
+
+
+def extract_price_from_title(title):
+    """Extract price from event title: '[80k]', '50k/slot', '130K', '80.000'."""
+    if not title:
+        return None
+    m = re.search(r"(\d{2,3})[.,](\d{3})", title)
+    if m:
+        return int(m.group(1)) * 1000 + int(m.group(2))
+    m = re.search(r"(\d{2,3})\s*[kK]", title)
+    if m:
+        val = int(m.group(1))
+        if 20 <= val <= 500:
+            return val * 1000
+    return None
+
+
+def extract_zalo_links(text):
+    """Extract zalo.me group links from text."""
+    if not text:
+        return []
+    links = re.findall(r"https?://zalo\.me/[^\s\u200b\u2060\uFEFF)\"'>]+", text)
+    return list(dict.fromkeys(lk.rstrip(".,;:!?)") for lk in links))
+
+
+def extract_zalo_phone(text):
+    """Extract first phone number mentioned alongside 'zalo' keyword."""
+    if not text:
+        return None
+    for pat in [r"[Zz]alo[:\s]*(\d[\d\s.-]{8,12}\d)", r"(\d{4}[\s.-]?\d{3}[\s.-]?\d{3})\s*.*?[Zz]alo"]:
+        m = re.search(pat, text)
+        if m:
+            return re.sub(r"[\s.-]", "", m.group(1))
+    return None
+
+
+def resolve_fee(meet):
+    """
+    Determine the best fee amount for a meet using this priority:
+      1. API feeAmount (raw) — unless < 10,000 VND (likely a typo/credit unit)
+      2. If API fee < 10k → try titlePrice, then notesPrice
+      3. If API fee is 0 or missing → use notesPrice or titlePrice
+    """
+    raw = meet.get("feeAmount") or 0
+    if isinstance(raw, str):
+        cleaned = re.sub(r"[^\d]", "", raw)
+        raw = int(cleaned) if cleaned else 0
+    else:
+        raw = int(raw)
+
+    name = (meet.get("name") or "")
+    notes = meet.get("notes") or ""
+    title_price = extract_price_from_title(name)
+    notes_price = extract_price_from_notes(notes)
+
+    if raw >= 10000:
+        return raw
+    if raw > 0 and raw < 10000:
+        if title_price:
+            return title_price
+        if notes_price:
+            return notes_price
+        return raw * 1000
+    if title_price:
+        return title_price
+    if notes_price:
+        return notes_price
+    return 0
+
+
 def parse_fee(fee_amount, fee_currency="VND"):
+    """Legacy wrapper — kept for compatibility but resolve_fee() is preferred."""
     if not fee_amount:
         return 0
     if isinstance(fee_amount, str):
@@ -220,8 +329,30 @@ def fetch_all_events(club_map):
 
 # ─── Database Upserts ─────────────────────────────────────────────────
 
+def collect_club_zalo_phone(meets):
+    """Scan all event notes to find the best Zalo URL and phone per club."""
+    club_zalo = {}
+    club_phone = {}
+    for m in meets.values():
+        rid = m["_clubId"]
+        notes = m.get("notes") or ""
+        if not notes:
+            continue
+        if rid not in club_zalo:
+            links = extract_zalo_links(notes)
+            if links:
+                club_zalo[rid] = links[0]
+        if rid not in club_phone:
+            phone = extract_zalo_phone(notes)
+            if phone:
+                club_phone[rid] = phone
+    return club_zalo, club_phone
+
+
 def upsert_clubs(cur, meets):
-    """Upsert clubs from scraped meets. Returns reclub_id -> db_id map."""
+    """Upsert clubs from scraped meets, enriched with Zalo/phone from notes. Returns reclub_id -> db_id map."""
+    club_zalo, club_phone = collect_club_zalo_phone(meets)
+
     clubs = {}
     for m in meets.values():
         rid = m["_clubId"]
@@ -233,24 +364,43 @@ def upsert_clubs(cur, meets):
                 "sport_id": m.get("_sportId"),
                 "community_id": m.get("communityId", COMMUNITY_ID),
                 "num_members": m.get("_numMembers", 0),
+                "zalo_url": club_zalo.get(rid),
+                "phone": club_phone.get(rid),
             }
+
+    cur.execute("""
+        ALTER TABLE clubs ADD COLUMN IF NOT EXISTS zalo_url TEXT;
+        ALTER TABLE clubs ADD COLUMN IF NOT EXISTS phone TEXT;
+        ALTER TABLE clubs ADD COLUMN IF NOT EXISTS admins TEXT[] DEFAULT '{}';
+    """)
 
     id_map = {}
     for c in clubs.values():
+        cur.execute(
+            "SELECT id FROM clubs WHERE slug = %s AND reclub_id != %s",
+            (c["slug"], c["reclub_id"]),
+        )
+        if cur.fetchone():
+            c["slug"] = f"{c['slug']}-{c['reclub_id']}"
+
         cur.execute("""
-            INSERT INTO clubs (reclub_id, name, slug, sport_id, community_id, num_members, updated_at)
-            VALUES (%(reclub_id)s, %(name)s, %(slug)s, %(sport_id)s, %(community_id)s, %(num_members)s, NOW())
+            INSERT INTO clubs (reclub_id, name, slug, sport_id, community_id, num_members, zalo_url, phone, updated_at)
+            VALUES (%(reclub_id)s, %(name)s, %(slug)s, %(sport_id)s, %(community_id)s, %(num_members)s, %(zalo_url)s, %(phone)s, NOW())
             ON CONFLICT (reclub_id) DO UPDATE SET
                 name = EXCLUDED.name,
                 slug = EXCLUDED.slug,
                 num_members = EXCLUDED.num_members,
+                zalo_url = COALESCE(EXCLUDED.zalo_url, clubs.zalo_url),
+                phone = COALESCE(EXCLUDED.phone, clubs.phone),
                 updated_at = NOW()
             RETURNING id, reclub_id
         """, c)
         row = cur.fetchone()
         id_map[row[1]] = row[0]
 
-    print(f"    Upserted {len(id_map)} clubs")
+    zalo_count = sum(1 for c in clubs.values() if c["zalo_url"])
+    phone_count = sum(1 for c in clubs.values() if c["phone"])
+    print(f"    Upserted {len(id_map)} clubs ({zalo_count} with Zalo, {phone_count} with phone)")
     return id_map
 
 
@@ -265,8 +415,8 @@ def upsert_venues(cur, meets):
             key = (round(lat, 6), round(lng, 6))
             if key not in raw_venues:
                 raw_venues[key] = {
-                    "name": loc.get("name", ""),
-                    "address": loc.get("address", ""),
+                    "name": loc.get("name") or "",
+                    "address": loc.get("address") or "",
                     "latitude": lat,
                     "longitude": lng,
                 }
@@ -287,8 +437,7 @@ def upsert_venues(cur, meets):
                            venue_list[j]["latitude"], venue_list[j]["longitude"]) < 50:
                 cluster.append(venue_list[j])
                 used.add(j)
-        # Use the venue with the longest name as canonical
-        canonical = max(cluster, key=lambda x: len(x["name"]))
+        canonical = max(cluster, key=lambda x: len(x["name"] or ""))
         clusters.append(canonical)
 
     coord_to_id = {}
@@ -337,7 +486,7 @@ def upsert_sessions_and_snapshots(cur, meets, club_id_map, venue_coord_map):
         waitlisted = psc.get("waitlisted", 0)
 
         name = (m.get("name") or "").replace("\n", " ").strip()[:300]
-        fee_amount = parse_fee(m.get("feeAmount"))
+        fee_amount = resolve_fee(m)
         duration_min = (m.get("duration") or 0) // 60
         cost_per_hour = round(fee_amount / (duration_min / 60)) if duration_min > 0 and fee_amount > 0 else 0
 
@@ -461,14 +610,37 @@ def main():
 
     print("=" * 65)
     print("  PICKLEBALL HUB INGEST")
-    print(f"  Date: {NOW.strftime('%A, %B %d, %Y')} (Vietnam time)")
+    print(f"  Target: {_target_day.strftime('%A, %B %d, %Y')} (Vietnam time)")
     print("=" * 65)
 
     # Step 1: Scrape
-    print("\n[1/5] Gathering club IDs...")
+    print("\n[1/6] Gathering club IDs from API...")
     club_map = get_all_club_ids()
 
-    print(f"\n[2/5] Fetching today's HCM events from {len(club_map)} clubs...")
+    # Also load clubs already known in the DB (from previous runs)
+    print("\n[2/6] Loading known clubs from database...")
+    conn_pre = psycopg2.connect(DATABASE_URL)
+    cur_pre = conn_pre.cursor()
+    cur_pre.execute("SELECT reclub_id, name, slug, sport_id, community_id, num_members FROM clubs")
+    db_clubs = cur_pre.fetchall()
+    cur_pre.close()
+    conn_pre.close()
+    added = 0
+    for row in db_clubs:
+        rid = row[0]
+        if rid not in club_map:
+            club_map[rid] = {
+                "id": rid,
+                "name": row[1] or "",
+                "slug": row[2] or "",
+                "communityId": row[4],
+                "sportId": row[3],
+                "numMembers": row[5] or 0,
+            }
+            added += 1
+    print(f"    Added {added} clubs from DB ({len(club_map)} total)")
+
+    print(f"\n[3/6] Fetching events from {len(club_map)} clubs...")
     all_meets = fetch_all_events(club_map)
 
     # Filter to pickleball only (sport_id=36) if we have the data
@@ -491,18 +663,17 @@ def main():
         print("  No pickleball events found!")
         return
 
-    # Step 2: Upsert to database
-    print(f"\n[3/5] Connecting to database...")
+    print(f"\n[4/6] Connecting to database...")
     conn = psycopg2.connect(DATABASE_URL)
     cur = conn.cursor()
 
     try:
-        print("\n[4/5] Upserting data...")
+        print("\n[5/6] Upserting data...")
         club_id_map = upsert_clubs(cur, pickleball_meets)
         venue_coord_map = upsert_venues(cur, pickleball_meets)
         upsert_sessions_and_snapshots(cur, pickleball_meets, club_id_map, venue_coord_map)
 
-        print("\n[5/5] Computing aggregates...")
+        print("\n[6/6] Computing aggregates...")
         compute_club_daily_stats(cur)
 
         conn.commit()

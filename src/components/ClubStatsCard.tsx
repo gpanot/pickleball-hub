@@ -9,6 +9,8 @@ interface ClubStatsCardProps {
     name: string;
     slug: string;
     numMembers: number;
+    zaloUrl?: string | null;
+    phone?: string | null;
     avgFillRate: number;
     avgFee: number;
     totalSessionsWeek: number;
@@ -19,13 +21,22 @@ interface ClubStatsCardProps {
 
 export function ClubStatsCard({ club }: ClubStatsCardProps) {
   const fillPct = Math.round(club.avgFillRate * 100);
+  const hasContact = !!club.zaloUrl || !!club.phone;
 
   return (
     <Link
       href={`/clubs/${club.slug}`}
       className="block rounded-xl border border-card-border bg-card p-4 transition hover:shadow-md hover:border-primary/30"
     >
-      <h3 className="font-semibold text-sm mb-2 line-clamp-1">{club.name}</h3>
+      <div className="flex items-start justify-between gap-2 mb-2">
+        <h3 className="font-semibold text-sm line-clamp-1 min-w-0">{club.name}</h3>
+        {hasContact && (
+          <span className="inline-flex items-center gap-1 shrink-0 rounded-full bg-blue-100 dark:bg-blue-900/30 px-1.5 py-0.5 text-[10px] font-semibold text-blue-600 dark:text-blue-400">
+            {club.zaloUrl ? "Z" : ""}
+            {club.phone ? (club.zaloUrl ? " +" : "") + "\u260E" : ""}
+          </span>
+        )}
+      </div>
       <div className="grid grid-cols-2 gap-2 text-xs">
         <div>
           <span className="text-muted">Members</span>
