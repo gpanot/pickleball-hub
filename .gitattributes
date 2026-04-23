@@ -1,0 +1,2 @@
+# Shell scripts must use LF so Linux containers (Railway cron) can exec shebangs.
+scraper/*.sh text eol=lf
