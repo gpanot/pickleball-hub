@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { clearOrganizerSession, isOrganizerUnlocked } from "@/lib/dashboard-session";
 import { FillRateBar } from "@/components/FillRateBar";
-import { FillRateTrendChart, RevenueChart, CompetitorPriceChart } from "@/components/DashboardCharts";
+import { FillRateTrendChart, RevenueChart, CompetitorPriceChart, WeeklyDistributionChart, HourlyStatsDistributionChart, DAY_LABELS } from "@/components/DashboardCharts";
 import { formatVND } from "@/lib/utils";
 import { fetchPublicApiJson, readPublicApiCache } from "@/lib/public-api-cache";
 
@@ -64,7 +64,15 @@ type RankingClubRow = {
 
 type RankingSortKey = "members" | "sessionsToday" | "players" | "fillRate" | "avgFee" | "revenueEstimate";
 
-type Tab = "dashboard" | "ranking" | "rivals";
+type StatSession = {
+  scrapedDate: string;
+  startTime: string;
+  maxPlayers: number;
+  feeAmount: number;
+  joined: number;
+};
+
+type Tab = "dashboard" | "ranking" | "rivals" | "stats";
 const RIVAL_STORAGE_KEY = "pickleball-hub:org-rivals";
 
 export default function OrganizerDashboardPage({ params }: { params: Promise<{ code: string }> }) {
@@ -86,6 +94,11 @@ export default function OrganizerDashboardPage({ params }: { params: Promise<{ c
   const [rankingSortKey, setRankingSortKey] = useState<RankingSortKey>("revenueEstimate");
   const [rankingSortDir, setRankingSortDir] = useState<"asc" | "desc">("desc");
   const [rankingVisible, setRankingVisible] = useState(100);
+
+  const [statsSessions, setStatsSessions] = useState<StatSession[]>([]);
+  const [statsLoading, setStatsLoading] = useState(false);
+  const [statsFetched, setStatsFetched] = useState(false);
+  const [selectedDay, setSelectedDay] = useState<number | null>(null);
 
   useEffect(() => {
     if (!Number.isFinite(clubId) || clubId <= 0) {
@@ -174,6 +187,90 @@ export default function OrganizerDashboardPage({ params }: { params: Promise<{ c
       cancelled = true;
     };
   }, [rivalIds, clubId, sessionOk]);
+
+  useEffect(() => {
+    if (activeTab !== "stats" || statsFetched || !sessionOk) return;
+    let cancelled = false;
+    setStatsLoading(true);
+    const url = `/api/dashboard/organizer/stats?clubId=${clubId}`;
+    const hit = readPublicApiCache<{ sessions: StatSession[] }>(url);
+    if (hit) {
+      setStatsSessions(hit.sessions || []);
+      setStatsFetched(true);
+      setStatsLoading(false);
+      return;
+    }
+    fetchPublicApiJson<{ sessions: StatSession[] }>(url)
+      .then((d) => { if (!cancelled) { setStatsSessions(d.sessions || []); setStatsFetched(true); } })
+      .catch(() => { if (!cancelled) setStatsSessions([]); })
+      .finally(() => { if (!cancelled) setStatsLoading(false); });
+    return () => { cancelled = true; };
+  }, [activeTab, statsFetched, sessionOk, clubId]);
+
+  const weeklyDistribution = useMemo(() => {
+    if (statsSessions.length === 0) return [];
+    const buckets = Array.from({ length: 7 }, (_, i) => ({
+      day: i, label: DAY_LABELS[i], sessions: 0, booked: 0, capacity: 0, totalFee: 0, dates: 0,
+    }));
+    const datesByDay = Array.from({ length: 7 }, () => new Set<string>());
+    for (const s of statsSessions) {
+      const d = new Date(s.scrapedDate + "T00:00:00");
+      const dow = (d.getDay() + 6) % 7;
+      buckets[dow].sessions++;
+      buckets[dow].booked += s.joined;
+      buckets[dow].capacity += s.maxPlayers;
+      buckets[dow].totalFee += s.feeAmount;
+      datesByDay[dow].add(s.scrapedDate);
+    }
+    for (let i = 0; i < 7; i++) {
+      buckets[i].dates = datesByDay[i].size;
+    }
+    return buckets;
+  }, [statsSessions]);
+
+  const hourlyDistribution = useMemo(() => {
+    const filtered = selectedDay !== null
+      ? statsSessions.filter((s) => {
+          const d = new Date(s.scrapedDate + "T00:00:00");
+          return (d.getDay() + 6) % 7 === selectedDay;
+        })
+      : statsSessions;
+    const buckets: Record<number, { sessions: number; booked: number; capacity: number }> = {};
+    for (let h = 5; h <= 23; h++) buckets[h] = { sessions: 0, booked: 0, capacity: 0 };
+    for (const s of filtered) {
+      const h = parseInt(s.startTime.split(":")[0]);
+      if (!buckets[h]) buckets[h] = { sessions: 0, booked: 0, capacity: 0 };
+      buckets[h].sessions++;
+      buckets[h].booked += s.joined;
+      buckets[h].capacity += s.maxPlayers;
+    }
+    return Object.entries(buckets)
+      .map(([h, v]) => ({ hour: `${h.padStart(2, "0")}:00`, ...v }))
+      .sort((a, b) => a.hour.localeCompare(b.hour));
+  }, [statsSessions, selectedDay]);
+
+  const statsSummary = useMemo(() => {
+    if (statsSessions.length === 0) return null;
+    const totalSessions = statsSessions.length;
+    const totalBooked = statsSessions.reduce((s, x) => s + x.joined, 0);
+    const totalCapacity = statsSessions.reduce((s, x) => s + x.maxPlayers, 0);
+    const avgFillRate = totalCapacity > 0 ? totalBooked / totalCapacity : 0;
+    const uniqueDates = new Set(statsSessions.map((s) => s.scrapedDate)).size;
+
+    let peakDayIdx = 0;
+    let peakDayBooked = 0;
+    for (const b of weeklyDistribution) {
+      if (b.booked > peakDayBooked) { peakDayBooked = b.booked; peakDayIdx = b.day; }
+    }
+
+    let peakHour = "—";
+    let peakHourBooked = 0;
+    for (const h of hourlyDistribution) {
+      if (h.booked > peakHourBooked) { peakHourBooked = h.booked; peakHour = h.hour; }
+    }
+
+    return { totalSessions, totalBooked, totalCapacity, avgFillRate, uniqueDates, peakDay: DAY_LABELS[peakDayIdx], peakHour };
+  }, [statsSessions, weeklyDistribution, hourlyDistribution]);
 
   function toggleRival(id: number) {
     setRivalIds((prev) => {
@@ -343,6 +440,7 @@ export default function OrganizerDashboardPage({ params }: { params: Promise<{ c
 
   const tabs: { key: Tab; label: string }[] = [
     { key: "dashboard", label: "Dashboard" },
+    { key: "stats", label: "Stats" },
     { key: "ranking", label: "Ranking" },
     { key: "rivals", label: "Rival Comparison" },
   ];
@@ -468,6 +566,114 @@ export default function OrganizerDashboardPage({ params }: { params: Promise<{ c
               )}
             </div>
           </Section>
+        </>
+      )}
+
+      {/* Stats Tab */}
+      {activeTab === "stats" && (
+        <>
+          {statsLoading ? (
+            <div className="space-y-4">
+              <div className="animate-pulse h-20 bg-gray-100 dark:bg-gray-800 rounded-xl" />
+              <div className="animate-pulse h-64 bg-gray-100 dark:bg-gray-800 rounded-xl" />
+            </div>
+          ) : statsSessions.length === 0 ? (
+            <Section title="Stats">
+              <p className="text-sm text-muted py-4">No session data available yet.</p>
+            </Section>
+          ) : (
+            <>
+              {statsSummary && (
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 sm:gap-4 mb-4 sm:mb-6">
+                  <KPICard label="Total sessions" value={statsSummary.totalSessions.toLocaleString()} />
+                  <KPICard label="Total players" value={statsSummary.totalBooked.toLocaleString()} />
+                  <KPICard label="Avg fill rate" value={`${Math.round(statsSummary.avgFillRate * 100)}%`} accent={statsSummary.avgFillRate > 0.7} />
+                  <KPICard label="Peak day" value={statsSummary.peakDay} />
+                  <KPICard label="Peak hour" value={statsSummary.peakHour} />
+                </div>
+              )}
+
+              <Section title="Weekly Distribution — Which days are busiest?">
+                <p className="text-xs text-muted mb-3">
+                  Sessions, players booked (demand), and total capacity (supply) by day of the week across all historical data.
+                </p>
+                <WeeklyDistributionChart data={weeklyDistribution} />
+                <div className="mt-3 grid grid-cols-7 gap-1 text-center">
+                  {weeklyDistribution.map((b) => {
+                    const fillRate = b.capacity > 0 ? b.booked / b.capacity : 0;
+                    return (
+                      <div key={b.day} className="text-xs">
+                        <div className="font-medium">{b.label}</div>
+                        <div className={`text-[11px] ${fillRate > 0.8 ? "text-red-500" : fillRate > 0.6 ? "text-amber-500" : "text-emerald-500"}`}>
+                          {Math.round(fillRate * 100)}% fill
+                        </div>
+                        <div className="text-[10px] text-muted">{b.dates} days</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </Section>
+
+              <Section title="Hourly Distribution — When during the day?">
+                <p className="text-xs text-muted mb-3">
+                  Filter by day of the week to see hourly demand vs supply patterns.
+                </p>
+                <div className="flex flex-wrap gap-1.5 mb-4">
+                  <button
+                    onClick={() => setSelectedDay(null)}
+                    className={`text-xs px-3 py-1.5 rounded-full border transition min-h-[36px] ${
+                      selectedDay === null
+                        ? "bg-primary text-white border-primary"
+                        : "bg-background border-card-border hover:border-primary/50"
+                    }`}
+                  >
+                    All days
+                  </button>
+                  {DAY_LABELS.map((label, i) => (
+                    <button
+                      key={i}
+                      onClick={() => setSelectedDay(i)}
+                      className={`text-xs px-3 py-1.5 rounded-full border transition min-h-[36px] ${
+                        selectedDay === i
+                          ? "bg-primary text-white border-primary"
+                          : "bg-background border-card-border hover:border-primary/50"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <HourlyStatsDistributionChart data={hourlyDistribution} />
+              </Section>
+
+              <Section title="Fill Rate by Day of Week">
+                <div className="space-y-2">
+                  {weeklyDistribution.map((b) => {
+                    const fillRate = b.capacity > 0 ? b.booked / b.capacity : 0;
+                    const avgSessions = b.dates > 0 ? Math.round(b.sessions / b.dates * 10) / 10 : 0;
+                    const avgPlayers = b.dates > 0 ? Math.round(b.booked / b.dates) : 0;
+                    return (
+                      <div key={b.day} className="flex items-center gap-3 py-1.5">
+                        <span className="w-8 text-xs font-medium text-muted">{b.label}</span>
+                        <div className="flex-1 h-5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden relative">
+                          <div
+                            className={`h-full rounded-full transition-all ${
+                              fillRate > 0.8 ? "bg-red-400" : fillRate > 0.6 ? "bg-amber-400" : "bg-emerald-400"
+                            }`}
+                            style={{ width: `${Math.min(fillRate * 100, 100)}%` }}
+                          />
+                        </div>
+                        <span className="w-12 text-right text-xs font-semibold">{Math.round(fillRate * 100)}%</span>
+                        <span className="hidden sm:block w-28 text-right text-[11px] text-muted">
+                          ~{avgSessions} sessions, ~{avgPlayers} players/day
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </Section>
+            </>
+          )}
         </>
       )}
 

@@ -158,7 +158,9 @@ export default function OrganizerGatePage() {
   useLayoutEffect(() => {
     const url = "/api/clubs";
     const applyPayload = (all: ClubOption[]) => {
-      const sorted = [...all].sort((a, b) => a.name.localeCompare(b.name));
+      const sorted = [...all]
+        .filter((c) => c.numMembers >= 12)
+        .sort((a, b) => a.name.localeCompare(b.name));
       setClubs(sorted);
       const top5 = [...all]
         .sort((a, b) => (b.totalJoined ?? 0) - (a.totalJoined ?? 0))

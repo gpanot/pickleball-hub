@@ -2,7 +2,7 @@
 
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid,
-  Tooltip, ResponsiveContainer, Cell,
+  Tooltip, Legend, ResponsiveContainer, Cell,
 } from "recharts";
 
 interface FillRateTrendProps {
@@ -140,3 +140,53 @@ export function CompetitorPriceChart({ myAvgPrice, competitorPrices }: Competito
     </div>
   );
 }
+
+const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+interface WeeklyDistributionProps {
+  data: { day: number; label: string; sessions: number; booked: number; capacity: number }[];
+}
+
+export function WeeklyDistributionChart({ data }: WeeklyDistributionProps) {
+  return (
+    <div className="h-72">
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart data={data} barGap={2}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+          <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+          <YAxis tick={{ fontSize: 11 }} />
+          <Tooltip />
+          <Legend wrapperStyle={{ fontSize: 12 }} />
+          <Bar dataKey="sessions" name="Sessions" fill="#6366f1" radius={[3, 3, 0, 0]} />
+          <Bar dataKey="booked" name="Players Booked" fill="#10b981" radius={[3, 3, 0, 0]} />
+          <Bar dataKey="capacity" name="Total Capacity" fill="#94a3b8" radius={[3, 3, 0, 0]} />
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+interface HourlyStatsDistributionProps {
+  data: { hour: string; sessions: number; booked: number; capacity: number }[];
+}
+
+export function HourlyStatsDistributionChart({ data }: HourlyStatsDistributionProps) {
+  return (
+    <div className="h-72">
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart data={data} barGap={2}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+          <XAxis dataKey="hour" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
+          <YAxis tick={{ fontSize: 11 }} />
+          <Tooltip />
+          <Legend wrapperStyle={{ fontSize: 12 }} />
+          <Bar dataKey="sessions" name="Sessions" fill="#6366f1" radius={[3, 3, 0, 0]} />
+          <Bar dataKey="booked" name="Players Booked" fill="#10b981" radius={[3, 3, 0, 0]} />
+          <Bar dataKey="capacity" name="Total Capacity" fill="#94a3b8" radius={[3, 3, 0, 0]} />
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+export { DAY_LABELS };

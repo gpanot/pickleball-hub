@@ -438,6 +438,32 @@ export async function getClubComparison(clubIds: number[]) {
   });
 }
 
+export async function getOrganizerStats(clubId: number) {
+  const sessions = await prisma.session.findMany({
+    where: { clubId },
+    select: {
+      scrapedDate: true,
+      startTime: true,
+      maxPlayers: true,
+      feeAmount: true,
+      snapshots: {
+        orderBy: { scrapedAt: "desc" },
+        take: 1,
+        select: { joined: true },
+      },
+    },
+    orderBy: { scrapedDate: "desc" },
+  });
+
+  return sessions.map((s) => ({
+    scrapedDate: s.scrapedDate,
+    startTime: s.startTime,
+    maxPlayers: s.maxPlayers,
+    feeAmount: s.feeAmount,
+    joined: s.snapshots[0]?.joined ?? 0,
+  }));
+}
+
 export async function getVenueComparison(venueIds: number[]) {
   const today = vnCalendarDateString(0);
 
