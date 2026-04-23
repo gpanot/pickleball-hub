@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessions, type SessionFilters } from "@/lib/queries";
-import { CACHE_CONTROL_PUBLIC_LISTINGS } from "@/lib/http-cache-headers";
+import { CACHE_CONTROL_SESSIONS_LIST } from "@/lib/http-cache-headers";
+
+export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
@@ -24,7 +26,7 @@ export async function GET(request: NextRequest) {
     const sessions = await getSessions(filters);
     return NextResponse.json(
       { sessions, count: sessions.length },
-      { headers: { "Cache-Control": CACHE_CONTROL_PUBLIC_LISTINGS } },
+      { headers: { "Cache-Control": CACHE_CONTROL_SESSIONS_LIST } },
     );
   } catch (error) {
     console.error("Error fetching sessions:", error);

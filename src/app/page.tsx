@@ -12,7 +12,7 @@ import {
   formatDistanceKm,
   vnCalendarDateString,
 } from "@/lib/utils";
-import { fetchPublicApiJson, readPublicApiCache } from "@/lib/public-api-cache";
+import { readPublicApiCache, writePublicApiCache } from "@/lib/public-api-cache";
 
 const PAGE_SIZE = 50;
 
@@ -192,13 +192,18 @@ export default function HomePage() {
     if (cached) {
       setSessions(cached.sessions || []);
       setLoading(false);
-      return;
+    } else {
+      setLoading(true);
     }
 
     let cancelled = false;
-    setLoading(true);
-    fetchPublicApiJson<{ sessions: Session[] }>(url)
+    fetch(url, { cache: "no-store" })
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json() as Promise<{ sessions: Session[] }>;
+      })
       .then((data) => {
+        writePublicApiCache(url, data);
         if (!cancelled) setSessions(data.sessions || []);
       })
       .catch(() => {

@@ -6,3 +6,6 @@
  */
 export const CACHE_CONTROL_PUBLIC_LISTINGS =
   "public, max-age=300, s-maxage=3600, stale-while-revalidate=14400";
+
+/** Sessions list after DB ingest: must not sit behind long CDN or client layer caches. */
+export const CACHE_CONTROL_SESSIONS_LIST = "no-store";
