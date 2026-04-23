@@ -63,6 +63,9 @@ PICKLEBALL_SPORT_ID = 36
 SPORT_IDS_TO_SCAN = [1, 4, 5, 10, 11, 20, 24, 30, 33, 36, 37, 40, 42, 55, 62]
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
+# Prisma-style ?schema=public breaks psycopg2's URI parser — strip query string
+if DATABASE_URL and "?" in DATABASE_URL:
+    DATABASE_URL = DATABASE_URL.split("?", 1)[0]
 
 # ─── Parsers ──────────────────────────────────────────────────────────
 

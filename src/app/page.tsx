@@ -400,7 +400,7 @@ export default function HomePage() {
     dayTab === "tomorrow" && !loading && sessions.length === 0;
 
   return (
-    <div className="mx-auto min-w-0 max-w-7xl overflow-x-hidden px-2 py-4 sm:px-6 sm:py-6 lg:px-8">
+    <div className="mx-auto w-full min-w-0 max-w-7xl px-2 py-4 sm:px-6 sm:py-6 lg:px-8">
       <div className="mb-4 sm:mb-6">
         <h1 className="text-xl sm:text-2xl font-bold mb-1">
           <span className="text-primary">Pickleball</span>{" "}
