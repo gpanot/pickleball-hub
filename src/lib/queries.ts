@@ -249,10 +249,21 @@ export async function getVenues() {
     if (groupVenues.length === 0) continue;
 
     const canonical = groupVenues[0];
-    const allSessions = groupVenues.flatMap((v) => v.sessions);
     const totalAllTime = groupVenues.reduce((s, v) => s + v._count.sessions, 0);
 
-    results.push(computeVenueStats(canonical, allSessions, totalAllTime));
+    const seen = new Set<string>();
+    const dedupedSessions = [];
+    for (const v of groupVenues) {
+      for (const s of v.sessions) {
+        const key = `${s.referenceCode}:${s.scrapedDate}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          dedupedSessions.push(s);
+        }
+      }
+    }
+
+    results.push(computeVenueStats(canonical, dedupedSessions, totalAllTime));
   }
 
   results.sort((a, b) => a.name.localeCompare(b.name));
@@ -456,7 +467,19 @@ export async function getVenueComparison(venueIds: number[]) {
     if (groupVenues.length === 0) continue;
 
     const canonical = groupVenues.find((v) => v.id === canonicalId) ?? groupVenues[0];
-    const allSessions = groupVenues.flatMap((v) => v.sessions);
+
+    const seen = new Set<string>();
+    const allSessions: typeof groupVenues[0]["sessions"] = [];
+    for (const gv of groupVenues) {
+      for (const s of gv.sessions) {
+        const key = `${s.referenceCode}:${s.scrapedDate}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          allSessions.push(s);
+        }
+      }
+    }
+
     const totalJoined = allSessions.reduce((s, x) => s + (x.snapshots[0]?.joined ?? 0), 0);
     const totalCapacity = allSessions.reduce((s, x) => s + x.maxPlayers, 0);
     const avgFee = allSessions.length > 0
@@ -501,7 +524,6 @@ export async function getVenueAnalytics(venueId: number) {
     include: {
       sessions: {
         orderBy: { scrapedDate: "desc" },
-        take: 200,
         include: {
           club: true,
           snapshots: { orderBy: { scrapedAt: "desc" }, take: 1 },
@@ -513,7 +535,19 @@ export async function getVenueAnalytics(venueId: number) {
   if (venues.length === 0) return null;
 
   const venue = venues.find((v) => v.id === venueId) ?? venues[0];
-  const allSessions = venues.flatMap((v) => v.sessions);
+
+  // Deduplicate sessions by referenceCode+scrapedDate across sibling venues
+  const seen = new Set<string>();
+  const allSessions = [];
+  for (const v of venues) {
+    for (const s of v.sessions) {
+      const key = `${s.referenceCode}:${s.scrapedDate}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        allSessions.push(s);
+      }
+    }
+  }
 
   const today = vnCalendarDateString(0);
   const todaySessions = allSessions
