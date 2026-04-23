@@ -107,6 +107,16 @@ export async function getSessions(filters: SessionFilters = {}) {
   });
 }
 
+export async function getSessionsLastScrapedAt(date?: string) {
+  const targetDate = date || vnCalendarDateString(0);
+  const result = await prisma.dailySnapshot.findFirst({
+    where: { session: { scrapedDate: targetDate } },
+    orderBy: { scrapedAt: "desc" },
+    select: { scrapedAt: true },
+  });
+  return result?.scrapedAt ?? null;
+}
+
 export async function getClubs() {
   const todayStr = vnCalendarDateString(0);
 

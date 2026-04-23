@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSessions, type SessionFilters } from "@/lib/queries";
+import { getSessions, getSessionsLastScrapedAt, type SessionFilters } from "@/lib/queries";
 import { CACHE_CONTROL_SESSIONS_LIST } from "@/lib/http-cache-headers";
 
 export const dynamic = "force-dynamic";
@@ -23,9 +23,12 @@ export async function GET(request: NextRequest) {
   if (searchParams.get("search")) filters.search = searchParams.get("search")!;
 
   try {
-    const sessions = await getSessions(filters);
+    const [sessions, lastScrapedAt] = await Promise.all([
+      getSessions(filters),
+      getSessionsLastScrapedAt(filters.date),
+    ]);
     return NextResponse.json(
-      { sessions, count: sessions.length },
+      { sessions, count: sessions.length, lastScrapedAt },
       { headers: { "Cache-Control": CACHE_CONTROL_SESSIONS_LIST } },
     );
   } catch (error) {

@@ -119,6 +119,7 @@ function TimeGroupedList({
 export default function HomePage() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
+  const [lastScrapedAt, setLastScrapedAt] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"list" | "map">("list");
   const [dayTab, setDayTab] = useState<"today" | "tomorrow">("today");
 
@@ -188,9 +189,10 @@ export default function HomePage() {
     if (filters.foodDrink) params.set("hasPerks", filters.foodDrink);
 
     const url = `/api/sessions?${params.toString()}`;
-    const cached = readPublicApiCache<{ sessions: Session[] }>(url);
+    const cached = readPublicApiCache<{ sessions: Session[]; lastScrapedAt: string | null }>(url);
     if (cached) {
       setSessions(cached.sessions || []);
+      setLastScrapedAt(cached.lastScrapedAt ?? null);
       setLoading(false);
     } else {
       setLoading(true);
@@ -200,11 +202,14 @@ export default function HomePage() {
     fetch(url, { cache: "no-store" })
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return res.json() as Promise<{ sessions: Session[] }>;
+        return res.json() as Promise<{ sessions: Session[]; lastScrapedAt: string | null }>;
       })
       .then((data) => {
         writePublicApiCache(url, data);
-        if (!cancelled) setSessions(data.sessions || []);
+        if (!cancelled) {
+          setSessions(data.sessions || []);
+          setLastScrapedAt(data.lastScrapedAt ?? null);
+        }
       })
       .catch(() => {
         if (!cancelled) setSessions([]);
@@ -409,7 +414,6 @@ export default function HomePage() {
       <div className="mb-4 sm:mb-6">
         <h1 className="text-xl sm:text-2xl font-bold mb-1">
           <span className="text-primary">Pickleball</span>{" "}
-          <span className="text-emerald-500">FREE</span>{" "}
           Sessions {dayTab === "today" ? "Today" : "Tomorrow"}
         </h1>
         <p className="text-sm text-muted">
@@ -423,6 +427,24 @@ export default function HomePage() {
             </>
           )}
         </p>
+        {lastScrapedAt && !loading && (
+          <p className="text-[11px] text-muted/70 mt-0.5">
+            Updated at{" "}
+            {new Date(lastScrapedAt).toLocaleString("en-US", {
+              timeZone: "Asia/Ho_Chi_Minh",
+              hour: "numeric",
+              minute: "2-digit",
+              hour12: true,
+            })}{" "}
+            on{" "}
+            {new Date(lastScrapedAt).toLocaleDateString("en-US", {
+              timeZone: "Asia/Ho_Chi_Minh",
+              year: "numeric",
+              month: "short",
+              day: "numeric",
+            })}
+          </p>
+        )}
       </div>
 
       {tomorrowPendingSync && (
