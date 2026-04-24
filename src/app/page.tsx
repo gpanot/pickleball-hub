@@ -13,6 +13,7 @@ import {
   vnCalendarDateString,
 } from "@/lib/utils";
 import { readPublicApiCache, writePublicApiCache } from "@/lib/public-api-cache";
+import { useI18n } from "@/lib/i18n";
 
 const ZALO_GROUP_URL = "https://zalo.me/g/khebsp5x7jlkslmnroxh";
 
@@ -84,6 +85,7 @@ function TimeGroupedList({
   visibleCount: number;
   userLocation: { lat: number; lng: number } | null;
 }) {
+  const { t } = useI18n();
   let rendered = 0;
   const entries = Array.from(groups.entries());
 
@@ -100,9 +102,9 @@ function TimeGroupedList({
             <div className="sticky top-12 sm:top-14 z-20 -mx-2 px-2 py-1.5 backdrop-blur-md bg-background/80 border-b border-card-border/30">
               <div className="flex items-center gap-2">
                 <span className="text-xs font-semibold text-primary bg-primary/10 px-2.5 py-1 rounded-full">
-                  From {startTime.replace(/^0/, "")}
+                  {t("from")} {startTime.replace(/^0/, "")}
                 </span>
-                <span className="text-xs text-muted">{group.length} session{group.length !== 1 ? "s" : ""}</span>
+                <span className="text-xs text-muted">{group.length} {group.length !== 1 ? t("sessions") : t("session")}</span>
                 <div className="flex-1 border-t border-card-border/50" />
               </div>
             </div>
@@ -119,6 +121,7 @@ function TimeGroupedList({
 }
 
 export default function HomePage() {
+  const { t } = useI18n();
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
   const [lastScrapedAt, setLastScrapedAt] = useState<string | null>(null);
@@ -148,6 +151,8 @@ export default function HomePage() {
 
   const [zaloJoined, setZaloJoined] = useState(true);
   const [copyToast, setCopyToast] = useState(false);
+  const headingTapCount = useRef(0);
+  const headingTapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     setZaloJoined(localStorage.getItem("zalo_joined") === "true");
@@ -408,9 +413,8 @@ export default function HomePage() {
     const dayName = days[vn.getUTCDay()];
     const dd = String(vn.getUTCDate()).padStart(2, "0");
     const mm = String(vn.getUTCMonth() + 1).padStart(2, "0");
-    const top3 = freeTonightCards.slice(0, 3);
 
-    const lines = top3.map((s, i) => {
+    const lines = freeTonightCards.map((s, i) => {
       const spotsLeft = Math.max(0, s.maxPlayers - s.joined);
       const dist =
         userLocation && s.venue?.latitude != null && s.venue?.longitude != null
@@ -433,6 +437,19 @@ ${lines.join("\n")}
       setTimeout(() => setCopyToast(false), 2500);
     });
   }, [freeTonightCards, userLocation]);
+
+  const handleHeadingTap = useCallback(() => {
+    if (headingTapTimer.current) clearTimeout(headingTapTimer.current);
+    headingTapCount.current += 1;
+    if (headingTapCount.current >= 5) {
+      headingTapCount.current = 0;
+      copyFreeTonightMessage();
+    } else {
+      headingTapTimer.current = setTimeout(() => {
+        headingTapCount.current = 0;
+      }, 2000);
+    }
+  }, [copyFreeTonightMessage]);
 
   const mapPins = useMemo(() => {
     return filtered
@@ -461,30 +478,30 @@ ${lines.join("\n")}
     <div className="mx-auto w-full min-w-0 max-w-7xl px-2 py-4 sm:px-6 sm:py-6 lg:px-8">
       <div className="mb-4 sm:mb-6">
         <h1 className="text-xl sm:text-2xl font-bold mb-1">
-          <span className="text-primary">Pickleball</span>{" "}
-          Sessions {dayTab === "today" ? "Today" : "Tomorrow"}
+          <span className="text-primary">{t("pickleball")}</span>{" "}
+          {dayTab === "today" ? t("sessionsToday") : t("sessionsTomorrow")}
         </h1>
         <p className="text-sm text-muted">
-          Ho Chi Minh City — {formatDayLabel(activeDate)}
+          {t("hoChiMinhCity")} — {formatDayLabel(activeDate)}
           {tomorrowPendingSync ? (
-            <> — no sessions loaded for this date yet</>
+            <> — {t("noSessionsLoadedYet")}</>
           ) : (
             <>
               {" "}
-              — {sessions.length} sessions, {totalPlayers.toLocaleString()} players
+              — {sessions.length} {t("sessions")}, {totalPlayers.toLocaleString()} {t("players")}
             </>
           )}
         </p>
         {lastScrapedAt && !loading && (
           <p className="text-[11px] text-muted/70 mt-0.5">
-            Updated at{" "}
+            {t("updatedAt")}{" "}
             {new Date(lastScrapedAt).toLocaleString("en-US", {
               timeZone: "Asia/Ho_Chi_Minh",
               hour: "numeric",
               minute: "2-digit",
               hour12: true,
             })}{" "}
-            on{" "}
+            {t("on")}{" "}
             {new Date(lastScrapedAt).toLocaleDateString("en-US", {
               timeZone: "Asia/Ho_Chi_Minh",
               year: "numeric",
@@ -500,11 +517,9 @@ ${lines.join("\n")}
           className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100"
           role="status"
         >
-          <p className="font-semibold text-amber-900 dark:text-amber-50">Tomorrow&apos;s list is empty in our database</p>
+          <p className="font-semibold text-amber-900 dark:text-amber-50">{t("tomorrowEmpty")}</p>
           <p className="mt-1 text-xs leading-relaxed text-amber-900/90 dark:text-amber-100/90">
-            Sessions are stored per calendar day on the server. After each Reclub sync (about 6 AM and 1 PM HCMC),
-            the next day&apos;s rows appear here. If production has not ingested tomorrow yet, you will see zero
-            until that run completes — check{" "}
+            {t("tomorrowEmptyDesc")}{" "}
             <a
               href="https://reclub.co"
               target="_blank"
@@ -513,29 +528,21 @@ ${lines.join("\n")}
             >
               Reclub
             </a>{" "}
-            for live bookings in the meantime.
+            {t("forLiveBookings")}
           </p>
         </div>
       )}
 
       {freeTonightCards.length > 0 && (
         <section className="mb-4 min-w-0">
-          <button
-            type="button"
-            onClick={copyFreeTonightMessage}
-            className="group mb-2 flex items-center gap-1.5 text-sm font-semibold text-foreground active:scale-[0.97] transition"
-            title="Tap to copy Zalo share message"
+          <h2
+            onClick={handleHeadingTap}
+            className="mb-2 text-sm font-semibold text-foreground cursor-default select-none"
           >
-            {dayTab === "today" ? `Free Tonight (${freeTonightCards.length})` : `Free Tomorrow Night (${freeTonightCards.length})`}
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5 text-muted opacity-0 group-hover:opacity-100 transition-opacity" aria-hidden>
-              <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-            </svg>
-          </button>
+            {dayTab === "today" ? `${t("freeTonight")} (${freeTonightCards.length})` : `${t("freeTomorrowNight")} (${freeTonightCards.length})`}
+          </h2>
           <p className="mb-2 text-xs text-muted">
-            {dayTab === "today"
-              ? "Free sessions from 6:00 PM with spots left — nearest first"
-              : "Free sessions tomorrow from 6:00 PM with spots left — nearest first"}
+            {dayTab === "today" ? t("freeSessionsFrom6pm") : t("freeSessionsTomorrow6pm")}
           </p>
           <div className="flex gap-3 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {freeTonightCards.map((s) => {
@@ -560,10 +567,10 @@ ${lines.join("\n")}
                 >
                   <div className="mb-1 flex flex-wrap items-center gap-1">
                     <span className="inline-flex rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-primary">
-                      Free · From 6pm
+                      {t("freeFrom6pm")}
                     </span>
                     <span className="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold tabular-nums text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300">
-                      {spotsLeft} left
+                      {spotsLeft} {t("left")}
                     </span>
                   </div>
                   <span className="line-clamp-2 text-sm font-semibold leading-snug">{s.name}</span>
@@ -577,7 +584,7 @@ ${lines.join("\n")}
                   )}
                   {distKm != null && (
                     <span className="mt-1 text-xs font-medium text-primary">
-                      {formatDistanceKm(distKm)} away
+                      {formatDistanceKm(distKm)} {t("away")}
                     </span>
                   )}
                 </button>
@@ -596,8 +603,8 @@ ${lines.join("\n")}
                 <circle cx="24" cy="24" r="24" fill="#0068FF" />
                 <path d="M12.5 16.5c0-2.21 1.79-4 4-4h15c2.21 0 4 1.79 4 4v9c0 2.21-1.79 4-4 4h-3.5l-4.5 4v-4h-7c-2.21 0-4-1.79-4-4v-9z" fill="white" />
               </svg>
-              <span className="text-sm font-bold text-emerald-900 dark:text-emerald-100">Get free sessions daily</span>
-              <span className="mt-0.5 text-xs text-emerald-700 dark:text-emerald-300">Join our Zalo group</span>
+              <span className="text-sm font-bold text-emerald-900 dark:text-emerald-100">{t("getFreeSessions")}</span>
+              <span className="mt-0.5 text-xs text-emerald-700 dark:text-emerald-300">{t("joinZaloGroup")}</span>
             </a>
           </div>
         </section>
@@ -621,7 +628,7 @@ ${lines.join("\n")}
                 : "border border-card-border bg-card hover:border-primary/30"
             }`}
           >
-            List
+            {t("list")}
           </button>
           <button
             type="button"
@@ -632,7 +639,7 @@ ${lines.join("\n")}
                 : "border border-card-border bg-card hover:border-primary/30"
             }`}
           >
-            Map
+            {t("map")}
           </button>
 
           <div className="mx-1 h-6 w-px bg-card-border shrink-0" />
@@ -647,7 +654,7 @@ ${lines.join("\n")}
                   : "text-muted hover:text-foreground"
               }`}
             >
-              Today
+              {t("today")}
             </button>
             <button
               type="button"
@@ -658,7 +665,7 @@ ${lines.join("\n")}
                   : "text-muted hover:text-foreground"
               }`}
             >
-              Tomorrow
+              {t("tomorrow")}
             </button>
           </div>
 
@@ -675,7 +682,7 @@ ${lines.join("\n")}
                       : "text-muted hover:text-foreground"
                   }`}
                 >
-                  From Now ({fromNowCount})
+                  {t("fromNow")} ({fromNowCount})
                 </button>
                 <button
                   type="button"
@@ -686,7 +693,7 @@ ${lines.join("\n")}
                       : "text-muted hover:text-foreground"
                   }`}
                 >
-                  Past ({pastCount})
+                  {t("past")} ({pastCount})
                 </button>
               </div>
             </div>
@@ -712,7 +719,7 @@ ${lines.join("\n")}
           <form onSubmit={onMobileSearchSubmit} className="flex gap-2 sm:hidden">
             <input
               type="text"
-              placeholder="Sessions, clubs, addresses…"
+              placeholder={t("searchPlaceholder")}
               value={searchDraft}
               onChange={(e) => setSearchDraft(e.target.value)}
               autoFocus
@@ -730,7 +737,7 @@ ${lines.join("\n")}
               onClick={applyMobileSearch}
               className="flex h-11 min-w-[44px] shrink-0 items-center justify-center rounded-lg border border-card-border bg-card px-2 text-sm text-muted transition hover:bg-primary/5"
             >
-              Done
+              {t("done")}
             </button>
           </form>
         ) : null}
@@ -749,21 +756,18 @@ ${lines.join("\n")}
           <div className="text-center py-16 text-muted">
             {sessions.length === 0 && dayTab === "tomorrow" ? (
               <>
-                <p className="text-lg mb-2 text-foreground">No sessions to show yet</p>
-                <p className="text-sm max-w-md mx-auto">
-                  Tomorrow&apos;s listings appear here after each sync from Reclub. See the note above for timing,
-                  or open Reclub to browse what&apos;s already published.
-                </p>
+                <p className="text-lg mb-2 text-foreground">{t("noSessionsToShow")}</p>
+                <p className="text-sm max-w-md mx-auto">{t("tomorrowListingsAppear")}</p>
               </>
             ) : sessions.length === 0 ? (
               <>
-                <p className="text-lg mb-2">No sessions found</p>
-                <p className="text-sm">Try another day or check back after the next data update.</p>
+                <p className="text-lg mb-2">{t("noSessionsFound")}</p>
+                <p className="text-sm">{t("tryAnotherDay")}</p>
               </>
             ) : (
               <>
-                <p className="text-lg mb-2">No sessions match your filters</p>
-                <p className="text-sm">Try adjusting your filters or clear search.</p>
+                <p className="text-lg mb-2">{t("noSessionsMatch")}</p>
+                <p className="text-sm">{t("tryAdjusting")}</p>
               </>
             )}
           </div>
@@ -788,7 +792,7 @@ ${lines.join("\n")}
               onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}
               className="rounded-lg border border-card-border bg-card px-6 py-3 text-sm font-medium text-foreground transition hover:border-primary/40 hover:shadow-sm min-h-[44px]"
             >
-              Show more ({filtered.length - visibleCount} remaining)
+              {t("showMore")} ({filtered.length - visibleCount} {t("remaining")})
             </button>
           </div>
         )}
@@ -809,14 +813,14 @@ ${lines.join("\n")}
           >
             <div className="mb-3 flex items-center justify-between gap-2">
               <h2 id="free-tonight-dialog-title" className="text-lg font-bold">
-                Session details
+                {t("sessionDetails")}
               </h2>
               <button
                 type="button"
                 onClick={() => setFreeTonightDetail(null)}
                 className="rounded-lg px-3 py-1.5 text-sm text-muted transition hover:bg-primary/10 hover:text-foreground"
               >
-                Close
+                {t("close")}
               </button>
             </div>
             <SessionCard session={freeTonightDetail} userLocation={userLocation} />
@@ -829,16 +833,16 @@ ${lines.join("\n")}
         <button
           type="button"
           onClick={handleZaloPillClick}
-          className="fixed bottom-20 left-1/2 z-50 -translate-x-1/2 max-w-[260px] rounded-full bg-gray-900/75 px-4 py-2.5 text-xs font-medium text-white shadow-lg backdrop-blur-md transition hover:bg-gray-900/90 active:scale-95 dark:bg-white/20"
+          className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 max-w-[260px] rounded-full bg-gray-900/75 px-4 py-2.5 text-xs font-medium text-white shadow-lg backdrop-blur-md transition hover:bg-gray-900/90 active:scale-95 dark:bg-white/20"
         >
-          🟢 Buổi FREE mỗi ngày — Tham gia Zalo
+          {t("zaloFloatingCta")}
         </button>
       )}
 
       {/* Copy toast */}
       {copyToast && (
-        <div className="pointer-events-none fixed bottom-28 left-1/2 z-[110] -translate-x-1/2 rounded-lg bg-gray-900 px-4 py-2.5 text-xs font-medium text-white shadow-xl animate-in fade-in slide-in-from-bottom-2 duration-200">
-          Đã sao chép — Dán vào Zalo ✓
+        <div className="pointer-events-none fixed bottom-14 left-1/2 z-[110] -translate-x-1/2 rounded-lg bg-gray-900 px-4 py-2.5 text-xs font-medium text-white shadow-xl animate-in fade-in slide-in-from-bottom-2 duration-200">
+          {t("copiedToast")}
         </div>
       )}
     </div>

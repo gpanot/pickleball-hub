@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { AppNavbar } from "@/components/AppNavbar";
+import { AppFooter } from "@/components/AppFooter";
+import { ClientProviders } from "@/components/ClientProviders";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -39,11 +41,11 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        <AppNavbar />
-        <main className="min-w-0 flex-1">{children}</main>
-        <footer className="border-t border-card-border py-6 text-center text-sm text-muted">
-          HCM Pickleball Hub — Data from Reclub.co — Updated daily
-        </footer>
+        <ClientProviders>
+          <AppNavbar />
+          <main className="min-w-0 flex-1">{children}</main>
+          <AppFooter />
+        </ClientProviders>
       </body>
     </html>
   );

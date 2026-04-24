@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import { ClubStatsCard } from "@/components/ClubStatsCard";
 import { formatVND } from "@/lib/utils";
 import { fetchPublicApiJson, readPublicApiCache } from "@/lib/public-api-cache";
+import { useI18n } from "@/lib/i18n";
 
 const PAGE_SIZE = 50;
 
@@ -64,6 +65,7 @@ function formatLastUpdatedLabel(lastUpdatedAt: string | null): string {
 }
 
 export default function ClubsPage() {
+  const { t } = useI18n();
   const [clubs, setClubs] = useState<Club[]>([]);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -152,9 +154,9 @@ export default function ClubsPage() {
   return (
     <div className="mx-auto max-w-7xl px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
       <div className="mb-4 sm:mb-6">
-        <h1 className="text-xl sm:text-2xl font-bold mb-1">Club Directory</h1>
+        <h1 className="text-xl sm:text-2xl font-bold mb-1">{t("clubDirectory")}</h1>
         <p className="text-sm text-muted">
-          {clubs.length} pickleball clubs in Ho Chi Minh City
+          {clubs.length} {t("clubsIn")}
           {clubs.length > 0 && (
             <>
               {" "}
@@ -167,7 +169,7 @@ export default function ClubsPage() {
       <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 mb-4">
         <input
           type="text"
-          placeholder="Search clubs..."
+          placeholder={t("searchClubs")}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="rounded-lg border border-card-border bg-background px-3 py-2 text-sm outline-none focus:border-primary flex-1 min-w-0 min-h-[44px]"
@@ -177,11 +179,11 @@ export default function ClubsPage() {
           onChange={(e) => setSortBy(e.target.value)}
           className="rounded-lg border border-card-border bg-background px-3 py-2 text-sm min-h-[44px] sm:w-auto w-full"
         >
-          <option value="members">Most members</option>
-          <option value="sessions">Most sessions</option>
-          <option value="players">Most players</option>
-          <option value="fillRate">Highest fill rate</option>
-          <option value="price">Lowest price</option>
+          <option value="members">{t("mostMembers")}</option>
+          <option value="sessions">{t("mostSessions")}</option>
+          <option value="players">{t("mostPlayers")}</option>
+          <option value="fillRate">{t("highestFillRate")}</option>
+          <option value="price">{t("lowestPrice")}</option>
         </select>
       </div>
 
@@ -194,7 +196,7 @@ export default function ClubsPage() {
               : "bg-card border border-card-border hover:border-primary/30"
           }`}
         >
-          Grid
+          {t("grid")}
         </button>
         <button
           onClick={() => setViewMode("map")}
@@ -204,7 +206,7 @@ export default function ClubsPage() {
               : "bg-card border border-card-border hover:border-primary/30"
           }`}
         >
-          Map
+          {t("map")}
         </button>
       </div>
 
@@ -218,8 +220,8 @@ export default function ClubsPage() {
         <MapView pins={mapPins} className={MAP_HEIGHT_CLASS} showLocateButton />
       ) : filtered.length === 0 ? (
         <div className="text-center py-16 text-muted">
-          <p className="text-lg mb-2">No clubs found</p>
-          <p className="text-sm">Try adjusting your search.</p>
+          <p className="text-lg mb-2">{t("noClubsFound")}</p>
+          <p className="text-sm">{t("tryAdjustingSearch")}</p>
         </div>
       ) : (
         <>
@@ -235,7 +237,7 @@ export default function ClubsPage() {
                 onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}
                 className="rounded-lg border border-card-border bg-card px-6 py-3 text-sm font-medium text-foreground transition hover:border-primary/40 hover:shadow-sm min-h-[44px]"
               >
-                Show more ({filtered.length - visibleCount} remaining)
+                {t("showMore")} ({filtered.length - visibleCount} {t("remaining")})
               </button>
             </div>
           )}
