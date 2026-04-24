@@ -5,5 +5,5 @@ dockerfilePath = "scraper/Dockerfile"
 [deploy]
 # Runs 3x daily at 6:00 AM, 12:00 PM, and 9:00 PM Vietnam time (UTC+7).
 # UTC equivalents: 23:00 (prev day), 05:00, 14:00.
-# The entrypoint (run.sh) decides whether to also refresh clubs (Mon/Wed only).
+# entrypoint.py decides whether to also refresh clubs (Mon/Wed only).
 cronSchedule = "0 23,5,14 * * *"
