@@ -1,5 +1,6 @@
 "use client";
 
+import { clarityTag } from "@/lib/analytics";
 import { FillRateBar } from "./FillRateBar";
 import { PriceTag } from "./PriceTag";
 import { perkEmoji, parseSessionType, haversineKm, formatDistanceKm } from "@/lib/utils";
@@ -103,6 +104,7 @@ export function SessionCard({ session, userLocation }: SessionCardProps) {
           href={s.eventUrl}
           target="_blank"
           rel="noopener noreferrer"
+          onClick={() => clarityTag("converted", "reclub_click")}
           className="box-border flex min-h-[44px] w-full max-w-full items-center justify-center rounded-lg bg-primary px-4 py-2.5 text-center text-sm font-medium text-white transition hover:bg-primary-dark sm:inline-flex sm:w-auto sm:py-1.5 sm:text-xs"
         >
           Book on Reclub

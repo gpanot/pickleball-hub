@@ -14,6 +14,7 @@ import {
 } from "@/lib/utils";
 import { readPublicApiCache, writePublicApiCache } from "@/lib/public-api-cache";
 import { useI18n } from "@/lib/i18n";
+import { clarityTag } from "@/lib/analytics";
 
 const ZALO_GROUP_URL = "https://zalo.me/g/khebsp5x7jlkslmnroxh";
 
@@ -159,6 +160,7 @@ export default function HomePage() {
   }, []);
 
   const handleZaloPillClick = useCallback(() => {
+    clarityTag("zalo_intent", "floating_cta");
     localStorage.setItem("zalo_joined", "true");
     setZaloJoined(true);
     window.open(ZALO_GROUP_URL, "_blank", "noopener");
@@ -414,20 +416,22 @@ export default function HomePage() {
     const dd = String(vn.getUTCDate()).padStart(2, "0");
     const mm = String(vn.getUTCMonth() + 1).padStart(2, "0");
 
-    const lines = freeTonightCards.map((s, i) => {
+    const eventBlocks = freeTonightCards.map((s, i) => {
       const spotsLeft = Math.max(0, s.maxPlayers - s.joined);
       const dist =
         userLocation && s.venue?.latitude != null && s.venue?.longitude != null
           ? formatDistanceKm(haversineKm(userLocation.lat, userLocation.lng, s.venue.latitude, s.venue.longitude))
           : "—";
-      return `${i + 1}. ${s.name} — ${s.startTime} — ${s.venue?.name ?? "TBA"} — còn ${spotsLeft} chỗ — ${dist}`;
+      const venue = s.venue?.name ?? "TBA";
+      return `${i + 1}. ${s.name} — ${s.startTime} — còn ${spotsLeft} chỗ\n${venue}\n${dist}`;
     });
 
     const text = `🎾 PICKLEBALL FREE TỐI NAY — HCM
 ${dayName}, ${dd}/${mm} | ${freeTonightCards.length} buổi FREE còn chỗ
 
 Gợi ý gần trung tâm:
-${lines.join("\n")}
+
+${eventBlocks.join("\n\n")}
 
 👉 Xem đầy đủ + lọc giá/giờ: pickleball-hub-gules.vercel.app
 💬 Nhận thông báo hàng ngày: zalo.me/g/khebsp5x7jlkslmnroxh`;
@@ -596,6 +600,7 @@ ${lines.join("\n")}
               href={ZALO_GROUP_URL}
               target="_blank"
               rel="noopener noreferrer"
+              onClick={() => clarityTag("zalo_intent", "carousel")}
               className="flex w-[min(280px,calc(100vw-3rem))] shrink-0 flex-col items-center justify-center rounded-xl border border-emerald-200 p-3 text-center shadow-sm transition hover:shadow-md dark:border-emerald-800"
               style={{ background: "linear-gradient(135deg, #e6f9ee 0%, #d1f5e0 50%, #c3f0d4 100%)" }}
             >

@@ -80,7 +80,7 @@ function venuePopupHtml(pin: MapPin): string {
     <div style="background:#e5e7eb;border-radius:4px;height:6px;margin-bottom:8px;">
       <div style="background:${bg};height:100%;border-radius:4px;width:${barWidth}%;"></div>
     </div>
-    ${pin.eventUrl ? `<a href="${pin.eventUrl}" target="_blank" rel="noopener noreferrer" style="
+    ${pin.eventUrl ? `<a href="${pin.eventUrl}" target="_blank" rel="noopener noreferrer" onclick="window.clarity&&window.clarity('set','converted','reclub_click')" style="
       display:inline-block;background:#6d28d9;color:#fff;font-size:11px;font-weight:600;
       padding:5px 12px;border-radius:6px;text-decoration:none;
     ">Book on Reclub</a>` : ""}

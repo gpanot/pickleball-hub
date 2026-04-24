@@ -10,6 +10,7 @@ import {
 } from "@/lib/dashboard-session";
 import { formatVND } from "@/lib/utils";
 import { fetchPublicApiJson, readPublicApiCache } from "@/lib/public-api-cache";
+import { clarityTag } from "@/lib/analytics";
 
 type ClubOption = {
   id: number;
@@ -221,6 +222,7 @@ export default function OrganizerGatePage() {
         return;
       }
       setOrganizerUnlocked();
+      clarityTag("user_type", "organizer");
       setUnlocked(true);
       setSelectedClubId(String(data.clubId));
       localStorage.setItem(SELECTED_CLUB_KEY, String(data.clubId));

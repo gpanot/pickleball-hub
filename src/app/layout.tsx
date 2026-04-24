@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Script from "next/script";
 import { Geist, Geist_Mono } from "next/font/google";
 import { AppNavbar } from "@/components/AppNavbar";
 import { AppFooter } from "@/components/AppFooter";
@@ -30,6 +31,8 @@ export const metadata: Metadata = {
   },
 };
 
+const clarityProjectId = process.env.NEXT_PUBLIC_CLARITY_PROJECT_ID;
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -40,6 +43,22 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
+      <head>
+        <script
+          defer
+          src="https://cloud.umami.is/script.js"
+          data-website-id="b7f3041f-7161-41ba-a414-d5c0618a2000"
+        />
+        {clarityProjectId ? (
+          <Script
+            id="clarity-script"
+            strategy="afterInteractive"
+            dangerouslySetInnerHTML={{
+              __html: `(function(c,l,a,r,i,t,y){c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y)})(window,document,"clarity","script",${JSON.stringify(clarityProjectId)});`,
+            }}
+          />
+        ) : null}
+      </head>
       <body className="min-h-full flex flex-col">
         <ClientProviders>
           <AppNavbar />
