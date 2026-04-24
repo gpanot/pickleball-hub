@@ -14,6 +14,8 @@ import {
 } from "@/lib/utils";
 import { readPublicApiCache, writePublicApiCache } from "@/lib/public-api-cache";
 
+const ZALO_GROUP_URL = "https://zalo.me/g/khebsp5x7jlkslmnroxh";
+
 const PAGE_SIZE = 50;
 
 function timeToMinutes(t: string): number {
@@ -143,6 +145,19 @@ export default function HomePage() {
   const [freeTonightDetail, setFreeTonightDetail] = useState<Session | null>(null);
   const [timeFilter, setTimeFilter] = useState<"fromNow" | "past">("fromNow");
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+
+  const [zaloJoined, setZaloJoined] = useState(true);
+  const [copyToast, setCopyToast] = useState(false);
+
+  useEffect(() => {
+    setZaloJoined(localStorage.getItem("zalo_joined") === "true");
+  }, []);
+
+  const handleZaloPillClick = useCallback(() => {
+    localStorage.setItem("zalo_joined", "true");
+    setZaloJoined(true);
+    window.open(ZALO_GROUP_URL, "_blank", "noopener");
+  }, []);
 
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
@@ -386,6 +401,39 @@ export default function HomePage() {
       });
   }, [sessions, userLocation]);
 
+  const copyFreeTonightMessage = useCallback(() => {
+    if (freeTonightCards.length === 0) return;
+    const vn = new Date(Date.now() + 7 * 60 * 60 * 1000);
+    const days = ["Chủ nhật", "Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7"];
+    const dayName = days[vn.getUTCDay()];
+    const dd = String(vn.getUTCDate()).padStart(2, "0");
+    const mm = String(vn.getUTCMonth() + 1).padStart(2, "0");
+    const top3 = freeTonightCards.slice(0, 3);
+
+    const lines = top3.map((s, i) => {
+      const spotsLeft = Math.max(0, s.maxPlayers - s.joined);
+      const dist =
+        userLocation && s.venue?.latitude != null && s.venue?.longitude != null
+          ? formatDistanceKm(haversineKm(userLocation.lat, userLocation.lng, s.venue.latitude, s.venue.longitude))
+          : "—";
+      return `${i + 1}. ${s.name} — ${s.startTime} — ${s.venue?.name ?? "TBA"} — còn ${spotsLeft} chỗ — ${dist}`;
+    });
+
+    const text = `🎾 PICKLEBALL FREE TỐI NAY — HCM
+${dayName}, ${dd}/${mm} | ${freeTonightCards.length} buổi FREE còn chỗ
+
+Gợi ý gần trung tâm:
+${lines.join("\n")}
+
+👉 Xem đầy đủ + lọc giá/giờ: pickleball-hub-gules.vercel.app
+💬 Nhận thông báo hàng ngày: zalo.me/g/khebsp5x7jlkslmnroxh`;
+
+    navigator.clipboard.writeText(text).then(() => {
+      setCopyToast(true);
+      setTimeout(() => setCopyToast(false), 2500);
+    });
+  }, [freeTonightCards, userLocation]);
+
   const mapPins = useMemo(() => {
     return filtered
       .filter((s) => s.venue?.latitude && s.venue?.longitude)
@@ -472,9 +520,18 @@ export default function HomePage() {
 
       {freeTonightCards.length > 0 && (
         <section className="mb-4 min-w-0">
-          <h2 className="mb-2 text-sm font-semibold text-foreground">
+          <button
+            type="button"
+            onClick={copyFreeTonightMessage}
+            className="group mb-2 flex items-center gap-1.5 text-sm font-semibold text-foreground active:scale-[0.97] transition"
+            title="Tap to copy Zalo share message"
+          >
             {dayTab === "today" ? `Free Tonight (${freeTonightCards.length})` : `Free Tomorrow Night (${freeTonightCards.length})`}
-          </h2>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5 text-muted opacity-0 group-hover:opacity-100 transition-opacity" aria-hidden>
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+            </svg>
+          </button>
           <p className="mb-2 text-xs text-muted">
             {dayTab === "today"
               ? "Free sessions from 6:00 PM with spots left — nearest first"
@@ -526,6 +583,22 @@ export default function HomePage() {
                 </button>
               );
             })}
+
+            {/* Zalo Join Card */}
+            <a
+              href={ZALO_GROUP_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex w-[min(280px,calc(100vw-3rem))] shrink-0 flex-col items-center justify-center rounded-xl border border-emerald-200 p-3 text-center shadow-sm transition hover:shadow-md dark:border-emerald-800"
+              style={{ background: "linear-gradient(135deg, #e6f9ee 0%, #d1f5e0 50%, #c3f0d4 100%)" }}
+            >
+              <svg viewBox="0 0 48 48" className="mb-2 h-10 w-10" aria-hidden>
+                <circle cx="24" cy="24" r="24" fill="#0068FF" />
+                <path d="M12.5 16.5c0-2.21 1.79-4 4-4h15c2.21 0 4 1.79 4 4v9c0 2.21-1.79 4-4 4h-3.5l-4.5 4v-4h-7c-2.21 0-4-1.79-4-4v-9z" fill="white" />
+              </svg>
+              <span className="text-sm font-bold text-emerald-900 dark:text-emerald-100">Get free sessions daily</span>
+              <span className="mt-0.5 text-xs text-emerald-700 dark:text-emerald-300">Join our Zalo group</span>
+            </a>
           </div>
         </section>
       )}
@@ -750,6 +823,24 @@ export default function HomePage() {
           </div>
         </div>
       ) : null}
+
+      {/* Floating Zalo CTA pill */}
+      {!zaloJoined && (
+        <button
+          type="button"
+          onClick={handleZaloPillClick}
+          className="fixed bottom-20 left-1/2 z-50 -translate-x-1/2 max-w-[260px] rounded-full bg-gray-900/75 px-4 py-2.5 text-xs font-medium text-white shadow-lg backdrop-blur-md transition hover:bg-gray-900/90 active:scale-95 dark:bg-white/20"
+        >
+          🟢 Buổi FREE mỗi ngày — Tham gia Zalo
+        </button>
+      )}
+
+      {/* Copy toast */}
+      {copyToast && (
+        <div className="pointer-events-none fixed bottom-28 left-1/2 z-[110] -translate-x-1/2 rounded-lg bg-gray-900 px-4 py-2.5 text-xs font-medium text-white shadow-xl animate-in fade-in slide-in-from-bottom-2 duration-200">
+          Đã sao chép — Dán vào Zalo ✓
+        </div>
+      )}
     </div>
   );
 }

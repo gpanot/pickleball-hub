@@ -96,8 +96,12 @@ export default function OrganizerDashboardPage({ params }: { params: Promise<{ c
   const [rankingVisible, setRankingVisible] = useState(100);
 
   const [statsSessions, setStatsSessions] = useState<StatSession[]>([]);
+  const [allClubsSessions, setAllClubsSessions] = useState<StatSession[]>([]);
   const [statsLoading, setStatsLoading] = useState(false);
   const [statsFetched, setStatsFetched] = useState(false);
+  const [allClubsFetched, setAllClubsFetched] = useState(false);
+  const [allClubsLoading, setAllClubsLoading] = useState(false);
+  const [statsScope, setStatsScope] = useState<"you" | "all">("you");
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
 
   useEffect(() => {
@@ -207,13 +211,35 @@ export default function OrganizerDashboardPage({ params }: { params: Promise<{ c
     return () => { cancelled = true; };
   }, [activeTab, statsFetched, sessionOk, clubId]);
 
+  useEffect(() => {
+    if (activeTab !== "stats" || statsScope !== "all" || allClubsFetched || !sessionOk) return;
+    let cancelled = false;
+    setAllClubsLoading(true);
+    const url = `/api/dashboard/organizer/stats?scope=all`;
+    const hit = readPublicApiCache<{ sessions: StatSession[] }>(url);
+    if (hit) {
+      setAllClubsSessions(hit.sessions || []);
+      setAllClubsFetched(true);
+      setAllClubsLoading(false);
+      return;
+    }
+    fetchPublicApiJson<{ sessions: StatSession[] }>(url)
+      .then((d) => { if (!cancelled) { setAllClubsSessions(d.sessions || []); setAllClubsFetched(true); } })
+      .catch(() => { if (!cancelled) setAllClubsSessions([]); })
+      .finally(() => { if (!cancelled) setAllClubsLoading(false); });
+    return () => { cancelled = true; };
+  }, [activeTab, statsScope, allClubsFetched, sessionOk]);
+
+  const activeStatsSessions = statsScope === "all" ? allClubsSessions : statsSessions;
+  const activeStatsLoading = statsScope === "all" ? allClubsLoading : statsLoading;
+
   const weeklyDistribution = useMemo(() => {
-    if (statsSessions.length === 0) return [];
+    if (activeStatsSessions.length === 0) return [];
     const buckets = Array.from({ length: 7 }, (_, i) => ({
       day: i, label: DAY_LABELS[i], sessions: 0, booked: 0, capacity: 0, totalFee: 0, dates: 0,
     }));
     const datesByDay = Array.from({ length: 7 }, () => new Set<string>());
-    for (const s of statsSessions) {
+    for (const s of activeStatsSessions) {
       const d = new Date(s.scrapedDate + "T00:00:00");
       const dow = (d.getDay() + 6) % 7;
       buckets[dow].sessions++;
@@ -226,15 +252,15 @@ export default function OrganizerDashboardPage({ params }: { params: Promise<{ c
       buckets[i].dates = datesByDay[i].size;
     }
     return buckets;
-  }, [statsSessions]);
+  }, [activeStatsSessions]);
 
   const hourlyDistribution = useMemo(() => {
     const filtered = selectedDay !== null
-      ? statsSessions.filter((s) => {
+      ? activeStatsSessions.filter((s) => {
           const d = new Date(s.scrapedDate + "T00:00:00");
           return (d.getDay() + 6) % 7 === selectedDay;
         })
-      : statsSessions;
+      : activeStatsSessions;
     const buckets: Record<number, { sessions: number; booked: number; capacity: number }> = {};
     for (let h = 5; h <= 23; h++) buckets[h] = { sessions: 0, booked: 0, capacity: 0 };
     for (const s of filtered) {
@@ -247,15 +273,15 @@ export default function OrganizerDashboardPage({ params }: { params: Promise<{ c
     return Object.entries(buckets)
       .map(([h, v]) => ({ hour: `${h.padStart(2, "0")}:00`, ...v }))
       .sort((a, b) => a.hour.localeCompare(b.hour));
-  }, [statsSessions, selectedDay]);
+  }, [activeStatsSessions, selectedDay]);
 
   const statsSummary = useMemo(() => {
-    if (statsSessions.length === 0) return null;
-    const totalSessions = statsSessions.length;
-    const totalBooked = statsSessions.reduce((s, x) => s + x.joined, 0);
-    const totalCapacity = statsSessions.reduce((s, x) => s + x.maxPlayers, 0);
+    if (activeStatsSessions.length === 0) return null;
+    const totalSessions = activeStatsSessions.length;
+    const totalBooked = activeStatsSessions.reduce((s, x) => s + x.joined, 0);
+    const totalCapacity = activeStatsSessions.reduce((s, x) => s + x.maxPlayers, 0);
     const avgFillRate = totalCapacity > 0 ? totalBooked / totalCapacity : 0;
-    const uniqueDates = new Set(statsSessions.map((s) => s.scrapedDate)).size;
+    const uniqueDates = new Set(activeStatsSessions.map((s) => s.scrapedDate)).size;
 
     let peakDayIdx = 0;
     let peakDayBooked = 0;
@@ -270,7 +296,7 @@ export default function OrganizerDashboardPage({ params }: { params: Promise<{ c
     }
 
     return { totalSessions, totalBooked, totalCapacity, avgFillRate, uniqueDates, peakDay: DAY_LABELS[peakDayIdx], peakHour };
-  }, [statsSessions, weeklyDistribution, hourlyDistribution]);
+  }, [activeStatsSessions, weeklyDistribution, hourlyDistribution]);
 
   function toggleRival(id: number) {
     setRivalIds((prev) => {
@@ -572,12 +598,28 @@ export default function OrganizerDashboardPage({ params }: { params: Promise<{ c
       {/* Stats Tab */}
       {activeTab === "stats" && (
         <>
-          {statsLoading ? (
+          <div className="flex gap-1 mb-4 p-1 bg-gray-100 dark:bg-gray-800 rounded-lg w-fit">
+            {(["you", "all"] as const).map((scope) => (
+              <button
+                key={scope}
+                onClick={() => setStatsScope(scope)}
+                className={`px-4 py-1.5 text-sm font-medium rounded-md transition ${
+                  statsScope === scope
+                    ? "bg-white dark:bg-gray-700 text-foreground shadow-sm"
+                    : "text-muted hover:text-foreground"
+                }`}
+              >
+                {scope === "you" ? "You" : "All Clubs"}
+              </button>
+            ))}
+          </div>
+
+          {activeStatsLoading ? (
             <div className="space-y-4">
               <div className="animate-pulse h-20 bg-gray-100 dark:bg-gray-800 rounded-xl" />
               <div className="animate-pulse h-64 bg-gray-100 dark:bg-gray-800 rounded-xl" />
             </div>
-          ) : statsSessions.length === 0 ? (
+          ) : activeStatsSessions.length === 0 ? (
             <Section title="Stats">
               <p className="text-sm text-muted py-4">No session data available yet.</p>
             </Section>

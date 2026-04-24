@@ -1,6 +1,8 @@
 import { prisma } from "./db";
 import { vnCalendarDateString } from "./utils";
 
+const MAX_DURATION_MIN = 360;
+
 export interface SessionFilters {
   date?: string;
   timeSlot?: "morning" | "afternoon" | "evening";
@@ -354,7 +356,7 @@ export async function getOrganizerAnalytics(clubId: number) {
     include: {
       dailyStats: { orderBy: { date: "desc" }, take: 30 },
       sessions: {
-        where: { scrapedDate: vnCalendarDateString(0) },
+        where: { scrapedDate: vnCalendarDateString(0), durationMin: { lte: MAX_DURATION_MIN } },
         include: {
           venue: true,
           snapshots: { orderBy: { scrapedAt: "desc" }, take: 1 },
@@ -376,6 +378,7 @@ export async function getOrganizerAnalytics(clubId: number) {
     where: {
       scrapedDate: today,
       clubId: { not: clubId },
+      durationMin: { lte: MAX_DURATION_MIN },
     },
     include: {
       club: true,
@@ -450,7 +453,33 @@ export async function getClubComparison(clubIds: number[]) {
 
 export async function getOrganizerStats(clubId: number) {
   const sessions = await prisma.session.findMany({
-    where: { clubId },
+    where: { clubId, durationMin: { lte: MAX_DURATION_MIN } },
+    select: {
+      scrapedDate: true,
+      startTime: true,
+      maxPlayers: true,
+      feeAmount: true,
+      snapshots: {
+        orderBy: { scrapedAt: "desc" },
+        take: 1,
+        select: { joined: true },
+      },
+    },
+    orderBy: { scrapedDate: "desc" },
+  });
+
+  return sessions.map((s) => ({
+    scrapedDate: s.scrapedDate,
+    startTime: s.startTime,
+    maxPlayers: s.maxPlayers,
+    feeAmount: s.feeAmount,
+    joined: s.snapshots[0]?.joined ?? 0,
+  }));
+}
+
+export async function getAllClubsStats() {
+  const sessions = await prisma.session.findMany({
+    where: { durationMin: { lte: MAX_DURATION_MIN } },
     select: {
       scrapedDate: true,
       startTime: true,

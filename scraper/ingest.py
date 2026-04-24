@@ -534,10 +534,13 @@ def find_venue_id(coord_map, lat, lng):
     return None
 
 
+MAX_DURATION_MIN = 360  # 6 hours — reject events longer than this
+
 def upsert_sessions_and_snapshots(cur, meets, club_id_map, venue_coord_map):
     """Upsert sessions and create daily snapshots."""
     session_count = 0
     snapshot_count = 0
+    skipped_duration = 0
 
     for ref_code, m in meets.items():
         loc = m.get("location") or {}
@@ -548,6 +551,9 @@ def upsert_sessions_and_snapshots(cur, meets, club_id_map, venue_coord_map):
         name = (m.get("name") or "").replace("\n", " ").strip()[:300]
         fee_amount = resolve_fee(m)
         duration_min = (m.get("duration") or 0) // 60
+        if duration_min > MAX_DURATION_MIN:
+            skipped_duration += 1
+            continue
         cost_per_hour = round(fee_amount / (duration_min / 60)) if duration_min > 0 and fee_amount > 0 else 0
 
         skill_min, skill_max = parse_skill_level(name)
@@ -623,6 +629,8 @@ def upsert_sessions_and_snapshots(cur, meets, club_id_map, venue_coord_map):
         """, (session_id, joined, waitlisted))
         snapshot_count += 1
 
+    if skipped_duration > 0:
+        print(f"    Skipped {skipped_duration} sessions with duration > {MAX_DURATION_MIN}min")
     print(f"    Upserted {session_count} sessions, {snapshot_count} snapshots")
 
 
@@ -646,7 +654,7 @@ def compute_club_daily_stats(cur):
             SELECT joined, waitlisted FROM daily_snapshots
             WHERE session_id = s.id ORDER BY scraped_at DESC LIMIT 1
         ) ds ON true
-        WHERE s.scraped_date = %s
+        WHERE s.scraped_date = %s AND s.duration_min <= 360
         GROUP BY s.club_id, s.scraped_date
         ON CONFLICT (club_id, date) DO UPDATE SET
             total_sessions = EXCLUDED.total_sessions,

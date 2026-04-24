@@ -162,8 +162,8 @@ export function SessionFilters({
     update("availability", filters.availability === "filling" ? "" : "filling");
   };
 
-  const toggleSocial = () => {
-    update("sessionType", filters.sessionType === "social" ? "" : "social");
+  const toggleCheapest = () => {
+    update("sortBy", filters.sortBy === "price" ? "time" : "price");
   };
 
   const toggleNearby = () => {
@@ -203,8 +203,8 @@ export function SessionFilters({
         >
           Filling
         </button>
-        <button type="button" onClick={toggleSocial} className={pillClass(filters.sessionType === "social")}>
-          Social
+        <button type="button" onClick={toggleCheapest} className={pillClass(filters.sortBy === "price")}>
+          Cheapest
         </button>
         <button
           type="button"
