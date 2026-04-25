@@ -433,7 +433,7 @@ Gợi ý gần trung tâm:
 
 ${eventBlocks.join("\n\n")}
 
-👉 Xem đầy đủ + lọc giá/giờ: pickleball-hub-gules.vercel.app
+👉 Xem đầy đủ + lọc giá/giờ: https://pickleball-hub-gules.vercel.app
 💬 Nhận thông báo hàng ngày: zalo.me/g/khebsp5x7jlkslmnroxh`;
 
     navigator.clipboard.writeText(text).then(() => {

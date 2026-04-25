@@ -22,6 +22,8 @@ import subprocess
 import sys
 import json
 import threading
+import urllib.error
+import urllib.request
 from datetime import datetime, timezone, timedelta
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
@@ -36,6 +38,31 @@ def run_cmd(cmd: list[str]) -> int:
     print(f"  >> {' '.join(cmd)}", flush=True)
     result = subprocess.run(cmd)
     return result.returncode
+
+
+def trigger_vercel_revalidation() -> None:
+    """Best-effort Next.js cache revalidation; never raises."""
+    base = (os.environ.get("VERCEL_APP_URL") or "").strip().rstrip("/")
+    token = os.environ.get("REVALIDATE_SECRET", "")
+    if not base or not token:
+        return
+    url = f"{base}/api/revalidate"
+    try:
+        req = urllib.request.Request(
+            url,
+            data=b"",
+            method="POST",
+            headers={"x-revalidate-token": token},
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            if resp.status == 200:
+                print("  [revalidate] Vercel cache revalidated successfully", flush=True)
+            else:
+                print(f"  [revalidate] unexpected status: {resp.status}", flush=True)
+    except urllib.error.HTTPError as e:
+        print(f"  [revalidate] failed: HTTP {e.code}", flush=True)
+    except Exception as e:
+        print(f"  [revalidate] request error: {e}", flush=True)
 
 
 def run_scrape() -> dict:
@@ -61,6 +88,9 @@ def run_scrape() -> dict:
 
         print("\n=== STEP 2/2: Ingest today + tomorrow events ===", flush=True)
         ingest_rc = run_cmd([sys.executable, "ingest.py"])
+
+        if ingest_rc == 0:
+            trigger_vercel_revalidation()
 
         print("\n=== Done ===", flush=True)
         return {
