@@ -49,15 +49,6 @@ export default function RootLayout({
           src="https://cloud.umami.is/script.js"
           data-website-id="b7f3041f-7161-41ba-a414-d5c0618a2000"
         />
-        {clarityProjectId ? (
-          <Script
-            id="clarity-script"
-            strategy="afterInteractive"
-            dangerouslySetInnerHTML={{
-              __html: `(function(c,l,a,r,i,t,y){c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y)})(window,document,"clarity","script",${JSON.stringify(clarityProjectId)});`,
-            }}
-          />
-        ) : null}
       </head>
       <body className="min-h-full flex flex-col">
         <ClientProviders>
@@ -65,6 +56,13 @@ export default function RootLayout({
           <main className="min-w-0 flex-1">{children}</main>
           <AppFooter />
         </ClientProviders>
+        {clarityProjectId ? (
+          <Script
+            id="clarity-script"
+            src={`https://www.clarity.ms/tag/${clarityProjectId}`}
+            strategy="afterInteractive"
+          />
+        ) : null}
       </body>
     </html>
   );
