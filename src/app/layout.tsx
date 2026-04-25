@@ -31,7 +31,13 @@ export const metadata: Metadata = {
   },
 };
 
-const clarityProjectId = process.env.NEXT_PUBLIC_CLARITY_PROJECT_ID;
+/** Default project UUID from Mouseflow snippet; override with NEXT_PUBLIC_MOUSEFLOW_PROJECT_ID. */
+const MOUSEFLOW_DEFAULT_PROJECT_ID = "c05d4709-4143-4a9b-b914-0aa21a9f2bdf";
+
+const mouseflowProjectId =
+  process.env.NEXT_PUBLIC_MOUSEFLOW_PROJECT_ID || MOUSEFLOW_DEFAULT_PROJECT_ID;
+
+const mouseflowScriptSrc = `https://cdn.mouseflow.com/projects/${mouseflowProjectId}.js`;
 
 export default function RootLayout({
   children,
@@ -56,13 +62,13 @@ export default function RootLayout({
           <main className="min-w-0 flex-1">{children}</main>
           <AppFooter />
         </ClientProviders>
-        {clarityProjectId ? (
-          <Script
-            id="clarity-script"
-            src={`https://www.clarity.ms/tag/${clarityProjectId}`}
-            strategy="afterInteractive"
-          />
-        ) : null}
+        <Script
+          id="mouseflow"
+          strategy="afterInteractive"
+          dangerouslySetInnerHTML={{
+            __html: `window._mfq=window._mfq||[];(function(){var mf=document.createElement("script");mf.type="text/javascript";mf.defer=true;mf.src=${JSON.stringify(mouseflowScriptSrc)};document.getElementsByTagName("head")[0].appendChild(mf);})();`,
+          }}
+        />
       </body>
     </html>
   );

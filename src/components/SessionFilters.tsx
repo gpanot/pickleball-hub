@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { useI18n } from "@/lib/i18n";
-import { clarityTag } from "@/lib/analytics";
+import { mouseflowTag } from "@/lib/analytics";
 
 export interface FilterState {
   timeSlot: string;
@@ -158,7 +158,7 @@ export function SessionFilters({
     if (filters.maxPrice === "0") {
       onChange({ ...filters, maxPrice: "", availability: "" });
     } else {
-      clarityTag("filter", "free");
+      mouseflowTag("filter:free");
       onChange({ ...filters, maxPrice: "0", availability: "available,filling" });
     }
   };

@@ -1,12 +1,10 @@
-type ClarityFn = (command: "set", key: string, value: string) => void;
+/** Mouseflow command queue — initialized by the snippet in root layout. */
+type MouseflowQueue = unknown[][];
 
-function getClarity(): ClarityFn | undefined {
-  if (typeof window === "undefined") return undefined;
-  return (window as Window & { clarity?: ClarityFn }).clarity;
+/** Custom session tag in Mouseflow (filter sessions in the dashboard). */
+export function mouseflowTag(name: string): void {
+  if (typeof window === "undefined") return;
+  const w = window as Window & { _mfq?: MouseflowQueue };
+  w._mfq = w._mfq || [];
+  w._mfq.push(["tag", name]);
 }
-
-export const clarityTag = (key: string, value: string) => {
-  const clarity = getClarity();
-  if (!clarity) return;
-  clarity("set", key, value);
-};
