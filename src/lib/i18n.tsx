@@ -84,6 +84,7 @@ const translations = {
     mostAvailable: "Most available",
     foodDrink: "Food & Drink",
     hasFoodDrink: "Has food/drink",
+    minimumTwoPlayers: "Minimum 2 players:",
     from: "From",
     session: "session",
     // Clubs
@@ -185,6 +186,7 @@ const translations = {
     mostAvailable: "Còn nhiều chỗ nhất",
     foodDrink: "Đồ ăn & Uống",
     hasFoodDrink: "Có đồ ăn/uống",
+    minimumTwoPlayers: "Tối thiểu 2 người chơi:",
     from: "Từ",
     session: "buổi chơi",
     // Clubs

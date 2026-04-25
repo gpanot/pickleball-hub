@@ -140,6 +140,7 @@ export default function HomePage() {
     sessionType: "",
     search: "",
     sortBy: "time",
+    excludeFewPlayers: "true",
   });
 
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
@@ -276,6 +277,10 @@ export default function HomePage() {
       result = result.filter((s) => parseSessionType(s.name) === filters.sessionType);
     }
 
+    if (filters.excludeFewPlayers === "true") {
+      result = result.filter((s) => s.joined > 2);
+    }
+
     if (filters.foodDrink === "true") {
       result = result.filter((s) => hasFoodDrinkPerk(s.perks));
     }
@@ -330,6 +335,7 @@ export default function HomePage() {
     filters.availability,
     filters.sortBy,
     filters.sessionType,
+    filters.excludeFewPlayers,
     filters.foodDrink,
     userLocation,
   ]);

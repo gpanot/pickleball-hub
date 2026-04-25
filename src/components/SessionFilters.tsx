@@ -12,6 +12,8 @@ export interface FilterState {
   sessionType: string;
   search: string;
   sortBy: string;
+  /** When "true", hide sessions with joined count ≤ 2 (typical friend-only events). */
+  excludeFewPlayers: string;
 }
 
 interface SessionFiltersProps {
@@ -31,6 +33,16 @@ function AdvancedFilters({
   const { t } = useI18n();
   return (
     <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:gap-3">
+      <label className="col-span-2 flex cursor-pointer items-center gap-2.5 py-0.5 sm:basis-full sm:w-full">
+        <input
+          type="checkbox"
+          checked={filters.excludeFewPlayers === "true"}
+          onChange={(e) => update("excludeFewPlayers", e.target.checked ? "true" : "")}
+          className="h-4 w-4 shrink-0 rounded border-card-border text-primary focus:ring-primary"
+        />
+        <span className="text-xs font-medium text-muted">{t("minimumTwoPlayers")}</span>
+      </label>
+
       <div className="flex flex-col gap-1">
         <label className="text-xs font-medium text-muted">{t("time")}</label>
         <select
