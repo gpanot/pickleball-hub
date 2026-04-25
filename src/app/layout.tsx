@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Script from "next/script";
 import { Geist, Geist_Mono } from "next/font/google";
 import { AppNavbar } from "@/components/AppNavbar";
 import { AppFooter } from "@/components/AppFooter";
@@ -55,6 +54,13 @@ export default function RootLayout({
           src="https://cloud.umami.is/script.js"
           data-website-id="b7f3041f-7161-41ba-a414-d5c0618a2000"
         />
+        {/* Mouseflow: queue first, then deferred project script (same as official snippet; plain tags work reliably on Vercel). */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: "window._mfq = window._mfq || [];",
+          }}
+        />
+        <script defer src={mouseflowScriptSrc} type="text/javascript" />
       </head>
       <body className="min-h-full flex flex-col">
         <ClientProviders>
@@ -62,13 +68,6 @@ export default function RootLayout({
           <main className="min-w-0 flex-1">{children}</main>
           <AppFooter />
         </ClientProviders>
-        <Script
-          id="mouseflow"
-          strategy="afterInteractive"
-          dangerouslySetInnerHTML={{
-            __html: `window._mfq=window._mfq||[];(function(){var mf=document.createElement("script");mf.type="text/javascript";mf.defer=true;mf.src=${JSON.stringify(mouseflowScriptSrc)};document.getElementsByTagName("head")[0].appendChild(mf);})();`,
-          }}
-        />
       </body>
     </html>
   );
