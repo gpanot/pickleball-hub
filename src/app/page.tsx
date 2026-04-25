@@ -77,6 +77,14 @@ type Session = {
   venue: { name: string; address: string; latitude: number; longitude: number } | null;
 };
 
+/** Hide sessions with no place to go (private / friend listings). Always applied — no UI toggle. */
+function sessionHasVenueAddressOrLocation(s: Session): boolean {
+  const v = s.venue;
+  if (!v) return false;
+  if (v.name?.trim() || v.address?.trim()) return true;
+  return v.latitude != null && v.longitude != null;
+}
+
 function TimeGroupedList({
   groups,
   visibleCount,
@@ -252,7 +260,7 @@ export default function HomePage() {
   }, []);
 
   const filtered = useMemo(() => {
-    let result = [...sessions];
+    let result = sessions.filter(sessionHasVenueAddressOrLocation);
 
     if (dayTab === "today") {
       const effectiveFilter = isMobile ? "fromNow" : timeFilter;
