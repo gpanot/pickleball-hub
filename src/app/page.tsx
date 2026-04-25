@@ -381,10 +381,14 @@ export default function HomePage() {
   /** Free, has spots, start at or after 18:00; nearest first, max 3 */
   const freeTonightCards = useMemo(() => {
     const min18 = 18 * 60;
+    const hasVenueLocation = (s: Session) =>
+      Boolean(s.venue?.name?.trim() || s.venue?.address?.trim());
     const eligible = sessions.filter((s) => {
       if (s.feeAmount !== 0) return false;
       if (s.fillRate >= 1) return false;
-      return timeToMinutes(s.startTime) >= min18;
+      if (timeToMinutes(s.startTime) < min18) return false;
+      if (!hasVenueLocation(s)) return false;
+      return true;
     });
 
     const distKm = (s: Session) => {
