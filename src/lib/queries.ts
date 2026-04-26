@@ -91,6 +91,7 @@ export async function getSessions(filters: SessionFilters = {}) {
         orderBy: { scrapedAt: "desc" },
         take: 1,
       },
+      duprStat: true,
     },
     orderBy: { startTime: "asc" },
   });
@@ -100,12 +101,16 @@ export async function getSessions(filters: SessionFilters = {}) {
     const joined = snap?.joined ?? 0;
     const waitlisted = snap?.waitlisted ?? 0;
     const fillRate = s.maxPlayers > 0 ? joined / s.maxPlayers : 0;
+    const { duprStat, ...sessionRest } = s;
+    const duprParticipationPct =
+      duprStat != null ? Number(duprStat.duprParticipationPct) : null;
 
     return {
-      ...s,
+      ...sessionRest,
       joined,
       waitlisted,
       fillRate: Math.round(fillRate * 100) / 100,
+      duprParticipationPct,
     };
   });
 }
@@ -234,6 +239,7 @@ export async function getClubBySlug(slug: string) {
         include: {
           venue: true,
           snapshots: { orderBy: { scrapedAt: "desc" }, take: 1 },
+          duprStat: true,
         },
       },
       dailyStats: {
@@ -243,7 +249,16 @@ export async function getClubBySlug(slug: string) {
     },
   });
 
-  return club;
+  if (!club) return null;
+
+  return {
+    ...club,
+    sessions: club.sessions.map(({ duprStat, ...session }) => ({
+      ...session,
+      duprParticipationPct:
+        duprStat != null ? Number(duprStat.duprParticipationPct) : null,
+    })),
+  };
 }
 
 async function buildVenueNameMap() {

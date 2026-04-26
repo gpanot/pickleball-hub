@@ -1,18 +1,23 @@
 "use client";
 
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import React, { useCallback, useEffect, useId, useRef, useState } from "react";
 import {
   computeSessionScore,
   getDuprBadgeLabel,
   getScoreLabel,
+  type DuprBadge,
   type SessionScoreInput,
+  type SessionScoreResult,
 } from "@/lib/scoring";
-import { useI18n } from "@/lib/i18n";
+import { useI18n, type TranslationKey } from "@/lib/i18n";
 
 const FILL_GREEN = "#22c55e";
 const COMMUNITY_ACTIVE = "#22c55e";
 const COMMUNITY_INACTIVE = "#9ca3af";
 const VIBE_GREY = "#9ca3af";
+
+const MOBILE_MAX_PX = 767;
 
 function pctWidth(score: number): number {
   return Math.min(100, Math.max(0, score));
@@ -46,6 +51,97 @@ function ScoreBarRow({
   );
 }
 
+function duprTierLabel(badge: DuprBadge, t: (key: TranslationKey) => string): string {
+  switch (badge) {
+    case "competitive":
+      return t("scoreDuprTierCompetitive");
+    case "mixed":
+      return t("scoreDuprTierMixed");
+    case "casual":
+      return t("scoreDuprTierCasual");
+  }
+}
+
+function PlayerLevelsRow({
+  duprParticipationPct,
+  result,
+  t,
+}: {
+  duprParticipationPct: number | null | undefined;
+  result: SessionScoreResult;
+  t: (key: TranslationKey) => string;
+}) {
+  const loading =
+    duprParticipationPct == null || (typeof duprParticipationPct === "number" && Number.isNaN(duprParticipationPct));
+
+  const subtitle = loading
+    ? t("scoreDuprLoading")
+    : result.duprPercent != null && result.duprBadge
+      ? `${result.duprPercent}% ${t("scoreDuprHaveRating")} ${duprTierLabel(result.duprBadge, t)}`
+      : t("scoreDuprLoading");
+
+  return (
+    <div className="flex flex-col gap-0.5 pt-0.5">
+      <span className="w-full text-left text-[11px] font-medium text-foreground">{t("scorePlayerLevels")}</span>
+      <p className="text-[10px] leading-snug text-muted-foreground">{subtitle}</p>
+    </div>
+  );
+}
+
+function ScoreBreakdownContent({
+  result,
+  input,
+  communityColor,
+  scoreColor,
+  t,
+}: {
+  result: SessionScoreResult;
+  input: SessionScoreInput;
+  communityColor: string;
+  scoreColor: string;
+  t: (key: TranslationKey) => string;
+}) {
+  return (
+    <>
+      <p className="mb-2 text-[11px] leading-snug text-muted-foreground">{t("scoreHowCalculated")}</p>
+      <div className="flex flex-col gap-2">
+        <div className="h-px w-full shrink-0 bg-card-border" aria-hidden />
+        <ScoreBarRow label={t("scoreFill")} pct={result.fillScore} fillColor={FILL_GREEN} />
+        <ScoreBarRow label={t("scoreValue")} pct={result.valueScore} fillColor={scoreColor} />
+        <ScoreBarRow label={t("scoreCommunity")} pct={result.zaloScore} fillColor={communityColor} />
+        <div className="flex items-center gap-3">
+          <span className="w-[4.5rem] shrink-0 text-left text-[11px] text-foreground">{t("scoreVibe")}</span>
+          <div className="flex min-w-0 flex-1 justify-center px-1">
+            <div className="flex w-full max-w-[9rem] flex-col items-center gap-1">
+              <div
+                className="h-2 w-full rounded border border-dashed opacity-90"
+                style={{ borderColor: VIBE_GREY, backgroundColor: `${VIBE_GREY}18` }}
+              />
+              <span className="text-[10px] italic text-muted-foreground">{t("scoreSoon")}</span>
+            </div>
+          </div>
+        </div>
+        <div className="h-px w-full shrink-0 bg-card-border" aria-hidden />
+        <PlayerLevelsRow duprParticipationPct={input.duprParticipationPct} result={result} t={t} />
+      </div>
+    </>
+  );
+}
+
+function useIsMobileSheet(): boolean {
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const mq = window.matchMedia(`(max-width: ${MOBILE_MAX_PX}px)`);
+    const sync = () => setIsMobile(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+
+  return isMobile;
+}
+
 export function SessionScoreBadge({
   input,
   className = "",
@@ -59,10 +155,14 @@ export function SessionScoreBadge({
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
   const popoverId = useId();
+  const isMobile = useIsMobileSheet();
+  const [dragY, setDragY] = useState(0);
+  const dragStartY = useRef<number | null>(null);
 
   useEffect(() => {
     if (!open) return;
     const onDoc = (e: MouseEvent) => {
+      if (isMobile) return;
       if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
         setOpen(false);
       }
@@ -76,13 +176,96 @@ export function SessionScoreBadge({
       document.removeEventListener("mousedown", onDoc);
       document.removeEventListener("keydown", onKey);
     };
-  }, [open]);
+  }, [open, isMobile]);
+
+  useEffect(() => {
+    if (!open || !isMobile) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [open, isMobile]);
 
   const toggle = useCallback(() => {
     setOpen((v) => !v);
   }, []);
 
+  const closeSheet = useCallback(() => {
+    setOpen(false);
+    setDragY(0);
+    dragStartY.current = null;
+  }, []);
+
   const communityColor = input.hasZalo ? COMMUNITY_ACTIVE : COMMUNITY_INACTIVE;
+
+  const onHandlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    dragStartY.current = e.clientY;
+    setDragY(0);
+  };
+
+  const onHandlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (dragStartY.current == null) return;
+    const delta = e.clientY - dragStartY.current;
+    setDragY(Math.max(0, delta));
+  };
+
+  const onHandlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (dragStartY.current == null) return;
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      /* ignore */
+    }
+    if (dragY > 72) {
+      closeSheet();
+    } else {
+      setDragY(0);
+    }
+    dragStartY.current = null;
+  };
+
+  const breakdown = (
+    <ScoreBreakdownContent
+      result={result}
+      input={input}
+      communityColor={communityColor}
+      scoreColor={color}
+      t={t}
+    />
+  );
+
+  const sheetContent = open && isMobile && (
+    <>
+      <button
+        type="button"
+        aria-label={t("close")}
+        className="fixed inset-0 z-[100] bg-black/50"
+        onClick={closeSheet}
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        id={popoverId}
+        className="fixed bottom-0 left-0 right-0 z-[101] max-h-[88vh] overflow-y-auto rounded-t-[16px] bg-white px-4 pb-6 pt-2 font-sans text-xs shadow-[0_-8px_30px_rgba(0,0,0,0.12)] dark:border-t dark:border-card-border dark:bg-card"
+        style={{ transform: `translateY(${dragY}px)` }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div
+          className="mx-auto mb-3 flex cursor-grab touch-none flex-col items-center gap-2 active:cursor-grabbing"
+          onPointerDown={onHandlePointerDown}
+          onPointerMove={onHandlePointerMove}
+          onPointerUp={onHandlePointerUp}
+          onPointerCancel={onHandlePointerUp}
+        >
+          <div className="h-1 w-10 shrink-0 rounded-full bg-muted-foreground/35" aria-hidden />
+        </div>
+        {breakdown}
+      </div>
+    </>
+  );
 
   return (
     <div ref={wrapRef} className={`relative shrink-0 ${className}`}>
@@ -115,7 +298,7 @@ export function SessionScoreBadge({
           </span>
         </span>
         {result.duprBadge && (
-          <span className="max-w-[140px] truncate text-[10px] font-normal leading-tight text-muted">
+          <span className="max-w-[140px] truncate text-[10px] font-normal leading-tight text-muted-foreground">
             {getDuprBadgeLabel(result.duprBadge).emoji}{" "}
             {getDuprBadgeLabel(result.duprBadge).label}
             {result.duprPercent !== null && ` · ${result.duprPercent}%`}
@@ -123,46 +306,17 @@ export function SessionScoreBadge({
         )}
       </button>
 
-      {open && (
+      {open && !isMobile && (
         <div
           id={popoverId}
           role="dialog"
           className="absolute right-0 top-full z-50 mt-1 w-[min(100vw-2rem,260px)] rounded-lg border border-card-border bg-card p-4 font-sans text-xs shadow-lg"
         >
-          <p className="mb-2 text-[11px] leading-snug text-muted-foreground">{t("scoreHowCalculated")}</p>
-          <div className="flex flex-col gap-2">
-            <div className="h-px w-full shrink-0 bg-card-border" aria-hidden />
-            <ScoreBarRow label={t("scoreFill")} pct={result.fillScore} fillColor={FILL_GREEN} />
-            <ScoreBarRow label={t("scoreValue")} pct={result.valueScore} fillColor={color} />
-            <ScoreBarRow
-              label={t("scoreCommunity")}
-              pct={result.zaloScore}
-              fillColor={communityColor}
-            />
-            <div className="flex items-center gap-3">
-              <span className="w-[4.5rem] shrink-0 text-left text-[11px] text-foreground">
-                {t("scoreVibe")}
-              </span>
-              <div className="flex min-w-0 flex-1 justify-center px-1">
-                <div className="flex w-full max-w-[9rem] flex-col items-center gap-1">
-                  <div
-                    className="h-2 w-full rounded border border-dashed opacity-90"
-                    style={{ borderColor: VIBE_GREY, backgroundColor: `${VIBE_GREY}18` }}
-                  />
-                  <span className="text-[10px] italic text-muted-foreground">{t("scoreSoon")}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-          {result.duprBadge && (
-            <p className="mt-2 border-t border-card-border pt-2 text-[11px] text-muted-foreground">
-              DUPR: {getDuprBadgeLabel(result.duprBadge).emoji}{" "}
-              {getDuprBadgeLabel(result.duprBadge).label}
-              {result.duprPercent !== null && ` · ${result.duprPercent}%`}
-            </p>
-          )}
+          {breakdown}
         </div>
       )}
+
+      {typeof document !== "undefined" && open && isMobile && createPortal(sheetContent, document.body)}
     </div>
   );
 }
