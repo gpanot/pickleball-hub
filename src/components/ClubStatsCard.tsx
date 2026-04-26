@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { formatVND } from "@/lib/utils";
+import { getScoreLabel } from "@/lib/scoring";
+import { useI18n } from "@/lib/i18n";
 
 interface ClubStatsCardProps {
   club: {
@@ -16,12 +18,16 @@ interface ClubStatsCardProps {
     totalSessionsWeek: number;
     totalJoined: number;
     totalCapacity: number;
+    avgSessionScore?: number | null;
   };
 }
 
 export function ClubStatsCard({ club }: ClubStatsCardProps) {
+  const { t } = useI18n();
   const fillPct = Math.round(club.avgFillRate * 100);
   const hasContact = !!club.zaloUrl || !!club.phone;
+  const scoreLabel =
+    club.avgSessionScore != null ? getScoreLabel(club.avgSessionScore) : null;
 
   return (
     <Link
@@ -52,11 +58,21 @@ export function ClubStatsCard({ club }: ClubStatsCardProps) {
             {club.totalJoined}/{club.totalCapacity}
           </p>
         </div>
-        <div>
-          <span className="text-muted">Fill rate</span>
-          <p className={`font-bold ${fillPct >= 75 ? "text-yellow-500" : "text-green-500"}`}>
-            {fillPct}%
-          </p>
+        <div className="flex flex-col gap-1.5">
+          <div>
+            <span className="text-muted">Fill rate</span>
+            <p className={`font-bold ${fillPct >= 75 ? "text-yellow-500" : "text-green-500"}`}>
+              {fillPct}%
+            </p>
+          </div>
+          {scoreLabel && club.avgSessionScore != null && (
+            <div>
+              <span className="text-muted">{t("clubAvgScore")}</span>
+              <p className="font-bold text-xs leading-tight" style={{ color: scoreLabel.color }}>
+                {club.avgSessionScore} · {scoreLabel.label}
+              </p>
+            </div>
+          )}
         </div>
         <div className="col-span-2">
           <span className="text-muted">Avg price</span>

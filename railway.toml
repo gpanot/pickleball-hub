@@ -1,5 +1,7 @@
 [build]
 builder = "dockerfile"
+# Image CMD is scraper/Dockerfile: `python entrypoint.py` (not ingest.py directly).
+# entrypoint.py runs scan_clubs + ingest on a schedule / trigger.
 dockerfilePath = "scraper/Dockerfile"
 
 [deploy]

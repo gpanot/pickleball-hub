@@ -1,4 +1,5 @@
 import { prisma } from "./db";
+import { computeSessionScore } from "./scoring";
 import { vnCalendarDateString } from "./utils";
 
 const MAX_DURATION_MIN = 360;
@@ -122,6 +123,33 @@ export async function getSessionsLastScrapedAt(date?: string) {
 export async function getClubs() {
   const todayStr = vnCalendarDateString(0);
 
+  const todaySessionsForScores = await prisma.session.findMany({
+    where: { scrapedDate: todayStr },
+    select: {
+      clubId: true,
+      maxPlayers: true,
+      feeAmount: true,
+      durationMin: true,
+      club: { select: { zaloUrl: true } },
+      snapshots: { orderBy: { scrapedAt: "desc" }, take: 1 },
+    },
+  });
+
+  const scoresByClub = new Map<number, number[]>();
+  for (const s of todaySessionsForScores) {
+    const joined = s.snapshots[0]?.joined ?? 0;
+    const { score } = computeSessionScore({
+      confirmedPlayers: joined,
+      capacity: s.maxPlayers,
+      priceVnd: s.feeAmount,
+      durationMinutes: s.durationMin,
+      hasZalo: Boolean(s.club.zaloUrl),
+    });
+    const list = scoresByClub.get(s.clubId);
+    if (list) list.push(score);
+    else scoresByClub.set(s.clubId, [score]);
+  }
+
   const clubs = await prisma.club.findMany({
     include: {
       _count: { select: { sessions: true } },
@@ -160,6 +188,12 @@ export async function getClubs() {
 
     const avgFeeRounded = Math.round(avgFee);
 
+    const clubScores = scoresByClub.get(c.id) ?? [];
+    const avgSessionScore =
+      clubScores.length > 0
+        ? Math.round(clubScores.reduce((a, b) => a + b, 0) / clubScores.length)
+        : null;
+
     return {
       id: c.id,
       name: c.name,
@@ -179,6 +213,7 @@ export async function getClubs() {
       revenueEstimate: Math.round(todayStat?.revenueEstimate ?? 0),
       latitude: venueCoords?.latitude ?? null,
       longitude: venueCoords?.longitude ?? null,
+      avgSessionScore,
     };
   });
 }

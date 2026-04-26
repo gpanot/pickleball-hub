@@ -34,6 +34,7 @@ type Club = {
   totalCapacity: number;
   latitude: number | null;
   longitude: number | null;
+  avgSessionScore?: number | null;
 };
 
 function formatLastUpdatedLabel(lastUpdatedAt: string | null): string {

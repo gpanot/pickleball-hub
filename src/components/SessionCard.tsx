@@ -3,6 +3,7 @@
 import { mouseflowTag } from "@/lib/analytics";
 import { FillRateBar } from "./FillRateBar";
 import { PriceTag } from "./PriceTag";
+import { SessionScoreBadge } from "./SessionScoreBadge";
 import { perkEmoji, parseSessionType, haversineKm, formatDistanceKm } from "@/lib/utils";
 
 interface SessionCardProps {
@@ -24,7 +25,8 @@ interface SessionCardProps {
     status: string;
     joined: number;
     waitlisted: number;
-    club: { name: string; slug: string };
+    club: { name: string; slug: string; zaloUrl?: string | null };
+    duprParticipationPct?: number | null;
     venue: { name: string; address: string; latitude?: number; longitude?: number } | null;
   };
 }
@@ -88,7 +90,19 @@ export function SessionCard({ session, userLocation }: SessionCardProps) {
               </div>
             )}
           </div>
-          <PriceTag feeAmount={s.feeAmount} costPerHour={s.costPerHour} />
+          <div className="flex shrink-0 flex-col items-end gap-1.5">
+            <SessionScoreBadge
+              input={{
+                confirmedPlayers: s.joined,
+                capacity: s.maxPlayers,
+                priceVnd: s.feeAmount,
+                durationMinutes: s.durationMin,
+                hasZalo: Boolean(s.club.zaloUrl),
+                duprParticipationPct: s.duprParticipationPct,
+              }}
+            />
+            <PriceTag feeAmount={s.feeAmount} costPerHour={s.costPerHour} />
+          </div>
         </div>
         <div className="min-w-0 w-full">
           <FillRateBar joined={s.joined} maxPlayers={s.maxPlayers} waitlisted={s.waitlisted} />

@@ -110,6 +110,7 @@ function AdvancedFilters({
           className="w-full rounded-lg border border-card-border bg-background px-3 py-2 text-sm sm:min-h-0 sm:py-1.5 min-h-[44px]"
         >
           <option value="time">{t("startTime")}</option>
+          <option value="score">{t("bestScore")}</option>
           <option value="nearby">{t("nearestFirst")}</option>
           <option value="price">{t("priceLowFirst")}</option>
           <option value="costPerHour">{t("costPerHour")}</option>

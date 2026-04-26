@@ -69,6 +69,8 @@ model Session {
   club           Club      @relation(fields: [clubId], references: [id])
   venue          Venue?    @relation(fields: [venueId], references: [id])
   snapshots      DailySnapshot[]
+  rosters        SessionRoster[]
+  duprStat       SessionDuprStat?
 
   @@unique([referenceCode, scrapedDate])
   @@index([scrapedDate])
@@ -124,4 +126,58 @@ model ClubDailyStat {
   @@unique([clubId, date])
   @@index([date])
   @@map("club_daily_stats")
+}
+
+/// Reclub user; DUPR fields from /players/userIds when roster scrape runs.
+model Player {
+  userId                   BigInt    @id @map("user_id")
+  username                 String?
+  displayName              String?   @map("display_name")
+  duprSingles              Decimal?  @map("dupr_singles") @db.Decimal(5, 3)
+  duprDoubles              Decimal?  @map("dupr_doubles") @db.Decimal(5, 3)
+  duprSinglesReliability   Int?      @map("dupr_singles_reliability")
+  duprDoublesReliability   Int?      @map("dupr_doubles_reliability")
+  duprId                   String?   @map("dupr_id")
+  duprUpdatedAt            DateTime? @map("dupr_updated_at")
+  lastSeenAt               DateTime? @map("last_seen_at")
+  createdAt                DateTime  @default(now()) @map("created_at")
+  updatedAt                DateTime  @updatedAt @map("updated_at")
+
+  rosters SessionRoster[]
+
+  @@map("players")
+}
+
+/// One row per session per user (confirmed roster from Nuxt scrape).
+model SessionRoster {
+  id          Int      @id @default(autoincrement())
+  sessionId   Int      @map("session_id")
+  userId      BigInt   @map("user_id")
+  isHost      Boolean  @default(false) @map("is_host")
+  isConfirmed Boolean  @default(true) @map("is_confirmed")
+  scrapedAt   DateTime @default(now()) @map("scraped_at")
+
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  player  Player  @relation(fields: [userId], references: [userId], onDelete: Cascade)
+
+  @@unique([sessionId, userId])
+  @@index([sessionId])
+  @@index([userId])
+  @@map("session_rosters")
+}
+
+/// Aggregated DUPR participation for a session row (keyed by sessions.id).
+model SessionDuprStat {
+  sessionId              Int      @id @map("session_id")
+  scrapedDate            String   @map("scraped_date")
+  totalConfirmed         Int      @default(0) @map("total_confirmed")
+  playersWithDupr        Int      @default(0) @map("players_with_dupr")
+  duprParticipationPct   Decimal  @default(0) @map("dupr_participation_pct") @db.Decimal(5, 2)
+  avgDuprSingles         Decimal? @map("avg_dupr_singles") @db.Decimal(5, 3)
+  avgDuprDoubles         Decimal? @map("avg_dupr_doubles") @db.Decimal(5, 3)
+  updatedAt              DateTime @updatedAt @map("updated_at")
+
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@map("session_dupr_stats")
 }

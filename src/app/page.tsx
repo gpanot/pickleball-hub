@@ -15,6 +15,7 @@ import {
 import { readPublicApiCache, writePublicApiCache } from "@/lib/public-api-cache";
 import { useI18n } from "@/lib/i18n";
 import { mouseflowTag } from "@/lib/analytics";
+import { computeSessionScore } from "@/lib/scoring";
 
 const ZALO_GROUP_URL = "https://zalo.me/g/khebsp5x7jlkslmnroxh";
 
@@ -73,7 +74,8 @@ type Session = {
   joined: number;
   waitlisted: number;
   fillRate: number;
-  club: { name: string; slug: string };
+  club: { name: string; slug: string; zaloUrl?: string | null };
+  duprParticipationPct?: number | null;
   venue: { name: string; address: string; latitude: number; longitude: number } | null;
 };
 
@@ -183,6 +185,18 @@ export default function HomePage() {
     mq.addEventListener("change", handler);
     return () => mq.removeEventListener("change", handler);
   }, []);
+
+  const defaultSortBy = useMemo<"time" | "score">(() => {
+    if (dayTab === "tomorrow") return "time";
+    if (dayTab === "today" && !isMobile && timeFilter === "past") return "time";
+    return "score";
+  }, [dayTab, timeFilter, isMobile]);
+
+  useLayoutEffect(() => {
+    queueMicrotask(() => {
+      setFilters((f) => ({ ...f, sortBy: defaultSortBy }));
+    });
+  }, [defaultSortBy]);
 
   useEffect(() => {
     setSearchDraft(filters.search);
@@ -329,6 +343,23 @@ export default function HomePage() {
           result.sort((a, b) => a.startTime.localeCompare(b.startTime));
         }
         break;
+      case "score": {
+        const scoreOf = (s: Session) =>
+          computeSessionScore({
+            confirmedPlayers: s.joined,
+            capacity: s.maxPlayers,
+            priceVnd: s.feeAmount,
+            durationMinutes: s.durationMin,
+            hasZalo: Boolean(s.club.zaloUrl),
+            duprParticipationPct: s.duprParticipationPct,
+          }).score;
+        result.sort((a, b) => {
+          const diff = scoreOf(b) - scoreOf(a);
+          if (diff !== 0) return diff;
+          return a.startTime.localeCompare(b.startTime);
+        });
+        break;
+      }
       default:
         result.sort((a, b) => a.startTime.localeCompare(b.startTime));
     }

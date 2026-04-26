@@ -4,6 +4,7 @@ import { useState, useLayoutEffect, use } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { FillRateBar } from "@/components/FillRateBar";
+import { SessionScoreBadge } from "@/components/SessionScoreBadge";
 import { formatVND, vnCalendarDateString } from "@/lib/utils";
 import { readPublicApiCache, writePublicApiCache } from "@/lib/public-api-cache";
 
@@ -35,6 +36,7 @@ type ClubDetail = {
     perks: string[];
     eventUrl: string;
     scrapedDate: string;
+    duprParticipationPct?: number | null;
     venue: { name: string; latitude: number; longitude: number } | null;
     snapshots: { joined: number; waitlisted: number }[];
   }[];
@@ -223,8 +225,21 @@ export default function ClubProfilePage({ params }: { params: Promise<{ slug: st
                         <p className="text-sm font-medium truncate">{s.name}</p>
                         {s.venue && <p className="text-xs text-muted truncate">📍 {s.venue.name}</p>}
                       </div>
-                      <div className="text-right text-sm font-bold shrink-0">
-                        {formatVND(s.feeAmount)}
+                      <div className="flex shrink-0 flex-col items-end gap-1">
+                        <SessionScoreBadge
+                          className="max-w-[min(160px,45vw)]"
+                          input={{
+                            confirmedPlayers: joined,
+                            capacity: s.maxPlayers,
+                            priceVnd: s.feeAmount,
+                            durationMinutes: s.durationMin,
+                            hasZalo: Boolean(club.zaloUrl),
+                            duprParticipationPct: s.duprParticipationPct,
+                          }}
+                        />
+                        <span className="text-right text-sm font-bold">
+                          {formatVND(s.feeAmount)}
+                        </span>
                       </div>
                     </div>
                     <div className="mt-2 flex items-center gap-3">
