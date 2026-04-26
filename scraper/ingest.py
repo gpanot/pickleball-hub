@@ -28,6 +28,8 @@ except ImportError:
     print("ERROR: psycopg2 not installed. Run: pip install psycopg2-binary")
     sys.exit(1)
 
+from roster_scraper import run_roster_pass_for_day
+
 # ─── Configuration ────────────────────────────────────────────────────
 
 API_BASE = "https://api.reclub.co"
@@ -713,6 +715,22 @@ def ingest_day(day, club_map):
 
         conn.commit()
         print(f"\n  SUCCESS: Ingested {len(pickleball_meets)} sessions for {TODAY_STR}")
+
+        # Roster + DUPR: Vietnam calendar "today" only, separate DB work per session
+        # (does not use the committed ingest connection).
+        day_key = day.strftime("%Y-%m-%d")
+        today_key = NOW.strftime("%Y-%m-%d")
+        if day_key == today_key and pickleball_meets:
+            print("\n  Scraping rosters (today only)...")
+            try:
+                run_roster_pass_for_day(
+                    DATABASE_URL,
+                    TODAY_STR,
+                    list(pickleball_meets.keys()),
+                )
+            except Exception as e:
+                print(f"  [ingest] Roster pass error (non-fatal): {e}")
+
         return len(pickleball_meets)
 
     except Exception as e:
