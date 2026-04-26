@@ -4,12 +4,13 @@ import { createPortal } from "react-dom";
 import React, { useCallback, useEffect, useId, useRef, useState } from "react";
 import {
   computeSessionScore,
-  getDuprBadgeLabel,
+  getDuprBadgeEmoji,
   getScoreLabel,
   type DuprBadge,
   type SessionScoreInput,
   type SessionScoreResult,
 } from "@/lib/scoring";
+import { duprPillTranslationKey, scoreRatingTranslationKey } from "@/lib/score-translations";
 import { useI18n, type TranslationKey } from "@/lib/i18n";
 
 const FILL_GREEN = "#22c55e";
@@ -33,9 +34,11 @@ function ratingPillSurfaceStyle(scoreColor: string) {
 function RatingPillBody({
   result,
   scoreLabel,
+  t,
 }: {
   result: SessionScoreResult;
   scoreLabel: string;
+  t: (key: TranslationKey) => string;
 }) {
   return (
     <>
@@ -56,8 +59,8 @@ function RatingPillBody({
       </span>
       {result.duprBadge && (
         <span className="max-w-[140px] truncate text-[10px] font-normal leading-tight text-muted-foreground">
-          {getDuprBadgeLabel(result.duprBadge).emoji}{" "}
-          {getDuprBadgeLabel(result.duprBadge).label}
+          {getDuprBadgeEmoji(result.duprBadge)}{" "}
+          {t(duprPillTranslationKey(result.duprBadge))}
           {result.duprPercent !== null && ` · ${result.duprPercent}%`}
         </span>
       )}
@@ -163,7 +166,7 @@ function ScoreBreakdownContent({
   input: SessionScoreInput;
   communityColor: string;
   scoreColor: string;
-  /** Headline label from `getScoreLabel` (e.g. Excellent). */
+  /** Localized label for the session score tier. */
   scoreLabel: string;
   /** When true (mobile sheet), show the same rating pill as the trigger, right-aligned in the header row. */
   showHeaderRatingPill?: boolean;
@@ -179,7 +182,7 @@ function ScoreBreakdownContent({
             style={ratingPillSurfaceStyle(scoreColor)}
             aria-hidden
           >
-            <RatingPillBody result={result} scoreLabel={scoreLabel} />
+            <RatingPillBody result={result} scoreLabel={scoreLabel} t={t} />
           </div>
         </div>
       ) : (
@@ -240,7 +243,8 @@ export function SessionScoreBadge({
 }) {
   const { t } = useI18n();
   const result = computeSessionScore(input);
-  const { label, color } = getScoreLabel(result.score);
+  const { color, ratingTier } = getScoreLabel(result.score);
+  const scoreTextLabel = t(scoreRatingTranslationKey(ratingTier));
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
   const popoverId = useId();
@@ -322,7 +326,7 @@ export function SessionScoreBadge({
       input={input}
       communityColor={communityColor}
       scoreColor={color}
-      scoreLabel={label}
+      scoreLabel={scoreTextLabel}
       showHeaderRatingPill={showHeaderRatingPill}
       t={t}
     />
@@ -369,7 +373,7 @@ export function SessionScoreBadge({
         style={ratingPillSurfaceStyle(color)}
         title={t("scoreHowCalculated")}
       >
-        <RatingPillBody result={result} scoreLabel={label} />
+        <RatingPillBody result={result} scoreLabel={scoreTextLabel} t={t} />
       </button>
 
       {open && !isMobile && (

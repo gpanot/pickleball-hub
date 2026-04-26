@@ -100,20 +100,34 @@ export function computeSessionScore(input: SessionScoreInput): SessionScoreResul
   };
 }
 
-export function getScoreLabel(score: number): { label: string; color: string } {
-  if (score >= 80) return { label: "Excellent", color: "#22c55e" };
-  if (score >= 65) return { label: "Good", color: "#84cc16" };
-  if (score >= 50) return { label: "Average", color: "#f59e0b" };
-  return { label: "Below avg", color: "#ef4444" };
+export type ScoreRatingTier = "excellent" | "good" | "average" | "belowAvg";
+
+const TIER_COLOR: Record<ScoreRatingTier, string> = {
+  excellent: "#22c55e",
+  good: "#84cc16",
+  average: "#f59e0b",
+  belowAvg: "#ef4444",
+};
+
+export function getScoreRatingTier(score: number): ScoreRatingTier {
+  if (score >= 80) return "excellent";
+  if (score >= 65) return "good";
+  if (score >= 50) return "average";
+  return "belowAvg";
 }
 
-export function getDuprBadgeLabel(badge: DuprBadge): { label: string; emoji: string } {
-  switch (badge) {
-    case "competitive":
-      return { label: "Competitive crowd", emoji: "\u{1F3AF}" };
-    case "mixed":
-      return { label: "Mixed levels", emoji: "\u{1F3BE}" };
-    case "casual":
-      return { label: "Casual / social", emoji: "\u{1F60A}" };
-  }
+/** Use `getScoreRatingTier` + i18n for the visible label. */
+export function getScoreLabel(score: number): { color: string; ratingTier: ScoreRatingTier } {
+  const ratingTier = getScoreRatingTier(score);
+  return { color: TIER_COLOR[ratingTier], ratingTier };
+}
+
+const DUPR_BADGE_EMOJI: Record<DuprBadge, string> = {
+  competitive: "\u{1F3AF}",
+  mixed: "\u{1F3BE}",
+  casual: "\u{1F60A}",
+};
+
+export function getDuprBadgeEmoji(badge: DuprBadge): string {
+  return DUPR_BADGE_EMOJI[badge];
 }

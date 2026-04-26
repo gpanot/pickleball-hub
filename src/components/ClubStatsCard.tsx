@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { formatVND } from "@/lib/utils";
 import { getScoreLabel } from "@/lib/scoring";
+import { scoreRatingTranslationKey } from "@/lib/score-translations";
 import { useI18n } from "@/lib/i18n";
 
 interface ClubStatsCardProps {
@@ -26,7 +27,7 @@ export function ClubStatsCard({ club }: ClubStatsCardProps) {
   const { t } = useI18n();
   const fillPct = Math.round(club.avgFillRate * 100);
   const hasContact = !!club.zaloUrl || !!club.phone;
-  const scoreLabel =
+  const scoreStyle =
     club.avgSessionScore != null ? getScoreLabel(club.avgSessionScore) : null;
 
   return (
@@ -65,11 +66,11 @@ export function ClubStatsCard({ club }: ClubStatsCardProps) {
               {fillPct}%
             </p>
           </div>
-          {scoreLabel && club.avgSessionScore != null && (
+          {scoreStyle && club.avgSessionScore != null && (
             <div>
               <span className="text-muted">{t("clubAvgScore")}</span>
-              <p className="font-bold text-xs leading-tight" style={{ color: scoreLabel.color }}>
-                {club.avgSessionScore} · {scoreLabel.label}
+              <p className="font-bold text-xs leading-tight" style={{ color: scoreStyle.color }}>
+                {club.avgSessionScore} · {t(scoreRatingTranslationKey(scoreStyle.ratingTier))}
               </p>
             </div>
           )}
