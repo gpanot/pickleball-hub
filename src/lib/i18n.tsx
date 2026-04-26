@@ -4,6 +4,29 @@ import { createContext, useContext, useState, useEffect, useCallback, type React
 
 export type Locale = "en" | "vi";
 
+const LS_LANG = "lang";
+const LS_LOCALE_LEGACY = "locale";
+
+/**
+ * Resolves initial locale. Call only on the client (e.g. inside `useEffect`).
+ * Priority: `localStorage.lang` → legacy `localStorage.locale` (migrated to `lang`) → `navigator` → `vi`.
+ */
+export function getInitialLang(): Locale {
+  if (typeof window === "undefined") return "vi";
+  const stored = localStorage.getItem(LS_LANG);
+  if (stored === "vi" || stored === "en") {
+    return stored;
+  }
+  const legacy = localStorage.getItem(LS_LOCALE_LEGACY) as Locale | null;
+  if (legacy === "vi" || legacy === "en") {
+    localStorage.setItem(LS_LANG, legacy);
+    return legacy;
+  }
+  const browser = navigator.language || "";
+  if (browser.startsWith("vi")) return "vi";
+  return "vi";
+}
+
 const translations = {
   en: {
     sessionsToday: "Sessions Today",
@@ -220,14 +243,14 @@ const translations = {
     scoreCommunity: "Cộng đồng",
     scoreVibe: "Không khí",
     scoreSoon: "Sắp có",
-    scoreBreakFillLabel: "Tỷ lệ đầy",
-    scoreBreakFillSubtitle: "Buổi chơi đầy đến mức nào",
+    scoreBreakFillLabel: "Tỷ lệ lấp đầy",
+    scoreBreakFillSubtitle: "Buổi chơi đầy đến đâu",
     scoreBreakPriceLabel: "Giá / giờ",
-    scoreBreakPriceSubtitle: "Chi phí mỗi giờ so với mức trung bình TP.HCM",
+    scoreBreakPriceSubtitle: "Chi phí mỗi giờ so với trung bình HCM",
     scoreBreakOrganisedLabel: "Tổ chức",
     scoreBreakOrganisedSubtitle: "Có nhóm Zalo hoạt động",
-    scoreBreakRegularsLabel: "Người chơi quen",
-    scoreBreakRegularsSubtitle: "Giữ chân người chơi — sắp có",
+    scoreBreakRegularsLabel: "Khách quen",
+    scoreBreakRegularsSubtitle: "Dữ liệu giữ chân người chơi — sắp có",
     scorePlayerLevels: "Trình độ người chơi",
     scoreDuprLoading: "Đang tải dữ liệu xếp hạng...",
     scoreDuprHaveRating: "có xếp hạng DUPR —",
@@ -280,24 +303,24 @@ type I18nContextType = {
 };
 
 const I18nContext = createContext<I18nContextType>({
-  locale: "en",
+  locale: "vi",
   setLocale: () => {},
-  t: (key) => translations.en[key],
+  t: (key) => translations.vi[key],
 });
 
 export function I18nProvider({ children }: { children: ReactNode }) {
-  const [locale, setLocaleState] = useState<Locale>("en");
+  const [locale, setLocaleState] = useState<Locale>("vi");
 
   useEffect(() => {
-    const saved = localStorage.getItem("locale") as Locale | null;
-    if (saved === "vi" || saved === "en") {
-      setLocaleState(saved);
-    }
+    setLocaleState(getInitialLang());
   }, []);
 
   const setLocale = useCallback((l: Locale) => {
     setLocaleState(l);
-    localStorage.setItem("locale", l);
+    if (typeof window !== "undefined") {
+      localStorage.setItem(LS_LANG, l);
+      localStorage.removeItem(LS_LOCALE_LEGACY);
+    }
   }, []);
 
   const t = useCallback(
