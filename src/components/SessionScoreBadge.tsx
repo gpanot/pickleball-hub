@@ -19,6 +19,52 @@ const VIBE_GREY = "#9ca3af";
 
 const MOBILE_MAX_PX = 767;
 
+const RATING_PILL_SURFACE_CLASS =
+  "inline-flex max-w-full flex-col items-end gap-0.5 rounded-lg border px-2 py-1 text-left";
+
+function ratingPillSurfaceStyle(scoreColor: string) {
+  return {
+    backgroundColor: `${scoreColor}20`,
+    borderColor: scoreColor,
+    color: scoreColor,
+  } as const;
+}
+
+function RatingPillBody({
+  result,
+  scoreLabel,
+}: {
+  result: SessionScoreResult;
+  scoreLabel: string;
+}) {
+  return (
+    <>
+      <span className="inline-flex items-center gap-1 text-[11px] font-semibold leading-tight sm:text-xs">
+        <svg
+          width="11"
+          height="11"
+          viewBox="0 0 24 24"
+          className="shrink-0 opacity-90"
+          aria-hidden
+          fill="currentColor"
+        >
+          <path d="M12 2l2.39 7.26h7.72l-6.25 4.54 2.39 7.26-6.25-4.54-6.25 4.54 2.39-7.26-6.25-4.54h7.72L12 2z" />
+        </svg>
+        <span>
+          {result.score} · {scoreLabel}
+        </span>
+      </span>
+      {result.duprBadge && (
+        <span className="max-w-[140px] truncate text-[10px] font-normal leading-tight text-muted-foreground">
+          {getDuprBadgeLabel(result.duprBadge).emoji}{" "}
+          {getDuprBadgeLabel(result.duprBadge).label}
+          {result.duprPercent !== null && ` · ${result.duprPercent}%`}
+        </span>
+      )}
+    </>
+  );
+}
+
 function pctWidth(score: number): number {
   return Math.min(100, Math.max(0, score));
 }
@@ -109,17 +155,36 @@ function ScoreBreakdownContent({
   input,
   communityColor,
   scoreColor,
+  scoreLabel,
+  showHeaderRatingPill,
   t,
 }: {
   result: SessionScoreResult;
   input: SessionScoreInput;
   communityColor: string;
   scoreColor: string;
+  /** Headline label from `getScoreLabel` (e.g. Excellent). */
+  scoreLabel: string;
+  /** When true (mobile sheet), show the same rating pill as the trigger, right-aligned in the header row. */
+  showHeaderRatingPill?: boolean;
   t: (key: TranslationKey) => string;
 }) {
   return (
     <>
-      <p className="mb-2 text-[11px] leading-snug text-muted-foreground">{t("scoreHowCalculated")}</p>
+      {showHeaderRatingPill ? (
+        <div className="mb-2 flex items-start justify-between gap-2">
+          <p className="min-w-0 flex-1 text-[11px] leading-snug text-muted-foreground">{t("scoreHowCalculated")}</p>
+          <div
+            className={`${RATING_PILL_SURFACE_CLASS} pointer-events-none shrink-0`}
+            style={ratingPillSurfaceStyle(scoreColor)}
+            aria-hidden
+          >
+            <RatingPillBody result={result} scoreLabel={scoreLabel} />
+          </div>
+        </div>
+      ) : (
+        <p className="mb-2 text-[11px] leading-snug text-muted-foreground">{t("scoreHowCalculated")}</p>
+      )}
       <div className="flex flex-col gap-2">
         <div className="h-px w-full shrink-0 bg-card-border" aria-hidden />
         <ScoreBreakRow
@@ -251,12 +316,14 @@ export function SessionScoreBadge({
     dragStartY.current = null;
   };
 
-  const breakdown = (
+  const renderBreakdown = (showHeaderRatingPill: boolean) => (
     <ScoreBreakdownContent
       result={result}
       input={input}
       communityColor={communityColor}
       scoreColor={color}
+      scoreLabel={label}
+      showHeaderRatingPill={showHeaderRatingPill}
       t={t}
     />
   );
@@ -286,7 +353,7 @@ export function SessionScoreBadge({
         >
           <div className="h-1 w-10 shrink-0 rounded-full bg-muted-foreground/35" aria-hidden />
         </div>
-        {breakdown}
+        {renderBreakdown(true)}
       </div>
     </>
   );
@@ -298,36 +365,11 @@ export function SessionScoreBadge({
         aria-expanded={open}
         aria-controls={popoverId}
         onClick={toggle}
-        className="inline-flex max-w-full flex-col items-end gap-0.5 rounded-lg border px-2 py-1 text-left transition hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-        style={{
-          backgroundColor: `${color}20`,
-          borderColor: color,
-          color,
-        }}
+        className={`${RATING_PILL_SURFACE_CLASS} transition hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary`}
+        style={ratingPillSurfaceStyle(color)}
         title={t("scoreHowCalculated")}
       >
-        <span className="inline-flex items-center gap-1 text-[11px] font-semibold leading-tight sm:text-xs">
-          <svg
-            width="11"
-            height="11"
-            viewBox="0 0 24 24"
-            className="shrink-0 opacity-90"
-            aria-hidden
-            fill="currentColor"
-          >
-            <path d="M12 2l2.39 7.26h7.72l-6.25 4.54 2.39 7.26-6.25-4.54-6.25 4.54 2.39-7.26-6.25-4.54h7.72L12 2z" />
-          </svg>
-          <span>
-            {result.score} · {label}
-          </span>
-        </span>
-        {result.duprBadge && (
-          <span className="max-w-[140px] truncate text-[10px] font-normal leading-tight text-muted-foreground">
-            {getDuprBadgeLabel(result.duprBadge).emoji}{" "}
-            {getDuprBadgeLabel(result.duprBadge).label}
-            {result.duprPercent !== null && ` · ${result.duprPercent}%`}
-          </span>
-        )}
+        <RatingPillBody result={result} scoreLabel={label} />
       </button>
 
       {open && !isMobile && (
@@ -336,7 +378,7 @@ export function SessionScoreBadge({
           role="dialog"
           className="absolute right-0 top-full z-50 mt-1 w-[min(100vw-2rem,260px)] rounded-lg border border-card-border bg-card p-4 font-sans text-xs shadow-lg"
         >
-          {breakdown}
+          {renderBreakdown(false)}
         </div>
       )}
 
