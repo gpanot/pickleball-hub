@@ -23,29 +23,45 @@ function pctWidth(score: number): number {
   return Math.min(100, Math.max(0, score));
 }
 
-function ScoreBarRow({
+const SCORE_BREAK_LABEL_COL = "flex w-[6.75rem] shrink-0 flex-col gap-0.5 text-left sm:w-[7.25rem]";
+
+function ScoreBreakRow({
   label,
+  subtitle,
+  placeholder,
   pct,
   fillColor,
   trackClassName,
 }: {
   label: string;
-  pct: number;
-  fillColor: string;
+  subtitle: string;
+  placeholder?: boolean;
+  pct?: number;
+  fillColor?: string;
   trackClassName?: string;
 }) {
   return (
-    <div className="flex items-center gap-3">
-      <span className="w-[4.5rem] shrink-0 text-left text-[11px] text-foreground">{label}</span>
-      <div className="flex min-w-0 flex-1 justify-center px-1">
-        <div
-          className={`relative h-2 w-full max-w-[9rem] overflow-hidden rounded-full ${trackClassName ?? "bg-muted/35"}`}
-        >
+    <div className="flex min-h-[48px] items-start gap-3">
+      <div className={SCORE_BREAK_LABEL_COL}>
+        <span className="text-[11px] font-normal leading-tight text-foreground">{label}</span>
+        <span className="text-[10px] leading-snug text-muted-foreground">{subtitle}</span>
+      </div>
+      <div className="flex min-h-[48px] min-w-0 flex-1 items-start justify-center self-stretch px-1 pt-[3px]">
+        {placeholder ? (
           <div
-            className="h-full rounded-full transition-[width]"
-            style={{ width: `${pctWidth(pct)}%`, backgroundColor: fillColor }}
+            className="relative h-2 w-full max-w-[9rem] rounded border border-dashed opacity-90"
+            style={{ borderColor: VIBE_GREY, backgroundColor: `${VIBE_GREY}18` }}
           />
-        </div>
+        ) : (
+          <div
+            className={`relative h-2 w-full max-w-[9rem] overflow-hidden rounded-full ${trackClassName ?? "bg-muted/35"}`}
+          >
+            <div
+              className="h-full rounded-full transition-[width]"
+              style={{ width: `${pctWidth(pct ?? 0)}%`, backgroundColor: fillColor }}
+            />
+          </div>
+        )}
       </div>
     </div>
   );
@@ -82,7 +98,7 @@ function PlayerLevelsRow({
 
   return (
     <div className="flex flex-col gap-0.5 pt-0.5">
-      <span className="w-full text-left text-[11px] font-medium text-foreground">{t("scorePlayerLevels")}</span>
+      <span className="text-[11px] font-medium leading-tight text-foreground">{t("scorePlayerLevels")}</span>
       <p className="text-[10px] leading-snug text-muted-foreground">{subtitle}</p>
     </div>
   );
@@ -106,21 +122,29 @@ function ScoreBreakdownContent({
       <p className="mb-2 text-[11px] leading-snug text-muted-foreground">{t("scoreHowCalculated")}</p>
       <div className="flex flex-col gap-2">
         <div className="h-px w-full shrink-0 bg-card-border" aria-hidden />
-        <ScoreBarRow label={t("scoreFill")} pct={result.fillScore} fillColor={FILL_GREEN} />
-        <ScoreBarRow label={t("scoreValue")} pct={result.valueScore} fillColor={scoreColor} />
-        <ScoreBarRow label={t("scoreCommunity")} pct={result.zaloScore} fillColor={communityColor} />
-        <div className="flex items-center gap-3">
-          <span className="w-[4.5rem] shrink-0 text-left text-[11px] text-foreground">{t("scoreVibe")}</span>
-          <div className="flex min-w-0 flex-1 justify-center px-1">
-            <div className="flex w-full max-w-[9rem] flex-col items-center gap-1">
-              <div
-                className="h-2 w-full rounded border border-dashed opacity-90"
-                style={{ borderColor: VIBE_GREY, backgroundColor: `${VIBE_GREY}18` }}
-              />
-              <span className="text-[10px] italic text-muted-foreground">{t("scoreSoon")}</span>
-            </div>
-          </div>
-        </div>
+        <ScoreBreakRow
+          label={t("scoreBreakFillLabel")}
+          subtitle={t("scoreBreakFillSubtitle")}
+          pct={result.fillScore}
+          fillColor={FILL_GREEN}
+        />
+        <ScoreBreakRow
+          label={t("scoreBreakPriceLabel")}
+          subtitle={t("scoreBreakPriceSubtitle")}
+          pct={result.valueScore}
+          fillColor={scoreColor}
+        />
+        <ScoreBreakRow
+          label={t("scoreBreakOrganisedLabel")}
+          subtitle={t("scoreBreakOrganisedSubtitle")}
+          pct={result.zaloScore}
+          fillColor={communityColor}
+        />
+        <ScoreBreakRow
+          label={t("scoreBreakRegularsLabel")}
+          subtitle={t("scoreBreakRegularsSubtitle")}
+          placeholder
+        />
         <div className="h-px w-full shrink-0 bg-card-border" aria-hidden />
         <PlayerLevelsRow duprParticipationPct={input.duprParticipationPct} result={result} t={t} />
       </div>
