@@ -898,15 +898,7 @@ ${eventBlocks.join("\n\n")}
               </>
             )}
           </div>
-        ) : hasTimeGroups ? (
-          <TimeGroupedList
-            groups={timeGroupedSessions}
-            visibleCount={visibleCount}
-            userLocation={userLocation}
-            hcmMedianCostPerHour={hcmMedianCostPerHour}
-            onMobileBookPreview={setBookPreviewSession}
-          />
-        ) : (
+        ) : filters.sortBy === "score" || !hasTimeGroups ? (
           <div className="grid min-w-0 items-stretch gap-2 sm:gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {filtered.slice(0, visibleCount).map((s) => (
               <SessionCard
@@ -918,6 +910,14 @@ ${eventBlocks.join("\n\n")}
               />
             ))}
           </div>
+        ) : (
+          <TimeGroupedList
+            groups={timeGroupedSessions}
+            visibleCount={visibleCount}
+            userLocation={userLocation}
+            hcmMedianCostPerHour={hcmMedianCostPerHour}
+            onMobileBookPreview={setBookPreviewSession}
+          />
         )}
 
         {viewMode === "list" && filtered.length > visibleCount && (
