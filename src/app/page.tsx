@@ -3,6 +3,7 @@
 import { useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef, type FormEvent } from "react";
 import dynamic from "next/dynamic";
 import { SessionCard } from "@/components/SessionCard";
+import { SessionCardSkeleton } from "@/components/SessionCardSkeleton";
 import { SessionBookPreviewSheet } from "@/components/SessionBookPreviewSheet";
 import { SessionsIntroBanner } from "@/components/SessionsIntroBanner";
 import { SessionFilters, type FilterState } from "@/components/SessionFilters";
@@ -300,7 +301,7 @@ export default function HomePage() {
     }
 
     let cancelled = false;
-    fetch(url, { cache: "no-store" })
+    fetch(url, { next: { revalidate: 300 } })
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return res.json() as Promise<SessionsApiPayload>;
@@ -903,8 +904,8 @@ ${eventBlocks.join("\n\n")}
       <div className="mt-4 min-w-0">
         {loading ? (
           <div className="grid min-w-0 items-stretch gap-2 sm:gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="h-48 rounded-xl bg-card border border-card-border animate-pulse" />
+            {Array.from({ length: 5 }).map((_, i) => (
+              <SessionCardSkeleton key={i} />
             ))}
           </div>
         ) : viewMode === "map" ? (

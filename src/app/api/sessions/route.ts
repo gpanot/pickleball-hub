@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessions, getSessionsLastScrapedAt, type SessionFilters } from "@/lib/queries";
-import { CACHE_CONTROL_SESSIONS_LIST } from "@/lib/http-cache-headers";
+import { CACHE_CONTROL_SESSIONS } from "@/lib/http-cache-headers";
 
-export const dynamic = "force-dynamic";
+// `force-dynamic` would skip effective CDN/browser caching; sessions still vary by query; see Cache-Control.
 
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
     ]);
     return NextResponse.json(
       { sessions, hcmMedianCostPerHour, count: sessions.length, lastScrapedAt },
-      { headers: { "Cache-Control": CACHE_CONTROL_SESSIONS_LIST } },
+      { headers: { "Cache-Control": CACHE_CONTROL_SESSIONS } },
     );
   } catch (error) {
     console.error("Error fetching sessions:", error);

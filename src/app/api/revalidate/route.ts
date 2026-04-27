@@ -14,6 +14,7 @@ export async function POST(req: NextRequest) {
     revalidatePath("/clubs");
     revalidatePath("/dashboard/organizer");
     revalidatePath("/dashboard/venue");
+    revalidatePath("/sessions/[referenceCode]", "page");
 
     return NextResponse.json({
       revalidated: true,

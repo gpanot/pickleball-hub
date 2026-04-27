@@ -9,7 +9,12 @@
   --muted: #6b7280;
   --card: #ffffff;
   --card-border: #e5e7eb;
+  /* Session list skeletons + manual @font-face: prefer font-display: swap to avoid invisible text */
+  --color-border-tertiary: #e5e7eb;
+  --color-background-secondary: #f3f4f6;
 }
+
+/* next/font handles Geist; if you add local @font-face, use: font-display: swap; */
 
 @theme inline {
   --color-background: var(--background);
@@ -30,6 +35,8 @@
     --foreground: #e5e7eb;
     --card: #1a1d27;
     --card-border: #2d3142;
+    --color-border-tertiary: #2d3142;
+    --color-background-secondary: #1a1d27;
   }
 }
 
@@ -47,6 +54,16 @@ body {
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@keyframes session-card-skeleton-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
   }
 }
 

@@ -9,11 +9,13 @@ import "./globals.css";
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
+  display: "swap",
 });
 
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {
@@ -50,6 +52,14 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <head>
+        {/* Per-build: if 404, replace href with the Geist woff2 name from `.next/static/media` after `next build` */}
+        <link
+          rel="preload"
+          href="/_next/static/media/7178b3e590c64307-s.11.cyxs5p-0z~.woff2"
+          as="font"
+          type="font/woff2"
+          crossOrigin="anonymous"
+        />
         <script
           defer
           src="https://cloud.umami.is/script.js"

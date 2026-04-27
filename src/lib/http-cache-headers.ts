@@ -7,5 +7,10 @@
 export const CACHE_CONTROL_PUBLIC_LISTINGS =
   "public, max-age=300, s-maxage=3600, stale-while-revalidate=14400";
 
-/** Sessions list after DB ingest: must not sit behind long CDN or client layer caches. */
-export const CACHE_CONTROL_SESSIONS_LIST = "no-store";
+/**
+ * Sessions list API: short public cache (LCP) + SWR. On-demand revalidation / scrapes
+ * still refresh the app; `export const dynamic = "force-dynamic"` is not used on this
+ * route so this header is not stripped by Next.
+ */
+export const CACHE_CONTROL_SESSIONS =
+  "public, max-age=60, s-maxage=300, stale-while-revalidate=3600";
