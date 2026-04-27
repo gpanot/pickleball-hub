@@ -4,13 +4,12 @@ import { createPortal } from "react-dom";
 import React, { useCallback, useEffect, useId, useRef, useState } from "react";
 import {
   computeSessionScore,
-  getDuprBadgeEmoji,
   getScoreLabel,
   type DuprBadge,
   type SessionScoreInput,
   type SessionScoreResult,
 } from "@/lib/scoring";
-import { duprPillTranslationKey, scoreRatingTranslationKey } from "@/lib/score-translations";
+import { scoreRatingTranslationKey } from "@/lib/score-translations";
 import { useI18n, type TranslationKey } from "@/lib/i18n";
 
 const FILL_GREEN = "#22c55e";
@@ -31,15 +30,34 @@ function ratingPillSurfaceStyle(scoreColor: string) {
   } as const;
 }
 
+function isDuprParticipationLoading(duprParticipationPct: number | null | undefined): boolean {
+  return duprParticipationPct == null || (typeof duprParticipationPct === "number" && Number.isNaN(duprParticipationPct));
+}
+
+function duprTierLabel(badge: DuprBadge, t: (key: TranslationKey) => string): string {
+  switch (badge) {
+    case "competitive":
+      return t("scoreDuprTierCompetitive");
+    case "mixed":
+      return t("scoreDuprTierMixed");
+    case "casual":
+      return t("scoreDuprTierCasual");
+  }
+}
+
 function RatingPillBody({
   result,
   scoreLabel,
+  duprParticipationPct,
   t,
 }: {
   result: SessionScoreResult;
   scoreLabel: string;
+  duprParticipationPct: number | null | undefined;
   t: (key: TranslationKey) => string;
 }) {
+  const duprLoading = isDuprParticipationLoading(duprParticipationPct);
+
   return (
     <>
       <span className="inline-flex items-center gap-1 text-[11px] font-semibold leading-tight sm:text-xs">
@@ -57,13 +75,15 @@ function RatingPillBody({
           {result.score} · {scoreLabel}
         </span>
       </span>
-      {result.duprBadge && (
-        <span className="max-w-[140px] truncate text-[10px] font-normal leading-tight text-muted-foreground">
-          {getDuprBadgeEmoji(result.duprBadge)}{" "}
-          {t(duprPillTranslationKey(result.duprBadge))}
-          {result.duprPercent !== null && ` · ${result.duprPercent}%`}
+      {duprLoading ? (
+        <span className="max-w-[180px] truncate text-[10px] font-normal leading-tight text-muted-foreground">
+          {t("scoreDuprLineLoading")}
         </span>
-      )}
+      ) : result.duprBadge != null && result.duprPercent != null ? (
+        <span className="max-w-[180px] truncate text-[10px] font-normal leading-tight text-muted-foreground">
+          {`${result.duprPercent}% DUPR · ${duprTierLabel(result.duprBadge, t)}`}
+        </span>
+      ) : null}
     </>
   );
 }
@@ -116,17 +136,6 @@ function ScoreBreakRow({
   );
 }
 
-function duprTierLabel(badge: DuprBadge, t: (key: TranslationKey) => string): string {
-  switch (badge) {
-    case "competitive":
-      return t("scoreDuprTierCompetitive");
-    case "mixed":
-      return t("scoreDuprTierMixed");
-    case "casual":
-      return t("scoreDuprTierCasual");
-  }
-}
-
 function PlayerLevelsRow({
   duprParticipationPct,
   result,
@@ -136,19 +145,25 @@ function PlayerLevelsRow({
   result: SessionScoreResult;
   t: (key: TranslationKey) => string;
 }) {
-  const loading =
-    duprParticipationPct == null || (typeof duprParticipationPct === "number" && Number.isNaN(duprParticipationPct));
-
-  const subtitle = loading
-    ? t("scoreDuprLoading")
-    : result.duprPercent != null && result.duprBadge
-      ? `${result.duprPercent}% ${t("scoreDuprHaveRating")} ${duprTierLabel(result.duprBadge, t)}`
-      : t("scoreDuprLoading");
+  const loading = isDuprParticipationLoading(duprParticipationPct);
 
   return (
-    <div className="flex flex-col gap-0.5 pt-0.5">
-      <span className="text-[11px] font-medium leading-tight text-foreground">{t("scorePlayerLevels")}</span>
-      <p className="text-[10px] leading-snug text-muted-foreground">{subtitle}</p>
+    <div className="flex min-h-[48px] items-start gap-3 pt-0.5">
+      <div className={SCORE_BREAK_LABEL_COL}>
+        <span className="text-[11px] font-normal leading-tight text-foreground">{t("scorePlayerLevels")}</span>
+        <span className="text-[10px] leading-snug text-muted-foreground">{t("scoreDuprRosterSubtitle")}</span>
+      </div>
+      <div className="flex min-h-[48px] min-w-0 flex-1 items-start justify-end self-stretch px-1 pt-[3px]">
+        {loading ? (
+          <span className="max-w-full text-right text-[10px] leading-snug text-muted-foreground">
+            {t("scoreDuprLineLoading")}
+          </span>
+        ) : result.duprPercent != null && result.duprBadge ? (
+          <span className="max-w-full text-right text-[11px] font-normal leading-tight text-foreground">
+            {`${result.duprPercent}% DUPR · ${duprTierLabel(result.duprBadge, t)}`}
+          </span>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -182,7 +197,12 @@ function ScoreBreakdownContent({
             style={ratingPillSurfaceStyle(scoreColor)}
             aria-hidden
           >
-            <RatingPillBody result={result} scoreLabel={scoreLabel} t={t} />
+            <RatingPillBody
+              result={result}
+              scoreLabel={scoreLabel}
+              duprParticipationPct={input.duprParticipationPct}
+              t={t}
+            />
           </div>
         </div>
       ) : (
@@ -373,7 +393,12 @@ export function SessionScoreBadge({
         style={ratingPillSurfaceStyle(color)}
         title={t("scoreHowCalculated")}
       >
-        <RatingPillBody result={result} scoreLabel={scoreTextLabel} t={t} />
+        <RatingPillBody
+          result={result}
+          scoreLabel={scoreTextLabel}
+          duprParticipationPct={input.duprParticipationPct}
+          t={t}
+        />
       </button>
 
       {open && !isMobile && (

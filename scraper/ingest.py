@@ -551,6 +551,8 @@ def upsert_sessions_and_snapshots(cur, meets, club_id_map, venue_coord_map):
         waitlisted = psc.get("waitlisted", 0)
 
         name = (m.get("name") or "").replace("\n", " ").strip()[:300]
+        notes_raw = (m.get("notes") or "").strip()
+        description = notes_raw[:8000] if notes_raw else None
         fee_amount = resolve_fee(m)
         duration_min = (m.get("duration") or 0) // 60
         if duration_min > MAX_DURATION_MIN:
@@ -582,13 +584,13 @@ def upsert_sessions_and_snapshots(cur, meets, club_id_map, venue_coord_map):
                 start_time, end_time, duration_min, max_players,
                 fee_amount, fee_currency, cost_per_hour,
                 privacy, status, skill_level_min, skill_level_max,
-                perks, event_url, scraped_date
+                perks, description, event_url, scraped_date
             ) VALUES (
                 %(ref)s, %(name)s, %(club_id)s, %(venue_id)s,
                 %(start)s, %(end)s, %(dur)s, %(max)s,
                 %(fee)s, %(cur)s, %(cph)s,
                 %(priv)s, %(stat)s, %(smin)s, %(smax)s,
-                %(perks)s, %(url)s, %(date)s
+                %(perks)s, %(desc)s, %(url)s, %(date)s
             )
             ON CONFLICT (reference_code, scraped_date) DO UPDATE SET
                 name = EXCLUDED.name,
@@ -598,7 +600,8 @@ def upsert_sessions_and_snapshots(cur, meets, club_id_map, venue_coord_map):
                 status = EXCLUDED.status,
                 skill_level_min = EXCLUDED.skill_level_min,
                 skill_level_max = EXCLUDED.skill_level_max,
-                perks = EXCLUDED.perks
+                perks = EXCLUDED.perks,
+                description = EXCLUDED.description
             RETURNING id
         """, {
             "ref": ref_code,
@@ -617,6 +620,7 @@ def upsert_sessions_and_snapshots(cur, meets, club_id_map, venue_coord_map):
             "smin": skill_min,
             "smax": skill_max,
             "perks": perks,
+            "desc": description,
             "url": f"https://reclub.co/m/{ref_code}",
             "date": TODAY_STR,
         })

@@ -122,12 +122,14 @@ export function getScoreLabel(score: number): { color: string; ratingTier: Score
   return { color: TIER_COLOR[ratingTier], ratingTier };
 }
 
-const DUPR_BADGE_EMOJI: Record<DuprBadge, string> = {
-  competitive: "\u{1F3AF}",
-  mixed: "\u{1F3BE}",
-  casual: "\u{1F60A}",
-};
-
-export function getDuprBadgeEmoji(badge: DuprBadge): string {
-  return DUPR_BADGE_EMOJI[badge];
+/** English labels + emoji for DUPR tier; UI uses i18n for visible copy and omits emoji in pills. */
+export function getDuprBadgeDisplay(badge: DuprBadge): { label: string; emoji: string } {
+  switch (badge) {
+    case "competitive":
+      return { label: "Competitive", emoji: "🎯" };
+    case "mixed":
+      return { label: "Mixed", emoji: "🎾" };
+    case "casual":
+      return { label: "Casual", emoji: "😊" };
+  }
 }

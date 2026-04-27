@@ -63,6 +63,8 @@ model Session {
   skillLevelMin  Float?    @map("skill_level_min")
   skillLevelMax  Float?    @map("skill_level_max")
   perks          String[]  @default([])
+  /// Reclub event notes / description (plain text)
+  description    String?   @map("description")
   eventUrl       String    @map("event_url")
   scrapedDate    String    @map("scraped_date")
 

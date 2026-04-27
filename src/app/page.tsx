@@ -3,6 +3,7 @@
 import { useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef, type FormEvent } from "react";
 import dynamic from "next/dynamic";
 import { SessionCard } from "@/components/SessionCard";
+import { SessionsIntroBanner } from "@/components/SessionsIntroBanner";
 import { SessionFilters, type FilterState } from "@/components/SessionFilters";
 import {
   formatVND,
@@ -76,6 +77,7 @@ type Session = {
   fillRate: number;
   club: { name: string; slug: string; zaloUrl?: string | null };
   duprParticipationPct?: number | null;
+  description?: string | null;
   venue: { name: string; address: string; latitude: number; longitude: number } | null;
 };
 
@@ -433,6 +435,7 @@ export default function HomePage() {
       if (s.fillRate >= 1) return false;
       if (timeToMinutes(s.startTime) < min18) return false;
       if (!hasVenueLocation(s)) return false;
+      if (!s.description?.trim()) return false;
       return true;
     });
 
@@ -527,10 +530,32 @@ ${eventBlocks.join("\n\n")}
   const tomorrowPendingSync =
     dayTab === "tomorrow" && !loading && sessions.length === 0;
 
+  const updatedAtLine = useMemo(() => {
+    if (!lastScrapedAt || loading) return null;
+    return (
+      <>
+        {t("updatedAt")}{" "}
+        {new Date(lastScrapedAt).toLocaleString("en-US", {
+          timeZone: "Asia/Ho_Chi_Minh",
+          hour: "numeric",
+          minute: "2-digit",
+          hour12: true,
+        })}{" "}
+        {t("on")}{" "}
+        {new Date(lastScrapedAt).toLocaleDateString("en-US", {
+          timeZone: "Asia/Ho_Chi_Minh",
+          year: "numeric",
+          month: "short",
+          day: "numeric",
+        })}
+      </>
+    );
+  }, [lastScrapedAt, loading, t]);
+
   return (
     <div className="mx-auto w-full min-w-0 max-w-7xl px-2 py-4 sm:px-6 sm:py-6 lg:px-8">
       <div className="mb-4 sm:mb-6">
-        <h1 className="text-xl sm:text-2xl font-bold mb-1">
+        <h1 className="mb-1 hidden text-xl font-bold sm:block sm:text-2xl">
           <span className="text-primary">{t("pickleball")}</span>{" "}
           {dayTab === "today" ? t("sessionsToday") : t("sessionsTomorrow")}
         </h1>
@@ -544,24 +569,15 @@ ${eventBlocks.join("\n\n")}
               — {sessions.length} {t("sessions")}, {totalPlayers.toLocaleString()} {t("players")}
             </>
           )}
+          {updatedAtLine && (
+            <>
+              <span className="sm:hidden"> - </span>
+              <span className="text-[11px] text-muted/70 sm:hidden">{updatedAtLine}</span>
+            </>
+          )}
         </p>
-        {lastScrapedAt && !loading && (
-          <p className="text-[11px] text-muted/70 mt-0.5">
-            {t("updatedAt")}{" "}
-            {new Date(lastScrapedAt).toLocaleString("en-US", {
-              timeZone: "Asia/Ho_Chi_Minh",
-              hour: "numeric",
-              minute: "2-digit",
-              hour12: true,
-            })}{" "}
-            {t("on")}{" "}
-            {new Date(lastScrapedAt).toLocaleDateString("en-US", {
-              timeZone: "Asia/Ho_Chi_Minh",
-              year: "numeric",
-              month: "short",
-              day: "numeric",
-            })}
-          </p>
+        {updatedAtLine && (
+          <p className="mt-0.5 hidden text-[11px] text-muted/70 sm:block">{updatedAtLine}</p>
         )}
       </div>
 
@@ -585,6 +601,8 @@ ${eventBlocks.join("\n\n")}
           </p>
         </div>
       )}
+
+      <SessionsIntroBanner />
 
       {freeTonightCards.length > 0 && (
         <section className="mb-4 min-w-0">
