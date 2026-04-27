@@ -2,6 +2,13 @@ import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
 
 /** Calendar YYYY-MM-DD in Vietnam (UTC+7), aligned with `Session.scraped_date` and scrapers. */
+/** Format a YYYY-MM-DD calendar row for display (e.g. session scraped_date). */
+export function formatCalendarDayLabel(dateStr: string, localeTag: string): string {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const dt = new Date(y, m - 1, d);
+  return dt.toLocaleDateString(localeTag, { weekday: "short", month: "short", day: "numeric" });
+}
+
 export function vnCalendarDateString(offsetDays = 0): string {
   const vn = new Date(Date.now() + 7 * 60 * 60 * 1000);
   vn.setUTCDate(vn.getUTCDate() + offsetDays);

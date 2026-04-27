@@ -4,9 +4,8 @@ import { createPortal } from "react-dom";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { FillRateBar } from "@/components/FillRateBar";
 import { SessionScoreAndDuprBadges, SessionScoreBreakdownPanel } from "@/components/SessionScoreBadge";
-import { computeSessionScore, getScoreLabel } from "@/lib/scoring";
-import { scoreRatingTranslationKey } from "@/lib/score-translations";
-import { useI18n, type TranslationKey } from "@/lib/i18n";
+import { useI18n } from "@/lib/i18n";
+import { buildSessionShareText } from "@/lib/share-session-text";
 import { mouseflowTag } from "@/lib/analytics";
 import {
   computeCostPerHour,
@@ -40,20 +39,6 @@ export type BookPreviewSession = {
 
 function reclubMeetUrl(referenceCode: string): string {
   return `https://reclub.co/m/${referenceCode}`;
-}
-
-function duprTierLabelForShare(
-  badge: NonNullable<ReturnType<typeof computeSessionScore>["duprBadge"]>,
-  t: (k: TranslationKey) => string,
-): string {
-  switch (badge) {
-    case "competitive":
-      return t("scoreDuprTierCompetitive");
-    case "mixed":
-      return t("scoreDuprTierMixed");
-    case "casual":
-      return t("scoreDuprTierCasual");
-  }
 }
 
 export function SessionBookPreviewSheet({
@@ -127,39 +112,32 @@ export function SessionBookPreviewSheet({
 
   const shareSession = useCallback(async () => {
     if (!session || !scoreInput) return;
-    const result = computeSessionScore(scoreInput);
-    const { ratingTier } = getScoreLabel(result.score);
-    const scoreLabel = t(scoreRatingTranslationKey(ratingTier));
-    const costPerHour =
-      session.costPerHour != null && session.costPerHour > 0
-        ? session.costPerHour
-        : computeCostPerHour(session.feeAmount, session.durationMin);
-    const duprLine =
-      result.duprPercent != null && result.duprBadge
-        ? `${result.duprPercent}% DUPR · ${duprTierLabelForShare(result.duprBadge, t)}`
-        : "";
-
-    const text = [
-      `🎾 ${session.name}`,
-      `📍 ${session.venue?.name ?? session.club.name}`,
-      `⏱ ${session.startTime}-${session.endTime} · ${formatVND(session.feeAmount)} · ${formatVND(costPerHour)}/hr`,
-      `★ ${result.score} ${scoreLabel}${duprLine ? ` · ${duprLine}` : ""}`,
-      `👉 ${reclubMeetUrl(session.referenceCode)}`,
-      t("shareSessionHubFooter"),
-    ]
-      .filter(Boolean)
-      .join("\n");
+    const shareText = buildSessionShareText(
+      {
+        name: session.name,
+        venue: session.venue,
+        club: session.club,
+        startTime: session.startTime,
+        endTime: session.endTime,
+        feeAmount: session.feeAmount,
+        referenceCode: session.referenceCode,
+        costPerHour: session.costPerHour,
+        durationMin: session.durationMin,
+      },
+      scoreInput,
+      t,
+    );
 
     if (typeof navigator !== "undefined" && navigator.share) {
       try {
-        await navigator.share({ text });
+        await navigator.share({ text: shareText });
         return;
       } catch (e) {
         if ((e as Error)?.name === "AbortError") return;
       }
     }
     if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(text);
+      await navigator.clipboard.writeText(shareText);
       onShareClipboardToast();
     }
   }, [session, scoreInput, t, onShareClipboardToast]);

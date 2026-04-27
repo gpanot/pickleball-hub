@@ -35,7 +35,7 @@ async function getClubRevenueRanksForDate(date: string): Promise<Map<number, num
   return rankByClubId;
 }
 
-async function getScoringContextForDate(date: string): Promise<{
+export async function getScoringContextForDate(date: string): Promise<{
   hcmMedianCostPerHour: number;
   rankByClubId: Map<number, number>;
 }> {
@@ -198,6 +198,49 @@ export async function getSessionsLastScrapedAt(date?: string) {
   });
   return result?.scrapedAt ?? null;
 }
+
+/** Latest row for a Reclub meet reference (by most recent scrape day). */
+export async function getSessionByReferenceCode(referenceCode: string) {
+  const session = await prisma.session.findFirst({
+    where: { referenceCode },
+    orderBy: { scrapedDate: "desc" },
+    include: {
+      club: true,
+      venue: true,
+      duprStat: true,
+      snapshots: {
+        orderBy: { scrapedAt: "desc" },
+        take: 1,
+      },
+    },
+  });
+  if (!session) return null;
+
+  const { hcmMedianCostPerHour, rankByClubId } = await getScoringContextForDate(session.scrapedDate);
+  const snap = session.snapshots[0];
+  const joined = snap?.joined ?? 0;
+  const waitlisted = snap?.waitlisted ?? 0;
+  const fillRate = session.maxPlayers > 0 ? joined / session.maxPlayers : 0;
+  const duprParticipationPct =
+    session.duprStat != null ? Number(session.duprStat.duprParticipationPct) : null;
+  const { duprStat, club, ...sessionRest } = session;
+  const clubRank = rankByClubId.get(session.clubId);
+
+  const mapped = {
+    ...sessionRest,
+    club: { ...club, clubRank },
+    joined,
+    waitlisted,
+    fillRate: Math.round(fillRate * 100) / 100,
+    duprParticipationPct,
+  };
+
+  return { session: mapped, hcmMedianCostPerHour };
+}
+
+export type PublicSessionByReference = NonNullable<
+  Awaited<ReturnType<typeof getSessionByReferenceCode>>
+>["session"];
 
 export async function getClubs() {
   const todayStr = vnCalendarDateString(0);
