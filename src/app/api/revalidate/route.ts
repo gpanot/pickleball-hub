@@ -12,9 +12,9 @@ export async function POST(req: NextRequest) {
   try {
     revalidatePath("/");
     revalidatePath("/clubs");
+    revalidatePath("/sessions/[referenceCode]", "page");
     revalidatePath("/dashboard/organizer");
     revalidatePath("/dashboard/venue");
-    revalidatePath("/sessions/[referenceCode]", "page");
 
     return NextResponse.json({
       revalidated: true,

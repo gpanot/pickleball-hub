@@ -1,7 +1,6 @@
 # Caching in pickleball-hub
 
-The app is deployed on **Vercel** (Next.js). Caching is intentional and split across **CDN / browser** (`Cache-Control`), **Next.js** (on-demand and ISR), and a **client-side in-memory** layer. There is no `vercel.json` in the repo; behavior comes from Next.js and response headers Vercel’s edge applies.
-
+The app is deployed on **Vercel** (Next.js). Caching is split across **static HTML** (SSG for `/` and `/clubs` + selected session details), **CDN / browser** (`Cache-Control` on API routes), **on-demand revalidation** after the Railway scraper, and a **client-side in-memory** layer on some routes. There is no `vercel.json` in the repo.
 ---
 
 ## 1. HTTP: `Cache-Control` (browser + Vercel CDN)
@@ -29,10 +28,8 @@ Rationale in code comments: public listings change on the order of **~twice per 
 ### Sessions list API
 
 - **Header:** `public, max-age=60, s-maxage=300, stale-while-revalidate=3600` (via `CACHE_CONTROL_SESSIONS` in `src/lib/http-cache-headers.ts`)
-- **File:** `src/app/api/sessions/route.ts` — `export const dynamic = "force-dynamic"` is **not** set so the response is not forced uncacheable at the framework level.
-- The home page client `fetch` uses `next: { revalidate: 300 }` where the Next build supports the extended `fetch` cache, and the API `Cache-Control` also allows a short public cache for **browser / CDN** hits (LCP).
-
-The sessions list still revalidates after scrapes (on-demand) and the TTLs are short to limit staleness of booking-related data.
+- **File:** `src/app/api/sessions/route.ts` — kept for **dashboards, tooling, and other consumers** (not the public home page).
+- **Home page** (`/`) no longer calls `/api/sessions`. It is a **server component** that loads data with `getSessions({ date })` in `page.tsx` and passes the result to `HomeClient` as props; filtering, sorting, and search run **entirely on the client** against that data.
 
 ---
 
@@ -41,7 +38,7 @@ The sessions list still revalidates after scrapes (on-demand) and the TTLs are s
 **Route:** `POST /api/revalidate` — `src/app/api/revalidate/route.ts`
 
 - Protected by header `x-revalidate-token` matching `REVALIDATE_SECRET` (set on Vercel and on the scraper side).
-- Calls `revalidatePath` for: `/`, `/clubs`, `/dashboard/organizer`, `/dashboard/venue`, and `revalidatePath("/sessions/[referenceCode]", "page")` for **all public session detail pages** (the `[referenceCode]` segment is a Next.js App Router path pattern, not a literal URL).
+- Calls `revalidatePath` in this order: `/`, `/clubs`, `revalidatePath("/sessions/[referenceCode]", "page")` (all public session detail pages — `[referenceCode]` is the dynamic segment, not a literal path), `/dashboard/organizer`, `/dashboard/venue`.
 - The **Railway scraper** (see `scraper/entrypoint.py`, `trigger_vercel_revalidation()`) best-effort POSTs to `VERCEL_APP_URL/api/revalidate` after a successful run so the **static / full route cache** in Next is invalidated for those entry points when new data lands, **including session detail pages** so they match fresh ingests without waiting for ISR or a new deploy.
 
 This does not replace `Cache-Control` on API responses; it targets **Next.js cache** for the listed route segments. **Per-club** URLs (e.g. `/clubs/[slug]`) are still not on-demand revalidated as a group here—only the paths above.
@@ -56,16 +53,7 @@ This does not replace `Cache-Control` on API responses; it targets **Next.js cac
 - **Purpose:** avoid refetching the same API URL on every client navigation or filter tweak while the user stays in the same JS session (soft navigation).
 - **Limitation:** in-memory only — **clears on full page reload** and is **not shared** across tabs or users.
 
-`fetchPublicApiJson` wraps `fetch` and fills this cache. Several pages also call `readPublicApiCache` / `writePublicApiCache` around `fetch`.
-
-### Important: home page sessions fetch
-
-On the home page (`src/app/page.tsx`), the client:
-
-1. Tries `readPublicApiCache` for `/api/sessions?...` for instant paint.
-2. Fetches with **`cache: "no-store"`** so the **browser’s own HTTP cache** does not stick stale session lists despite the in-memory map.
-
-The API still sends `no-store` on the response for defense in depth.
+`fetchPublicApiJson` wraps `fetch` and fills this cache. `readPublicApiCache` / `writePublicApiCache` are still used on some routes (e.g. **club profile** `src/app/clubs/[slug]/page.tsx`); the **home and clubs directory** no longer use them for their primary data (that data is server-props).
 
 ### Club profile default `fetch`
 
@@ -73,13 +61,12 @@ The API still sends `no-store` on the response for defense in depth.
 
 ---
 
-## 4. Incremental Static Regeneration (ISR) — one route
+## 4. Session detail route (`/sessions/[referenceCode]`)
 
 **File:** `src/app/sessions/[referenceCode]/page.tsx`
 
-- `export const revalidate = 3600` → Next.js may serve a cached version of the **public session detail page** and regenerate it in the background, with a time window on the order of **one hour** (per Next’s ISR semantics).
-
-In practice, session details change slowly; 3600s is a balance between static performance and freshness. **On-demand revalidation** (section 2) also runs `revalidatePath` for the dynamic session detail route after each successful scraper run, so those pages are refreshed in step with new data; ISR remains a backstop for visitors between scrapes.
+- `export const revalidate = false` — no time-based ISR; freshness comes from **on-demand** `revalidatePath` after each scraper run and from build-time/ISR for paths not in `generateStaticParams` as needed.
+- `generateStaticParams` pre-renders up to `STATIC_SESSION_DETAIL_MAX` (default **40** in code; override via env) **distinct** `referenceCode` values for “today’s” `scrapedDate` at build time so the first request can be static HTML. Other codes are generated on demand. If `next build` hits `too many database connections`, lower `STATIC_SESSION_DETAIL_MAX` or use a pooler.
 
 ---
 
@@ -89,10 +76,10 @@ In practice, session details change slowly; 3600s is a balance between static pe
 |--------|------|-----------------------------|
 | Vercel CDN | `s-maxage` on public list APIs | ~1h fresh, up to 4h stale-while-revalidate |
 | Browser | `max-age=300` on those same APIs | ~5 min before rechecking |
-| Browser / Next `fetch` | `Cache-Control` on `/api/sessions` + home `fetch` with `next: { revalidate: 300 }` | ~60s browser, 5m CDN; Next data cache where applicable |
-| Client JS | `public-api-cache` | Up to 4h per URL, same tab / bundle lifetime |
-| Next | `revalidatePath` from scraper | After ingest: `/`, `/clubs`, dashboards, and `"/sessions/[referenceCode]"` (page) |
-| Next | ISR on `/sessions/[referenceCode]` | `revalidate = 3600` (1h); complemented by on-demand revalidation after scrapes |
+| API `/api/sessions` | `Cache-Control` on responses | For API consumers; home does not use this for initial HTML |
+| Client JS | `public-api-cache` | Up to 4h per URL where still used (e.g. some club fetches) |
+| Next SSG + on-demand | `revalidate = false` on `/`, `/clubs`, session detail | Stale-while revalidate = scraper’s `POST /api/revalidate` (paths in §2) |
+| Next | `generateStaticParams` on session detail | Caps at `STATIC_SESSION_DETAIL_MAX` (default 40) to avoid build DB connection exhaustion |
 
 ---
 
@@ -102,6 +89,7 @@ In practice, session details change slowly; 3600s is a balance between static pe
 |----------|------|
 | `REVALIDATE_SECRET` | Token for `POST /api/revalidate` |
 | `VERCEL_APP_URL` | Scraper: base URL of the deployed app (no trailing slash), e.g. `https://…vercel.app` |
+| `STATIC_SESSION_DETAIL_MAX` (optional) | `next build`: max session detail pages to pre-render (default 40) |
 
 See `pickleball-hub/.env.example` for comments.
 
@@ -115,3 +103,13 @@ See `pickleball-hub/.env.example` for comments.
 - `scraper/entrypoint.py` — `trigger_vercel_revalidation()`
 
 If you add new public JSON routes that are safe to cache, attach `CACHE_CONTROL_PUBLIC_LISTINGS` (or a new constant with its own numbers) and document the choice here.
+
+---
+
+## 8. Static page rendering (home + clubs)
+
+`/` and `/clubs` are **fully server-rendered** with `export const revalidate = false` in their `page.tsx` files, then **cached** at the Vercel edge until the next on-demand revalidation. They are **not** on a time-based revalidate interval.
+
+**Data flow:** Railway scraper → successful ingest → `POST /api/revalidate` (with `REVALIDATE_SECRET`) → Vercel purges the cached full-route + RSC data for the paths in **section 2** → the next request runs a **fresh** server render → result is cached again.
+
+**Client behavior:** Filtering, sorting, search, tabs (Today/Tomorrow), map/list, Free Tonight collapse, and the rest of the home UI run **entirely in the browser** on props already in the first response — **no** `/api/sessions` or `/api/clubs` call after the initial page load for those two routes.

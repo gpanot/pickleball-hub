@@ -189,6 +189,8 @@ export async function getSessions(filters: SessionFilters = {}) {
   return { sessions: mapped, hcmMedianCostPerHour };
 }
 
+export type GetSessionsListItem = Awaited<ReturnType<typeof getSessions>>["sessions"][number];
+
 export async function getSessionsLastScrapedAt(date?: string) {
   const targetDate = date || vnCalendarDateString(0);
   const result = await prisma.dailySnapshot.findFirst({
@@ -344,6 +346,8 @@ export async function getClubs() {
     };
   });
 }
+
+export type GetClubsListItem = Awaited<ReturnType<typeof getClubs>>[number];
 
 export async function getClubsLastUpdatedAt() {
   const result = await prisma.club.aggregate({
