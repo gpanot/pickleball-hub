@@ -3,6 +3,7 @@
 import { useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef, type FormEvent } from "react";
 import dynamic from "next/dynamic";
 import { SessionCard } from "@/components/SessionCard";
+import { SessionBookPreviewSheet } from "@/components/SessionBookPreviewSheet";
 import { SessionsIntroBanner } from "@/components/SessionsIntroBanner";
 import { SessionFilters, type FilterState } from "@/components/SessionFilters";
 import {
@@ -117,11 +118,13 @@ function TimeGroupedList({
   visibleCount,
   userLocation,
   hcmMedianCostPerHour,
+  onMobileBookPreview,
 }: {
   groups: Map<string, Session[]>;
   visibleCount: number;
   userLocation: { lat: number; lng: number } | null;
   hcmMedianCostPerHour: number;
+  onMobileBookPreview: (session: Session) => void;
 }) {
   const { t } = useI18n();
   let rendered = 0;
@@ -153,6 +156,7 @@ function TimeGroupedList({
                   session={s}
                   userLocation={userLocation}
                   hcmMedianCostPerHour={hcmMedianCostPerHour}
+                  onMobileBookPreview={() => onMobileBookPreview(s)}
                 />
               ))}
             </div>
@@ -191,6 +195,9 @@ export default function HomePage() {
   const [searchDraft, setSearchDraft] = useState("");
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [freeTonightDetail, setFreeTonightDetail] = useState<Session | null>(null);
+  const [bookPreviewSession, setBookPreviewSession] = useState<Session | null>(null);
+  const [shareClipboardToast, setShareClipboardToast] = useState(false);
+  const [freeTonightCollapsed, setFreeTonightCollapsed] = useState(false);
   const [timeFilter, setTimeFilter] = useState<"fromNow" | "past">("fromNow");
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
@@ -201,6 +208,33 @@ export default function HomePage() {
 
   useEffect(() => {
     setZaloJoined(localStorage.getItem("zalo_joined") === "true");
+  }, []);
+
+  useEffect(() => {
+    try {
+      const v = localStorage.getItem("free_tonight_collapsed");
+      if (v === "true") setFreeTonightCollapsed(true);
+      else if (v === "false") setFreeTonightCollapsed(false);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const toggleFreeTonightCollapsed = useCallback(() => {
+    setFreeTonightCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem("free_tonight_collapsed", String(next));
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  }, []);
+
+  const showShareClipboardToast = useCallback(() => {
+    setShareClipboardToast(true);
+    window.setTimeout(() => setShareClipboardToast(false), 2500);
   }, []);
 
   const handleZaloPillClick = useCallback(() => {
@@ -633,16 +667,39 @@ ${eventBlocks.join("\n\n")}
 
       {freeTonightCards.length > 0 && (
         <section className="mb-4 min-w-0">
-          <h2
-            onClick={handleHeadingTap}
-            className="mb-2 text-sm font-semibold text-foreground cursor-default select-none"
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <h2 className="min-w-0 flex-1 text-sm font-semibold text-foreground">
+              <span
+                onClick={handleHeadingTap}
+                className="cursor-default select-none"
+                role="presentation"
+              >
+                {dayTab === "today"
+                  ? `${t("freeTonight")} (${freeTonightCards.length})`
+                  : `${t("freeTomorrowNight")} (${freeTonightCards.length})`}
+              </span>
+            </h2>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleFreeTonightCollapsed();
+              }}
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-card-border bg-card text-muted-foreground transition hover:border-primary/40 hover:text-foreground"
+              aria-expanded={!freeTonightCollapsed}
+              aria-label={freeTonightCollapsed ? t("expandFreeTonight") : t("collapseFreeTonight")}
+            >
+              {freeTonightCollapsed ? "▼" : "▲"}
+            </button>
+          </div>
+          <div
+            className="overflow-hidden transition-[max-height] duration-300 ease"
+            style={{ maxHeight: freeTonightCollapsed ? 0 : 2000 }}
           >
-            {dayTab === "today" ? `${t("freeTonight")} (${freeTonightCards.length})` : `${t("freeTomorrowNight")} (${freeTonightCards.length})`}
-          </h2>
-          <p className="mb-2 text-xs text-muted">
-            {dayTab === "today" ? t("freeSessionsFrom6pm") : t("freeSessionsTomorrow6pm")}
-          </p>
-          <div className="flex gap-3 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <p className="mb-2 text-xs text-muted">
+              {dayTab === "today" ? t("freeSessionsFrom6pm") : t("freeSessionsTomorrow6pm")}
+            </p>
+            <div className="flex gap-3 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {freeTonightCards.map((s) => {
               const distKm =
                 userLocation &&
@@ -705,6 +762,7 @@ ${eventBlocks.join("\n\n")}
               <span className="text-sm font-bold text-emerald-900 dark:text-emerald-100">{t("getFreeSessions")}</span>
               <span className="mt-0.5 text-xs text-emerald-700 dark:text-emerald-300">{t("joinZaloGroup")}</span>
             </a>
+            </div>
           </div>
         </section>
       )}
@@ -876,6 +934,7 @@ ${eventBlocks.join("\n\n")}
             visibleCount={visibleCount}
             userLocation={userLocation}
             hcmMedianCostPerHour={hcmMedianCostPerHour}
+            onMobileBookPreview={setBookPreviewSession}
           />
         ) : (
           <div className="grid min-w-0 items-stretch gap-2 sm:gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -885,6 +944,7 @@ ${eventBlocks.join("\n\n")}
                 session={s}
                 userLocation={userLocation}
                 hcmMedianCostPerHour={hcmMedianCostPerHour}
+                onMobileBookPreview={() => setBookPreviewSession(s)}
               />
             ))}
           </div>
@@ -902,6 +962,15 @@ ${eventBlocks.join("\n\n")}
           </div>
         )}
       </div>
+
+      <SessionBookPreviewSheet
+        session={bookPreviewSession}
+        open={bookPreviewSession != null}
+        onClose={() => setBookPreviewSession(null)}
+        hcmMedianCostPerHour={hcmMedianCostPerHour}
+        userLocation={userLocation}
+        onShareClipboardToast={showShareClipboardToast}
+      />
 
       {freeTonightDetail ? (
         <div
@@ -932,6 +1001,7 @@ ${eventBlocks.join("\n\n")}
               session={freeTonightDetail}
               userLocation={userLocation}
               hcmMedianCostPerHour={hcmMedianCostPerHour}
+              onMobileBookPreview={() => setBookPreviewSession(freeTonightDetail)}
             />
           </div>
         </div>
@@ -952,6 +1022,11 @@ ${eventBlocks.join("\n\n")}
       {copyToast && (
         <div className="pointer-events-none fixed bottom-14 left-1/2 z-[110] -translate-x-1/2 rounded-lg bg-gray-900 px-4 py-2.5 text-xs font-medium text-white shadow-xl animate-in fade-in slide-in-from-bottom-2 duration-200">
           {t("copiedToast")}
+        </div>
+      )}
+      {shareClipboardToast && (
+        <div className="pointer-events-none fixed bottom-14 left-1/2 z-[110] -translate-x-1/2 rounded-lg bg-gray-900 px-4 py-2.5 text-xs font-medium text-white shadow-xl animate-in fade-in slide-in-from-bottom-2 duration-200">
+          {t("shareClipboardToast")}
         </div>
       )}
     </div>

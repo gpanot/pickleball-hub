@@ -428,3 +428,82 @@ export function SessionScoreBadge({
     </div>
   );
 }
+
+/** Score pill + optional DUPR pill (same data as SessionScoreBadge header, for layouts that need two tiles). */
+export function SessionScoreAndDuprBadges({
+  input,
+  className = "",
+}: {
+  input: SessionScoreInput;
+  className?: string;
+}) {
+  const { t } = useI18n();
+  const result = computeSessionScore(input);
+  const { color, ratingTier } = getScoreLabel(result.score);
+  const scoreTextLabel = t(scoreRatingTranslationKey(ratingTier));
+  const duprLoading = isDuprParticipationLoading(input.duprParticipationPct);
+
+  return (
+    <div className={`flex flex-wrap items-start gap-2 ${className}`}>
+      <div
+        className={`${RATING_PILL_SURFACE_CLASS} pointer-events-none`}
+        style={ratingPillSurfaceStyle(color)}
+        aria-hidden
+      >
+        <span className="inline-flex items-center gap-1 text-[11px] font-semibold leading-tight sm:text-xs">
+          <svg
+            width="11"
+            height="11"
+            viewBox="0 0 24 24"
+            className="shrink-0 opacity-90"
+            aria-hidden
+            fill="currentColor"
+          >
+            <path d="M12 2l2.39 7.26h7.72l-6.25 4.54 2.39 7.26-6.25-4.54-6.25 4.54 2.39-7.26-6.25-4.54h7.72L12 2z" />
+          </svg>
+          <span>
+            {result.score} · {scoreTextLabel}
+          </span>
+        </span>
+      </div>
+      {duprLoading ? (
+        <div
+          className={`${RATING_PILL_SURFACE_CLASS} pointer-events-none border-muted-foreground/35 bg-muted/20 text-muted-foreground`}
+        >
+          <span className="max-w-[180px] truncate text-[10px] font-normal leading-tight">
+            {t("scoreDuprLineLoading")}
+          </span>
+        </div>
+      ) : result.duprBadge != null && result.duprPercent != null ? (
+        <div
+          className={`${RATING_PILL_SURFACE_CLASS} pointer-events-none border-muted-foreground/40 bg-muted/25 text-foreground`}
+        >
+          <span className="max-w-[200px] text-[10px] font-semibold leading-tight">
+            {`${result.duprPercent}% DUPR · ${duprTierLabel(result.duprBadge, t)}`}
+          </span>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** Same breakdown bars as SessionScoreBadge popover / mobile sheet (no duplicate scoring logic). */
+export function SessionScoreBreakdownPanel({ input }: { input: SessionScoreInput }) {
+  const { t, locale } = useI18n();
+  const result = computeSessionScore(input);
+  const { color, ratingTier } = getScoreLabel(result.score);
+  const scoreTextLabel = t(scoreRatingTranslationKey(ratingTier));
+  return (
+    <div className="font-sans text-xs">
+      <ScoreBreakdownContent
+        result={result}
+        input={input}
+        scoreColor={color}
+        scoreLabel={scoreTextLabel}
+        showHeaderRatingPill={false}
+        locale={locale}
+        t={t}
+      />
+    </div>
+  );
+}

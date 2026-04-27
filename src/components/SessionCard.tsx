@@ -1,6 +1,7 @@
 "use client";
 
 import { mouseflowTag } from "@/lib/analytics";
+import { useIsBookPreviewViewport } from "@/hooks/useBookPreviewViewport";
 import { FillRateBar } from "./FillRateBar";
 import { PriceTag } from "./PriceTag";
 import { SessionScoreBadge } from "./SessionScoreBadge";
@@ -10,6 +11,8 @@ interface SessionCardProps {
   userLocation?: { lat: number; lng: number } | null;
   /** Median VND/hr for the session list’s calendar day (from API). */
   hcmMedianCostPerHour: number;
+  /** When set and viewport is narrow, "Book on Reclub" opens preview sheet instead of navigating. */
+  onMobileBookPreview?: () => void;
   session: {
     id: number;
     referenceCode: string;
@@ -33,8 +36,10 @@ interface SessionCardProps {
   };
 }
 
-export function SessionCard({ session, userLocation, hcmMedianCostPerHour }: SessionCardProps) {
+export function SessionCard({ session, userLocation, hcmMedianCostPerHour, onMobileBookPreview }: SessionCardProps) {
   const s = session;
+  const isBookPreviewViewport = useIsBookPreviewViewport();
+  const useMobileBookPreview = Boolean(onMobileBookPreview) && isBookPreviewViewport;
   const fillRate = s.maxPlayers > 0 ? s.joined / s.maxPlayers : 0;
   const sessionType = parseSessionType(s.name);
   const showWaitWarning = fillRate >= 0.9 && sessionType !== "roundrobin";
@@ -118,15 +123,28 @@ export function SessionCard({ session, userLocation, hcmMedianCostPerHour }: Ses
         </div>
       </div>
       <div className="mt-3 shrink-0 border-t border-card-border pt-3">
-        <a
-          href={s.eventUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={() => mouseflowTag("converted:reclub_click")}
-          className="box-border flex min-h-[44px] w-full max-w-full items-center justify-center rounded-lg bg-primary px-4 py-2.5 text-center text-sm font-medium text-white transition hover:bg-primary-dark sm:inline-flex sm:w-auto sm:py-1.5 sm:text-xs"
-        >
-          Book on Reclub
-        </a>
+        {useMobileBookPreview ? (
+          <button
+            type="button"
+            onClick={() => {
+              mouseflowTag("converted:reclub_click");
+              onMobileBookPreview?.();
+            }}
+            className="box-border flex min-h-[44px] w-full max-w-full items-center justify-center rounded-lg bg-primary px-4 py-2.5 text-center text-sm font-medium text-white transition hover:bg-primary-dark sm:inline-flex sm:w-auto sm:py-1.5 sm:text-xs"
+          >
+            Book on Reclub
+          </button>
+        ) : (
+          <a
+            href={s.eventUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={() => mouseflowTag("converted:reclub_click")}
+            className="box-border flex min-h-[44px] w-full max-w-full items-center justify-center rounded-lg bg-primary px-4 py-2.5 text-center text-sm font-medium text-white transition hover:bg-primary-dark sm:inline-flex sm:w-auto sm:py-1.5 sm:text-xs"
+          >
+            Book on Reclub
+          </a>
+        )}
       </div>
     </div>
   );

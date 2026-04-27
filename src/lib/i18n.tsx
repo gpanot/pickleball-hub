@@ -72,6 +72,11 @@ const translations = {
     tomorrowListingsAppear: "Tomorrow's listings appear here after each sync from Reclub. See the note above for timing, or open Reclub to browse what's already published.",
     zaloFloatingCta: "🟢 Buổi FREE mỗi ngày — Tham gia Zalo",
     copiedToast: "Đã sao chép — Dán vào Zalo ✓",
+    shareThisSession: "Share this session",
+    continueToReclub: "Continue to Reclub →",
+    shareClipboardToast: "Copied to clipboard ✓",
+    expandFreeTonight: "Expand Free Tonight section",
+    collapseFreeTonight: "Collapse Free Tonight section",
     // Filters
     free: "Free",
     filling: "Filling",
@@ -205,6 +210,11 @@ const translations = {
     tomorrowListingsAppear: "Danh sách ngày mai sẽ xuất hiện sau mỗi lần đồng bộ từ Reclub. Xem ghi chú phía trên về thời gian, hoặc mở Reclub để xem.",
     zaloFloatingCta: "🟢 Buổi FREE mỗi ngày — Tham gia Zalo",
     copiedToast: "Đã sao chép — Dán vào Zalo ✓",
+    shareThisSession: "Chia sẻ buổi chơi",
+    continueToReclub: "Tiếp tục đến Reclub →",
+    shareClipboardToast: "Đã sao chép vào clipboard ✓",
+    expandFreeTonight: "Mở rộng mục Miễn phí tối nay",
+    collapseFreeTonight: "Thu gọn mục Miễn phí tối nay",
     // Filters
     free: "Miễn phí",
     filling: "Sắp đầy",
