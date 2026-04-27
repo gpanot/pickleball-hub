@@ -335,6 +335,22 @@ export function HomeClient({
       result = result.filter((s) => hasFoodDrinkPerk(s.perks));
     }
 
+    const sessionScore = (s: HomeSession) =>
+      computeSessionScore({
+        confirmedPlayers: s.joined,
+        capacity: s.maxPlayers,
+        priceVnd: s.feeAmount,
+        durationMinutes: s.durationMin,
+        hasZalo: Boolean(s.club.zaloUrl),
+        hcmMedianCostPerHour,
+        sessionType: parseSessionType(s.name),
+        duprParticipationPct: s.duprParticipationPct,
+      }).score;
+
+    if (filters.sortBy === "score" || filters.sortBy === "score_nearby") {
+      result = result.filter((s) => sessionScore(s) >= 50);
+    }
+
     const distanceKm = (session: HomeSession) => {
       if (
         !userLocation ||
@@ -371,25 +387,29 @@ export function HomeClient({
           result.sort((a, b) => a.startTime.localeCompare(b.startTime));
         }
         break;
-      case "score": {
-        const scoreOf = (s: HomeSession) =>
-          computeSessionScore({
-            confirmedPlayers: s.joined,
-            capacity: s.maxPlayers,
-            priceVnd: s.feeAmount,
-            durationMinutes: s.durationMin,
-            hasZalo: Boolean(s.club.zaloUrl),
-            hcmMedianCostPerHour,
-            sessionType: parseSessionType(s.name),
-            duprParticipationPct: s.duprParticipationPct,
-          }).score;
+      case "score":
         result.sort((a, b) => {
-          const diff = scoreOf(b) - scoreOf(a);
+          const diff = sessionScore(b) - sessionScore(a);
           if (diff !== 0) return diff;
           return a.startTime.localeCompare(b.startTime);
         });
         break;
-      }
+      case "score_nearby":
+        if (userLocation) {
+          result.sort((a, b) => {
+            const da = distanceKm(a);
+            const db = distanceKm(b);
+            if (da !== db) return da - db;
+            return sessionScore(b) - sessionScore(a);
+          });
+        } else {
+          result.sort((a, b) => {
+            const diff = sessionScore(b) - sessionScore(a);
+            if (diff !== 0) return diff;
+            return a.startTime.localeCompare(b.startTime);
+          });
+        }
+        break;
       default:
         result.sort((a, b) => a.startTime.localeCompare(b.startTime));
     }
@@ -898,7 +918,7 @@ ${eventBlocks.join("\n\n")}
               </>
             )}
           </div>
-        ) : filters.sortBy === "score" || !hasTimeGroups ? (
+        ) : filters.sortBy === "score" || filters.sortBy === "score_nearby" || !hasTimeGroups ? (
           <div className="grid min-w-0 items-stretch gap-2 sm:gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {filtered.slice(0, visibleCount).map((s) => (
               <SessionCard

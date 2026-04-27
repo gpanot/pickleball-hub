@@ -111,6 +111,7 @@ function AdvancedFilters({
         >
           <option value="time">{t("startTime")}</option>
           <option value="score">{t("bestScore")}</option>
+          <option value="score_nearby">{t("sortBestScoreNearby")}</option>
           <option value="nearby">{t("nearestFirst")}</option>
           <option value="price">{t("priceLowFirst")}</option>
           <option value="costPerHour">{t("costPerHour")}</option>
@@ -168,8 +169,13 @@ export function SessionFilters({
     }`;
 
   const toggleBestScore = () => {
-    if (filters.sortBy === "score") {
+    if (filters.sortBy === "score_nearby") {
+      update("sortBy", "nearby");
+    } else if (filters.sortBy === "score") {
       update("sortBy", "time");
+    } else if (filters.sortBy === "nearby") {
+      mouseflowTag("filter:best_score_nearby");
+      update("sortBy", "score_nearby");
     } else {
       mouseflowTag("filter:best_score");
       update("sortBy", "score");
@@ -186,7 +192,16 @@ export function SessionFilters({
 
   const toggleNearby = () => {
     if (!hasUserLocation) return;
-    update("sortBy", filters.sortBy === "nearby" ? "time" : "nearby");
+    if (filters.sortBy === "score_nearby") {
+      update("sortBy", "score");
+    } else if (filters.sortBy === "nearby") {
+      update("sortBy", "time");
+    } else if (filters.sortBy === "score") {
+      mouseflowTag("filter:best_score_nearby");
+      update("sortBy", "score_nearby");
+    } else {
+      update("sortBy", "nearby");
+    }
   };
 
   return (
@@ -208,7 +223,11 @@ export function SessionFilters({
       </form>
 
       <div className="flex flex-nowrap gap-1 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] sm:hidden [&::-webkit-scrollbar]:hidden">
-        <button type="button" onClick={toggleBestScore} className={pillClass(filters.sortBy === "score")}>
+        <button
+          type="button"
+          onClick={toggleBestScore}
+          className={pillClass(filters.sortBy === "score" || filters.sortBy === "score_nearby")}
+        >
           {t("bestScore")}
         </button>
         <button
@@ -225,7 +244,7 @@ export function SessionFilters({
           type="button"
           onClick={toggleNearby}
           disabled={!hasUserLocation}
-          className={`${pillClass(filters.sortBy === "nearby")} ${!hasUserLocation ? "cursor-not-allowed opacity-40" : ""}`}
+          className={`${pillClass(filters.sortBy === "nearby" || filters.sortBy === "score_nearby")} ${!hasUserLocation ? "cursor-not-allowed opacity-40" : ""}`}
         >
           {t("nearby")}
         </button>
