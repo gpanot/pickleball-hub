@@ -8,6 +8,8 @@ import { perkEmoji, parseSessionType, haversineKm, formatDistanceKm } from "@/li
 
 interface SessionCardProps {
   userLocation?: { lat: number; lng: number } | null;
+  /** Median VND/hr for the session list’s calendar day (from API). */
+  hcmMedianCostPerHour: number;
   session: {
     id: number;
     referenceCode: string;
@@ -25,13 +27,13 @@ interface SessionCardProps {
     status: string;
     joined: number;
     waitlisted: number;
-    club: { name: string; slug: string; zaloUrl?: string | null };
+    club: { name: string; slug: string; zaloUrl?: string | null; clubRank?: number };
     duprParticipationPct?: number | null;
     venue: { name: string; address: string; latitude?: number; longitude?: number } | null;
   };
 }
 
-export function SessionCard({ session, userLocation }: SessionCardProps) {
+export function SessionCard({ session, userLocation, hcmMedianCostPerHour }: SessionCardProps) {
   const s = session;
   const fillRate = s.maxPlayers > 0 ? s.joined / s.maxPlayers : 0;
   const sessionType = parseSessionType(s.name);
@@ -98,6 +100,7 @@ export function SessionCard({ session, userLocation }: SessionCardProps) {
                 priceVnd: s.feeAmount,
                 durationMinutes: s.durationMin,
                 hasZalo: Boolean(s.club.zaloUrl),
+                hcmMedianCostPerHour,
                 duprParticipationPct: s.duprParticipationPct,
               }}
             />

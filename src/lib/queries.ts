@@ -1,5 +1,5 @@
 import { prisma } from "./db";
-import { computeSessionScore } from "./scoring";
+import { computeHcmMedianCostPerHour, computeSessionScore } from "./scoring";
 import { vnCalendarDateString } from "./utils";
 
 const MAX_DURATION_MIN = 360;
@@ -17,11 +17,81 @@ export interface SessionFilters {
   search?: string;
 }
 
+/** Est. revenue rank for a calendar day (1 = highest revenue), tie-break by club name. */
+async function getClubRevenueRanksForDate(date: string): Promise<Map<number, number>> {
+  const stats = await prisma.clubDailyStat.findMany({
+    where: { date },
+    include: { club: { select: { id: true, name: true } } },
+  });
+  stats.sort((a, b) => {
+    const rev = b.revenueEstimate - a.revenueEstimate;
+    if (rev !== 0) return rev;
+    return (a.club?.name ?? "").localeCompare(b.club?.name ?? "");
+  });
+  const rankByClubId = new Map<number, number>();
+  stats.forEach((row, index) => {
+    rankByClubId.set(row.clubId, index + 1);
+  });
+  return rankByClubId;
+}
+
+async function getScoringContextForDate(date: string): Promise<{
+  hcmMedianCostPerHour: number;
+  rankByClubId: Map<number, number>;
+}> {
+  const rankByClubId = await getClubRevenueRanksForDate(date);
+  const slim = await prisma.session.findMany({
+    where: { scrapedDate: date },
+    select: { feeAmount: true, durationMin: true, clubId: true },
+  });
+  const hcmMedianCostPerHour = computeHcmMedianCostPerHour(
+    slim.map((s) => ({
+      feeAmount: s.feeAmount,
+      durationMinutes: s.durationMin,
+      clubRank: rankByClubId.get(s.clubId),
+    })),
+  );
+
+  try {
+    await prisma.hcmMarketMedianDaily.upsert({
+      where: { date },
+      create: { date, medianCostPerHour: hcmMedianCostPerHour },
+      update: { medianCostPerHour: hcmMedianCostPerHour },
+    });
+  } catch (e) {
+    console.error("[getScoringContextForDate] hcm_market_median_daily upsert failed:", e);
+  }
+
+  return { hcmMedianCostPerHour, rankByClubId };
+}
+
+/** Last N calendar days of stored HCM median cost/hour (oldest first, for charts). */
+export async function getMarketMedianCostPerHourSeries(days: number) {
+  const take = Math.min(Math.max(1, Math.floor(days)), 730);
+  try {
+    const rows = await prisma.hcmMarketMedianDaily.findMany({
+      orderBy: { date: "desc" },
+      take,
+      select: { date: true, medianCostPerHour: true },
+    });
+    return [...rows].reverse();
+  } catch (e) {
+    console.error("[getMarketMedianCostPerHourSeries]", e);
+    return [];
+  }
+}
+
+export async function getHcmMedianCostPerHourForDate(date: string): Promise<number> {
+  const { hcmMedianCostPerHour } = await getScoringContextForDate(date);
+  return hcmMedianCostPerHour;
+}
+
 export async function getSessions(filters: SessionFilters = {}) {
-  const today = filters.date || vnCalendarDateString(0);
+  const date = filters.date || vnCalendarDateString(0);
+  const { hcmMedianCostPerHour, rankByClubId } = await getScoringContextForDate(date);
 
   const where: Record<string, unknown> = {
-    scrapedDate: today,
+    scrapedDate: date,
   };
 
   if (filters.clubSlug) {
@@ -96,23 +166,27 @@ export async function getSessions(filters: SessionFilters = {}) {
     orderBy: { startTime: "asc" },
   });
 
-  return sessions.map((s) => {
+  const mapped = sessions.map((s) => {
     const snap = s.snapshots[0];
     const joined = snap?.joined ?? 0;
     const waitlisted = snap?.waitlisted ?? 0;
     const fillRate = s.maxPlayers > 0 ? joined / s.maxPlayers : 0;
-    const { duprStat, ...sessionRest } = s;
+    const { duprStat, club, ...sessionRest } = s;
     const duprParticipationPct =
       duprStat != null ? Number(duprStat.duprParticipationPct) : null;
+    const clubRank = rankByClubId.get(s.clubId);
 
     return {
       ...sessionRest,
+      club: { ...club, clubRank },
       joined,
       waitlisted,
       fillRate: Math.round(fillRate * 100) / 100,
       duprParticipationPct,
     };
   });
+
+  return { sessions: mapped, hcmMedianCostPerHour };
 }
 
 export async function getSessionsLastScrapedAt(date?: string) {
@@ -127,6 +201,8 @@ export async function getSessionsLastScrapedAt(date?: string) {
 
 export async function getClubs() {
   const todayStr = vnCalendarDateString(0);
+
+  const hcmMedianCostPerHour = await getHcmMedianCostPerHourForDate(todayStr);
 
   const todaySessionsForScores = await prisma.session.findMany({
     where: { scrapedDate: todayStr },
@@ -149,6 +225,7 @@ export async function getClubs() {
       priceVnd: s.feeAmount,
       durationMinutes: s.durationMin,
       hasZalo: Boolean(s.club.zaloUrl),
+      hcmMedianCostPerHour,
     });
     const list = scoresByClub.get(s.clubId);
     if (list) list.push(score);
@@ -251,8 +328,11 @@ export async function getClubBySlug(slug: string) {
 
   if (!club) return null;
 
+  const hcmMedianCostPerHour = await getHcmMedianCostPerHourForDate(vnCalendarDateString(0));
+
   return {
     ...club,
+    hcmMedianCostPerHour,
     sessions: club.sessions.map(({ duprStat, ...session }) => ({
       ...session,
       duprParticipationPct:

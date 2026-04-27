@@ -5,7 +5,15 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { clearOrganizerSession, isOrganizerUnlocked } from "@/lib/dashboard-session";
 import { FillRateBar } from "@/components/FillRateBar";
-import { FillRateTrendChart, RevenueChart, CompetitorPriceChart, WeeklyDistributionChart, HourlyStatsDistributionChart, DAY_LABELS } from "@/components/DashboardCharts";
+import {
+  FillRateTrendChart,
+  RevenueChart,
+  CompetitorPriceChart,
+  WeeklyDistributionChart,
+  HourlyStatsDistributionChart,
+  MarketMedianCostChart,
+  DAY_LABELS,
+} from "@/components/DashboardCharts";
 import { formatVND } from "@/lib/utils";
 import { fetchPublicApiJson, readPublicApiCache } from "@/lib/public-api-cache";
 
@@ -103,6 +111,11 @@ export default function OrganizerDashboardPage({ params }: { params: Promise<{ c
   const [allClubsLoading, setAllClubsLoading] = useState(false);
   const [statsScope, setStatsScope] = useState<"you" | "all">("you");
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
+  const [marketMedianSeries, setMarketMedianSeries] = useState<
+    { date: string; medianCostPerHour: number }[]
+  >([]);
+  const [marketMedianLoading, setMarketMedianLoading] = useState(false);
+  const [marketMedianFetched, setMarketMedianFetched] = useState(false);
 
   useEffect(() => {
     if (!Number.isFinite(clubId) || clubId <= 0) {
@@ -229,6 +242,36 @@ export default function OrganizerDashboardPage({ params }: { params: Promise<{ c
       .finally(() => { if (!cancelled) setAllClubsLoading(false); });
     return () => { cancelled = true; };
   }, [activeTab, statsScope, allClubsFetched, sessionOk]);
+
+  useEffect(() => {
+    if (activeTab !== "stats" || marketMedianFetched || !sessionOk) return;
+    let cancelled = false;
+    setMarketMedianLoading(true);
+    const url = "/api/dashboard/organizer/market-median-series?days=120";
+    const hit = readPublicApiCache<{ points: { date: string; medianCostPerHour: number }[] }>(url);
+    if (hit?.points) {
+      setMarketMedianSeries(hit.points);
+      setMarketMedianFetched(true);
+      setMarketMedianLoading(false);
+      return;
+    }
+    fetchPublicApiJson<{ points: { date: string; medianCostPerHour: number }[] }>(url)
+      .then((d) => {
+        if (!cancelled && d?.points) setMarketMedianSeries(d.points);
+      })
+      .catch(() => {
+        if (!cancelled) setMarketMedianSeries([]);
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setMarketMedianLoading(false);
+          setMarketMedianFetched(true);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, marketMedianFetched, sessionOk]);
 
   const activeStatsSessions = statsScope === "all" ? allClubsSessions : statsSessions;
   const activeStatsLoading = statsScope === "all" ? allClubsLoading : statsLoading;
@@ -472,7 +515,7 @@ export default function OrganizerDashboardPage({ params }: { params: Promise<{ c
   ];
 
   return (
-    <div className="mx-auto max-w-6xl px-3 py-4 sm:px-6 sm:py-6">
+    <div className="mx-auto max-w-6xl min-w-0 px-3 py-4 sm:px-6 sm:py-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
         <div className="min-w-0">
           <h1 className="text-xl sm:text-2xl font-bold truncate">{club.name}</h1>
@@ -716,6 +759,23 @@ export default function OrganizerDashboardPage({ params }: { params: Promise<{ c
               </Section>
             </>
           )}
+
+          <Section title="HCM market median cost / hour">
+            <p className="text-xs text-muted mb-3">
+              Daily median price per hour across the market (same methodology as session scores). Updated when
+              sessions are loaded for that day. Applies to both &quot;You&quot; and &quot;All Clubs&quot; views.
+            </p>
+            {marketMedianLoading ? (
+              <div className="animate-pulse h-64 w-full min-w-0 bg-gray-100 dark:bg-gray-800 rounded-xl" />
+            ) : marketMedianSeries.length === 0 ? (
+              <p className="text-sm text-muted py-4">
+                No history yet. Values are stored as the app computes daily medians (e.g. after visiting sessions
+                or sync).
+              </p>
+            ) : (
+              <MarketMedianCostChart data={marketMedianSeries} />
+            )}
+          </Section>
         </>
       )}
 
@@ -951,9 +1011,9 @@ function KPICard({ label, value, accent }: { label: string; value: string; accen
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="mb-6">
+    <div className="mb-6 min-w-0">
       <h2 className="font-semibold mb-3">{title}</h2>
-      <div className="rounded-xl border border-card-border bg-card p-4">{children}</div>
+      <div className="min-w-0 rounded-xl border border-card-border bg-card p-4">{children}</div>
     </div>
   );
 }

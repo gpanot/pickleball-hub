@@ -130,6 +130,15 @@ model ClubDailyStat {
   @@map("club_daily_stats")
 }
 
+/// HCM-wide median session cost/hour (VND) for a calendar day — used for scoring and market trend charts.
+model HcmMarketMedianDaily {
+  date              String   @id @map("date")
+  medianCostPerHour Float    @map("median_cost_per_hour")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  @@map("hcm_market_median_daily")
+}
+
 /// Reclub user; DUPR fields from /players/userIds when roster scrape runs.
 model Player {
   userId                   BigInt    @id @map("user_id")

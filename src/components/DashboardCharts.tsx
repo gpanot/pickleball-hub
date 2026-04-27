@@ -1,12 +1,102 @@
 "use client";
 
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import {
-  LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid,
-  Tooltip, Legend, ResponsiveContainer, Cell,
+  LineChart,
+  Line,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  Cell,
 } from "recharts";
+import { formatVND } from "@/lib/utils";
+
+/** Measured box so Recharts get positive width/height (ResponsiveContainer breaks in nested flex). */
+function RechartsAutoSize({
+  height,
+  className,
+  children,
+}: {
+  height: number;
+  className?: string;
+  children: (size: { width: number; height: number }) => ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(0);
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const measure = () => {
+      const w = el.getBoundingClientRect().width;
+      setWidth(Math.max(0, Math.floor(w)));
+    };
+    measure();
+    const ro = new ResizeObserver(() => measure());
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  return (
+    <div
+      ref={ref}
+      className={className ?? "w-full min-w-0"}
+      style={{ height, minHeight: height }}
+    >
+      {width > 0 ? children({ width, height }) : null}
+    </div>
+  );
+}
 
 interface FillRateTrendProps {
   data: { date: string; avgFillRate: number; totalSessions: number }[];
+}
+
+interface MarketMedianCostChartProps {
+  data: { date: string; medianCostPerHour: number }[];
+}
+
+/** Stored HCM-wide median session cost per hour (VND) by calendar day — same basis as session value scoring. */
+export function MarketMedianCostChart({ data }: MarketMedianCostChartProps) {
+  const formatted = [...data].map((d) => ({
+    ...d,
+    medianK: Math.round(d.medianCostPerHour / 1000),
+  }));
+
+  return (
+    <RechartsAutoSize height={256} className="w-full min-w-0">
+      {({ width, height }) => (
+        <LineChart width={width} height={height} data={formatted}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+          <XAxis
+            dataKey="date"
+            tick={{ fontSize: 11 }}
+            tickFormatter={(v: string) => v.slice(5)}
+          />
+          <YAxis tick={{ fontSize: 11 }} tickFormatter={(v: number) => `${v}k`} />
+          <Tooltip
+            formatter={(value) => [
+              formatVND(Math.round(typeof value === "number" ? value : Number(value))),
+              "Median / hr",
+            ]}
+            labelFormatter={(l) => `Date: ${l}`}
+          />
+          <Line
+            type="monotone"
+            dataKey="medianCostPerHour"
+            stroke="#3b82f6"
+            strokeWidth={2}
+            dot={{ r: 3 }}
+            name="Median cost/hr"
+          />
+        </LineChart>
+      )}
+    </RechartsAutoSize>
+  );
 }
 
 export function FillRateTrendChart({ data }: FillRateTrendProps) {
@@ -16,9 +106,9 @@ export function FillRateTrendChart({ data }: FillRateTrendProps) {
   }));
 
   return (
-    <div className="h-64">
-      <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={formatted}>
+    <RechartsAutoSize height={256} className="w-full min-w-0">
+      {({ width, height }) => (
+        <LineChart width={width} height={height} data={formatted}>
           <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
           <XAxis
             dataKey="date"
@@ -42,8 +132,8 @@ export function FillRateTrendChart({ data }: FillRateTrendProps) {
             dot={{ r: 3 }}
           />
         </LineChart>
-      </ResponsiveContainer>
-    </div>
+      )}
+    </RechartsAutoSize>
   );
 }
 
@@ -58,9 +148,9 @@ export function RevenueChart({ data }: RevenueChartProps) {
   }));
 
   return (
-    <div className="h-64">
-      <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={formatted}>
+    <RechartsAutoSize height={256} className="w-full min-w-0">
+      {({ width, height }) => (
+        <BarChart width={width} height={height} data={formatted}>
           <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
           <XAxis
             dataKey="date"
@@ -78,8 +168,8 @@ export function RevenueChart({ data }: RevenueChartProps) {
             ))}
           </Bar>
         </BarChart>
-      </ResponsiveContainer>
-    </div>
+      )}
+    </RechartsAutoSize>
   );
 }
 
@@ -94,9 +184,9 @@ export function HourlyUtilizationChart({ data }: HourlyUtilizationProps) {
   }));
 
   return (
-    <div className="h-64">
-      <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={formatted}>
+    <RechartsAutoSize height={256} className="w-full min-w-0">
+      {({ width, height }) => (
+        <BarChart width={width} height={height} data={formatted}>
           <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
           <XAxis dataKey="label" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
           <YAxis tick={{ fontSize: 11 }} />
@@ -107,8 +197,8 @@ export function HourlyUtilizationChart({ data }: HourlyUtilizationProps) {
             ))}
           </Bar>
         </BarChart>
-      </ResponsiveContainer>
-    </div>
+      )}
+    </RechartsAutoSize>
   );
 }
 
@@ -126,9 +216,9 @@ export function CompetitorPriceChart({ myAvgPrice, competitorPrices }: Competito
   }));
 
   return (
-    <div className="h-64">
-      <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={data}>
+    <RechartsAutoSize height={256} className="w-full min-w-0">
+      {({ width, height }) => (
+        <BarChart width={width} height={height} data={data}>
           <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
           <XAxis dataKey="slot" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
           <YAxis tick={{ fontSize: 11 }} tickFormatter={(v: number) => `${v}k`} />
@@ -136,8 +226,8 @@ export function CompetitorPriceChart({ myAvgPrice, competitorPrices }: Competito
           <Bar dataKey="priceK" name="Market Avg" fill="#94a3b8" radius={[4, 4, 0, 0]} />
           <Bar dataKey="myPriceK" name="Your Price" fill="#10b981" radius={[4, 4, 0, 0]} />
         </BarChart>
-      </ResponsiveContainer>
-    </div>
+      )}
+    </RechartsAutoSize>
   );
 }
 
@@ -149,9 +239,9 @@ interface WeeklyDistributionProps {
 
 export function WeeklyDistributionChart({ data }: WeeklyDistributionProps) {
   return (
-    <div className="h-72">
-      <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={data} barGap={2}>
+    <RechartsAutoSize height={288} className="w-full min-w-0">
+      {({ width, height }) => (
+        <BarChart width={width} height={height} data={data} barGap={2}>
           <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
           <XAxis dataKey="label" tick={{ fontSize: 11 }} />
           <YAxis tick={{ fontSize: 11 }} />
@@ -161,8 +251,8 @@ export function WeeklyDistributionChart({ data }: WeeklyDistributionProps) {
           <Bar dataKey="booked" name="Players Booked" fill="#10b981" radius={[3, 3, 0, 0]} />
           <Bar dataKey="capacity" name="Total Capacity" fill="#94a3b8" radius={[3, 3, 0, 0]} />
         </BarChart>
-      </ResponsiveContainer>
-    </div>
+      )}
+    </RechartsAutoSize>
   );
 }
 
@@ -172,9 +262,9 @@ interface HourlyStatsDistributionProps {
 
 export function HourlyStatsDistributionChart({ data }: HourlyStatsDistributionProps) {
   return (
-    <div className="h-72">
-      <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={data} barGap={2}>
+    <RechartsAutoSize height={288} className="w-full min-w-0">
+      {({ width, height }) => (
+        <BarChart width={width} height={height} data={data} barGap={2}>
           <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
           <XAxis dataKey="hour" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
           <YAxis tick={{ fontSize: 11 }} />
@@ -184,8 +274,8 @@ export function HourlyStatsDistributionChart({ data }: HourlyStatsDistributionPr
           <Bar dataKey="booked" name="Players Booked" fill="#10b981" radius={[3, 3, 0, 0]} />
           <Bar dataKey="capacity" name="Total Capacity" fill="#94a3b8" radius={[3, 3, 0, 0]} />
         </BarChart>
-      </ResponsiveContainer>
-    </div>
+      )}
+    </RechartsAutoSize>
   );
 }
 

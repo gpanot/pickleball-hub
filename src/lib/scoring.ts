@@ -6,6 +6,8 @@ export interface SessionScoreInput {
   priceVnd: number;
   durationMinutes: number;
   hasZalo: boolean;
+  /** Median VND/hour for the session's calendar day (compute once, pass to all sessions). */
+  hcmMedianCostPerHour: number;
   /** When set (e.g. from roster scrape), drives DUPR badge thresholds. */
   duprParticipationPct?: number | null;
   /** Legacy shape from spec; prefer duprParticipationPct when wired. */
@@ -23,7 +25,44 @@ export interface SessionScoreResult {
   duprPercent: number | null;
 }
 
-const HCM_AVG_COST_PER_HOUR = 35000;
+/** Fallback median (VND/hr) when sample is too small; only used inside `computeHcmMedianCostPerHour`. */
+export const HCM_MEDIAN_COST_FALLBACK = 35000;
+
+export type HcmMedianSessionSample = {
+  feeAmount: number;
+  durationMinutes: number;
+  /** Ranking position by est. revenue (lower = better); omit if club has no stat for the day. */
+  clubRank?: number;
+};
+
+/**
+ * Median cost/hour (VND) from session samples, preferring clubs ranked in the top 100 by revenue.
+ * Falls back to all sessions if the top-100 pool has fewer than MIN_SAMPLE rows.
+ */
+export function computeHcmMedianCostPerHour(
+  sessions: HcmMedianSessionSample[],
+): number {
+  const MIN_SAMPLE = 20;
+
+  const top100Sessions = sessions.filter(
+    (s) => s.clubRank !== undefined && s.clubRank <= 100,
+  );
+
+  const pool =
+    top100Sessions.length >= MIN_SAMPLE ? top100Sessions : sessions;
+
+  const costPerHours = pool
+    .filter((s) => s.feeAmount > 0 && s.durationMinutes > 0)
+    .map((s) => (s.feeAmount / s.durationMinutes) * 60);
+
+  if (costPerHours.length < MIN_SAMPLE) return HCM_MEDIAN_COST_FALLBACK;
+
+  const sorted = [...costPerHours].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0
+    ? (sorted[mid - 1]! + sorted[mid]!) / 2
+    : sorted[mid]!;
+}
 
 export function computeSessionScore(input: SessionScoreInput): SessionScoreResult {
   const {
@@ -32,6 +71,7 @@ export function computeSessionScore(input: SessionScoreInput): SessionScoreResul
     priceVnd,
     durationMinutes,
     hasZalo,
+    hcmMedianCostPerHour,
     duprParticipationPct,
     duprRatedCount,
     totalPlayersWithProfile,
@@ -48,13 +88,21 @@ export function computeSessionScore(input: SessionScoreInput): SessionScoreResul
   else fillScore = 20;
   const weightedFill = fillScore * 0.35;
 
-  let valueScore = 0;
-  if (costPerHour === 0) valueScore = 80;
-  else if (costPerHour <= HCM_AVG_COST_PER_HOUR * 0.6) valueScore = 100;
-  else if (costPerHour <= HCM_AVG_COST_PER_HOUR * 0.8) valueScore = 85;
-  else if (costPerHour <= HCM_AVG_COST_PER_HOUR) valueScore = 70;
-  else if (costPerHour <= HCM_AVG_COST_PER_HOUR * 1.3) valueScore = 50;
-  else valueScore = 30;
+  const median = hcmMedianCostPerHour > 0 ? hcmMedianCostPerHour : HCM_MEDIAN_COST_FALLBACK;
+  const minBand = median * 0.5;
+  const maxBand = median * 1.75;
+
+  let valueScore: number;
+  if (costPerHour === 0) {
+    valueScore = 100;
+  } else if (costPerHour <= minBand) {
+    valueScore = 100;
+  } else if (costPerHour >= maxBand) {
+    valueScore = 30;
+  } else {
+    const ratio = (costPerHour - minBand) / (maxBand - minBand);
+    valueScore = Math.round(100 - ratio * 70);
+  }
   const weightedValue = valueScore * 0.3;
 
   const zaloScore = hasZalo ? 100 : 0;
@@ -120,6 +168,14 @@ export function getScoreRatingTier(score: number): ScoreRatingTier {
 export function getScoreLabel(score: number): { color: string; ratingTier: ScoreRatingTier } {
   const ratingTier = getScoreRatingTier(score);
   return { color: TIER_COLOR[ratingTier], ratingTier };
+}
+
+/**
+ * Color for “price vs HCM median” UI (e.g. breakdown bar). Uses {@link SessionScoreResult.valueScore} only,
+ * not the composite session score, so the bar hue matches value vs market instead of overall tier.
+ */
+export function getValueScoreColor(valueScore: number): string {
+  return TIER_COLOR[getScoreRatingTier(valueScore)];
 }
 
 /** English labels + emoji for DUPR tier; UI uses i18n for visible copy and omits emoji in pills. */

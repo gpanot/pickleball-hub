@@ -16,7 +16,11 @@ import {
 import { readPublicApiCache, writePublicApiCache } from "@/lib/public-api-cache";
 import { useI18n } from "@/lib/i18n";
 import { mouseflowTag } from "@/lib/analytics";
-import { computeSessionScore } from "@/lib/scoring";
+import {
+  computeHcmMedianCostPerHour,
+  computeSessionScore,
+  HCM_MEDIAN_COST_FALLBACK,
+} from "@/lib/scoring";
 
 const ZALO_GROUP_URL = "https://zalo.me/g/khebsp5x7jlkslmnroxh";
 
@@ -75,11 +79,30 @@ type Session = {
   joined: number;
   waitlisted: number;
   fillRate: number;
-  club: { name: string; slug: string; zaloUrl?: string | null };
+  club: { name: string; slug: string; zaloUrl?: string | null; clubRank?: number };
   duprParticipationPct?: number | null;
   description?: string | null;
   venue: { name: string; address: string; latitude: number; longitude: number } | null;
 };
+
+type SessionsApiPayload = {
+  sessions: Session[];
+  hcmMedianCostPerHour?: number;
+  lastScrapedAt: string | null;
+};
+
+function resolveHcmMedianFromPayload(data: SessionsApiPayload): number {
+  if (typeof data.hcmMedianCostPerHour === "number" && !Number.isNaN(data.hcmMedianCostPerHour)) {
+    return data.hcmMedianCostPerHour;
+  }
+  return computeHcmMedianCostPerHour(
+    (data.sessions ?? []).map((s) => ({
+      feeAmount: s.feeAmount,
+      durationMinutes: s.durationMin,
+      clubRank: s.club.clubRank,
+    })),
+  );
+}
 
 /** Hide sessions with no place to go (private / friend listings). Always applied — no UI toggle. */
 function sessionHasVenueAddressOrLocation(s: Session): boolean {
@@ -93,10 +116,12 @@ function TimeGroupedList({
   groups,
   visibleCount,
   userLocation,
+  hcmMedianCostPerHour,
 }: {
   groups: Map<string, Session[]>;
   visibleCount: number;
   userLocation: { lat: number; lng: number } | null;
+  hcmMedianCostPerHour: number;
 }) {
   const { t } = useI18n();
   let rendered = 0;
@@ -123,7 +148,12 @@ function TimeGroupedList({
             </div>
             <div className="grid min-w-0 items-stretch gap-2 sm:gap-4 sm:grid-cols-2 lg:grid-cols-3 mt-2">
               {visible.map((s) => (
-                <SessionCard key={s.id} session={s} userLocation={userLocation} />
+                <SessionCard
+                  key={s.id}
+                  session={s}
+                  userLocation={userLocation}
+                  hcmMedianCostPerHour={hcmMedianCostPerHour}
+                />
               ))}
             </div>
           </div>
@@ -136,6 +166,7 @@ function TimeGroupedList({
 export default function HomePage() {
   const { t } = useI18n();
   const [sessions, setSessions] = useState<Session[]>([]);
+  const [hcmMedianCostPerHour, setHcmMedianCostPerHour] = useState(HCM_MEDIAN_COST_FALLBACK);
   const [loading, setLoading] = useState(true);
   const [lastScrapedAt, setLastScrapedAt] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"list" | "map">("list");
@@ -236,9 +267,10 @@ export default function HomePage() {
     if (filters.foodDrink) params.set("hasPerks", filters.foodDrink);
 
     const url = `/api/sessions?${params.toString()}`;
-    const cached = readPublicApiCache<{ sessions: Session[]; lastScrapedAt: string | null }>(url);
+    const cached = readPublicApiCache<SessionsApiPayload>(url);
     if (cached) {
       setSessions(cached.sessions || []);
+      setHcmMedianCostPerHour(resolveHcmMedianFromPayload(cached));
       setLastScrapedAt(cached.lastScrapedAt ?? null);
       setLoading(false);
     } else {
@@ -249,17 +281,21 @@ export default function HomePage() {
     fetch(url, { cache: "no-store" })
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return res.json() as Promise<{ sessions: Session[]; lastScrapedAt: string | null }>;
+        return res.json() as Promise<SessionsApiPayload>;
       })
       .then((data) => {
         writePublicApiCache(url, data);
         if (!cancelled) {
           setSessions(data.sessions || []);
+          setHcmMedianCostPerHour(resolveHcmMedianFromPayload(data));
           setLastScrapedAt(data.lastScrapedAt ?? null);
         }
       })
       .catch(() => {
-        if (!cancelled) setSessions([]);
+        if (!cancelled) {
+          setSessions([]);
+          setHcmMedianCostPerHour(HCM_MEDIAN_COST_FALLBACK);
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -353,6 +389,7 @@ export default function HomePage() {
             priceVnd: s.feeAmount,
             durationMinutes: s.durationMin,
             hasZalo: Boolean(s.club.zaloUrl),
+            hcmMedianCostPerHour,
             duprParticipationPct: s.duprParticipationPct,
           }).score;
         result.sort((a, b) => {
@@ -369,6 +406,7 @@ export default function HomePage() {
     return result;
   }, [
     sessions,
+    hcmMedianCostPerHour,
     dayTab,
     timeFilter,
     isMobile,
@@ -848,11 +886,17 @@ ${eventBlocks.join("\n\n")}
             groups={timeGroupedSessions}
             visibleCount={visibleCount}
             userLocation={userLocation}
+            hcmMedianCostPerHour={hcmMedianCostPerHour}
           />
         ) : (
           <div className="grid min-w-0 items-stretch gap-2 sm:gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {filtered.slice(0, visibleCount).map((s) => (
-              <SessionCard key={s.id} session={s} userLocation={userLocation} />
+              <SessionCard
+                key={s.id}
+                session={s}
+                userLocation={userLocation}
+                hcmMedianCostPerHour={hcmMedianCostPerHour}
+              />
             ))}
           </div>
         )}
@@ -895,7 +939,11 @@ ${eventBlocks.join("\n\n")}
                 {t("close")}
               </button>
             </div>
-            <SessionCard session={freeTonightDetail} userLocation={userLocation} />
+            <SessionCard
+              session={freeTonightDetail}
+              userLocation={userLocation}
+              hcmMedianCostPerHour={hcmMedianCostPerHour}
+            />
           </div>
         </div>
       ) : null}

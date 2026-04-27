@@ -6,6 +6,7 @@ import Link from "next/link";
 import { FillRateBar } from "@/components/FillRateBar";
 import { SessionScoreBadge } from "@/components/SessionScoreBadge";
 import { formatVND, vnCalendarDateString } from "@/lib/utils";
+import { HCM_MEDIAN_COST_FALLBACK } from "@/lib/scoring";
 import { readPublicApiCache, writePublicApiCache } from "@/lib/public-api-cache";
 
 const MapView = dynamic(() => import("@/components/MapView").then((m) => m.MapView), {
@@ -21,6 +22,7 @@ type ClubDetail = {
   zaloUrl: string | null;
   phone: string | null;
   admins: string[];
+  hcmMedianCostPerHour?: number;
   sessions: {
     id: number;
     referenceCode: string;
@@ -234,6 +236,11 @@ export default function ClubProfilePage({ params }: { params: Promise<{ slug: st
                             priceVnd: s.feeAmount,
                             durationMinutes: s.durationMin,
                             hasZalo: Boolean(club.zaloUrl),
+                            hcmMedianCostPerHour:
+                              typeof club.hcmMedianCostPerHour === "number" &&
+                              !Number.isNaN(club.hcmMedianCostPerHour)
+                                ? club.hcmMedianCostPerHour
+                                : HCM_MEDIAN_COST_FALLBACK,
                             duprParticipationPct: s.duprParticipationPct,
                           }}
                         />

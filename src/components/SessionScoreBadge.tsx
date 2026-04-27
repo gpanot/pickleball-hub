@@ -5,16 +5,30 @@ import React, { useCallback, useEffect, useId, useRef, useState } from "react";
 import {
   computeSessionScore,
   getScoreLabel,
+  getValueScoreColor,
+  HCM_MEDIAN_COST_FALLBACK,
   type DuprBadge,
   type SessionScoreInput,
   type SessionScoreResult,
 } from "@/lib/scoring";
 import { scoreRatingTranslationKey } from "@/lib/score-translations";
-import { useI18n, type TranslationKey } from "@/lib/i18n";
+import { useI18n, type Locale, type TranslationKey } from "@/lib/i18n";
+
+function effectiveHcmMedianVndPerHour(input: SessionScoreInput): number {
+  return input.hcmMedianCostPerHour > 0 ? input.hcmMedianCostPerHour : HCM_MEDIAN_COST_FALLBACK;
+}
+
+/** Rounded thousands VND/hr for score breakdown (matches band used in scoring). */
+function formatMedianKPerHour(locale: Locale, medianVndPerHour: number): string {
+  const k = Math.round(medianVndPerHour / 1000);
+  if (k < 1) return locale === "vi" ? "<1k/giờ" : "<1k/h";
+  return locale === "vi" ? `${k}k/giờ` : `${k}k/h`;
+}
 
 const FILL_GREEN = "#22c55e";
 const COMMUNITY_ACTIVE = "#22c55e";
-const COMMUNITY_INACTIVE = "#9ca3af";
+/** No Zalo: full-width bar uses this (was grey; orange reads as “missing / worth adding”). */
+const COMMUNITY_NO_ZALO = "#f97316";
 const VIBE_GREY = "#9ca3af";
 
 const MOBILE_MAX_PX = 767;
@@ -171,22 +185,27 @@ function PlayerLevelsRow({
 function ScoreBreakdownContent({
   result,
   input,
-  communityColor,
   scoreColor,
   scoreLabel,
   showHeaderRatingPill,
+  locale,
   t,
 }: {
   result: SessionScoreResult;
   input: SessionScoreInput;
-  communityColor: string;
   scoreColor: string;
   /** Localized label for the session score tier. */
   scoreLabel: string;
   /** When true (mobile sheet), show the same rating pill as the trigger, right-aligned in the header row. */
   showHeaderRatingPill?: boolean;
+  locale: Locale;
   t: (key: TranslationKey) => string;
 }) {
+  const priceSubtitle = `${t("scoreBreakPriceSubtitle")} · ${formatMedianKPerHour(locale, effectiveHcmMedianVndPerHour(input))}`;
+  const valueBarColor = getValueScoreColor(result.valueScore);
+  const organisedPct = input.hasZalo ? result.zaloScore : 100;
+  const organisedFill = input.hasZalo ? COMMUNITY_ACTIVE : COMMUNITY_NO_ZALO;
+
   return (
     <>
       {showHeaderRatingPill ? (
@@ -218,15 +237,15 @@ function ScoreBreakdownContent({
         />
         <ScoreBreakRow
           label={t("scoreBreakPriceLabel")}
-          subtitle={t("scoreBreakPriceSubtitle")}
+          subtitle={priceSubtitle}
           pct={result.valueScore}
-          fillColor={scoreColor}
+          fillColor={valueBarColor}
         />
         <ScoreBreakRow
           label={t("scoreBreakOrganisedLabel")}
           subtitle={t("scoreBreakOrganisedSubtitle")}
-          pct={result.zaloScore}
-          fillColor={communityColor}
+          pct={organisedPct}
+          fillColor={organisedFill}
         />
         <ScoreBreakRow
           label={t("scoreBreakRegularsLabel")}
@@ -261,7 +280,7 @@ export function SessionScoreBadge({
   input: SessionScoreInput;
   className?: string;
 }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const result = computeSessionScore(input);
   const { color, ratingTier } = getScoreLabel(result.score);
   const scoreTextLabel = t(scoreRatingTranslationKey(ratingTier));
@@ -310,8 +329,6 @@ export function SessionScoreBadge({
     dragStartY.current = null;
   }, []);
 
-  const communityColor = input.hasZalo ? COMMUNITY_ACTIVE : COMMUNITY_INACTIVE;
-
   const onHandlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.currentTarget.setPointerCapture(e.pointerId);
@@ -344,10 +361,10 @@ export function SessionScoreBadge({
     <ScoreBreakdownContent
       result={result}
       input={input}
-      communityColor={communityColor}
       scoreColor={color}
       scoreLabel={scoreTextLabel}
       showHeaderRatingPill={showHeaderRatingPill}
+      locale={locale}
       t={t}
     />
   );
