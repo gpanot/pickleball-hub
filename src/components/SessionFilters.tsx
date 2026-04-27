@@ -167,12 +167,12 @@ export function SessionFilters({
         : "border-card-border bg-background hover:border-primary/40"
     }`;
 
-  const toggleFree = () => {
-    if (filters.maxPrice === "0") {
-      onChange({ ...filters, maxPrice: "", availability: "" });
+  const toggleBestScore = () => {
+    if (filters.sortBy === "score") {
+      update("sortBy", "time");
     } else {
-      mouseflowTag("filter:free");
-      onChange({ ...filters, maxPrice: "0", availability: "available,filling" });
+      mouseflowTag("filter:best_score");
+      update("sortBy", "score");
     }
   };
 
@@ -208,8 +208,8 @@ export function SessionFilters({
       </form>
 
       <div className="flex flex-nowrap gap-1 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] sm:hidden [&::-webkit-scrollbar]:hidden">
-        <button type="button" onClick={toggleFree} className={pillClass(filters.maxPrice === "0")}>
-          {t("free")}
+        <button type="button" onClick={toggleBestScore} className={pillClass(filters.sortBy === "score")}>
+          {t("bestScore")}
         </button>
         <button
           type="button"

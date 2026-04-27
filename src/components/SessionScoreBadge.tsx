@@ -6,17 +6,13 @@ import {
   computeSessionScore,
   getScoreLabel,
   getValueScoreColor,
-  HCM_MEDIAN_COST_FALLBACK,
+  medianForValueScoring,
   type DuprBadge,
   type SessionScoreInput,
   type SessionScoreResult,
 } from "@/lib/scoring";
 import { scoreRatingTranslationKey } from "@/lib/score-translations";
 import { useI18n, type Locale, type TranslationKey } from "@/lib/i18n";
-
-function effectiveHcmMedianVndPerHour(input: SessionScoreInput): number {
-  return input.hcmMedianCostPerHour > 0 ? input.hcmMedianCostPerHour : HCM_MEDIAN_COST_FALLBACK;
-}
 
 /** Rounded thousands VND/hr for score breakdown (matches band used in scoring). */
 function formatMedianKPerHour(locale: Locale, medianVndPerHour: number): string {
@@ -201,7 +197,7 @@ function ScoreBreakdownContent({
   locale: Locale;
   t: (key: TranslationKey) => string;
 }) {
-  const priceSubtitle = `${t("scoreBreakPriceSubtitle")} · ${formatMedianKPerHour(locale, effectiveHcmMedianVndPerHour(input))}`;
+  const priceSubtitle = `${t("scoreBreakPriceSubtitle")} · ${formatMedianKPerHour(locale, medianForValueScoring(input))}`;
   const valueBarColor = getValueScoreColor(result.valueScore);
   const organisedPct = input.hasZalo ? result.zaloScore : 100;
   const organisedFill = input.hasZalo ? COMMUNITY_ACTIVE : COMMUNITY_NO_ZALO;

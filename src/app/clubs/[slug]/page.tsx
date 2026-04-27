@@ -5,7 +5,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { FillRateBar } from "@/components/FillRateBar";
 import { SessionScoreBadge } from "@/components/SessionScoreBadge";
-import { formatVND, vnCalendarDateString } from "@/lib/utils";
+import { formatVND, parseSessionType, vnCalendarDateString } from "@/lib/utils";
 import { HCM_MEDIAN_COST_FALLBACK } from "@/lib/scoring";
 import { readPublicApiCache, writePublicApiCache } from "@/lib/public-api-cache";
 
@@ -241,6 +241,7 @@ export default function ClubProfilePage({ params }: { params: Promise<{ slug: st
                               !Number.isNaN(club.hcmMedianCostPerHour)
                                 ? club.hcmMedianCostPerHour
                                 : HCM_MEDIAN_COST_FALLBACK,
+                            sessionType: parseSessionType(s.name),
                             duprParticipationPct: s.duprParticipationPct,
                           }}
                         />

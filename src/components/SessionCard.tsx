@@ -101,6 +101,7 @@ export function SessionCard({ session, userLocation, hcmMedianCostPerHour }: Ses
                 durationMinutes: s.durationMin,
                 hasZalo: Boolean(s.club.zaloUrl),
                 hcmMedianCostPerHour,
+                sessionType,
                 duprParticipationPct: s.duprParticipationPct,
               }}
             />

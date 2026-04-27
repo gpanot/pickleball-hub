@@ -1,3 +1,5 @@
+import type { SessionType } from "./utils";
+
 export type DuprBadge = "competitive" | "mixed" | "casual";
 
 export interface SessionScoreInput {
@@ -8,6 +10,8 @@ export interface SessionScoreInput {
   hasZalo: boolean;
   /** Median VND/hour for the session's calendar day (compute once, pass to all sessions). */
   hcmMedianCostPerHour: number;
+  /** From session name; drills / round robin use 2× this median for value (price) bands only. */
+  sessionType?: SessionType;
   /** When set (e.g. from roster scrape), drives DUPR badge thresholds. */
   duprParticipationPct?: number | null;
   /** Legacy shape from spec; prefer duprParticipationPct when wired. */
@@ -64,6 +68,19 @@ export function computeHcmMedianCostPerHour(
     : sorted[mid]!;
 }
 
+const DRILL_RR_TYPES: ReadonlySet<SessionType> = new Set(["drills", "roundrobin"]);
+
+/**
+ * Median (VND/hr) used for price/value bands: social uses HCM social median; drills & round robin use 2× that.
+ * Same base fallback as {@link HCM_MEDIAN_COST_FALLBACK} when the passed median is non-positive.
+ */
+export function medianForValueScoring(input: Pick<SessionScoreInput, "hcmMedianCostPerHour" | "sessionType">): number {
+  const social =
+    input.hcmMedianCostPerHour > 0 ? input.hcmMedianCostPerHour : HCM_MEDIAN_COST_FALLBACK;
+  if (input.sessionType && DRILL_RR_TYPES.has(input.sessionType)) return social * 2;
+  return social;
+}
+
 export function computeSessionScore(input: SessionScoreInput): SessionScoreResult {
   const {
     confirmedPlayers,
@@ -71,7 +88,6 @@ export function computeSessionScore(input: SessionScoreInput): SessionScoreResul
     priceVnd,
     durationMinutes,
     hasZalo,
-    hcmMedianCostPerHour,
     duprParticipationPct,
     duprRatedCount,
     totalPlayersWithProfile,
@@ -88,7 +104,7 @@ export function computeSessionScore(input: SessionScoreInput): SessionScoreResul
   else fillScore = 20;
   const weightedFill = fillScore * 0.35;
 
-  const median = hcmMedianCostPerHour > 0 ? hcmMedianCostPerHour : HCM_MEDIAN_COST_FALLBACK;
+  const median = medianForValueScoring(input);
   const minBand = median * 0.5;
   const maxBand = median * 1.75;
 

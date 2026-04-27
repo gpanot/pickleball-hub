@@ -1,6 +1,6 @@
 import { prisma } from "./db";
 import { computeHcmMedianCostPerHour, computeSessionScore } from "./scoring";
-import { vnCalendarDateString } from "./utils";
+import { parseSessionType, vnCalendarDateString } from "./utils";
 
 const MAX_DURATION_MIN = 360;
 
@@ -208,6 +208,7 @@ export async function getClubs() {
     where: { scrapedDate: todayStr },
     select: {
       clubId: true,
+      name: true,
       maxPlayers: true,
       feeAmount: true,
       durationMin: true,
@@ -226,6 +227,7 @@ export async function getClubs() {
       durationMinutes: s.durationMin,
       hasZalo: Boolean(s.club.zaloUrl),
       hcmMedianCostPerHour,
+      sessionType: parseSessionType(s.name),
     });
     const list = scoresByClub.get(s.clubId);
     if (list) list.push(score);

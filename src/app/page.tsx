@@ -219,18 +219,6 @@ export default function HomePage() {
     return () => mq.removeEventListener("change", handler);
   }, []);
 
-  const defaultSortBy = useMemo<"time" | "score">(() => {
-    if (dayTab === "tomorrow") return "time";
-    if (dayTab === "today" && !isMobile && timeFilter === "past") return "time";
-    return "score";
-  }, [dayTab, timeFilter, isMobile]);
-
-  useLayoutEffect(() => {
-    queueMicrotask(() => {
-      setFilters((f) => ({ ...f, sortBy: defaultSortBy }));
-    });
-  }, [defaultSortBy]);
-
   useEffect(() => {
     setSearchDraft(filters.search);
   }, [filters.search]);
@@ -390,6 +378,7 @@ export default function HomePage() {
             durationMinutes: s.durationMin,
             hasZalo: Boolean(s.club.zaloUrl),
             hcmMedianCostPerHour,
+            sessionType: parseSessionType(s.name),
             duprParticipationPct: s.duprParticipationPct,
           }).score;
         result.sort((a, b) => {
