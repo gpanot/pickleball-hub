@@ -62,12 +62,6 @@ export function fillRateBgColor(rate: number): string {
   return "bg-green-500";
 }
 
-export function fillRateLabel(rate: number): string {
-  if (rate >= 1.0) return "Full";
-  if (rate >= 0.75) return "Filling";
-  return "Available";
-}
-
 export function timeSlot(startTime: string): "morning" | "afternoon" | "evening" {
   const hour = parseInt(startTime.split(":")[0], 10);
   if (hour < 12) return "morning";

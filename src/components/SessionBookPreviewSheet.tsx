@@ -145,7 +145,7 @@ export function SessionBookPreviewSheet({
       `⏱ ${session.startTime}-${session.endTime} · ${formatVND(session.feeAmount)} · ${formatVND(costPerHour)}/hr`,
       `★ ${result.score} ${scoreLabel}${duprLine ? ` · ${duprLine}` : ""}`,
       `👉 ${reclubMeetUrl(session.referenceCode)}`,
-      `\nFind more sessions: pickleball-hub-gules.vercel.app`,
+      t("shareSessionHubFooter"),
     ]
       .filter(Boolean)
       .join("\n");

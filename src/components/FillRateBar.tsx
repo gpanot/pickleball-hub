@@ -1,6 +1,7 @@
 "use client";
 
-import { fillRateBgColor, fillRateLabel } from "@/lib/utils";
+import { fillRateBgColor } from "@/lib/utils";
+import { useI18n } from "@/lib/i18n";
 
 interface FillRateBarProps {
   joined: number;
@@ -10,10 +11,12 @@ interface FillRateBarProps {
 }
 
 export function FillRateBar({ joined, maxPlayers, waitlisted = 0, showLabel = true }: FillRateBarProps) {
+  const { t } = useI18n();
   const rate = maxPlayers > 0 ? joined / maxPlayers : 0;
   const pct = Math.min(rate * 100, 100);
   const bgColor = fillRateBgColor(rate);
-  const label = fillRateLabel(rate);
+  const label =
+    rate >= 1 ? t("fillRateLabelFull") : rate >= 0.75 ? t("fillRateLabelFilling") : t("fillRateLabelAvailable");
 
   return (
     <div className="flex min-w-0 w-full max-w-full items-center gap-1.5 sm:gap-2">
