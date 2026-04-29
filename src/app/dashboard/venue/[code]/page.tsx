@@ -8,6 +8,7 @@ import { HourlyUtilizationChart } from "@/components/DashboardCharts";
 import { FillRateBar } from "@/components/FillRateBar";
 import { formatVND } from "@/lib/utils";
 import { fetchPublicApiJson, readPublicApiCache } from "@/lib/public-api-cache";
+import { useI18n } from "@/lib/i18n";
 
 type VenueData = {
   venue: { id: number; name: string; address: string; latitude: number; longitude: number };
@@ -48,6 +49,7 @@ const RIVAL_STORAGE_KEY = "pickleball-hub:venue-rivals";
 export default function VenueDashboardPage({ params }: { params: Promise<{ code: string }> }) {
   const { code } = use(params);
   const router = useRouter();
+  const { t } = useI18n();
   const venueId = parseInt(code, 10);
   const [sessionOk, setSessionOk] = useState(false);
   const [data, setData] = useState<VenueData | null>(null);
@@ -261,8 +263,8 @@ export default function VenueDashboardPage({ params }: { params: Promise<{ code:
   if (error || !data) {
     return (
       <div className="mx-auto max-w-md px-4 py-16 text-center">
-        <p className="text-red-500 mb-4">{error || "Dashboard unavailable"}</p>
-        <Link href="/dashboard/venue" className="text-primary hover:underline">Back to venue selection</Link>
+        <p className="text-red-500 mb-4">{error || t("venueDashboardError")}</p>
+        <Link href="/dashboard/venue" className="text-primary hover:underline">{t("venueBackToSelection")}</Link>
       </div>
     );
   }
@@ -277,19 +279,19 @@ export default function VenueDashboardPage({ params }: { params: Promise<{ code:
     .map((h) => `${h.hour.toString().padStart(2, "0")}:00`);
 
   const venueMetrics = [
-    { key: "sessionsToday", label: "Sessions today", format: (v: number) => v.toString(), higher: true },
-    { key: "totalJoined", label: "Players today", format: (v: number) => v.toLocaleString(), higher: true },
-    { key: "fillRate", label: "Fill rate", format: (v: number) => `${Math.round(v * 100)}%`, higher: true },
-    { key: "avgFee", label: "Avg price", format: (v: number) => formatVND(v), higher: false },
-    { key: "uniqueClubs", label: "Clubs hosted", format: (v: number) => v.toString(), higher: true },
-    { key: "activeHours", label: "Active hours", format: (v: number) => `${v}h`, higher: true },
-    { key: "revenueEstimate", label: "Est. revenue", format: (v: number) => formatVND(v), higher: true },
+    { key: "sessionsToday", label: t("venueRivalsMetricSessionsToday"), format: (v: number) => v.toString(), higher: true },
+    { key: "totalJoined", label: t("venueRivalsMetricPlayersToday"), format: (v: number) => v.toLocaleString(), higher: true },
+    { key: "fillRate", label: t("venueRivalsMetricFillRate"), format: (v: number) => `${Math.round(v * 100)}%`, higher: true },
+    { key: "avgFee", label: t("venueRivalsMetricAvgPrice"), format: (v: number) => formatVND(v), higher: false },
+    { key: "uniqueClubs", label: t("venueRivalsMetricClubs"), format: (v: number) => v.toString(), higher: true },
+    { key: "activeHours", label: t("venueRivalsMetricActiveHours"), format: (v: number) => `${v}h`, higher: true },
+    { key: "revenueEstimate", label: t("venueRivalsMetricRevenue"), format: (v: number) => formatVND(v), higher: true },
   ] as const;
 
   const tabs: { key: Tab; label: string }[] = [
-    { key: "dashboard", label: "Dashboard" },
-    { key: "ranking", label: "Ranking" },
-    { key: "rivals", label: "Rival Comparison" },
+    { key: "dashboard", label: t("venueTabDashboard") },
+    { key: "ranking", label: t("venueTabRanking") },
+    { key: "rivals", label: t("venueTabRivals") },
   ];
 
   return (
@@ -298,38 +300,38 @@ export default function VenueDashboardPage({ params }: { params: Promise<{ code:
         <div className="min-w-0">
           <h1 className="text-xl sm:text-2xl font-bold">{venue.name}</h1>
           <p className="text-sm text-muted truncate">{venue.address}</p>
-          <p className="text-xs text-muted mt-1">Venue Dashboard</p>
+          <p className="text-xs text-muted mt-1">{t("venueDashboardSubtitle")}</p>
         </div>
         <div className="flex flex-wrap gap-2 shrink-0 self-start justify-end">
           <Link
             href="/dashboard/venue"
             className="text-xs text-muted hover:text-primary transition px-3 py-2 rounded border border-card-border hover:border-primary/30 min-h-[44px] flex items-center"
           >
-            Switch venue
+            {t("venueSwitchVenue")}
           </Link>
           <button
             type="button"
             onClick={handleLogout}
             className="text-xs text-muted hover:text-red-600 dark:hover:text-red-400 transition px-3 py-2 rounded border border-card-border hover:border-red-400/40 min-h-[44px] flex items-center"
           >
-            Log out
+            {t("venueLogout")}
           </button>
         </div>
       </div>
 
       {/* Tabs */}
       <div className="flex gap-1 mb-4 sm:mb-6 border-b border-card-border overflow-x-auto">
-        {tabs.map((t) => (
+        {tabs.map((tab) => (
           <button
-            key={t.key}
-            onClick={() => setActiveTab(t.key)}
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
             className={`px-3 sm:px-4 py-2.5 text-sm font-medium transition border-b-2 -mb-px whitespace-nowrap shrink-0 min-h-[44px] ${
-              activeTab === t.key
+              activeTab === tab.key
                 ? "border-primary text-primary"
                 : "border-transparent text-muted hover:text-foreground hover:border-gray-300"
             }`}
           >
-            {t.label}
+            {tab.label}
           </button>
         ))}
       </div>
@@ -338,18 +340,18 @@ export default function VenueDashboardPage({ params }: { params: Promise<{ code:
       {activeTab === "dashboard" && (
         <>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-4 sm:mb-6">
-            <KPICard label="Sessions today" value={todaySessions.length.toString()} />
-            <KPICard label="Total players" value={totalPlayers.toLocaleString()} />
-            <KPICard label="Active hours" value={`${activeHours}h / 24h`} />
-            <KPICard label="Est. revenue" value={formatVND(totalRevenue)} />
+            <KPICard label={t("venueKpiSessionsToday")} value={todaySessions.length.toString()} />
+            <KPICard label={t("venueKpiTotalPlayers")} value={totalPlayers.toLocaleString()} />
+            <KPICard label={t("venueKpiActiveHours")} value={`${activeHours}h / 24h`} />
+            <KPICard label={t("venueKpiRevenue")} value={formatVND(totalRevenue)} />
           </div>
 
-          <Section title="Court Utilization (Today)">
+          <Section title={t("venueSectionCourtUtil")}>
             <HourlyUtilizationChart data={hourlyUtilization} />
           </Section>
 
           {deadHours.length > 0 && (
-            <Section title={`Dead Hours (${deadHours.length} gaps)`}>
+            <Section title={`Dead Hours (${deadHours.length} ${t("venueSectionDeadHours")})`}>
               <div className="flex flex-wrap gap-2">
                 {deadHours.map((h) => (
                   <span key={h} className="rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-3 py-1.5 text-sm text-red-700 dark:text-red-300">
@@ -357,13 +359,13 @@ export default function VenueDashboardPage({ params }: { params: Promise<{ code:
                   </span>
                 ))}
               </div>
-              <p className="text-xs text-muted mt-3">These hours have no scheduled sessions. Consider reaching out to clubs or offering discounted court time.</p>
+              <p className="text-xs text-muted mt-3">{t("venueDeadHoursNote")}</p>
             </Section>
           )}
 
-          <Section title={`Clubs Hosted (${clubBreakdown.length})`}>
+          <Section title={`${t("venueSectionClubsHosted")} (${clubBreakdown.length})`}>
             {clubBreakdown.length === 0 ? (
-              <p className="text-sm text-muted py-4">No club data available.</p>
+              <p className="text-sm text-muted py-4">{t("venueNoClubData")}</p>
             ) : (
               <div className="space-y-2">
                 {clubBreakdown.sort((a, b) => b.sessions - a.sessions).map((c) => (
@@ -371,7 +373,7 @@ export default function VenueDashboardPage({ params }: { params: Promise<{ code:
                     <div className="flex items-center gap-3">
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium truncate">{c.name}</p>
-                        <p className="text-xs text-muted">{c.sessions} sessions</p>
+                        <p className="text-xs text-muted">{c.sessions} {t("venueClubSessions")}</p>
                       </div>
                       <div className="text-right text-sm shrink-0">
                         <span className="font-bold">{c.totalJoined}</span>
@@ -387,9 +389,9 @@ export default function VenueDashboardPage({ params }: { params: Promise<{ code:
             )}
           </Section>
 
-          <Section title={`All Sessions Today (${todaySessions.length})`}>
+          <Section title={`${t("venueSectionAllSessions")} (${todaySessions.length})`}>
             {todaySessions.length === 0 ? (
-              <p className="text-sm text-muted py-4">No sessions today.</p>
+              <p className="text-sm text-muted py-4">{t("venueNoSessionsToday")}</p>
             ) : (
               <div className="space-y-2">
                 {todaySessions.map((s) => (
@@ -414,19 +416,19 @@ export default function VenueDashboardPage({ params }: { params: Promise<{ code:
             )}
           </Section>
 
-          <Section title="Opportunity Alerts">
+          <Section title={t("venueSectionOpportunity")}>
             <div className="space-y-3">
               {deadHours.length > 3 && (
-                <Alert type="warning" text={`${deadHours.length} empty hours between 6am-10pm. Your venue has significant untapped capacity.`} />
+                <Alert type="warning" text={`${deadHours.length} ${t("venueAlertDeadHours")}`} />
               )}
               {clubBreakdown.length < 3 && (
-                <Alert type="info" text="You're hosting fewer than 3 clubs. Attracting more organizers could increase utilization and revenue." />
+                <Alert type="info" text={t("venueAlertFewClubs")} />
               )}
               {totalCapacity > 0 && totalPlayers / totalCapacity > 0.85 && (
-                <Alert type="success" text="Great utilization! Your venue is running at over 85% capacity during active hours." />
+                <Alert type="success" text={t("venueAlertHighUtil")} />
               )}
               {clubBreakdown.some((c) => c.totalCapacity > 0 && c.totalJoined / c.totalCapacity < 0.3) && (
-                <Alert type="warning" text="Some clubs are underperforming at your venue (<30% fill). Consider discussing schedule changes." />
+                <Alert type="warning" text={t("venueAlertLowFill")} />
               )}
             </div>
           </Section>
@@ -435,13 +437,13 @@ export default function VenueDashboardPage({ params }: { params: Promise<{ code:
 
       {/* Ranking Tab */}
       {activeTab === "ranking" && (
-        <Section title="Venue Rankings — Today">
+        <Section title={t("venueRankingTitle")}>
           <p className="text-xs text-muted mb-3">
-            Metrics are for today. Search and tap column headers to sort. Your venue is highlighted.
+            {t("venueRankingDesc")}
           </p>
           <input
             type="text"
-            placeholder="Search venues…"
+            placeholder={t("venueRankingSearch")}
             value={venueRankSearch}
             onChange={(e) => setVenueRankSearch(e.target.value)}
             className="w-full rounded-lg border border-card-border bg-background px-3 py-2 text-sm outline-none focus:border-primary mb-4"
@@ -451,21 +453,21 @@ export default function VenueDashboardPage({ params }: { params: Promise<{ code:
               <thead>
                 <tr className="border-b border-card-border text-muted">
                   <th className="text-left py-2 pr-2 font-medium w-8">#</th>
-                  <th className="text-left py-2 pr-3 font-medium">Venue</th>
-                  <VenueRankSortTh label="Sessions" sortKey="sessions" activeKey={venueRankSortKey} dir={venueRankSortDir} onSort={handleVenueRankSort} />
-                  <VenueRankSortTh label="Players" sortKey="players" activeKey={venueRankSortKey} dir={venueRankSortDir} onSort={handleVenueRankSort} />
-                  <VenueRankSortTh label="Fill Rate" sortKey="fillRate" activeKey={venueRankSortKey} dir={venueRankSortDir} onSort={handleVenueRankSort} />
-                  <VenueRankSortTh label="Avg Price" sortKey="avgFee" activeKey={venueRankSortKey} dir={venueRankSortDir} onSort={handleVenueRankSort} />
-                  <VenueRankSortTh label="Est. Revenue" sortKey="revenueEstimate" activeKey={venueRankSortKey} dir={venueRankSortDir} onSort={handleVenueRankSort} />
-                  <VenueRankSortTh label="Clubs" sortKey="clubs" activeKey={venueRankSortKey} dir={venueRankSortDir} onSort={handleVenueRankSort} />
-                  <VenueRankSortTh label="Active Hrs" sortKey="activeHours" activeKey={venueRankSortKey} dir={venueRankSortDir} onSort={handleVenueRankSort} />
+                  <th className="text-left py-2 pr-3 font-medium">{t("venueRankingColVenue")}</th>
+                  <VenueRankSortTh label={t("venueRankingColSessions")} sortKey="sessions" activeKey={venueRankSortKey} dir={venueRankSortDir} onSort={handleVenueRankSort} />
+                  <VenueRankSortTh label={t("venueRankingColPlayers")} sortKey="players" activeKey={venueRankSortKey} dir={venueRankSortDir} onSort={handleVenueRankSort} />
+                  <VenueRankSortTh label={t("venueRankingColFillRate")} sortKey="fillRate" activeKey={venueRankSortKey} dir={venueRankSortDir} onSort={handleVenueRankSort} />
+                  <VenueRankSortTh label={t("venueRankingColAvgPrice")} sortKey="avgFee" activeKey={venueRankSortKey} dir={venueRankSortDir} onSort={handleVenueRankSort} />
+                  <VenueRankSortTh label={t("venueRankingColRevenue")} sortKey="revenueEstimate" activeKey={venueRankSortKey} dir={venueRankSortDir} onSort={handleVenueRankSort} />
+                  <VenueRankSortTh label={t("venueRankingColClubs")} sortKey="clubs" activeKey={venueRankSortKey} dir={venueRankSortDir} onSort={handleVenueRankSort} />
+                  <VenueRankSortTh label={t("venueRankingColActiveHrs")} sortKey="activeHours" activeKey={venueRankSortKey} dir={venueRankSortDir} onSort={handleVenueRankSort} />
                 </tr>
               </thead>
               <tbody>
                 {displayedVenueRanking.length === 0 ? (
                   <tr>
                     <td colSpan={9} className="py-8 text-center text-muted text-sm">
-                      No venues match your search.
+                      {t("venueRankingNoMatch")}
                     </td>
                   </tr>
                 ) : (
@@ -476,7 +478,7 @@ export default function VenueDashboardPage({ params }: { params: Promise<{ code:
                         <td className="py-2 pr-2 text-muted">{i + 1}</td>
                         <td className="py-2 pr-3 max-w-[160px] truncate">
                           {v.name}
-                          {isMe && <span className="ml-1 text-[10px] text-primary">(You)</span>}
+                          {isMe && <span className="ml-1 text-[10px] text-primary">({t("venueRankingYou")})</span>}
                         </td>
                         <td className="text-center py-2 px-2">{v.sessionsToday}</td>
                         <td className="text-center py-2 px-2 tabular-nums">
@@ -500,7 +502,7 @@ export default function VenueDashboardPage({ params }: { params: Promise<{ code:
               onClick={() => setVenueRankVisible((n) => n + 100)}
               className="mt-4 w-full rounded-lg border border-card-border py-2.5 text-sm text-muted hover:text-foreground hover:border-primary/40 transition"
             >
-              Show more ({displayedVenueRanking.length - venueRankVisible} remaining)
+              Show more ({displayedVenueRanking.length - venueRankVisible} {t("venueRankingShowMore")})
             </button>
           )}
         </Section>
@@ -508,12 +510,12 @@ export default function VenueDashboardPage({ params }: { params: Promise<{ code:
 
       {/* Rival Comparison Tab */}
       {activeTab === "rivals" && (
-        <Section title="Venue Comparison">
+        <Section title={t("venueRivalsTitle")}>
           <div className="mb-4">
-            <p className="text-xs text-muted mb-2">Select up to 5 venues to compare against yours:</p>
+            <p className="text-xs text-muted mb-2">{t("venueRivalsDesc")}</p>
             <input
               type="text"
-              placeholder="Search venues..."
+              placeholder={t("venueRivalsSearch")}
               value={rivalSearch}
               onChange={(e) => setRivalSearch(e.target.value)}
               className="w-full rounded-lg border border-card-border bg-background px-3 py-2 text-sm outline-none focus:border-primary mb-3"
@@ -536,8 +538,8 @@ export default function VenueDashboardPage({ params }: { params: Promise<{ code:
             </div>
             {rivalIds.length > 0 && (
               <div className="mt-2 text-xs text-muted">
-                {rivalIds.length}/5 selected
-                <button onClick={() => { setRivalIds([]); localStorage.removeItem(RIVAL_STORAGE_KEY); }} className="ml-2 text-red-500 hover:underline">Clear all</button>
+                {rivalIds.length}/5 {t("venueRivalsSelected")}
+                <button onClick={() => { setRivalIds([]); localStorage.removeItem(RIVAL_STORAGE_KEY); }} className="ml-2 text-red-500 hover:underline">{t("venueRivalsClearAll")}</button>
               </div>
             )}
           </div>
@@ -549,11 +551,11 @@ export default function VenueDashboardPage({ params }: { params: Promise<{ code:
               <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b border-card-border">
-                    <th className="text-left py-2 pr-3 font-medium text-muted">Metric</th>
+                    <th className="text-left py-2 pr-3 font-medium text-muted">{t("venueRivalsColMetric")}</th>
                     {rivalVenueColumnsSorted.map((v) => (
                       <th key={v.id} className={`text-center py-2 px-2 font-medium ${v.id === venueId ? "text-primary" : "text-foreground"}`}>
                         {v.name.length > 18 ? v.name.slice(0, 16) + "..." : v.name}
-                        {v.id === venueId && <span className="block text-[10px] text-primary/70">You</span>}
+                        {v.id === venueId && <span className="block text-[10px] text-primary/70">{t("venueRankingYou")}</span>}
                       </th>
                     ))}
                   </tr>
@@ -584,7 +586,7 @@ export default function VenueDashboardPage({ params }: { params: Promise<{ code:
               </table>
             </div>
           ) : (
-            <p className="text-sm text-muted text-center py-4">Select venues above to see the comparison table.</p>
+            <p className="text-sm text-muted text-center py-4">{t("venueRivalsNoRivals")}</p>
           )}
         </Section>
       )}

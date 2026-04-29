@@ -16,6 +16,7 @@ import {
 } from "@/components/DashboardCharts";
 import { formatVND } from "@/lib/utils";
 import { fetchPublicApiJson, readPublicApiCache } from "@/lib/public-api-cache";
+import { useI18n } from "@/lib/i18n";
 
 type DashboardData = {
   club: { id: number; name: string; slug: string; numMembers: number };
@@ -86,6 +87,7 @@ const RIVAL_STORAGE_KEY = "pickleball-hub:org-rivals";
 export default function OrganizerDashboardPage({ params }: { params: Promise<{ code: string }> }) {
   const { code } = use(params);
   const router = useRouter();
+  const { t } = useI18n();
   const clubId = parseInt(code, 10);
   const [sessionOk, setSessionOk] = useState(false);
   const [data, setData] = useState<DashboardData | null>(null);
@@ -475,8 +477,8 @@ export default function OrganizerDashboardPage({ params }: { params: Promise<{ c
   if (error || !data) {
     return (
       <div className="mx-auto max-w-md px-4 py-16 text-center">
-        <p className="text-red-500 mb-4">{error || "Dashboard unavailable"}</p>
-        <Link href="/dashboard/organizer" className="text-primary hover:underline">Back to club selection</Link>
+        <p className="text-red-500 mb-4">{error || t("orgDashboardError")}</p>
+        <Link href="/dashboard/organizer" className="text-primary hover:underline">{t("orgBackToSelection")}</Link>
       </div>
     );
   }
@@ -498,20 +500,20 @@ export default function OrganizerDashboardPage({ params }: { params: Promise<{ c
   const lowFillSessions = todaySessions.filter((s) => s.maxPlayers > 0 && (s.joined / s.maxPlayers) < 0.5);
 
   const metrics = [
-    { key: "sessionsToday", label: "Sessions today", format: (v: number) => v.toString(), higher: true },
-    { key: "totalJoined", label: "Players today", format: (v: number) => v.toLocaleString(), higher: true },
-    { key: "fillRate", label: "Fill rate", format: (v: number) => `${Math.round(v * 100)}%`, higher: true },
-    { key: "avgFee", label: "Avg price", format: (v: number) => formatVND(v), higher: false },
-    { key: "numMembers", label: "Members", format: (v: number) => v.toLocaleString(), higher: true },
-    { key: "totalSessionsWeek", label: "Sessions/week", format: (v: number) => v.toString(), higher: true },
-    { key: "revenueEstimate", label: "Est. revenue", format: (v: number) => formatVND(v), higher: true },
+    { key: "sessionsToday", label: t("orgRivalsMetricSessionsToday"), format: (v: number) => v.toString(), higher: true },
+    { key: "totalJoined", label: t("orgRivalsMetricPlayersToday"), format: (v: number) => v.toLocaleString(), higher: true },
+    { key: "fillRate", label: t("orgRivalsMetricFillRate"), format: (v: number) => `${Math.round(v * 100)}%`, higher: true },
+    { key: "avgFee", label: t("orgRivalsMetricAvgPrice"), format: (v: number) => formatVND(v), higher: false },
+    { key: "numMembers", label: t("orgRivalsMetricMembers"), format: (v: number) => v.toLocaleString(), higher: true },
+    { key: "totalSessionsWeek", label: t("orgRivalsMetricSessionsWeek"), format: (v: number) => v.toString(), higher: true },
+    { key: "revenueEstimate", label: t("orgRivalsMetricRevenue"), format: (v: number) => formatVND(v), higher: true },
   ] as const;
 
   const tabs: { key: Tab; label: string }[] = [
-    { key: "dashboard", label: "Dashboard" },
-    { key: "stats", label: "Stats" },
-    { key: "ranking", label: "Ranking" },
-    { key: "rivals", label: "Rival Comparison" },
+    { key: "dashboard", label: t("orgTabDashboard") },
+    { key: "stats", label: t("orgTabStats") },
+    { key: "ranking", label: t("orgTabRanking") },
+    { key: "rivals", label: t("orgTabRivals") },
   ];
 
   return (
@@ -519,41 +521,41 @@ export default function OrganizerDashboardPage({ params }: { params: Promise<{ c
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
         <div className="min-w-0">
           <h1 className="text-xl sm:text-2xl font-bold truncate">{club.name}</h1>
-          <p className="text-sm text-muted">Organizer Dashboard</p>
+          <p className="text-sm text-muted">{t("orgDashboardSubtitle")}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2 sm:gap-3 shrink-0 justify-end">
           <span className="text-xs bg-primary/10 text-primary px-3 py-1 rounded-full font-medium">
-            {club.numMembers.toLocaleString()} members
+            {club.numMembers.toLocaleString()} {t("orgMembers")}
           </span>
           <Link
             href="/dashboard/organizer"
             className="text-xs text-muted hover:text-primary transition px-3 py-2 rounded border border-card-border hover:border-primary/30 min-h-[44px] flex items-center"
           >
-            Switch club
+            {t("orgSwitchClub")}
           </Link>
           <button
             type="button"
             onClick={handleLogout}
             className="text-xs text-muted hover:text-red-600 dark:hover:text-red-400 transition px-3 py-2 rounded border border-card-border hover:border-red-400/40 min-h-[44px] flex items-center"
           >
-            Log out
+            {t("orgLogout")}
           </button>
         </div>
       </div>
 
       {/* Tabs */}
       <div className="flex gap-1 mb-4 sm:mb-6 border-b border-card-border overflow-x-auto">
-        {tabs.map((t) => (
+        {tabs.map((tab) => (
           <button
-            key={t.key}
-            onClick={() => setActiveTab(t.key)}
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
             className={`px-3 sm:px-4 py-2.5 text-sm font-medium transition border-b-2 -mb-px whitespace-nowrap shrink-0 min-h-[44px] ${
-              activeTab === t.key
+              activeTab === tab.key
                 ? "border-primary text-primary"
                 : "border-transparent text-muted hover:text-foreground hover:border-gray-300"
             }`}
           >
-            {t.label}
+            {tab.label}
           </button>
         ))}
       </div>
@@ -562,15 +564,15 @@ export default function OrganizerDashboardPage({ params }: { params: Promise<{ c
       {activeTab === "dashboard" && (
         <>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-4 sm:mb-6">
-            <KPICard label="Sessions today" value={todaySessions.length.toString()} />
-            <KPICard label="Players today" value={todayJoined.toLocaleString()} />
-            <KPICard label="Fill rate" value={`${Math.round(todayFillRate * 100)}%`} accent={todayFillRate > 0.7} />
-            <KPICard label="Est. revenue today" value={formatVND(todayRevenue)} />
+            <KPICard label={t("orgKpiSessionsToday")} value={todaySessions.length.toString()} />
+            <KPICard label={t("orgKpiPlayersToday")} value={todayJoined.toLocaleString()} />
+            <KPICard label={t("orgKpiFillRate")} value={`${Math.round(todayFillRate * 100)}%`} accent={todayFillRate > 0.7} />
+            <KPICard label={t("orgKpiRevenueToday")} value={formatVND(todayRevenue)} />
           </div>
 
-          <Section title="Today's Sessions">
+          <Section title={t("orgSectionTodaySessions")}>
             {todaySessions.length === 0 ? (
-              <p className="text-sm text-muted py-4">No sessions today.</p>
+              <p className="text-sm text-muted py-4">{t("orgNoSessionsToday")}</p>
             ) : (
               <div className="space-y-2">
                 {todaySessions.map((s) => (
@@ -596,41 +598,41 @@ export default function OrganizerDashboardPage({ params }: { params: Promise<{ c
           </Section>
 
           {dailyStats.length > 0 && (
-            <Section title="Fill Rate Trend (30 days)">
+            <Section title={t("orgSectionFillTrend")}>
               <FillRateTrendChart data={dailyStats} />
             </Section>
           )}
 
           {dailyStats.length > 0 && (
-            <Section title="Revenue Trend (30 days)">
+            <Section title={t("orgSectionRevenueTrend")}>
               <RevenueChart data={dailyStats} />
             </Section>
           )}
 
-          <Section title={`Competitive Analysis (${data.totalCompetitors} competitor sessions today)`}>
+          <Section title={`${t("orgSectionCompetitive")} (${data.totalCompetitors} ${t("orgCompetitorSessions")})`}>
             {competitorSlots.length > 0 ? (
               <CompetitorPriceChart myAvgPrice={myAvgPrice} competitorPrices={competitorSlots} />
             ) : (
-              <p className="text-sm text-muted py-4">No competitor data available yet.</p>
+              <p className="text-sm text-muted py-4">{t("orgNoCompetitorData")}</p>
             )}
           </Section>
 
-          <Section title="Recommendations">
+          <Section title={t("orgSectionRecommendations")}>
             <div className="space-y-3">
               {lowFillSessions.length > 0 && (
                 <Recommendation type="warning"
-                  text={`${lowFillSessions.length} session${lowFillSessions.length > 1 ? "s" : ""} below 50% fill rate. Consider adjusting time or price: ${lowFillSessions.map((s) => `${s.startTime} (${s.joined}/${s.maxPlayers})`).join(", ")}.`}
+                  text={`${lowFillSessions.length} ${lowFillSessions.length > 1 ? t("orgRecLowFillPlural") : t("orgRecLowFill")} ${lowFillSessions.map((s) => `${s.startTime} (${s.joined}/${s.maxPlayers})`).join(", ")}.`}
                 />
               )}
               {todayFillRate > 0.9 && (
-                <Recommendation type="success" text="Your sessions are nearly full! Consider adding more capacity or extra sessions." />
+                <Recommendation type="success" text={t("orgRecHighFill")} />
               )}
               {competitorSlots.some((c) => c.count === 0) && (
-                <Recommendation type="info" text="Some time slots have no competition. Consider expanding your schedule." />
+                <Recommendation type="info" text={t("orgRecEmptySlots")} />
               )}
               {myAvgPrice > 0 && competitorSlots.length > 0 && (
                 <Recommendation type="info"
-                  text={`Your average price is ${formatVND(Math.round(myAvgPrice))} vs market average of ${formatVND(Math.round(competitorSlots.reduce((s, c) => s + c.avgPrice, 0) / competitorSlots.length))}.`}
+                  text={`${t("orgRecPriceVsMarket")} ${formatVND(Math.round(myAvgPrice))} ${t("orgRecPriceVsMarketMid")} ${formatVND(Math.round(competitorSlots.reduce((s, c) => s + c.avgPrice, 0) / competitorSlots.length))}.`}
                 />
               )}
             </div>
@@ -652,7 +654,7 @@ export default function OrganizerDashboardPage({ params }: { params: Promise<{ c
                     : "text-muted hover:text-foreground"
                 }`}
               >
-                {scope === "you" ? "You" : "All Clubs"}
+                {scope === "you" ? t("orgStatsScopeYou") : t("orgStatsScopeAll")}
               </button>
             ))}
           </div>
@@ -663,24 +665,24 @@ export default function OrganizerDashboardPage({ params }: { params: Promise<{ c
               <div className="animate-pulse h-64 bg-gray-100 dark:bg-gray-800 rounded-xl" />
             </div>
           ) : activeStatsSessions.length === 0 ? (
-            <Section title="Stats">
-              <p className="text-sm text-muted py-4">No session data available yet.</p>
+            <Section title={t("orgTabStats")}>
+              <p className="text-sm text-muted py-4">{t("orgNoStatsData")}</p>
             </Section>
           ) : (
             <>
               {statsSummary && (
                 <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 sm:gap-4 mb-4 sm:mb-6">
-                  <KPICard label="Total sessions" value={statsSummary.totalSessions.toLocaleString()} />
-                  <KPICard label="Total players" value={statsSummary.totalBooked.toLocaleString()} />
-                  <KPICard label="Avg fill rate" value={`${Math.round(statsSummary.avgFillRate * 100)}%`} accent={statsSummary.avgFillRate > 0.7} />
-                  <KPICard label="Peak day" value={statsSummary.peakDay} />
-                  <KPICard label="Peak hour" value={statsSummary.peakHour} />
+                  <KPICard label={t("orgStatsKpiTotalSessions")} value={statsSummary.totalSessions.toLocaleString()} />
+                  <KPICard label={t("orgStatsKpiTotalPlayers")} value={statsSummary.totalBooked.toLocaleString()} />
+                  <KPICard label={t("orgStatsKpiAvgFillRate")} value={`${Math.round(statsSummary.avgFillRate * 100)}%`} accent={statsSummary.avgFillRate > 0.7} />
+                  <KPICard label={t("orgStatsKpiPeakDay")} value={statsSummary.peakDay} />
+                  <KPICard label={t("orgStatsKpiPeakHour")} value={statsSummary.peakHour} />
                 </div>
               )}
 
-              <Section title="Weekly Distribution — Which days are busiest?">
+              <Section title={t("orgSectionWeekly")}>
                 <p className="text-xs text-muted mb-3">
-                  Sessions, players booked (demand), and total capacity (supply) by day of the week across all historical data.
+                  {t("orgSectionWeeklyDesc")}
                 </p>
                 <WeeklyDistributionChart data={weeklyDistribution} />
                 <div className="mt-3 grid grid-cols-7 gap-1 text-center">
@@ -690,18 +692,18 @@ export default function OrganizerDashboardPage({ params }: { params: Promise<{ c
                       <div key={b.day} className="text-xs">
                         <div className="font-medium">{b.label}</div>
                         <div className={`text-[11px] ${fillRate > 0.8 ? "text-red-500" : fillRate > 0.6 ? "text-amber-500" : "text-emerald-500"}`}>
-                          {Math.round(fillRate * 100)}% fill
+                          {Math.round(fillRate * 100)}% {t("orgWeeklyFill")}
                         </div>
-                        <div className="text-[10px] text-muted">{b.dates} days</div>
+                        <div className="text-[10px] text-muted">{b.dates} {t("orgWeeklyDays")}</div>
                       </div>
                     );
                   })}
                 </div>
               </Section>
 
-              <Section title="Hourly Distribution — When during the day?">
+              <Section title={t("orgSectionHourly")}>
                 <p className="text-xs text-muted mb-3">
-                  Filter by day of the week to see hourly demand vs supply patterns.
+                  {t("orgSectionHourlyDesc")}
                 </p>
                 <div className="flex flex-wrap gap-1.5 mb-4">
                   <button
@@ -712,7 +714,7 @@ export default function OrganizerDashboardPage({ params }: { params: Promise<{ c
                         : "bg-background border-card-border hover:border-primary/50"
                     }`}
                   >
-                    All days
+                    {t("orgAllDays")}
                   </button>
                   {DAY_LABELS.map((label, i) => (
                     <button
@@ -731,7 +733,7 @@ export default function OrganizerDashboardPage({ params }: { params: Promise<{ c
                 <HourlyStatsDistributionChart data={hourlyDistribution} />
               </Section>
 
-              <Section title="Fill Rate by Day of Week">
+              <Section title={t("orgSectionFillByDay")}>
                 <div className="space-y-2">
                   {weeklyDistribution.map((b) => {
                     const fillRate = b.capacity > 0 ? b.booked / b.capacity : 0;
@@ -750,7 +752,7 @@ export default function OrganizerDashboardPage({ params }: { params: Promise<{ c
                         </div>
                         <span className="w-12 text-right text-xs font-semibold">{Math.round(fillRate * 100)}%</span>
                         <span className="hidden sm:block w-28 text-right text-[11px] text-muted">
-                          ~{avgSessions} sessions, ~{avgPlayers} players/day
+                          ~{avgSessions} {t("orgFillByDaySessions")}, ~{avgPlayers} {t("orgFillByDayPlayers")}
                         </span>
                       </div>
                     );
@@ -760,17 +762,15 @@ export default function OrganizerDashboardPage({ params }: { params: Promise<{ c
             </>
           )}
 
-          <Section title="HCM market median cost / hour">
+          <Section title={t("orgSectionMarketMedian")}>
             <p className="text-xs text-muted mb-3">
-              Daily median price per hour across the market (same methodology as session scores). Updated when
-              sessions are loaded for that day. Applies to both &quot;You&quot; and &quot;All Clubs&quot; views.
+              {t("orgMarketMedianDesc")}
             </p>
             {marketMedianLoading ? (
               <div className="animate-pulse h-64 w-full min-w-0 bg-gray-100 dark:bg-gray-800 rounded-xl" />
             ) : marketMedianSeries.length === 0 ? (
               <p className="text-sm text-muted py-4">
-                No history yet. Values are stored as the app computes daily medians (e.g. after visiting sessions
-                or sync).
+                {t("orgMarketMedianEmpty")}
               </p>
             ) : (
               <MarketMedianCostChart data={marketMedianSeries} />
@@ -781,13 +781,13 @@ export default function OrganizerDashboardPage({ params }: { params: Promise<{ c
 
       {/* Ranking Tab */}
       {activeTab === "ranking" && (
-        <Section title="Club Rankings — Today">
+        <Section title={t("orgRankingTitle")}>
           <p className="text-xs text-muted mb-3">
-            Metrics are for today. Search and tap column headers to sort. Your club is highlighted.
+            {t("orgRankingDesc")}
           </p>
           <input
             type="text"
-            placeholder="Search clubs…"
+            placeholder={t("orgRankingSearch")}
             value={rankingSearch}
             onChange={(e) => setRankingSearch(e.target.value)}
             className="w-full rounded-lg border border-card-border bg-background px-3 py-2 text-sm outline-none focus:border-primary mb-4"
@@ -797,44 +797,44 @@ export default function OrganizerDashboardPage({ params }: { params: Promise<{ c
               <thead>
                 <tr className="border-b border-card-border text-muted">
                   <th className="text-left py-2 pr-2 font-medium w-8">#</th>
-                  <th className="text-left py-2 pr-3 font-medium">Club</th>
+                  <th className="text-left py-2 pr-3 font-medium">{t("orgRankingColClub")}</th>
                   <RankingSortTh
-                    label="Members"
+                    label={t("orgRankingColMembers")}
                     sortKey="members"
                     activeKey={rankingSortKey}
                     dir={rankingSortDir}
                     onSort={handleRankingSort}
                   />
                   <RankingSortTh
-                    label="Sessions"
+                    label={t("orgRankingColSessions")}
                     sortKey="sessionsToday"
                     activeKey={rankingSortKey}
                     dir={rankingSortDir}
                     onSort={handleRankingSort}
                   />
                   <RankingSortTh
-                    label="Players"
+                    label={t("orgRankingColPlayers")}
                     sortKey="players"
                     activeKey={rankingSortKey}
                     dir={rankingSortDir}
                     onSort={handleRankingSort}
                   />
                   <RankingSortTh
-                    label="Fill Rate"
+                    label={t("orgRankingColFillRate")}
                     sortKey="fillRate"
                     activeKey={rankingSortKey}
                     dir={rankingSortDir}
                     onSort={handleRankingSort}
                   />
                   <RankingSortTh
-                    label="Avg Price"
+                    label={t("orgRankingColAvgPrice")}
                     sortKey="avgFee"
                     activeKey={rankingSortKey}
                     dir={rankingSortDir}
                     onSort={handleRankingSort}
                   />
                   <RankingSortTh
-                    label="Est. revenue"
+                    label={t("orgRankingColRevenue")}
                     sortKey="revenueEstimate"
                     activeKey={rankingSortKey}
                     dir={rankingSortDir}
@@ -846,7 +846,7 @@ export default function OrganizerDashboardPage({ params }: { params: Promise<{ c
                 {displayedRanking.length === 0 ? (
                   <tr>
                     <td colSpan={8} className="py-8 text-center text-muted text-sm">
-                      No clubs match your search.
+                      {t("orgRankingNoMatch")}
                     </td>
                   </tr>
                 ) : (
@@ -857,7 +857,7 @@ export default function OrganizerDashboardPage({ params }: { params: Promise<{ c
                         <td className="py-2 pr-2 text-muted">{i + 1}</td>
                         <td className="py-2 pr-3">
                           {c.name}
-                          {isMe && <span className="ml-1 text-[10px] text-primary">(You)</span>}
+                          {isMe && <span className="ml-1 text-[10px] text-primary">({t("orgRankingYou")})</span>}
                         </td>
                         <td className="text-center py-2 px-2">{c.numMembers.toLocaleString()}</td>
                         <td className="text-center py-2 px-2">{c.sessionsToday}</td>
@@ -880,7 +880,7 @@ export default function OrganizerDashboardPage({ params }: { params: Promise<{ c
               onClick={() => setRankingVisible((v) => v + 100)}
               className="mt-4 w-full rounded-lg border border-card-border py-2.5 text-sm text-muted hover:text-foreground hover:border-primary/40 transition"
             >
-              Show more ({displayedRanking.length - rankingVisible} remaining)
+              Show more ({displayedRanking.length - rankingVisible} {t("orgRankingShowMore")})
             </button>
           )}
         </Section>
@@ -888,12 +888,12 @@ export default function OrganizerDashboardPage({ params }: { params: Promise<{ c
 
       {/* Rival Comparison Tab */}
       {activeTab === "rivals" && (
-        <Section title="Rival Comparison">
+        <Section title={t("orgRivalsTitle")}>
           <div className="mb-4">
-            <p className="text-xs text-muted mb-2">Select up to 5 clubs to compare against yours:</p>
+            <p className="text-xs text-muted mb-2">{t("orgRivalsDesc")}</p>
             <input
               type="text"
-              placeholder="Search clubs..."
+              placeholder={t("orgRivalsSearch")}
               value={rivalSearch}
               onChange={(e) => setRivalSearch(e.target.value)}
               className="w-full rounded-lg border border-card-border bg-background px-3 py-2 text-sm outline-none focus:border-primary mb-3"
@@ -916,8 +916,8 @@ export default function OrganizerDashboardPage({ params }: { params: Promise<{ c
             </div>
             {rivalIds.length > 0 && (
               <div className="mt-2 text-xs text-muted">
-                {rivalIds.length}/5 selected
-                <button onClick={() => { setRivalIds([]); localStorage.removeItem(RIVAL_STORAGE_KEY); }} className="ml-2 text-red-500 hover:underline">Clear all</button>
+                {rivalIds.length}/5 {t("orgRivalsSelected")}
+                <button onClick={() => { setRivalIds([]); localStorage.removeItem(RIVAL_STORAGE_KEY); }} className="ml-2 text-red-500 hover:underline">{t("orgRivalsClearAll")}</button>
               </div>
             )}
           </div>
@@ -929,11 +929,11 @@ export default function OrganizerDashboardPage({ params }: { params: Promise<{ c
               <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b border-card-border">
-                    <th className="text-left py-2 pr-3 font-medium text-muted">Metric</th>
+                    <th className="text-left py-2 pr-3 font-medium text-muted">{t("orgRivalsColMetric")}</th>
                     {rivalColumnsSorted.map((c) => (
                       <th key={c.id} className={`text-center py-2 px-2 font-medium ${c.id === clubId ? "text-primary" : "text-foreground"}`}>
                         {c.name.length > 18 ? c.name.slice(0, 16) + "..." : c.name}
-                        {c.id === clubId && <span className="block text-[10px] text-primary/70">You</span>}
+                        {c.id === clubId && <span className="block text-[10px] text-primary/70">{t("orgRankingYou")}</span>}
                       </th>
                     ))}
                   </tr>
@@ -964,7 +964,7 @@ export default function OrganizerDashboardPage({ params }: { params: Promise<{ c
               </table>
             </div>
           ) : (
-            <p className="text-sm text-muted text-center py-4">Select rivals above to see the comparison table.</p>
+            <p className="text-sm text-muted text-center py-4">{t("orgRivalsNoRivals")}</p>
           )}
         </Section>
       )}

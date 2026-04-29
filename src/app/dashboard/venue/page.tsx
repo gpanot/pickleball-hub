@@ -10,6 +10,7 @@ import {
 } from "@/lib/dashboard-session";
 import { formatVND } from "@/lib/utils";
 import { fetchPublicApiJson, readPublicApiCache } from "@/lib/public-api-cache";
+import { useI18n } from "@/lib/i18n";
 
 type VenueOption = {
   id: number;
@@ -30,80 +31,6 @@ type PreviewVenue = {
   uniqueClubs: number;
   activeHours: number;
 };
-
-const VALUE_PROPS = [
-  {
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="h-7 w-7">
-        <rect x="3" y="3" width="18" height="18" rx="2" />
-        <path d="M3 9h18M9 21V9" strokeLinecap="round" />
-      </svg>
-    ),
-    title: "Court Utilization Heatmap",
-    desc: "See exactly when your courts are busy and when they sit empty. Identify dead hours and turn them into revenue opportunities.",
-    stat: "24h",
-    statLabel: "coverage",
-  },
-  {
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="h-7 w-7">
-        <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-    ),
-    title: "Revenue per Court-Hour",
-    desc: "Aggregate revenue across all clubs using your courts. Know the true earning potential of every time slot.",
-    stat: "VND",
-    statLabel: "per hour",
-  },
-  {
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="h-7 w-7">
-        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" strokeLinecap="round" strokeLinejoin="round" />
-        <circle cx="9" cy="7" r="4" />
-        <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-    ),
-    title: "Hosted Clubs Overview",
-    desc: "Track every club that runs sessions at your venue, their schedules, player counts, and how much traffic they bring.",
-    stat: "All",
-    statLabel: "clubs tracked",
-  },
-  {
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="h-7 w-7">
-        <path d="M3 3v18h18" strokeLinecap="round" strokeLinejoin="round" />
-        <path d="M7 16l4-6 4 4 5-8" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-    ),
-    title: "Demand Trends",
-    desc: "Weekly and monthly traffic trends. See if your venue is growing, and how it compares to others in the same district.",
-    stat: "7d",
-    statLabel: "trend line",
-  },
-  {
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="h-7 w-7">
-        <path d="M22 12h-4l-3 9L9 3l-3 9H2" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-    ),
-    title: "Dead Hour Alerts",
-    desc: "Automatic detection of underused time windows. Get suggestions to attract clubs for those empty court hours.",
-    stat: "Auto",
-    statLabel: "detection",
-  },
-  {
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="h-7 w-7">
-        <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" strokeLinecap="round" strokeLinejoin="round" />
-        <circle cx="12" cy="10" r="3" />
-      </svg>
-    ),
-    title: "Venue Ranking & Comparison",
-    desc: "See how your venue ranks among all courts in HCM City by weekly sessions, total players, and utilization rate.",
-    stat: "Top",
-    statLabel: "10 spots",
-  },
-];
 
 function AnimatedCounter({ target }: { target: string }) {
   const [visible, setVisible] = useState(false);
@@ -126,6 +53,7 @@ function AnimatedCounter({ target }: { target: string }) {
 }
 
 export default function VenueGatePage() {
+  const { t } = useI18n();
   const [venues, setVenues] = useState<VenueOption[]>([]);
   const [selectedVenueId, setSelectedVenueId] = useState<string>("");
   const [loading, setLoading] = useState(true);
@@ -135,6 +63,80 @@ export default function VenueGatePage() {
   const [verifying, setVerifying] = useState(false);
   const [previewVenues, setPreviewVenues] = useState<PreviewVenue[]>([]);
   const router = useRouter();
+
+  const VALUE_PROPS = [
+    {
+      icon: (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="h-7 w-7">
+          <rect x="3" y="3" width="18" height="18" rx="2" />
+          <path d="M3 9h18M9 21V9" strokeLinecap="round" />
+        </svg>
+      ),
+      title: t("venueVp1Title"),
+      desc: t("venueVp1Desc"),
+      stat: "24h",
+      statLabel: t("venueVp1StatLabel"),
+    },
+    {
+      icon: (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="h-7 w-7">
+          <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      ),
+      title: t("venueVp2Title"),
+      desc: t("venueVp2Desc"),
+      stat: "VND",
+      statLabel: t("venueVp2StatLabel"),
+    },
+    {
+      icon: (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="h-7 w-7">
+          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" strokeLinecap="round" strokeLinejoin="round" />
+          <circle cx="9" cy="7" r="4" />
+          <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      ),
+      title: t("venueVp3Title"),
+      desc: t("venueVp3Desc"),
+      stat: "All",
+      statLabel: t("venueVp3StatLabel"),
+    },
+    {
+      icon: (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="h-7 w-7">
+          <path d="M3 3v18h18" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M7 16l4-6 4 4 5-8" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      ),
+      title: t("venueVp4Title"),
+      desc: t("venueVp4Desc"),
+      stat: "7d",
+      statLabel: t("venueVp4StatLabel"),
+    },
+    {
+      icon: (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="h-7 w-7">
+          <path d="M22 12h-4l-3 9L9 3l-3 9H2" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      ),
+      title: t("venueVp5Title"),
+      desc: t("venueVp5Desc"),
+      stat: "Auto",
+      statLabel: t("venueVp5StatLabel"),
+    },
+    {
+      icon: (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="h-7 w-7">
+          <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" strokeLinecap="round" strokeLinejoin="round" />
+          <circle cx="12" cy="10" r="3" />
+        </svg>
+      ),
+      title: t("venueVp6Title"),
+      desc: t("venueVp6Desc"),
+      stat: "Top",
+      statLabel: t("venueVp6StatLabel"),
+    },
+  ];
 
   useEffect(() => { setUnlocked(isVenueUnlocked()); }, []);
 
@@ -191,7 +193,7 @@ export default function VenueGatePage() {
     e.preventDefault();
     setVerifyError("");
     const code = accessCode.trim();
-    if (!code) { setVerifyError("Enter your access code."); return; }
+    if (!code) { setVerifyError(t("venueErrEnterCode")); return; }
     setVerifying(true);
     try {
       const res = await fetch("/api/dashboard/verify", {
@@ -200,9 +202,9 @@ export default function VenueGatePage() {
         body: JSON.stringify({ code }),
       });
       const data = await res.json();
-      if (!res.ok) { setVerifyError(data.error || "Invalid or expired code"); return; }
+      if (!res.ok) { setVerifyError(data.error || t("venueErrInvalidCode")); return; }
       if (data.entityType !== "venue" || data.venueId == null) {
-        setVerifyError("This code is not valid for venue access.");
+        setVerifyError(t("venueErrNotVenueCode"));
         return;
       }
       setVenueUnlocked();
@@ -211,7 +213,7 @@ export default function VenueGatePage() {
       localStorage.setItem(SELECTED_VENUE_KEY, String(data.venueId));
       setAccessCode("");
     } catch {
-      setVerifyError("Verification failed. Try again.");
+      setVerifyError(t("venueErrVerifyFailed"));
     } finally {
       setVerifying(false);
     }
@@ -237,6 +239,16 @@ export default function VenueGatePage() {
     setLoading(false);
   }
 
+  const previewMetrics: { key: keyof PreviewVenue; label: string; format: (v: number) => string; higher: boolean }[] = [
+    { key: "sessionsToday", label: t("venuePreviewMetricSessions"), format: (v) => v.toString(), higher: true },
+    { key: "totalJoined", label: t("venuePreviewMetricPlayers"), format: (v) => v.toLocaleString(), higher: true },
+    { key: "fillRate", label: t("venuePreviewMetricFillRate"), format: (v) => `${Math.round(v * 100)}%`, higher: true },
+    { key: "avgFee", label: t("venuePreviewMetricAvgPrice"), format: (v) => formatVND(v), higher: false },
+    { key: "uniqueClubs", label: t("venuePreviewMetricClubs"), format: (v) => v.toString(), higher: true },
+    { key: "activeHours", label: t("venuePreviewMetricActiveHours"), format: (v) => `${v}h`, higher: true },
+    { key: "revenueEstimate", label: t("venuePreviewMetricRevenue"), format: (v) => formatVND(v), higher: true },
+  ];
+
   return (
     <div className="min-h-[calc(100dvh-56px)]">
       {/* Hero */}
@@ -252,26 +264,25 @@ export default function VenueGatePage() {
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-75" />
               <span className="relative inline-flex h-2 w-2 rounded-full bg-accent" />
             </span>
-            Court data refreshed twice daily
+            {t("venueLiveDataBadge")}
           </div>
 
           <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight mb-4 animate-[fadeInUp_0.6s_ease-out_0.1s_both]">
-            Maximize Every{" "}
+            {t("venueHeroTitle")}{" "}
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-accent to-amber-400">
-              Court Hour
+              {t("venueHeroTitleHighlight")}
             </span>
           </h1>
           <p className="mx-auto max-w-2xl text-base sm:text-lg text-muted mb-8 animate-[fadeInUp_0.6s_ease-out_0.2s_both]">
-            Know exactly when your courts are used, by whom, and how much revenue they generate.
-            Turn empty hours into booked sessions.
+            {t("venueHeroSubtitle")}
           </p>
 
           {/* Stats */}
           <div className="mx-auto mb-10 flex max-w-md items-center justify-around gap-4 animate-[fadeInUp_0.6s_ease-out_0.35s_both]">
             {[
-              { val: "40+", label: "Venues tracked" },
-              { val: "90+", label: "Sessions/day" },
-              { val: "3k+", label: "Players/day" },
+              { val: "40+", label: t("venueStatVenuesTracked") },
+              { val: "90+", label: t("venueStatSessionsDay") },
+              { val: "3k+", label: t("venueStatPlayersDay") },
             ].map((s) => (
               <div key={s.label} className="text-center">
                 <div className="text-2xl sm:text-3xl font-bold text-accent">
@@ -287,14 +298,14 @@ export default function VenueGatePage() {
             <div className="rounded-2xl border border-card-border bg-card/80 backdrop-blur-lg shadow-xl p-5 sm:p-8">
               {!unlocked ? (
                 <>
-                  <h2 className="text-lg font-bold mb-1">Unlock your dashboard</h2>
-                  <p className="text-xs text-muted mb-5">Enter your venue access code to get started.</p>
+                  <h2 className="text-lg font-bold mb-1">{t("venueUnlockTitle")}</h2>
+                  <p className="text-xs text-muted mb-5">{t("venueUnlockSubtitle")}</p>
                   <form onSubmit={handleVerify} className="space-y-3 text-left">
                     <input
                       id="venue-code"
                       type="text"
                       autoComplete="off"
-                      placeholder="Your access code"
+                      placeholder={t("venueAccessCodePlaceholder")}
                       value={accessCode}
                       onChange={(e) => setAccessCode(e.target.value)}
                       className="w-full rounded-xl border border-card-border bg-background px-4 py-3 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 transition"
@@ -305,7 +316,7 @@ export default function VenueGatePage() {
                       disabled={verifying}
                       className="w-full rounded-xl bg-gradient-to-r from-accent to-amber-500 py-3 text-sm font-semibold text-white shadow-lg shadow-accent/25 hover:shadow-accent/40 transition disabled:opacity-50"
                     >
-                      {verifying ? "Verifying..." : "Unlock Dashboard"}
+                      {verifying ? t("venueVerifying") : t("venueUnlockBtn")}
                     </button>
                   </form>
                 </>
@@ -316,16 +327,16 @@ export default function VenueGatePage() {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  <h2 className="text-lg font-bold mb-1">Select your venue</h2>
+                  <h2 className="text-lg font-bold mb-1">{t("venueSelectTitle")}</h2>
                   <select
                     value={selectedVenueId}
                     onChange={(e) => handleSelect(e.target.value)}
                     className="w-full rounded-xl border border-card-border bg-background px-4 py-3 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 transition"
                   >
-                    <option value="">Choose a venue...</option>
+                    <option value="">{t("venueChooseVenue")}</option>
                     {venues.map((v) => (
                       <option key={v.id} value={v.id}>
-                        {v.name} ({v._count?.sessions ?? 0} sessions)
+                        {v.name} ({v._count?.sessions ?? 0} {t("venueSessionsCount")})
                       </option>
                     ))}
                   </select>
@@ -335,14 +346,14 @@ export default function VenueGatePage() {
                     disabled={!selectedVenueId}
                     className="w-full rounded-xl bg-gradient-to-r from-accent to-amber-500 py-3 text-sm font-semibold text-white shadow-lg shadow-accent/25 hover:shadow-accent/40 transition disabled:opacity-50"
                   >
-                    Open Dashboard
+                    {t("venueOpenDashboard")}
                   </button>
                   <button
                     type="button"
                     onClick={handleLogout}
                     className="w-full rounded-xl border border-card-border bg-background py-2.5 text-xs font-medium text-muted hover:text-foreground hover:border-accent/40 transition"
                   >
-                    Log out
+                    {t("venueLogout")}
                   </button>
                 </div>
               )}
@@ -356,11 +367,11 @@ export default function VenueGatePage() {
         <div className="mx-auto max-w-6xl px-4 sm:px-6">
           <div className="text-center mb-10 sm:mb-14">
             <h2 className="text-2xl sm:text-3xl font-extrabold mb-3">
-              Turn idle courts into{" "}
-              <span className="text-accent">revenue generators</span>
+              {t("venueValuePropsTitle")}{" "}
+              <span className="text-accent">{t("venueValuePropsTitleHighlight")}</span>
             </h2>
             <p className="mx-auto max-w-xl text-sm sm:text-base text-muted">
-              Comprehensive utilization analytics built from every pickleball session running at your venue.
+              {t("venueValuePropsSubtitle")}
             </p>
           </div>
 
@@ -398,11 +409,11 @@ export default function VenueGatePage() {
         <div className="mx-auto max-w-5xl px-4 sm:px-6">
           <div className="text-center mb-8">
             <h2 className="text-2xl sm:text-3xl font-extrabold mb-3">
-              See your venue like{" "}
-              <span className="text-accent">never before</span>
+              {t("venuePreviewTitle")}{" "}
+              <span className="text-accent">{t("venuePreviewTitleHighlight")}</span>
             </h2>
             <p className="mx-auto max-w-xl text-sm text-muted">
-              Real utilization data from live sessions. No guesswork.
+              {t("venuePreviewSubtitle")}
             </p>
           </div>
 
@@ -413,7 +424,7 @@ export default function VenueGatePage() {
                 <div className="h-3 w-3 rounded-full bg-amber-400" />
                 <div className="h-3 w-3 rounded-full bg-green-400" />
               </div>
-              <span className="text-xs text-muted ml-2">Venue Comparison — Today&apos;s Top 5</span>
+              <span className="text-xs text-muted ml-2">{t("venuePreviewTableHeader")}</span>
             </div>
             <div className="p-4 sm:p-6">
               {previewVenues.length === 0 ? (
@@ -422,59 +433,48 @@ export default function VenueGatePage() {
                     <div key={i} className="animate-pulse h-8 bg-gray-200 dark:bg-gray-800 rounded-lg" />
                   ))}
                 </div>
-              ) : (() => {
-                const previewMetrics: { key: keyof PreviewVenue; label: string; format: (v: number) => string; higher: boolean }[] = [
-                  { key: "sessionsToday", label: "Sessions today", format: (v) => v.toString(), higher: true },
-                  { key: "totalJoined", label: "Players today", format: (v) => v.toLocaleString(), higher: true },
-                  { key: "fillRate", label: "Fill rate", format: (v) => `${Math.round(v * 100)}%`, higher: true },
-                  { key: "avgFee", label: "Avg price", format: (v) => formatVND(v), higher: false },
-                  { key: "uniqueClubs", label: "Clubs hosted", format: (v) => v.toString(), higher: true },
-                  { key: "activeHours", label: "Active hours", format: (v) => `${v}h`, higher: true },
-                  { key: "revenueEstimate", label: "Est. revenue", format: (v) => formatVND(v), higher: true },
-                ];
-                return (
-                  <div className="overflow-x-auto -mx-2">
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr className="border-b border-card-border">
-                          <th className="text-left py-2 pr-3 font-medium text-muted">Metric</th>
-                          {previewVenues.map((v) => (
-                            <th key={v.id} className="text-center py-2 px-2 font-medium text-foreground">
-                              {v.name.length > 18 ? v.name.slice(0, 16) + "..." : v.name}
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {previewMetrics.map((m) => {
-                          const values = previewVenues.map((v) => v[m.key] as number);
-                          const best = m.higher ? Math.max(...values) : Math.min(...values);
-                          return (
-                            <tr key={m.key} className="border-b border-card-border/50">
-                              <td className="py-2 pr-3 text-muted font-medium">{m.label}</td>
-                              {previewVenues.map((v) => {
-                                const val = v[m.key] as number;
-                                const isBest = val === best && values.filter((x) => x === best).length === 1;
-                                return (
-                                  <td key={v.id} className={`text-center py-2 px-2 font-semibold ${isBest ? "text-green-600 dark:text-green-400" : ""}`}>
-                                    {m.format(val)}
-                                  </td>
-                                );
-                              })}
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                );
-              })()}
+              ) : (
+                <div className="overflow-x-auto -mx-2">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b border-card-border">
+                        <th className="text-left py-2 pr-3 font-medium text-muted">Metric</th>
+                        {previewVenues.map((v) => (
+                          <th key={v.id} className="text-center py-2 px-2 font-medium text-foreground">
+                            {v.name.length > 18 ? v.name.slice(0, 16) + "..." : v.name}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {previewMetrics.map((m) => {
+                        const values = previewVenues.map((v) => v[m.key] as number);
+                        const best = m.higher ? Math.max(...values) : Math.min(...values);
+                        return (
+                          <tr key={m.key} className="border-b border-card-border/50">
+                            <td className="py-2 pr-3 text-muted font-medium">{m.label}</td>
+                            {previewVenues.map((v) => {
+                              const val = v[m.key] as number;
+                              const isBest = val === best && values.filter((x) => x === best).length === 1;
+                              return (
+                                <td key={v.id} className={`text-center py-2 px-2 font-semibold ${isBest ? "text-green-600 dark:text-green-400" : ""}`}>
+                                  {m.format(val)}
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
               <div className="text-center text-xs text-muted mt-4 flex items-center justify-center gap-1.5">
                 <span className="relative flex h-2 w-2">
                   <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-75" />
                   <span className="relative inline-flex h-2 w-2 rounded-full bg-accent" />
                 </span>
-                Live data · Venues with 3 sessions compared · Unlock to compare against yours
+                {t("venuePreviewLiveNote")}
               </div>
             </div>
           </div>
@@ -486,10 +486,10 @@ export default function VenueGatePage() {
         <div className="mx-auto max-w-5xl px-4 sm:px-6">
           <div className="text-center mb-8">
             <h2 className="text-2xl sm:text-3xl font-extrabold mb-3">
-              What your dashboard <span className="text-accent">looks like inside</span>
+              {t("venueMockTitle")} <span className="text-accent">{t("venueMockTitleHighlight")}</span>
             </h2>
             <p className="mx-auto max-w-xl text-sm text-muted">
-              KPI cards, court utilization heatmaps, club breakdowns and opportunity alerts — all in one place.
+              {t("venueMockSubtitle")}
             </p>
           </div>
 
@@ -505,10 +505,10 @@ export default function VenueGatePage() {
             <div className="p-4 sm:p-6">
               <div className="grid gap-3 sm:grid-cols-4 mb-5">
                 {[
-                  { label: "Sessions today", val: "12", color: "text-accent" },
-                  { label: "Hosted clubs", val: "4", color: "text-accent" },
-                  { label: "Utilization", val: "68%", color: "text-emerald-500" },
-                  { label: "Weekly traffic", val: "840", color: "text-amber-500" },
+                  { label: t("venueMockKpiSessions"), val: "12", color: "text-accent" },
+                  { label: t("venueMockKpiClubs"), val: "4", color: "text-accent" },
+                  { label: t("venueMockKpiUtilization"), val: "68%", color: "text-emerald-500" },
+                  { label: t("venueMockKpiTraffic"), val: "840", color: "text-amber-500" },
                 ].map((m) => (
                   <div key={m.label} className="rounded-xl border border-card-border bg-background p-3 sm:p-4">
                     <div className="text-[10px] sm:text-xs text-muted mb-1">{m.label}</div>
@@ -520,7 +520,7 @@ export default function VenueGatePage() {
               </div>
 
               <div className="rounded-xl border border-card-border bg-background p-4 mb-4">
-                <div className="text-xs font-semibold mb-3">Court utilization by hour</div>
+                <div className="text-xs font-semibold mb-3">{t("venueMockHeatmapTitle")}</div>
                 <div className="grid grid-cols-12 gap-1">
                   {[
                     [10, 15, 30, 80, 95, 90, 85, 60, 30, 45, 70, 20],
@@ -541,20 +541,20 @@ export default function VenueGatePage() {
                   ))}
                 </div>
                 <div className="flex justify-between mt-1.5 text-[8px] sm:text-[9px] text-muted">
-                  {["6am", "7", "8", "9", "10", "11", "12pm", "1", "2", "3", "4", "5pm"].map((t) => <span key={t}>{t}</span>)}
+                  {["6am", "7", "8", "9", "10", "11", "12pm", "1", "2", "3", "4", "5pm"].map((tt) => <span key={tt}>{tt}</span>)}
                 </div>
                 <div className="flex items-center gap-2 mt-2 text-[9px] text-muted">
-                  <span>Low</span>
+                  <span>{t("venueMockHeatmapLow")}</span>
                   <div className="flex gap-0.5">
                     {[20, 40, 60, 80, 95].map((v) => (
                       <div key={v} className="h-2.5 w-4 rounded-sm" style={{ backgroundColor: `rgb(245 158 11 / ${v / 100})` }} />
                     ))}
                   </div>
-                  <span>High</span>
+                  <span>{t("venueMockHeatmapHigh")}</span>
                 </div>
               </div>
               <div className="text-center text-xs text-muted">
-                Preview only. Unlock your dashboard for the full experience.
+                {t("venueMockPreviewNote")}
               </div>
             </div>
           </div>
@@ -564,16 +564,16 @@ export default function VenueGatePage() {
       {/* Bottom CTA */}
       <section className="py-12 sm:py-16 text-center bg-background">
         <div className="mx-auto max-w-md px-4">
-          <h2 className="text-xl sm:text-2xl font-bold mb-3">Know your courts better</h2>
+          <h2 className="text-xl sm:text-2xl font-bold mb-3">{t("venueCtaTitle")}</h2>
           <p className="text-sm text-muted mb-6">
-            Get your venue access code and start optimizing your court schedule today.
+            {t("venueCtaSubtitle")}
           </p>
           <a
             href="#"
             onClick={(e) => { e.preventDefault(); window.scrollTo({ top: 0, behavior: "smooth" }); }}
             className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-accent to-amber-500 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-accent/25 hover:shadow-accent/40 transition"
           >
-            Enter your code
+            {t("venueEnterCode")}
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-4 w-4">
               <path d="M5 12h14m-7-7 7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
