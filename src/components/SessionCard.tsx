@@ -3,7 +3,6 @@
 import { mouseflowTag } from "@/lib/analytics";
 import { useIsBookPreviewViewport } from "@/hooks/useBookPreviewViewport";
 import { FillRateBar } from "./FillRateBar";
-import { PriceTag } from "./PriceTag";
 import { SessionScoreBadge } from "./SessionScoreBadge";
 import { perkEmoji, parseSessionType, haversineKm, formatDistanceKm } from "@/lib/utils";
 
@@ -44,12 +43,6 @@ export function SessionCard({ session, userLocation, hcmMedianCostPerHour, onMob
   const sessionType = parseSessionType(s.name);
   const showWaitWarning = fillRate >= 0.9 && sessionType !== "roundrobin";
 
-  const skillLabel = s.skillLevelMin
-    ? s.skillLevelMax
-      ? `${s.skillLevelMin}-${s.skillLevelMax}`
-      : `${s.skillLevelMin}+`
-    : null;
-
   const distanceKm =
     userLocation &&
     s.venue?.latitude != null &&
@@ -66,12 +59,6 @@ export function SessionCard({ session, userLocation, hcmMedianCostPerHour, onMob
               <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
                 {s.startTime} - {s.endTime}
               </span>
-              <span className="text-xs text-muted">{s.durationMin}min</span>
-              {skillLabel && (
-                <span className="rounded-full bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent">
-                  Lvl {skillLabel}
-                </span>
-              )}
             </div>
             <h3 className="mb-1 line-clamp-2 break-words text-sm font-semibold leading-tight">{s.name}</h3>
             <p className="mb-1 break-words text-xs text-muted">{s.club.name}</p>
@@ -110,7 +97,6 @@ export function SessionCard({ session, userLocation, hcmMedianCostPerHour, onMob
                 duprParticipationPct: s.duprParticipationPct,
               }}
             />
-            <PriceTag feeAmount={s.feeAmount} costPerHour={s.costPerHour} />
           </div>
         </div>
         <div className="min-w-0 w-full">
