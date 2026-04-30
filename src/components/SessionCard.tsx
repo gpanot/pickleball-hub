@@ -3,6 +3,7 @@
 import { mouseflowTag } from "@/lib/analytics";
 import { useIsBookPreviewViewport } from "@/hooks/useBookPreviewViewport";
 import { FillRateBar } from "./FillRateBar";
+import { PriceTag } from "./PriceTag";
 import { SessionScoreBadge } from "./SessionScoreBadge";
 import { perkEmoji, parseSessionType, haversineKm, formatDistanceKm } from "@/lib/utils";
 
@@ -97,6 +98,7 @@ export function SessionCard({ session, userLocation, hcmMedianCostPerHour, onMob
                 duprParticipationPct: s.duprParticipationPct,
               }}
             />
+            <PriceTag feeAmount={s.feeAmount} costPerHour={null} />
           </div>
         </div>
         <div className="min-w-0 w-full">
