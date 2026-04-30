@@ -268,15 +268,24 @@ function useIsMobileSheet(): boolean {
 export function SessionScoreBadge({
   input,
   className = "",
+  open: openProp,
+  onOpenChange,
 }: {
   input: SessionScoreInput;
   className?: string;
+  open?: boolean;
+  onOpenChange?: (v: boolean) => void;
 }) {
   const { t, locale } = useI18n();
   const result = computeSessionScore(input);
   const { color, ratingTier } = getScoreLabel(result.score);
   const scoreTextLabel = t(scoreRatingTranslationKey(ratingTier));
-  const [open, setOpen] = useState(false);
+  const [openInternal, setOpenInternal] = useState(false);
+  const open = openProp !== undefined ? openProp : openInternal;
+  const setOpen = (v: boolean) => {
+    setOpenInternal(v);
+    onOpenChange?.(v);
+  };
   const wrapRef = useRef<HTMLDivElement>(null);
   const popoverId = useId();
   const isMobile = useIsMobileSheet();

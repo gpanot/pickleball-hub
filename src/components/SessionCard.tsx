@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { mouseflowTag } from "@/lib/analytics";
 import { useIsBookPreviewViewport } from "@/hooks/useBookPreviewViewport";
 import { FillRateBar } from "./FillRateBar";
@@ -43,6 +44,7 @@ export function SessionCard({ session, userLocation, hcmMedianCostPerHour, onMob
   const fillRate = s.maxPlayers > 0 ? s.joined / s.maxPlayers : 0;
   const sessionType = parseSessionType(s.name);
   const showWaitWarning = fillRate >= 0.9 && sessionType !== "roundrobin";
+  const [scoreOpen, setScoreOpen] = useState(false);
 
   const distanceKm =
     userLocation &&
@@ -52,7 +54,14 @@ export function SessionCard({ session, userLocation, hcmMedianCostPerHour, onMob
       : null;
 
   return (
-    <div className="flex h-full min-w-0 max-w-full flex-col rounded-xl border border-card-border bg-card p-3 sm:p-4 transition hover:shadow-md hover:border-primary/30">
+    <div
+      className="flex h-full min-w-0 max-w-full cursor-pointer flex-col rounded-xl border border-card-border bg-card p-3 sm:p-4 transition hover:shadow-md hover:border-primary/30"
+      onClick={(e) => {
+        const target = e.target as HTMLElement;
+        if (target.closest("a, button")) return;
+        setScoreOpen(true);
+      }}
+    >
       <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
         <div className="flex min-w-0 items-start justify-between gap-2 sm:gap-3">
           <div className="min-w-0 flex-1 overflow-hidden">
@@ -87,6 +96,8 @@ export function SessionCard({ session, userLocation, hcmMedianCostPerHour, onMob
           </div>
           <div className="flex shrink-0 flex-col items-end gap-1.5">
             <SessionScoreBadge
+              open={scoreOpen}
+              onOpenChange={setScoreOpen}
               input={{
                 confirmedPlayers: s.joined,
                 capacity: s.maxPlayers,
