@@ -70,10 +70,10 @@ function RatingPillBody({
 
   return (
     <>
-      <span className="inline-flex items-center gap-1 text-[11px] font-semibold leading-tight sm:text-xs">
+      <span className="inline-flex items-center gap-1 text-sm font-bold leading-tight">
         <svg
-          width="11"
-          height="11"
+          width="13"
+          height="13"
           viewBox="0 0 24 24"
           className="shrink-0 opacity-90"
           aria-hidden
@@ -85,13 +85,9 @@ function RatingPillBody({
           {result.score} · {scoreLabel}
         </span>
       </span>
-      {duprLoading ? (
+      {!duprLoading && result.duprBadge != null ? (
         <span className="max-w-[180px] truncate text-[10px] font-normal leading-tight text-muted-foreground">
-          {t("scoreDuprLineLoading")}
-        </span>
-      ) : result.duprBadge != null && result.duprPercent != null ? (
-        <span className="max-w-[180px] truncate text-[10px] font-normal leading-tight text-muted-foreground">
-          {`${result.duprPercent}% DUPR · ${duprTierLabel(result.duprBadge, t)}`}
+          {duprTierLabel(result.duprBadge, t)}
         </span>
       ) : null}
     </>
