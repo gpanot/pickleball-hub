@@ -184,6 +184,14 @@ export function SessionFilters({
     }
   };
 
+  const toggleMostRegulars = () => {
+    update("sortBy", filters.sortBy === "mostRegulars" ? "time" : "mostRegulars");
+  };
+
+  const toggleCompetitive = () => {
+    update("sortBy", filters.sortBy === "playerLevel" ? "time" : "playerLevel");
+  };
+
   const toggleFilling = () => {
     update("availability", filters.availability === "filling" ? "" : "filling");
   };
@@ -224,13 +232,27 @@ export function SessionFilters({
         </button>
       </form>
 
-      <div className="flex flex-nowrap gap-1 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] sm:hidden [&::-webkit-scrollbar]:hidden">
+      <div className="flex flex-nowrap gap-1 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:hidden">
         <button
           type="button"
           onClick={toggleBestScore}
           className={pillClass(filters.sortBy === "score" || filters.sortBy === "score_nearby")}
         >
           {t("bestScore")}
+        </button>
+        <button
+          type="button"
+          onClick={toggleMostRegulars}
+          className={pillClass(filters.sortBy === "mostRegulars")}
+        >
+          {t("pillMostRegulars")}
+        </button>
+        <button
+          type="button"
+          onClick={toggleCompetitive}
+          className={pillClass(filters.sortBy === "playerLevel")}
+        >
+          {t("pillCompetitive")}
         </button>
         <button
           type="button"

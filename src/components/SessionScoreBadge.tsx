@@ -504,19 +504,19 @@ export function SessionScoreAndDuprBadges({
       </div>
 
       {/* DUPR KPI */}
-      {duprLoading ? (
-        <div className="flex flex-1 flex-col items-start justify-center gap-0.5 rounded-xl border-2 border-muted-foreground/25 bg-muted/15 px-3 py-2.5 text-muted-foreground">
-          <span className="text-[11px] font-semibold leading-tight">DUPR</span>
-          <span className="text-[10px] font-normal leading-tight">{t("scoreDuprLineLoading")}</span>
-        </div>
-      ) : result.duprBadge != null && result.duprPercent != null ? (
+      {result.duprBadge != null && result.duprPercent != null ? (
         <div className="flex flex-1 flex-col items-start justify-center gap-0.5 rounded-xl border-2 border-muted-foreground/30 bg-muted/15 px-3 py-2.5 text-foreground">
           <span className="text-lg font-bold leading-tight tabular-nums">{result.duprPercent}%</span>
           <span className="text-[11px] font-semibold leading-tight text-muted-foreground">
             {`DUPR · ${duprTierLabel(result.duprBadge, t)}`}
           </span>
         </div>
-      ) : null}
+      ) : (
+        <div className="flex flex-1 flex-col items-start justify-center gap-0.5 rounded-xl border-2 border-muted-foreground/20 bg-muted/10 px-3 py-2.5 text-muted-foreground/60">
+          <span className="text-lg font-bold leading-tight opacity-40">—</span>
+          <span className="text-[11px] font-semibold leading-tight">DUPR</span>
+        </div>
+      )}
 
       {/* Regulars KPI */}
       <div
