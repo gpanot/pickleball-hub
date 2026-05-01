@@ -2,7 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { haversineKm } from "@/lib/utils";
 
-type TimeSlot = "weekday_evenings" | "weekends" | "anytime";
+type TimeSlot =
+  | "weekday_evenings"
+  | "weekends"
+  | "weekday_mornings"
+  | "weekday_afternoons"
+  | "weekend_evenings";
 type Level = "casual" | "intermediate" | "competitive";
 type TravelTime = "10min" | "15min" | "any";
 
@@ -24,27 +29,53 @@ function parseHour(timeStr: string): number {
   return parseInt(timeStr.split(":")[0] ?? "0", 10);
 }
 
-function isWeekdayEvening(startTime: string, scrapedDate: string): boolean {
+function parseDateInfo(scrapedDate: string): { dayOfWeek: number } {
   const [y, m, d] = scrapedDate.split("-").map(Number);
   const date = new Date(y, (m ?? 1) - 1, d ?? 1);
-  const dayOfWeek = date.getDay();
-  const isWeekday = dayOfWeek >= 1 && dayOfWeek <= 5;
-  const hour = parseHour(startTime);
-  return isWeekday && hour >= 17;
+  return { dayOfWeek: date.getDay() };
 }
 
-function isWeekend(scrapedDate: string): boolean {
-  const [y, m, d] = scrapedDate.split("-").map(Number);
-  const date = new Date(y, (m ?? 1) - 1, d ?? 1);
-  const dayOfWeek = date.getDay();
+function isWeekday(scrapedDate: string): boolean {
+  const { dayOfWeek } = parseDateInfo(scrapedDate);
+  return dayOfWeek >= 1 && dayOfWeek <= 5;
+}
+
+function isWeekendDay(scrapedDate: string): boolean {
+  const { dayOfWeek } = parseDateInfo(scrapedDate);
   return dayOfWeek === 0 || dayOfWeek === 6;
 }
 
+function isWeekdayEvening(startTime: string, scrapedDate: string): boolean {
+  return isWeekday(scrapedDate) && parseHour(startTime) >= 17;
+}
+
+function isWeekdayMorning(startTime: string, scrapedDate: string): boolean {
+  const hour = parseHour(startTime);
+  return isWeekday(scrapedDate) && hour >= 6 && hour < 12;
+}
+
+function isWeekdayAfternoon(startTime: string, scrapedDate: string): boolean {
+  const hour = parseHour(startTime);
+  return isWeekday(scrapedDate) && hour >= 12 && hour < 17;
+}
+
+function isWeekendEvening(startTime: string, scrapedDate: string): boolean {
+  return isWeekendDay(scrapedDate) && parseHour(startTime) >= 17;
+}
+
 function timeMatchScore(startTime: string, scrapedDate: string, timeSlots: TimeSlot): number {
-  if (timeSlots === "anytime") return 1;
-  if (timeSlots === "weekday_evenings") return isWeekdayEvening(startTime, scrapedDate) ? 1 : 0;
-  if (timeSlots === "weekends") return isWeekend(scrapedDate) ? 1 : 0;
-  return 0;
+  switch (timeSlots) {
+    case "weekday_evenings":
+      return isWeekdayEvening(startTime, scrapedDate) ? 1 : 0;
+    case "weekends":
+      return isWeekendDay(scrapedDate) ? 1 : 0;
+    case "weekday_mornings":
+      return isWeekdayMorning(startTime, scrapedDate) ? 1 : 0;
+    case "weekday_afternoons":
+      return isWeekdayAfternoon(startTime, scrapedDate) ? 1 : 0;
+    case "weekend_evenings":
+      return isWeekendEvening(startTime, scrapedDate) ? 1 : 0;
+  }
 }
 
 function levelMatchScore(sessionName: string, level: Level): number {
@@ -88,11 +119,15 @@ function getMatchReasons(
 ): string[] {
   const reasons: string[] = [];
 
-  if (prefs.timeSlots === "weekday_evenings" && isWeekdayEvening(startTime, scrapedDate)) {
-    reasons.push("Matches your evening schedule");
-  } else if (prefs.timeSlots === "weekends" && isWeekend(scrapedDate)) {
-    reasons.push("Available on weekends");
-  }
+  const timeLabels: Record<TimeSlot, [() => boolean, string]> = {
+    weekday_evenings: [() => isWeekdayEvening(startTime, scrapedDate), "Matches your evening schedule"],
+    weekends: [() => isWeekendDay(scrapedDate), "Available on weekends"],
+    weekday_mornings: [() => isWeekdayMorning(startTime, scrapedDate), "Matches your morning schedule"],
+    weekday_afternoons: [() => isWeekdayAfternoon(startTime, scrapedDate), "Matches your afternoon schedule"],
+    weekend_evenings: [() => isWeekendEvening(startTime, scrapedDate), "Weekend evening session"],
+  };
+  const [timeCheck, timeLabel] = timeLabels[prefs.timeSlots];
+  if (timeCheck()) reasons.push(timeLabel);
 
   const lower = sessionName.toLowerCase();
   if (prefs.level === "competitive" && (lower.includes("competitive") || lower.includes("advanced"))) {

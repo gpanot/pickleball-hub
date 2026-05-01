@@ -4,7 +4,12 @@ import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 
 export type PlayerPreferences = {
-  timeSlots: "weekday_evenings" | "weekends" | "anytime";
+  timeSlots:
+    | "weekday_evenings"
+    | "weekends"
+    | "weekday_mornings"
+    | "weekday_afternoons"
+    | "weekend_evenings";
   level: "casual" | "intermediate" | "competitive";
   travelTime: "10min" | "15min" | "any";
   clickedSessions: string[];

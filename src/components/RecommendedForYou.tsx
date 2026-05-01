@@ -45,7 +45,9 @@ function prefLabel(
   const timeMap: Record<PlayerPreferences["timeSlots"], TranslationKey> = {
     weekday_evenings: "recommendedTimeSlotsWeekdayEvenings",
     weekends: "recommendedTimeSlotsWeekends",
-    anytime: "recommendedTimeSlotsAnytime",
+    weekday_mornings: "recommendedTimeSlotsWeekdayMornings",
+    weekday_afternoons: "recommendedTimeSlotsWeekdayAfternoons",
+    weekend_evenings: "recommendedTimeSlotsWeekendEvenings",
   };
   const levelMap: Record<PlayerPreferences["level"], TranslationKey> = {
     casual: "recommendedLevelCasual",
