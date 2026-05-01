@@ -325,7 +325,7 @@ export function HomeClient({
       result = result.filter((s) => sessionScore(s) >= 50);
     }
 
-    if (filters.sortBy === "playerLevel") {
+    if (filters.sortBy === "playerLevel" || filters.sortBy === "mostRegulars") {
       result = result.filter((s) => parseSessionType(s.name) !== "roundrobin");
     }
 
@@ -364,6 +364,15 @@ export function HomeClient({
           const da = a.duprParticipationPct ?? -1;
           const db = b.duprParticipationPct ?? -1;
           if (da !== db) return db - da;
+          return a.startTime.localeCompare(b.startTime);
+        });
+        break;
+      case "mostRegulars":
+        result.sort((a, b) => {
+          // Sessions with no regulars data sort to the bottom
+          const ra = a.returningPlayerPct ?? -1;
+          const rb = b.returningPlayerPct ?? -1;
+          if (ra !== rb) return rb - ra;
           return a.startTime.localeCompare(b.startTime);
         });
         break;
@@ -735,7 +744,7 @@ export function HomeClient({
               </>
             )}
           </div>
-        ) : filters.sortBy === "score" || filters.sortBy === "score_nearby" || filters.sortBy === "playerLevel" || !hasTimeGroups ? (
+        ) : filters.sortBy === "score" || filters.sortBy === "score_nearby" || filters.sortBy === "playerLevel" || filters.sortBy === "mostRegulars" || !hasTimeGroups ? (
           <div className="grid min-w-0 items-stretch gap-2 sm:gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {filtered.slice(0, visibleCount).map((s) => (
               <SessionCard
