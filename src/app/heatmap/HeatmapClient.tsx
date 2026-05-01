@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
-import type { HeatmapData } from "@/lib/queries";
+import type { HeatmapData, HeatmapVenue } from "@/lib/queries";
 import type { GetSessionsListItem } from "@/lib/queries";
 import { SessionCard } from "@/components/SessionCard";
 import { useProfileStore } from "@/store/profileStore";
@@ -145,6 +145,7 @@ export function HeatmapClient({ heatmapData, sessions, hcmMedianCostPerHour }: P
 
   const [selectedDupr, setSelectedDupr] = useState(defaultDupr);
   const [hydrated, setHydrated] = useState(false);
+  const [selectedVenue, setSelectedVenue] = useState<HeatmapVenue | null>(null);
 
   // Wait for zustand hydration before applying personalized default
   useEffect(() => {
@@ -175,8 +176,18 @@ export function HeatmapClient({ heatmapData, sessions, hcmMedianCostPerHour }: P
     [venues, selectedDupr],
   );
 
-  // Filter + sort sessions: only venues in the active band, sorted by heat desc then start time
+  // Filter + sort sessions
   const recommendedSessions = useMemo(() => {
+    if (selectedVenue) {
+      // Venue selected: show all sessions at that venue regardless of DUPR band
+      const venueIdSet = new Set(selectedVenue.venueIds);
+      const filtered = sessions.filter(
+        (s) => s.venueId != null && venueIdSet.has(String(s.venueId)),
+      );
+      filtered.sort((a, b) => a.startTime.localeCompare(b.startTime));
+      return filtered.slice(0, 20);
+    }
+    // Default: only venues in the active DUPR band, sorted by heat desc then start time
     const filtered = sessions.filter(
       (s) => s.venueId != null && activeVenues.has(String(s.venueId)),
     );
@@ -186,8 +197,8 @@ export function HeatmapClient({ heatmapData, sessions, hcmMedianCostPerHour }: P
       if (heatB !== heatA) return heatB - heatA;
       return a.startTime.localeCompare(b.startTime);
     });
-    return filtered.slice(0, 20); // cap at 20 cards
-  }, [sessions, activeVenues, venueHeatScoreMap]);
+    return filtered.slice(0, 20);
+  }, [sessions, activeVenues, venueHeatScoreMap, selectedVenue]);
 
   const sliderMin = duprRange.min;
   const sliderMax = duprRange.max;
@@ -261,6 +272,10 @@ export function HeatmapClient({ heatmapData, sessions, hcmMedianCostPerHour }: P
           selectedDupr={selectedDupr}
           className="h-[480px] w-full"
           onBubbleClick={handleBubbleClick}
+          onVenueSelect={(venue) => {
+            setSelectedVenue(venue);
+          }}
+          onVenueDeselect={() => setSelectedVenue(null)}
         />
       </div>
 
@@ -273,21 +288,29 @@ export function HeatmapClient({ heatmapData, sessions, hcmMedianCostPerHour }: P
       />
 
       {/* Recommended sessions strip */}
-      <section>
-        <h2 className="mb-3 text-lg font-bold text-foreground">
-          Sessions at the hotspots
+      <section id="sessions-section">
+        <h2 className="mb-1 text-lg font-bold text-foreground">
+          {selectedVenue
+            ? `Sessions at ${selectedVenue.venueName}`
+            : "Sessions at the hotspots"}
         </h2>
         <p className="mb-4 text-sm text-muted">
-          Upcoming sessions at venues where DUPR {bandMin}–{bandMax} players are most active.
+          {selectedVenue
+            ? "Upcoming sessions from clubs at this court"
+            : `Upcoming sessions where DUPR ${bandMin}–${bandMax} players are most active.`}
         </p>
 
         {recommendedSessions.length === 0 ? (
           <div className="rounded-xl border border-card-border bg-card px-6 py-10 text-center">
             <p className="text-sm text-muted">
-              No upcoming sessions at these venues right now.
+              {selectedVenue
+                ? `No upcoming sessions at ${selectedVenue.venueName} right now.`
+                : "No upcoming sessions at these venues right now."}
             </p>
             <p className="mt-1 text-xs text-muted">
-              Try adjusting the DUPR slider to find more activity.
+              {selectedVenue
+                ? "Check back later or tap another venue on the map."
+                : "Try adjusting the DUPR slider to find more activity."}
             </p>
           </div>
         ) : (

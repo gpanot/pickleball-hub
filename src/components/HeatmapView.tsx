@@ -29,6 +29,10 @@ export interface HeatmapViewProps {
    * Should return true to allow the popup, false to block (e.g. show login modal).
    */
   onBubbleClick?: (openPopup: () => void) => boolean;
+  /** Called when a venue bubble is clicked (after the gate allows it). */
+  onVenueSelect?: (venue: HeatmapVenue) => void;
+  /** Called when a popup is closed. */
+  onVenueDeselect?: () => void;
 }
 
 // ── band helpers ──────────────────────────────────────────────────────────────
@@ -85,62 +89,43 @@ function buildBubbleIcon(count: number, norm: number): L.DivIcon {
 // ── popup ─────────────────────────────────────────────────────────────────────
 
 function buildPopupHtml(venue: HeatmapVenue, lo: string, hi: string, count: number): string {
-  const venueParam = venue.venueIds.join(",");
-  const sessionsUrl = `/?venue=${encodeURIComponent(venueParam)}`;
-
   // Clubs sorted by player count desc (already sorted from query layer)
   const activeClubs = venue.clubs.filter((c) => c.players > 0 || c.sessions > 0);
-  const topClub = activeClubs[0];
-  const otherClubs = activeClubs.slice(1);
 
-  // Title: venue name + top club name if different
-  const titleLine = venue.venueName;
-  const subTitleLine =
-    topClub && topClub.venueName.toLowerCase() !== venue.venueName.toLowerCase()
-      ? `<div style="font-size:11px;color:#6d28d9;font-weight:600;margin-bottom:2px;">${topClub.venueName}</div>`
-      : "";
-
-  let clubsHtml = "";
-  if (otherClubs.length > 0) {
-    const lines = otherClubs
-      .map(
-        (c) =>
-          `<div style="display:flex;justify-content:space-between;gap:8px;padding:2px 0;">
-            <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${c.venueName}</span>
-            <span style="white-space:nowrap;font-weight:600;">${c.players} players</span>
-          </div>`,
-      )
-      .join("");
-    clubsHtml = `
-      <div style="border-top:1px solid #e5e7eb;margin:8px 0 6px;padding-top:6px;">
-        <div style="font-size:10px;color:#9ca3af;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px;">Also at this court</div>
-        <div style="font-size:11px;color:#6b7280;display:flex;flex-direction:column;">
-          ${lines}
-        </div>
-      </div>`;
-  }
+  const clubRowsHtml = activeClubs.length > 0
+    ? `<div style="border-top:1px solid #e5e7eb;margin:8px 0 6px;padding-top:4px;">
+        <div style="font-size:10px;color:#9ca3af;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px;">Clubs at this court</div>
+        ${activeClubs.map((c) => {
+          const href = c.slug ? `/clubs/${encodeURIComponent(c.slug)}` : "#";
+          return `<a href="${href}" style="display:block;text-decoration:none;color:inherit;border-radius:6px;padding:4px 2px;transition:background 0.1s;" onmouseover="this.style.background='#f3f4f6'" onmouseout="this.style.background='transparent'">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+              <span style="font-size:12px;font-weight:500;color:#111827;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${c.venueName}</span>
+              <div style="display:flex;align-items:center;gap:4px;white-space:nowrap;flex-shrink:0;">
+                <span style="font-size:11px;color:#6b7280;">${c.players} players</span>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+              </div>
+            </div>
+          </a>`;
+        }).join("")}
+      </div>`
+    : "";
 
   return `
     <div style="font-family:system-ui,sans-serif;min-width:210px;max-width:290px;">
-      <div style="font-weight:700;font-size:13px;margin-bottom:2px;">${titleLine}</div>
-      ${subTitleLine}
+      <div style="font-weight:700;font-size:13px;margin-bottom:2px;">${venue.venueName}</div>
       <div style="font-size:11px;color:#6b7280;margin-bottom:8px;">DUPR ${lo} – ${hi}</div>
-      <div style="display:flex;gap:16px;margin-bottom:6px;">
+      <div style="display:flex;gap:16px;margin-bottom:4px;">
         <div>
-          <div style="font-size:18px;font-weight:800;color:#6d28d9;">${count}</div>
+          <div style="font-size:18px;font-weight:800;color:#22c55e;">${count}</div>
           <div style="font-size:10px;color:#6b7280;">players in band</div>
         </div>
         <div>
-          <div style="font-size:18px;font-weight:800;color:#6d28d9;">${venue.totalSessions90d}</div>
+          <div style="font-size:18px;font-weight:800;color:#22c55e;">${venue.totalSessions90d}</div>
           <div style="font-size:10px;color:#6b7280;">sessions (90d)</div>
         </div>
       </div>
-      ${clubsHtml}
-      <a href="${sessionsUrl}"
-         style="display:inline-block;background:#6d28d9;color:#fff;font-size:11px;font-weight:600;
-                padding:5px 12px;border-radius:6px;text-decoration:none;margin-top:2px;">
-        View upcoming sessions →
-      </a>
+      ${clubRowsHtml}
+      <p style="font-size:11px;color:#9ca3af;margin-top:6px;">↓ Sessions below update for this venue</p>
     </div>`;
 }
 
@@ -161,7 +146,7 @@ function buildUserDotIcon(): L.DivIcon {
 
 // ── component ─────────────────────────────────────────────────────────────────
 
-export function HeatmapView({ venues, selectedDupr, className = "h-[480px] w-full", onBubbleClick }: HeatmapViewProps) {
+export function HeatmapView({ venues, selectedDupr, className = "h-[480px] w-full", onBubbleClick, onVenueSelect, onVenueDeselect }: HeatmapViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const bubblesRef = useRef<L.Marker[]>([]);
@@ -169,10 +154,14 @@ export function HeatmapView({ venues, selectedDupr, className = "h-[480px] w-ful
   const [mapReady, setMapReady] = useState(false);
   const [locateMsg, setLocateMsg] = useState<string | null>(null);
 
-  // Keep onBubbleClick in a ref so marker listeners always call the latest version
+  // Keep callbacks in refs so marker listeners always call the latest version
   // without needing to redraw bubbles every time the gate counter changes
   const onBubbleClickRef = useRef(onBubbleClick);
   onBubbleClickRef.current = onBubbleClick;
+  const onVenueSelectRef = useRef(onVenueSelect);
+  onVenueSelectRef.current = onVenueSelect;
+  const onVenueDeselectRef = useRef(onVenueDeselect);
+  onVenueDeselectRef.current = onVenueDeselect;
 
   const { lat: geoLat, lng: geoLng, locating, locate } = useGeoStore();
 
@@ -257,16 +246,23 @@ export function HeatmapView({ venues, selectedDupr, className = "h-[480px] w-ful
       // Always pre-bind the popup so Leaflet knows about it
       marker.bindPopup(popupContent, { maxWidth: 280 });
 
-      if (onBubbleClickRef.current) {
-        // Intercept the click: run the gate check before Leaflet opens the popup
-        marker.on("click", (e) => {
-          L.DomEvent.stopPropagation(e);
-          const gate = onBubbleClickRef.current;
-          if (!gate) { marker.openPopup(); return; }
-          const allowed = gate(() => { marker.openPopup(); });
-          if (allowed) marker.openPopup();
-        });
-      }
+      // Intercept click: run gate check, then fire onVenueSelect if allowed
+      marker.on("click", (e) => {
+        L.DomEvent.stopPropagation(e);
+        const gate = onBubbleClickRef.current;
+        const doOpen = () => {
+          marker.openPopup();
+          onVenueSelectRef.current?.(venue);
+        };
+        if (!gate) { doOpen(); return; }
+        const allowed = gate(doOpen);
+        if (allowed) doOpen();
+      });
+
+      // Fire onVenueDeselect when this popup closes
+      marker.on("popupclose", () => {
+        onVenueDeselectRef.current?.();
+      });
 
       marker.addTo(map);
       bubblesRef.current.push(marker);

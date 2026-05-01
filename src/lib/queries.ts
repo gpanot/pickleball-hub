@@ -775,6 +775,7 @@ export async function getVenueComparison(venueIds: number[]) {
 export interface HeatmapVenueClub {
   venueName: string;
   venueId: string;
+  slug: string;
   players: number;
   sessions: number;
 }
@@ -833,7 +834,7 @@ export async function getHeatmapData(): Promise<HeatmapData> {
           id: true,
           venueId: true,
           venue: { select: { id: true, name: true, latitude: true, longitude: true } },
-          club: { select: { id: true, name: true } },
+          club: { select: { id: true, name: true, slug: true } },
         },
       },
       player: {
@@ -851,8 +852,8 @@ export async function getHeatmapData(): Promise<HeatmapData> {
       lng: number;
       sessions: Set<number>;
       buckets: Map<string, Set<string>>; // duprBucket -> Set<userId>
-      // club_id -> { name, sessions, unique players }
-      clubs: Map<number, { name: string; sessions: Set<number>; players: Set<string> }>;
+      // club_id -> { name, slug, sessions, unique players }
+      clubs: Map<number, { name: string; slug: string; sessions: Set<number>; players: Set<string> }>;
     }
   >();
 
@@ -881,7 +882,7 @@ export async function getHeatmapData(): Promise<HeatmapData> {
     const club = roster.session.club;
     if (club) {
       if (!entry.clubs.has(club.id)) {
-        entry.clubs.set(club.id, { name: club.name, sessions: new Set(), players: new Set() });
+        entry.clubs.set(club.id, { name: club.name, slug: club.slug ?? "", sessions: new Set(), players: new Set() });
       }
       const clubEntry = entry.clubs.get(club.id)!;
       clubEntry.sessions.add(roster.session.id);
@@ -915,8 +916,8 @@ export async function getHeatmapData(): Promise<HeatmapData> {
       canonName: string;
       sessions: Set<number>;
       buckets: Map<string, Set<string>>;
-      // club_id -> { name, sessions, unique players } — merged across all venue_ids at this coord
-      clubs: Map<number, { name: string; sessions: Set<number>; players: Set<string> }>;
+      // club_id -> { name, slug, sessions, unique players } — merged across all venue_ids at this coord
+      clubs: Map<number, { name: string; slug: string; sessions: Set<number>; players: Set<string> }>;
     }
   >();
 
@@ -950,7 +951,7 @@ export async function getHeatmapData(): Promise<HeatmapData> {
     // Merge club breakdowns across duplicate venue_ids at this coord
     for (const [clubId, clubData] of raw.clubs) {
       if (!group.clubs.has(clubId)) {
-        group.clubs.set(clubId, { name: clubData.name, sessions: new Set(), players: new Set() });
+        group.clubs.set(clubId, { name: clubData.name, slug: clubData.slug, sessions: new Set(), players: new Set() });
       }
       const gc = group.clubs.get(clubId)!;
       for (const sid of clubData.sessions) gc.sessions.add(sid);
@@ -971,6 +972,7 @@ export async function getHeatmapData(): Promise<HeatmapData> {
       .map((c) => ({
         venueName: c.name,
         venueId: group.venueIds[0] ? String(group.venueIds[0]) : "",
+        slug: c.slug,
         players: c.players.size,
         sessions: c.sessions.size,
       }))
