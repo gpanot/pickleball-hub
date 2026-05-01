@@ -444,7 +444,9 @@ export function SessionScoreBadge({
   );
 }
 
-/** Score pill + optional DUPR pill — larger variant used in the session detail sheet. */
+const REGULARS_COLOR = "#0ea5e9";
+
+/** Score pill + DUPR pill + Regulars pill — 3 KPI tiles used in the session detail sheet. */
 export function SessionScoreAndDuprBadges({
   input,
   className = "",
@@ -457,19 +459,20 @@ export function SessionScoreAndDuprBadges({
   const { color, ratingTier } = getScoreLabel(result.score);
   const scoreTextLabel = t(scoreRatingTranslationKey(ratingTier));
   const duprLoading = isDuprParticipationLoading(input.duprParticipationPct);
+  const hasRegulars = result.returningPlayerPct != null;
 
   return (
-    <div className={`flex flex-wrap items-stretch gap-3 ${className}`}>
-      {/* Score badge — prominent */}
+    <div className={`flex items-stretch gap-2 ${className}`}>
+      {/* Score KPI */}
       <div
-        className="inline-flex flex-col items-start gap-0.5 rounded-xl border-2 px-4 py-2.5"
+        className="flex flex-1 flex-col items-start gap-0.5 rounded-xl border-2 px-3 py-2.5"
         style={ratingPillSurfaceStyle(color)}
         aria-hidden
       >
-        <span className="inline-flex items-center gap-1.5 text-xl font-bold leading-tight tabular-nums">
+        <span className="inline-flex items-center gap-1 text-lg font-bold leading-tight tabular-nums">
           <svg
-            width="16"
-            height="16"
+            width="14"
+            height="14"
             viewBox="0 0 24 24"
             className="shrink-0 opacity-90"
             aria-hidden
@@ -479,23 +482,52 @@ export function SessionScoreAndDuprBadges({
           </svg>
           {result.score}
         </span>
-        <span className="text-xs font-semibold leading-tight">{scoreTextLabel}</span>
+        <span className="text-[11px] font-semibold leading-tight">{scoreTextLabel}</span>
       </div>
 
-      {/* DUPR badge — prominent */}
+      {/* DUPR KPI */}
       {duprLoading ? (
-        <div className="inline-flex flex-col items-start justify-center gap-0.5 rounded-xl border-2 border-muted-foreground/25 bg-muted/15 px-4 py-2.5 text-muted-foreground">
-          <span className="text-xs font-semibold leading-tight">DUPR</span>
-          <span className="text-[11px] font-normal leading-tight">{t("scoreDuprLineLoading")}</span>
+        <div className="flex flex-1 flex-col items-start justify-center gap-0.5 rounded-xl border-2 border-muted-foreground/25 bg-muted/15 px-3 py-2.5 text-muted-foreground">
+          <span className="text-[11px] font-semibold leading-tight">DUPR</span>
+          <span className="text-[10px] font-normal leading-tight">{t("scoreDuprLineLoading")}</span>
         </div>
       ) : result.duprBadge != null && result.duprPercent != null ? (
-        <div className="inline-flex flex-col items-start justify-center gap-0.5 rounded-xl border-2 border-muted-foreground/30 bg-muted/15 px-4 py-2.5 text-foreground">
-          <span className="text-xl font-bold leading-tight tabular-nums">{result.duprPercent}%</span>
-          <span className="text-xs font-semibold leading-tight text-muted-foreground">
+        <div className="flex flex-1 flex-col items-start justify-center gap-0.5 rounded-xl border-2 border-muted-foreground/30 bg-muted/15 px-3 py-2.5 text-foreground">
+          <span className="text-lg font-bold leading-tight tabular-nums">{result.duprPercent}%</span>
+          <span className="text-[11px] font-semibold leading-tight text-muted-foreground">
             {`DUPR · ${duprTierLabel(result.duprBadge, t)}`}
           </span>
         </div>
       ) : null}
+
+      {/* Regulars KPI */}
+      <div
+        className="flex flex-1 flex-col items-start justify-center gap-0.5 rounded-xl border-2 px-3 py-2.5"
+        style={{
+          backgroundColor: `${REGULARS_COLOR}15`,
+          borderColor: hasRegulars ? REGULARS_COLOR : `${REGULARS_COLOR}40`,
+          color: REGULARS_COLOR,
+        }}
+        aria-hidden
+      >
+        {hasRegulars ? (
+          <>
+            <span className="text-lg font-bold leading-tight tabular-nums">
+              {result.returningPlayerPct}%
+            </span>
+            <span className="text-[11px] font-semibold leading-tight">
+              {t("scoreBreakRegularsLabel")}
+            </span>
+          </>
+        ) : (
+          <>
+            <span className="text-lg font-bold leading-tight opacity-30">—</span>
+            <span className="text-[11px] font-semibold leading-tight opacity-50">
+              {t("scoreBreakRegularsLabel")}
+            </span>
+          </>
+        )}
+      </div>
     </div>
   );
 }
