@@ -151,6 +151,8 @@ export function HeatmapView({ venues, selectedDupr, className = "h-[480px] w-ful
   const mapRef = useRef<L.Map | null>(null);
   const bubblesRef = useRef<L.Marker[]>([]);
   const userMarkerRef = useRef<L.Marker | null>(null);
+  // Track the currently-open marker so we can update its popup content on slider changes
+  const openMarkerRef = useRef<{ marker: L.Marker; venue: HeatmapVenue } | null>(null);
   const [mapReady, setMapReady] = useState(false);
   const [locateMsg, setLocateMsg] = useState<string | null>(null);
 
@@ -252,6 +254,7 @@ export function HeatmapView({ venues, selectedDupr, className = "h-[480px] w-ful
         const gate = onBubbleClickRef.current;
         const doOpen = () => {
           marker.openPopup();
+          openMarkerRef.current = { marker, venue };
           onVenueSelectRef.current?.(venue);
         };
         if (!gate) { doOpen(); return; }
@@ -261,6 +264,7 @@ export function HeatmapView({ venues, selectedDupr, className = "h-[480px] w-ful
 
       // Fire onVenueDeselect when this popup closes
       marker.on("popupclose", () => {
+        openMarkerRef.current = null;
         onVenueDeselectRef.current?.();
       });
 
@@ -268,6 +272,20 @@ export function HeatmapView({ venues, selectedDupr, className = "h-[480px] w-ful
       bubblesRef.current.push(marker);
     }
   }, [getEntries]); // onBubbleClick read via ref — no dep needed
+
+  // ── update open popup content when slider changes ─────────────────────────
+  // This runs whenever selectedDupr changes (via getEntries dep). If a popup
+  // is currently open we refresh its HTML in-place without closing it.
+  useEffect(() => {
+    const open = openMarkerRef.current;
+    if (!open || !mapReady) return;
+    const { lo, hi } = bandRange(selectedDupr);
+    const loN = parseFloat(lo);
+    const hiN = parseFloat(hi);
+    const count = countInBand(open.venue, loN, hiN);
+    const freshHtml = buildPopupHtml(open.venue, lo, hi, count);
+    open.marker.setPopupContent(freshHtml);
+  }, [selectedDupr, mapReady]);
 
   useEffect(() => {
     if (!mapReady) return;
@@ -325,14 +343,14 @@ export function HeatmapView({ venues, selectedDupr, className = "h-[480px] w-ful
         className="rounded-xl"
       />
 
-      {/* Locate Me button — positioned below Leaflet zoom controls */}
+      {/* Locate Me button — bottom-right corner */}
       <button
         type="button"
         onClick={handleLocate}
         disabled={locating}
         title="Center on my location"
-        style={{ position: "absolute", top: 80, right: 10, zIndex: 1000 }}
-        className="flex h-[30px] w-[30px] items-center justify-center rounded-[4px] border-2 border-[rgba(0,0,0,0.2)] bg-white shadow-sm transition hover:bg-gray-50 disabled:opacity-60"
+        style={{ position: "absolute", bottom: 24, right: 10, zIndex: 1000 }}
+        className="flex h-[34px] w-[34px] items-center justify-center rounded-[4px] border-2 border-[rgba(0,0,0,0.2)] bg-white shadow-sm transition hover:bg-gray-50 disabled:opacity-60"
       >
         {locating ? (
           <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-green-500 border-t-transparent" />
@@ -351,7 +369,7 @@ export function HeatmapView({ venues, selectedDupr, className = "h-[480px] w-ful
       {/* Locating feedback tooltip */}
       {locateMsg && (
         <div
-          style={{ position: "absolute", top: 80, right: 48, zIndex: 1001 }}
+          style={{ position: "absolute", bottom: 64, right: 10, zIndex: 1001 }}
           className="whitespace-nowrap rounded-md bg-gray-900 px-2.5 py-1 text-xs text-white shadow-lg"
         >
           {locateMsg}
