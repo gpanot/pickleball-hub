@@ -174,6 +174,8 @@ export async function getSessions(filters: SessionFilters = {}) {
     const { duprStat, club, ...sessionRest } = s;
     const duprParticipationPct =
       duprStat != null ? Number(duprStat.duprParticipationPct) : null;
+    const returningPlayerPct =
+      duprStat?.returningPlayerPct != null ? Number(duprStat.returningPlayerPct) : null;
     const clubRank = rankByClubId.get(s.clubId);
 
     return {
@@ -183,6 +185,7 @@ export async function getSessions(filters: SessionFilters = {}) {
       waitlisted,
       fillRate: Math.round(fillRate * 100) / 100,
       duprParticipationPct,
+      returningPlayerPct,
     };
   });
 
@@ -225,6 +228,8 @@ export async function getSessionByReferenceCode(referenceCode: string) {
   const fillRate = session.maxPlayers > 0 ? joined / session.maxPlayers : 0;
   const duprParticipationPct =
     session.duprStat != null ? Number(session.duprStat.duprParticipationPct) : null;
+  const returningPlayerPct =
+    session.duprStat?.returningPlayerPct != null ? Number(session.duprStat.returningPlayerPct) : null;
   const { duprStat, club, ...sessionRest } = session;
   const clubRank = rankByClubId.get(session.clubId);
 
@@ -235,6 +240,7 @@ export async function getSessionByReferenceCode(referenceCode: string) {
     waitlisted,
     fillRate: Math.round(fillRate * 100) / 100,
     duprParticipationPct,
+    returningPlayerPct,
   };
 
   return { session: mapped, hcmMedianCostPerHour };
@@ -386,6 +392,8 @@ export async function getClubBySlug(slug: string) {
       ...session,
       duprParticipationPct:
         duprStat != null ? Number(duprStat.duprParticipationPct) : null,
+      returningPlayerPct:
+        duprStat?.returningPlayerPct != null ? Number(duprStat.returningPlayerPct) : null,
     })),
   };
 }

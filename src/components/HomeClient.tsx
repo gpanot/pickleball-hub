@@ -318,10 +318,15 @@ export function HomeClient({
         hcmMedianCostPerHour,
         sessionType: parseSessionType(s.name),
         duprParticipationPct: s.duprParticipationPct,
+        returningPlayerPct: s.returningPlayerPct,
       }).score;
 
     if (filters.sortBy === "score" || filters.sortBy === "score_nearby") {
       result = result.filter((s) => sessionScore(s) >= 50);
+    }
+
+    if (filters.sortBy === "playerLevel") {
+      result = result.filter((s) => parseSessionType(s.name) !== "roundrobin");
     }
 
     const distanceKm = (session: HomeSession) => {
@@ -352,6 +357,15 @@ export function HomeClient({
         break;
       case "available":
         result.sort((a, b) => a.fillRate - b.fillRate);
+        break;
+      case "playerLevel":
+        result.sort((a, b) => {
+          // Sessions with no DUPR data sort to the bottom
+          const da = a.duprParticipationPct ?? -1;
+          const db = b.duprParticipationPct ?? -1;
+          if (da !== db) return db - da;
+          return a.startTime.localeCompare(b.startTime);
+        });
         break;
       case "nearby":
         if (userLocation) {
@@ -721,7 +735,7 @@ export function HomeClient({
               </>
             )}
           </div>
-        ) : filters.sortBy === "score" || filters.sortBy === "score_nearby" || !hasTimeGroups ? (
+        ) : filters.sortBy === "score" || filters.sortBy === "score_nearby" || filters.sortBy === "playerLevel" || !hasTimeGroups ? (
           <div className="grid min-w-0 items-stretch gap-2 sm:gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {filtered.slice(0, visibleCount).map((s) => (
               <SessionCard

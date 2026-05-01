@@ -113,6 +113,7 @@ function AdvancedFilters({
           <option value="score">{t("bestScore")}</option>
           <option value="score_nearby">{t("sortBestScoreNearby")}</option>
           <option value="nearby">{t("nearestFirst")}</option>
+          <option value="playerLevel">{t("sortPlayerLevel")}</option>
           <option value="price">{t("priceLowFirst")}</option>
           <option value="costPerHour">{t("costPerHour")}</option>
           <option value="fillRate">{t("fillRate")}</option>

@@ -402,12 +402,58 @@ def scrape_session_roster(
             ),
         )
 
+        # Compute returning-player % for this session:
+        # A "regular" is a non-host player who has attended this club at least 3 times
+        # across all sessions in the past 60 days (excluding today).
+        returning_pct: float | None = None
+        non_host_total = sum(1 for p in participants if not p["isHost"])
+        if non_host_total > 0:
+            try:
+                cur.execute(
+                    """
+                    SELECT COUNT(DISTINCT r1.user_id) AS regulars
+                    FROM session_rosters r1
+                    JOIN sessions s1 ON r1.session_id = s1.id
+                    WHERE s1.id = %s
+                      AND r1.is_host = FALSE
+                      AND r1.user_id IN (
+                          SELECT r2.user_id
+                          FROM session_rosters r2
+                          JOIN sessions s2 ON r2.session_id = s2.id
+                          WHERE s2.club_id = (SELECT club_id FROM sessions WHERE id = %s)
+                            AND s2.scraped_date < %s
+                            AND s2.scraped_date >= (DATE %s - INTERVAL '60 days')::text
+                            AND r2.is_host = FALSE
+                          GROUP BY r2.user_id
+                          HAVING COUNT(DISTINCT r2.session_id) >= 3
+                      )
+                    """,
+                    (session_id, session_id, scraped_date_str, scraped_date_str),
+                )
+                (regulars,) = cur.fetchone()
+                returning_pct = round((int(regulars) / non_host_total) * 100, 2)
+            except Exception as e:
+                print(f"[roster] Retention query failed for {reference_code}: {e}")
+
+        cur.execute(
+            """
+            UPDATE session_dupr_stats
+               SET returning_player_pct = %s, updated_at = NOW()
+             WHERE session_id = %s
+            """,
+            (returning_pct, session_id),
+        )
+
         conn.commit()
-        print(f"[roster] {reference_code} — {players_with_dupr}/{total} with DUPR ({dupr_pct}%)")
+        print(
+            f"[roster] {reference_code} — {players_with_dupr}/{total} with DUPR ({dupr_pct}%)"
+            + (f", regulars {returning_pct}%" if returning_pct is not None else "")
+        )
         return {
             "dupr_participation_pct": dupr_pct,
             "total": total,
             "with_dupr": players_with_dupr,
+            "returning_player_pct": returning_pct,
         }
     except Exception as e:
         conn.rollback()
@@ -468,19 +514,3 @@ def run_roster_pass_for_day(
         time.sleep(delay)
 
 
-# --- Retention (future; do not run until 14+ days of roster data) ---
-# SELECT
-#   s1.reference_code,
-#   COUNT(DISTINCT r2.user_id) AS returning_players,
-#   COUNT(DISTINCT r1.user_id) AS total_players
-# FROM session_rosters r1
-# JOIN sessions s1 ON r1.session_id = s1.id
-# JOIN sessions s2 ON s2.club_id = s1.club_id
-#   AND s2.scraped_date BETWEEN (s1.scraped_date::date - INTERVAL '14 days')::text
-#   AND (s1.scraped_date::date - INTERVAL '1 day')::text
-# JOIN session_rosters r2
-#   ON r2.session_id = s2.id
-#   AND r2.user_id = r1.user_id
-#   AND r2.is_host = FALSE
-# WHERE r1.is_host = FALSE
-# GROUP BY s1.reference_code;

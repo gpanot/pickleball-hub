@@ -14,6 +14,8 @@ export interface SessionScoreInput {
   sessionType?: SessionType;
   /** When set (e.g. from roster scrape), drives DUPR badge thresholds. */
   duprParticipationPct?: number | null;
+  /** % of confirmed players who attended this club ≥3 times in the past 60 days (null = not yet computed). */
+  returningPlayerPct?: number | null;
   /** Legacy shape from spec; prefer duprParticipationPct when wired. */
   duprRatedCount?: number;
   totalPlayersWithProfile?: number;
@@ -27,6 +29,8 @@ export interface SessionScoreResult {
   breakdown: Record<string, number>;
   duprBadge: DuprBadge | null;
   duprPercent: number | null;
+  /** Rounded % of regulars (≥3 visits in 60 days) among confirmed players; null when not yet computed. */
+  returningPlayerPct: number | null;
 }
 
 /** Fallback median (VND/hr) when sample is too small; only used inside `computeHcmMedianCostPerHour`. */
@@ -89,6 +93,7 @@ export function computeSessionScore(input: SessionScoreInput): SessionScoreResul
     durationMinutes,
     hasZalo,
     duprParticipationPct,
+    returningPlayerPct,
     duprRatedCount,
     totalPlayersWithProfile,
   } = input;
@@ -124,7 +129,11 @@ export function computeSessionScore(input: SessionScoreInput): SessionScoreResul
   const zaloScore = hasZalo ? 100 : 0;
   const weightedZalo = zaloScore * 0.2;
 
-  const retentionScore = 50;
+  // Use real retention data when available; fall back to neutral 50 while data accumulates.
+  const retentionScore =
+    returningPlayerPct != null && !Number.isNaN(returningPlayerPct)
+      ? Math.min(100, returningPlayerPct)
+      : 50;
   const weightedRetention = retentionScore * 0.15;
 
   const score = Math.round(weightedFill + weightedValue + weightedZalo + weightedRetention);
@@ -148,6 +157,11 @@ export function computeSessionScore(input: SessionScoreInput): SessionScoreResul
     else duprBadge = "casual";
   }
 
+  const returningPlayerPctRounded =
+    returningPlayerPct != null && !Number.isNaN(returningPlayerPct)
+      ? Math.round(returningPlayerPct)
+      : null;
+
   return {
     score,
     fillScore,
@@ -161,6 +175,7 @@ export function computeSessionScore(input: SessionScoreInput): SessionScoreResul
     },
     duprBadge,
     duprPercent,
+    returningPlayerPct: returningPlayerPctRounded,
   };
 }
 

@@ -37,6 +37,7 @@ interface SessionCardProps {
     waitlisted: number;
     club: { name: string; slug: string; zaloUrl?: string | null; clubRank?: number };
     duprParticipationPct?: number | null;
+    returningPlayerPct?: number | null;
     venue: { name: string; address: string; latitude?: number; longitude?: number } | null;
   };
 }
@@ -124,6 +125,7 @@ export function SessionCard({ session, userLocation, hcmMedianCostPerHour, onMob
                 hcmMedianCostPerHour,
                 sessionType,
                 duprParticipationPct: s.duprParticipationPct,
+                returningPlayerPct: s.returningPlayerPct,
               }}
             />
             <PriceTag feeAmount={s.feeAmount} costPerHour={null} />

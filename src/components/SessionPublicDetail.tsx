@@ -36,6 +36,7 @@ export function SessionPublicDetail({
       hcmMedianCostPerHour,
       sessionType,
       duprParticipationPct: session.duprParticipationPct,
+      returningPlayerPct: session.returningPlayerPct,
     };
   }, [session, hcmMedianCostPerHour]);
 

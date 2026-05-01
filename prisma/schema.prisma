@@ -198,6 +198,8 @@ model SessionDuprStat {
   duprParticipationPct   Decimal  @default(0) @map("dupr_participation_pct") @db.Decimal(5, 2)
   avgDuprSingles         Decimal? @map("avg_dupr_singles") @db.Decimal(5, 3)
   avgDuprDoubles         Decimal? @map("avg_dupr_doubles") @db.Decimal(5, 3)
+  /// % of confirmed players who have attended this club ≥3 times in the past 60 days (null = not yet computed).
+  returningPlayerPct     Decimal? @map("returning_player_pct") @db.Decimal(5, 2)
   updatedAt              DateTime @updatedAt @map("updated_at")
 
   session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)

@@ -107,6 +107,7 @@ function ScoreBreakRow({
   pct,
   fillColor,
   trackClassName,
+  regularsNote,
 }: {
   label: string;
   subtitle: string;
@@ -114,11 +115,20 @@ function ScoreBreakRow({
   pct?: number;
   fillColor?: string;
   trackClassName?: string;
+  /** When set, shown as a small inline tag after the label (e.g. "42%"). */
+  regularsNote?: string;
 }) {
   return (
     <div className="flex min-h-[36px] items-start gap-3">
       <div className={SCORE_BREAK_LABEL_COL}>
-        <span className="text-[11px] font-normal leading-tight text-muted-foreground">{label}</span>
+        <span className="inline-flex items-center gap-1 text-[11px] font-normal leading-tight text-muted-foreground">
+          {label}
+          {regularsNote && (
+            <span className="rounded bg-primary/10 px-1 py-px text-[10px] font-semibold tabular-nums text-primary">
+              {regularsNote}
+            </span>
+          )}
+        </span>
         <span className="text-[10px] leading-snug text-muted-foreground/60">{subtitle}</span>
       </div>
       <div className="flex min-h-[36px] min-w-0 flex-1 items-start justify-center self-stretch px-1 pt-[3px]">
@@ -239,7 +249,10 @@ function ScoreBreakdownContent({
         <ScoreBreakRow
           label={t("scoreBreakRegularsLabel")}
           subtitle={t("scoreBreakRegularsSubtitle")}
-          placeholder
+          pct={result.returningPlayerPct ?? undefined}
+          fillColor={FILL_GREEN}
+          placeholder={result.returningPlayerPct == null}
+          regularsNote={result.returningPlayerPct != null ? `${result.returningPlayerPct}%` : undefined}
         />
         <div className="h-px w-full shrink-0 bg-card-border" aria-hidden />
         <PlayerLevelsRow duprParticipationPct={input.duprParticipationPct} result={result} t={t} />

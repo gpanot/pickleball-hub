@@ -33,6 +33,7 @@ export type BookPreviewSession = {
   waitlisted: number;
   club: { name: string; slug: string; zaloUrl?: string | null; clubRank?: number };
   duprParticipationPct?: number | null;
+  returningPlayerPct?: number | null;
   venue: { name: string; address: string; latitude?: number; longitude?: number } | null;
 };
 
@@ -102,6 +103,7 @@ export function SessionBookPreviewSheet({
       hcmMedianCostPerHour,
       sessionType,
       duprParticipationPct: session.duprParticipationPct,
+      returningPlayerPct: session.returningPlayerPct,
     };
   }, [session, hcmMedianCostPerHour]);
 
