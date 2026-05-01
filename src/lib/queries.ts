@@ -768,6 +768,361 @@ export async function getVenueComparison(venueIds: number[]) {
   return results;
 }
 
+// ---------------------------------------------------------------------------
+// Heatmap aggregation query
+// ---------------------------------------------------------------------------
+
+export interface HeatmapVenueClub {
+  venueName: string;
+  venueId: string;
+  players: number;
+  sessions: number;
+}
+
+export interface HeatmapVenue {
+  /** Comma-separated snapped coordinate key (for stable identity) */
+  coordKey: string;
+  /** All venue IDs merged at this coordinate */
+  venueIds: string[];
+  venueName: string;
+  lat: number;
+  lng: number;
+  /** Unique player counts keyed by DUPR bucket string, e.g. "3.1", "2.5" */
+  playersByDupr: Record<string, number>;
+  totalSessions90d: number;
+  /** Per-club breakdown at this physical location */
+  clubs: HeatmapVenueClub[];
+}
+
+export interface HeatmapData {
+  venues: HeatmapVenue[];
+  duprRange: { min: number; max: number };
+  medianDupr: number;
+  totalPlayersWithDupr: number;
+}
+
+/** Snap a coordinate to a ~33 m grid for deduplication. */
+function snapCoord(coord: number): number {
+  return Math.round(coord / 0.0003) * 0.0003;
+}
+
+/**
+ * Builds heatmap data: per-location player counts bucketed by DUPR (0.1 steps),
+ * looking back 90 days at session roster data.
+ *
+ * Duplicate venue rows at the same physical location (within ~33 m) are merged
+ * using coordinate snapping. No player names are returned.
+ */
+export async function getHeatmapData(): Promise<HeatmapData> {
+  const cutoffDate = new Date();
+  cutoffDate.setDate(cutoffDate.getDate() - 90);
+  const cutoffStr = cutoffDate.toISOString().slice(0, 10);
+
+  const rosters = await prisma.sessionRoster.findMany({
+    where: {
+      session: {
+        scrapedDate: { gte: cutoffStr },
+        venue: { isNot: null },
+      },
+      isConfirmed: true,
+    },
+    select: {
+      userId: true,
+      session: {
+        select: {
+          id: true,
+          venueId: true,
+          venue: { select: { id: true, name: true, latitude: true, longitude: true } },
+          club: { select: { id: true, name: true } },
+        },
+      },
+      player: {
+        select: { duprSingles: true, duprDoubles: true },
+      },
+    },
+  });
+
+  // Step 1: Aggregate per venue_id (raw, before coordinate merge)
+  const rawMap = new Map<
+    number,
+    {
+      name: string;
+      lat: number;
+      lng: number;
+      sessions: Set<number>;
+      buckets: Map<string, Set<string>>; // duprBucket -> Set<userId>
+      // club_id -> { name, sessions, unique players }
+      clubs: Map<number, { name: string; sessions: Set<number>; players: Set<string> }>;
+    }
+  >();
+
+  const allDuprValues: number[] = [];
+
+  for (const roster of rosters) {
+    const venue = roster.session.venue;
+    if (!venue) continue;
+
+    const vid = venue.id;
+    if (!rawMap.has(vid)) {
+      rawMap.set(vid, {
+        name: venue.name,
+        lat: venue.latitude,
+        lng: venue.longitude,
+        sessions: new Set(),
+        buckets: new Map(),
+        clubs: new Map(),
+      });
+    }
+
+    const entry = rawMap.get(vid)!;
+    entry.sessions.add(roster.session.id);
+
+    // Track club-level breakdown
+    const club = roster.session.club;
+    if (club) {
+      if (!entry.clubs.has(club.id)) {
+        entry.clubs.set(club.id, { name: club.name, sessions: new Set(), players: new Set() });
+      }
+      const clubEntry = entry.clubs.get(club.id)!;
+      clubEntry.sessions.add(roster.session.id);
+      clubEntry.players.add(roster.userId.toString());
+    }
+
+    const rawDupr =
+      roster.player?.duprDoubles != null
+        ? Number(roster.player.duprDoubles)
+        : roster.player?.duprSingles != null
+          ? Number(roster.player.duprSingles)
+          : null;
+
+    if (rawDupr === null || rawDupr <= 0) continue;
+
+    const bucket = (Math.floor(rawDupr * 10) / 10).toFixed(1);
+    if (!entry.buckets.has(bucket)) {
+      entry.buckets.set(bucket, new Set());
+    }
+    entry.buckets.get(bucket)!.add(roster.userId.toString());
+    allDuprValues.push(rawDupr);
+  }
+
+  // Step 2: Merge venue_ids by snapped coordinate
+  const coordGroups = new Map<
+    string,
+    {
+      lat: number;
+      lng: number;
+      venueIds: number[];
+      canonName: string;
+      sessions: Set<number>;
+      buckets: Map<string, Set<string>>;
+      // club_id -> { name, sessions, unique players } — merged across all venue_ids at this coord
+      clubs: Map<number, { name: string; sessions: Set<number>; players: Set<string> }>;
+    }
+  >();
+
+  for (const [vid, raw] of rawMap) {
+    const key = `${snapCoord(raw.lat).toFixed(4)},${snapCoord(raw.lng).toFixed(4)}`;
+
+    if (!coordGroups.has(key)) {
+      coordGroups.set(key, {
+        lat: raw.lat,
+        lng: raw.lng,
+        venueIds: [],
+        canonName: raw.name,
+        sessions: new Set(),
+        buckets: new Map(),
+        clubs: new Map(),
+      });
+    }
+
+    const group = coordGroups.get(key)!;
+    group.venueIds.push(vid);
+
+    for (const sid of raw.sessions) group.sessions.add(sid);
+
+    for (const [bucket, players] of raw.buckets) {
+      if (!group.buckets.has(bucket)) {
+        group.buckets.set(bucket, new Set());
+      }
+      for (const uid of players) group.buckets.get(bucket)!.add(uid);
+    }
+
+    // Merge club breakdowns across duplicate venue_ids at this coord
+    for (const [clubId, clubData] of raw.clubs) {
+      if (!group.clubs.has(clubId)) {
+        group.clubs.set(clubId, { name: clubData.name, sessions: new Set(), players: new Set() });
+      }
+      const gc = group.clubs.get(clubId)!;
+      for (const sid of clubData.sessions) gc.sessions.add(sid);
+      for (const uid of clubData.players) gc.players.add(uid);
+    }
+  }
+
+  // Step 3: Build response
+  const venues: HeatmapVenue[] = [];
+  for (const [key, group] of coordGroups) {
+    const playersByDupr: Record<string, number> = {};
+    for (const [bucket, players] of group.buckets) {
+      playersByDupr[bucket] = players.size;
+    }
+
+    // Build club list from actual club entities, sorted by player count desc
+    const clubs: HeatmapVenueClub[] = [...group.clubs.values()]
+      .map((c) => ({
+        venueName: c.name,
+        venueId: group.venueIds[0] ? String(group.venueIds[0]) : "",
+        players: c.players.size,
+        sessions: c.sessions.size,
+      }))
+      .filter((c) => c.players > 0 || c.sessions > 0)
+      .sort((a, b) => b.players - a.players);
+
+    venues.push({
+      coordKey: key,
+      venueIds: group.venueIds.map(String),
+      venueName: group.canonName,
+      lat: group.lat,
+      lng: group.lng,
+      playersByDupr,
+      totalSessions90d: group.sessions.size,
+      clubs,
+    });
+  }
+
+  venues.sort((a, b) => {
+    const aTotal = Object.values(a.playersByDupr).reduce((s, n) => s + n, 0);
+    const bTotal = Object.values(b.playersByDupr).reduce((s, n) => s + n, 0);
+    return bTotal - aTotal;
+  });
+
+  const uniquePlayersWithDupr = new Set(
+    rosters
+      .filter((r) => r.player?.duprDoubles != null || r.player?.duprSingles != null)
+      .map((r) => r.userId.toString()),
+  );
+
+  let duprMin = 2.0;
+  let duprMax = 6.0;
+  let medianDupr = 4.0;
+  if (allDuprValues.length > 0) {
+    duprMin = Math.floor(Math.min(...allDuprValues) * 10) / 10;
+    duprMax = Math.ceil(Math.max(...allDuprValues) * 10) / 10;
+    const sorted = [...allDuprValues].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    medianDupr =
+      sorted.length % 2 === 0
+        ? (sorted[mid - 1] + sorted[mid]) / 2
+        : sorted[mid];
+    medianDupr = Math.round(medianDupr * 10) / 10;
+  }
+
+  return {
+    venues,
+    duprRange: { min: duprMin, max: duprMax },
+    medianDupr,
+    totalPlayersWithDupr: uniquePlayersWithDupr.size,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Club DUPR distribution query
+// ---------------------------------------------------------------------------
+
+export interface DuprBucket {
+  bucket: string;  // e.g. "3.4" representing the 3.3–3.5 band
+  count: number;
+}
+
+export interface ClubDuprDistribution {
+  buckets: DuprBucket[];
+  totalRatedPlayers: number;
+  medianDupr: number | null;
+  topBucket: string | null;
+}
+
+/**
+ * Returns the DUPR distribution (doubles only) for players who attended any
+ * session run by this club in the last 90 days.
+ * Players without dupr_doubles are excluded entirely.
+ */
+export async function getClubDuprDistribution(clubSlug: string): Promise<ClubDuprDistribution> {
+  const cutoffDate = new Date();
+  cutoffDate.setDate(cutoffDate.getDate() - 90);
+  const cutoffStr = cutoffDate.toISOString().slice(0, 10);
+
+  const rosters = await prisma.sessionRoster.findMany({
+    where: {
+      isConfirmed: true,
+      session: {
+        scrapedDate: { gte: cutoffStr },
+        club: { slug: clubSlug },
+      },
+      player: {
+        duprDoubles: { not: null },
+      },
+    },
+    select: {
+      userId: true,
+      player: { select: { duprDoubles: true } },
+    },
+  });
+
+  if (rosters.length === 0) {
+    return { buckets: [], totalRatedPlayers: 0, medianDupr: null, topBucket: null };
+  }
+
+  // Deduplicate players — each unique player counted once with their current DUPR
+  const playerDupr = new Map<string, number>();
+  for (const r of rosters) {
+    if (r.player?.duprDoubles == null) continue;
+    const uid = r.userId.toString();
+    if (!playerDupr.has(uid)) {
+      playerDupr.set(uid, Number(r.player.duprDoubles));
+    }
+  }
+
+  const allValues = [...playerDupr.values()].filter((v) => v > 0);
+  if (allValues.length === 0) {
+    return { buckets: [], totalRatedPlayers: 0, medianDupr: null, topBucket: null };
+  }
+
+  // Bucket by 0.1 precision (floor)
+  const bucketMap = new Map<string, number>();
+  for (const v of allValues) {
+    const b = (Math.floor(v * 10) / 10).toFixed(1);
+    bucketMap.set(b, (bucketMap.get(b) ?? 0) + 1);
+  }
+
+  // Build sorted bucket array
+  const buckets: DuprBucket[] = [...bucketMap.entries()]
+    .map(([bucket, count]) => ({ bucket, count }))
+    .sort((a, b) => parseFloat(a.bucket) - parseFloat(b.bucket));
+
+  // Median
+  const sorted = [...allValues].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  const medianRaw =
+    sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+  const medianDupr = Math.round(medianRaw * 10) / 10;
+
+  // Top bucket
+  let topBucket: string | null = null;
+  let topCount = 0;
+  for (const { bucket, count } of buckets) {
+    if (count > topCount) {
+      topCount = count;
+      topBucket = bucket;
+    }
+  }
+
+  return {
+    buckets,
+    totalRatedPlayers: playerDupr.size,
+    medianDupr,
+    topBucket,
+  };
+}
+
 export async function getVenueAnalytics(venueId: number) {
   const siblingIds = await resolveVenueSiblingIds(venueId);
 

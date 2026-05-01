@@ -176,6 +176,7 @@ const translations = {
     // Navbar
     navSessions: "Sessions",
     navClubs: "Clubs",
+    navHeatmap: "Heatmap",
     navOrganizer: "Organizer",
     navVenue: "Venue",
     // Footer
@@ -653,6 +654,7 @@ const translations = {
     // Navbar
     navSessions: "Buổi chơi",
     navClubs: "CLB",
+    navHeatmap: "Bản đồ",
     navOrganizer: "Tổ chức",
     navVenue: "Sân",
     // Footer

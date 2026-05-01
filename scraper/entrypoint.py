@@ -27,6 +27,8 @@ import urllib.request
 from datetime import datetime, timezone, timedelta
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
+from dupr_refresh import run_dupr_refresh
+
 VN_TZ = timezone(timedelta(hours=7))
 SCRAPER_SECRET = os.environ.get("SCRAPER_SECRET", "")
 
@@ -40,13 +42,15 @@ def run_cmd(cmd: list[str]) -> int:
     return result.returncode
 
 
-def trigger_vercel_revalidation() -> None:
+def trigger_vercel_revalidation(tag: str | None = None) -> None:
     """Best-effort Next.js cache revalidation; never raises."""
     base = (os.environ.get("VERCEL_APP_URL") or "").strip().rstrip("/")
     token = os.environ.get("REVALIDATE_SECRET", "")
     if not base or not token:
         return
     url = f"{base}/api/revalidate"
+    if tag:
+        url = f"{url}?tag={urllib.parse.quote(tag)}"
     try:
         req = urllib.request.Request(
             url,
@@ -56,7 +60,8 @@ def trigger_vercel_revalidation() -> None:
         )
         with urllib.request.urlopen(req, timeout=10) as resp:
             if resp.status == 200:
-                print("  [revalidate] Vercel cache revalidated successfully", flush=True)
+                label = f"tag={tag}" if tag else "all"
+                print(f"  [revalidate] Vercel cache revalidated ({label})", flush=True)
             else:
                 print(f"  [revalidate] unexpected status: {resp.status}", flush=True)
     except urllib.error.HTTPError as e:
@@ -79,24 +84,44 @@ def run_scrape() -> dict:
 
         scan_rc = None
         if dow in (1, 3):
-            print("\n=== STEP 1/2: Refreshing club info (Mon/Wed) ===", flush=True)
+            print("\n=== STEP 1/3: Refreshing club info (Mon/Wed) ===", flush=True)
             scan_rc = run_cmd([sys.executable, "scan_clubs.py", "--workers", "15"])
             if scan_rc != 0:
                 print(f"  scan_clubs exited {scan_rc}, continuing with ingest...", flush=True)
         else:
-            print("\n=== STEP 1/2: Skipping club refresh (only runs Mon & Wed) ===", flush=True)
+            print("\n=== STEP 1/3: Skipping club refresh (only runs Mon & Wed) ===", flush=True)
 
-        print("\n=== STEP 2/2: Ingest today + tomorrow events ===", flush=True)
+        print("\n=== STEP 2/3: Ingest today + tomorrow events ===", flush=True)
         ingest_rc = run_cmd([sys.executable, "ingest.py"])
 
         if ingest_rc == 0:
             trigger_vercel_revalidation()
+
+        # DUPR refresh runs once per week (Sunday VN time = isoweekday 7).
+        # Piggybacks on the 23:00 UTC cron slot (06:00 Monday VN) which is quiet.
+        dupr_result = None
+        if dow == 7:
+            print("\n=== STEP 3/3: Weekly DUPR rating refresh ===", flush=True)
+            db_url = os.environ.get("DATABASE_URL", "")
+            if db_url:
+                try:
+                    dupr_result = run_dupr_refresh(db_url)
+                    print(f"  [dupr_refresh] result: {dupr_result}", flush=True)
+                    # Invalidate heatmap cache after DUPR data changes
+                    trigger_vercel_revalidation(tag="heatmap")
+                except Exception as e:
+                    print(f"  [dupr_refresh] ERROR: {e}", flush=True)
+            else:
+                print("  [dupr_refresh] DATABASE_URL not set, skipping", flush=True)
+        else:
+            print("\n=== STEP 3/3: Skipping DUPR refresh (runs Sundays only) ===", flush=True)
 
         print("\n=== Done ===", flush=True)
         return {
             "ok": ingest_rc == 0,
             "scan_clubs_rc": scan_rc,
             "ingest_rc": ingest_rc,
+            "dupr_refresh": dupr_result,
             "timestamp": datetime.now(VN_TZ).isoformat(),
         }
     finally:

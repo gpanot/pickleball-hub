@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useLayoutEffect, use } from "react";
+import { useState, useLayoutEffect, useEffect, useRef, use } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { FillRateBar } from "@/components/FillRateBar";
@@ -8,6 +8,7 @@ import { SessionScoreBadge } from "@/components/SessionScoreBadge";
 import { formatVND, parseSessionType, vnCalendarDateString } from "@/lib/utils";
 import { HCM_MEDIAN_COST_FALLBACK } from "@/lib/scoring";
 import { readPublicApiCache, writePublicApiCache } from "@/lib/public-api-cache";
+import type { ClubDuprDistribution } from "@/lib/queries";
 
 const MapView = dynamic(() => import("@/components/MapView").then((m) => m.MapView), {
   ssr: false,
@@ -53,13 +54,16 @@ type ClubDetail = {
   }[];
 };
 
-type Tab = "sessions" | "more";
+type Tab = "sessions" | "dupr" | "more";
 
 export default function ClubProfilePage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = use(params);
   const [club, setClub] = useState<ClubDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>("sessions");
+  const [duprData, setDuprData] = useState<ClubDuprDistribution | null>(null);
+  const [duprLoading, setDuprLoading] = useState(false);
+  const duprFetchedRef = useRef(false);
 
   useLayoutEffect(() => {
     const url = `/api/clubs/${encodeURIComponent(slug)}`;
@@ -88,6 +92,21 @@ export default function ClubProfilePage({ params }: { params: Promise<{ slug: st
       cancelled = true;
     };
   }, [slug]);
+
+  // Lazy-load DUPR data the first time the tab is opened.
+  // Using a ref (not state) for the "fetched" guard so React StrictMode's
+  // double-invoke of effects doesn't cancel an in-flight request.
+  useEffect(() => {
+    if (activeTab !== "dupr" || duprFetchedRef.current) return;
+    duprFetchedRef.current = true; // mark immediately — prevents double-fetch
+    const url = `/api/clubs/${encodeURIComponent(slug)}/dupr`;
+    setDuprLoading(true);
+    fetch(url)
+      .then((r) => (r.ok ? (r.json() as Promise<ClubDuprDistribution>) : null))
+      .then((data) => { setDuprData(data); })
+      .catch(() => { /* leave data null — empty state shown */ })
+      .finally(() => { setDuprLoading(false); });
+  }, [activeTab, slug]);
 
   if (loading) {
     return (
@@ -183,12 +202,12 @@ export default function ClubProfilePage({ params }: { params: Promise<{ slug: st
       {venueLocations.length > 0 && (
         <div className="mb-6">
           <h2 className="font-semibold mb-2">Venues</h2>
-          <MapView pins={venueLocations} zoom={13} className="h-[50dvh] sm:h-[600px] w-full" showLocateButton />
+          <MapView pins={venueLocations} zoom={13} className="h-[50dvh] sm:h-[600px] w-full" />
         </div>
       )}
 
       <div className="flex gap-2 mb-4 border-b border-card-border">
-        {(["sessions", "more"] as Tab[]).map((tab) => (
+        {(["sessions", "dupr", "more"] as Tab[]).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -198,12 +217,16 @@ export default function ClubProfilePage({ params }: { params: Promise<{ slug: st
                 : "border-transparent text-muted hover:text-foreground"
             }`}
           >
-            {tab === "sessions" ? `Sessions (${todaySessions.length})` : "More"}
+            {tab === "sessions" ? `Sessions (${todaySessions.length})` : tab === "dupr" ? "DUPR Levels" : "More"}
           </button>
         ))}
       </div>
 
-      {activeTab === "sessions" ? (
+      {activeTab === "dupr" && (
+        <DuprTab loading={duprLoading} data={duprData} />
+      )}
+
+      {activeTab === "sessions" && (
         <div>
           {todaySessions.length === 0 ? (
             <p className="text-sm text-muted py-4">No sessions scheduled today.</p>
@@ -269,7 +292,9 @@ export default function ClubProfilePage({ params }: { params: Promise<{ slug: st
             </div>
           )}
         </div>
-      ) : (
+      )}
+
+      {activeTab === "more" && (
         <div className="space-y-5">
           {(club.zaloUrl || club.phone) && (
             <div className="rounded-lg border border-card-border bg-card p-4">
@@ -334,6 +359,146 @@ function Stat({ label, value }: { label: string; value: string }) {
     <div className="rounded-lg border border-card-border bg-card p-3 text-center">
       <div className="text-xs text-muted">{label}</div>
       <div className="text-lg font-bold">{value}</div>
+    </div>
+  );
+}
+
+// ── DUPR Levels tab ───────────────────────────────────────────────────────────
+
+function getBucketColor(bucketValue: number): string {
+  const t = Math.min(Math.max((bucketValue - 2.0) / (6.0 - 2.0), 0), 1);
+  if (t < 0.25) return "#60a5fa";
+  if (t < 0.5)  return "#34d399";
+  if (t < 0.75) return "#f97316";
+  return "#ef4444";
+}
+
+/** Re-bucket raw 0.1 buckets into 0.5-wide groups, client-side. */
+function aggregateBuckets(
+  raw: { bucket: string; count: number }[],
+  bucketSize: 0.1 | 0.5,
+): { bucket: string; count: number }[] {
+  if (bucketSize === 0.1) return raw;
+  const merged = new Map<string, number>();
+  for (const { bucket, count } of raw) {
+    const val = parseFloat(bucket);
+    const key = (Math.floor(val / 0.5) * 0.5).toFixed(1);
+    merged.set(key, (merged.get(key) ?? 0) + count);
+  }
+  return [...merged.entries()]
+    .map(([bucket, count]) => ({ bucket, count }))
+    .sort((a, b) => parseFloat(a.bucket) - parseFloat(b.bucket));
+}
+
+function DuprTab({ loading, data }: { loading: boolean; data: ClubDuprDistribution | null }) {
+  const [detail, setDetail] = useState(false);
+  const bucketSize: 0.1 | 0.5 = detail ? 0.1 : 0.5;
+
+  if (loading) {
+    return (
+      <div className="space-y-2 py-2">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <div key={i} className="flex items-center gap-3">
+            <div className="w-16 h-4 rounded bg-gray-200 dark:bg-gray-700 animate-pulse shrink-0" />
+            <div className="w-[52px] shrink-0" />
+            <div className="flex-1 h-6 rounded-full bg-gray-200 dark:bg-gray-700 animate-pulse" />
+            <div className="w-8 h-4 rounded bg-gray-200 dark:bg-gray-700 animate-pulse shrink-0" />
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (!data || data.totalRatedPlayers < 10) {
+    return (
+      <div className="py-10 text-center text-sm text-muted">
+        Not enough DUPR data yet for this club.
+      </div>
+    );
+  }
+
+  const { totalRatedPlayers, medianDupr } = data;
+  const buckets = aggregateBuckets(data.buckets, bucketSize);
+  const maxCount = Math.max(...buckets.map((b) => b.count));
+
+  // Median bucket: last bucket whose lower bound ≤ medianDupr
+  const medianBucket =
+    medianDupr != null
+      ? [...buckets]
+          .filter((b) => parseFloat(b.bucket) <= medianDupr + bucketSize / 2)
+          .at(-1)?.bucket ?? null
+      : null;
+
+  return (
+    <div>
+      {/* Header stats */}
+      <div className="grid grid-cols-2 gap-3 mb-5">
+        <Stat label="Rated players (90d)" value={totalRatedPlayers.toLocaleString()} />
+        <Stat label="Median DUPR" value={medianDupr != null ? medianDupr.toFixed(1) : "—"} />
+      </div>
+
+      {/* Chart card */}
+      <div className="rounded-lg border border-card-border bg-card p-4">
+        {/* Toggle */}
+        <div className="flex justify-end mb-3">
+          <div className="inline-flex rounded-lg border border-card-border text-xs overflow-hidden">
+            <button
+              onClick={() => setDetail(false)}
+              className={`px-3 py-1.5 transition ${!detail ? "bg-primary text-white font-semibold" : "text-muted hover:text-foreground"}`}
+            >
+              Overview
+            </button>
+            <button
+              onClick={() => setDetail(true)}
+              className={`px-3 py-1.5 transition border-l border-card-border ${detail ? "bg-primary text-white font-semibold" : "text-muted hover:text-foreground"}`}
+            >
+              Detail
+            </button>
+          </div>
+        </div>
+
+        {/* Bars */}
+        <div className="space-y-1.5">
+          {buckets.map(({ bucket, count }) => {
+            const bucketVal = parseFloat(bucket);
+            const pct = maxCount > 0 ? (count / maxCount) * 100 : 0;
+            const hi = (bucketVal + bucketSize).toFixed(1);
+            const isMedian = bucket === medianBucket;
+            const color = getBucketColor(bucketVal);
+
+            return (
+              <div key={bucket} className="flex items-center gap-2">
+                {/* Bucket label */}
+                <span className="w-[68px] shrink-0 text-right text-xs text-muted tabular-nums">
+                  {bucket}–{hi}
+                </span>
+
+                {/* Median pill or spacer */}
+                {isMedian ? (
+                  <span className="text-[10px] bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-1.5 py-0.5 rounded-full whitespace-nowrap shrink-0">
+                    Median
+                  </span>
+                ) : (
+                  <span className="w-[52px] shrink-0" />
+                )}
+
+                {/* Bar track */}
+                <div className="flex-1 h-6 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
+                  <div
+                    className="h-full rounded-full"
+                    style={{ width: `${pct}%`, backgroundColor: color }}
+                  />
+                </div>
+
+                {/* Count */}
+                <span className="w-[36px] shrink-0 text-xs tabular-nums text-right text-muted">
+                  {count}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }
