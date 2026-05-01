@@ -27,6 +27,18 @@ const COMMUNITY_ACTIVE = "#22c55e";
 const COMMUNITY_NO_ZALO = "#f97316";
 const VIBE_GREY = "#9ca3af";
 
+/**
+ * 5-band color scale for Regulars % (red – orange – yellow – lime – green).
+ * <20% red · 20–39% orange · 40–54% yellow · 55–69% lime · ≥70% green
+ */
+function getRegularsColor(pct: number): string {
+  if (pct >= 70) return "#22c55e"; // green
+  if (pct >= 55) return "#84cc16"; // lime
+  if (pct >= 40) return "#eab308"; // yellow
+  if (pct >= 20) return "#f97316"; // orange
+  return "#ef4444";                // red
+}
+
 const MOBILE_MAX_PX = 767;
 
 const RATING_PILL_SURFACE_CLASS =
@@ -250,7 +262,7 @@ function ScoreBreakdownContent({
           label={t("scoreBreakRegularsLabel")}
           subtitle={t("scoreBreakRegularsSubtitle")}
           pct={result.returningPlayerPct ?? undefined}
-          fillColor={FILL_GREEN}
+          fillColor={result.returningPlayerPct != null ? getRegularsColor(result.returningPlayerPct) : undefined}
           placeholder={result.returningPlayerPct == null}
           regularsNote={result.returningPlayerPct != null ? `${result.returningPlayerPct}%` : undefined}
         />
@@ -444,8 +456,6 @@ export function SessionScoreBadge({
   );
 }
 
-const REGULARS_COLOR = "#0ea5e9";
-
 /** Score pill + DUPR pill + Regulars pill — 3 KPI tiles used in the session detail sheet. */
 export function SessionScoreAndDuprBadges({
   input,
@@ -460,6 +470,7 @@ export function SessionScoreAndDuprBadges({
   const scoreTextLabel = t(scoreRatingTranslationKey(ratingTier));
   const duprLoading = isDuprParticipationLoading(input.duprParticipationPct);
   const hasRegulars = result.returningPlayerPct != null;
+  const regularsColor = hasRegulars ? getRegularsColor(result.returningPlayerPct!) : "#9ca3af";
 
   return (
     <div className={`flex items-stretch gap-2 ${className}`}>
@@ -504,9 +515,9 @@ export function SessionScoreAndDuprBadges({
       <div
         className="flex flex-1 flex-col items-start justify-center gap-0.5 rounded-xl border-2 px-3 py-2.5"
         style={{
-          backgroundColor: `${REGULARS_COLOR}15`,
-          borderColor: hasRegulars ? REGULARS_COLOR : `${REGULARS_COLOR}40`,
-          color: REGULARS_COLOR,
+          backgroundColor: `${regularsColor}18`,
+          borderColor: hasRegulars ? regularsColor : `${regularsColor}50`,
+          color: regularsColor,
         }}
         aria-hidden
       >
