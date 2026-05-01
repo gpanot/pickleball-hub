@@ -9,6 +9,7 @@ import { formatVND, parseSessionType, vnCalendarDateString } from "@/lib/utils";
 import { HCM_MEDIAN_COST_FALLBACK } from "@/lib/scoring";
 import { readPublicApiCache, writePublicApiCache } from "@/lib/public-api-cache";
 import type { ClubDuprDistribution } from "@/lib/queries";
+import { useI18n } from "@/lib/i18n";
 
 const MapView = dynamic(() => import("@/components/MapView").then((m) => m.MapView), {
   ssr: false,
@@ -58,6 +59,7 @@ type Tab = "sessions" | "dupr" | "more";
 
 export default function ClubProfilePage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = use(params);
+  const { t } = useI18n();
   const [club, setClub] = useState<ClubDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>("sessions");
@@ -120,8 +122,8 @@ export default function ClubProfilePage({ params }: { params: Promise<{ slug: st
   if (!club) {
     return (
       <div className="mx-auto max-w-5xl px-4 py-16 text-center">
-        <h1 className="text-xl font-bold mb-2">Club not found</h1>
-        <Link href="/clubs" className="text-primary hover:underline">Back to clubs</Link>
+        <h1 className="text-xl font-bold mb-2">{t("clubNotFound")}</h1>
+        <Link href="/clubs" className="text-primary hover:underline">{t("clubBackToList")}</Link>
       </div>
     );
   }
@@ -169,14 +171,14 @@ export default function ClubProfilePage({ params }: { params: Promise<{ slug: st
   return (
     <div className="mx-auto max-w-5xl px-3 py-4 sm:px-6 sm:py-6">
       <Link href="/clubs" className="text-sm text-muted hover:text-primary mb-4 inline-flex items-center min-h-[44px]">
-        ← Back to clubs
+        {t("clubBackToClubs")}
       </Link>
 
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-4 sm:mb-6">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold">{club.name}</h1>
           <p className="text-sm text-muted mt-1">
-            {club.numMembers.toLocaleString()} members
+            {club.numMembers.toLocaleString()} {t("clubMembers")}
           </p>
         </div>
         <a
@@ -185,23 +187,23 @@ export default function ClubProfilePage({ params }: { params: Promise<{ slug: st
           rel="noopener noreferrer"
           className="text-sm font-medium bg-primary text-white px-4 py-2.5 rounded-lg hover:bg-primary-dark transition min-h-[44px] text-center w-full sm:w-auto shrink-0"
         >
-          View on Reclub
+          {t("clubViewOnReclub")}
         </a>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-4 sm:mb-6">
-        <Stat label="Sessions / week" value={totalSessionsWeek.toString()} />
-        <Stat label="Avg fill rate" value={`${Math.round(avgFillRate * 100)}%`} />
-        <Stat label="Avg price" value={formatVND(Math.round(avgFee))} />
+        <Stat label={t("clubSessionsWeek")} value={totalSessionsWeek.toString()} />
+        <Stat label={t("clubAvgFillRate")} value={`${Math.round(avgFillRate * 100)}%`} />
+        <Stat label={t("clubAvgPrice")} value={formatVND(Math.round(avgFee))} />
         <Stat
-          label="Price range"
+          label={t("clubPriceRange")}
           value={priceRange ? `${formatVND(priceRange.min)} - ${formatVND(priceRange.max)}` : "N/A"}
         />
       </div>
 
       {venueLocations.length > 0 && (
         <div className="mb-6">
-          <h2 className="font-semibold mb-2">Venues</h2>
+          <h2 className="font-semibold mb-2">{t("clubVenues")}</h2>
           <MapView pins={venueLocations} zoom={13} className="h-[50dvh] sm:h-[600px] w-full" />
         </div>
       )}
@@ -217,19 +219,23 @@ export default function ClubProfilePage({ params }: { params: Promise<{ slug: st
                 : "border-transparent text-muted hover:text-foreground"
             }`}
           >
-            {tab === "sessions" ? `Sessions (${todaySessions.length})` : tab === "dupr" ? "DUPR Levels" : "More"}
+            {tab === "sessions"
+              ? `${t("clubTabSessions")} (${todaySessions.length})`
+              : tab === "dupr"
+              ? t("clubTabDupr")
+              : t("clubTabMore")}
           </button>
         ))}
       </div>
 
       {activeTab === "dupr" && (
-        <DuprTab loading={duprLoading} data={duprData} />
+        <DuprTab loading={duprLoading} data={duprData} t={t} />
       )}
 
       {activeTab === "sessions" && (
         <div>
           {todaySessions.length === 0 ? (
-            <p className="text-sm text-muted py-4">No sessions scheduled today.</p>
+            <p className="text-sm text-muted py-4">{t("clubNoSessionsToday")}</p>
           ) : (
             <div className="space-y-3">
               {todaySessions.map((s) => {
@@ -283,7 +289,7 @@ export default function ClubProfilePage({ params }: { params: Promise<{ slug: st
                         rel="noopener noreferrer"
                         className="text-xs text-primary hover:underline whitespace-nowrap min-h-[44px] flex items-center"
                       >
-                        Book →
+                        {t("clubBook")}
                       </a>
                     </div>
                   </div>
@@ -298,7 +304,7 @@ export default function ClubProfilePage({ params }: { params: Promise<{ slug: st
         <div className="space-y-5">
           {(club.zaloUrl || club.phone) && (
             <div className="rounded-lg border border-card-border bg-card p-4">
-              <h3 className="font-semibold text-sm mb-3">Contact</h3>
+              <h3 className="font-semibold text-sm mb-3">{t("clubContact")}</h3>
               <div className="space-y-2">
                 {club.zaloUrl && (
                   <a
@@ -328,7 +334,7 @@ export default function ClubProfilePage({ params }: { params: Promise<{ slug: st
 
           {club.admins.length > 0 && (
             <div className="rounded-lg border border-card-border bg-card p-4">
-              <h3 className="font-semibold text-sm mb-3">Admins ({club.admins.length})</h3>
+              <h3 className="font-semibold text-sm mb-3">{t("clubAdmins")} ({club.admins.length})</h3>
               <div className="flex flex-wrap gap-2">
                 {club.admins.map((name, i) => (
                   <span
@@ -346,7 +352,7 @@ export default function ClubProfilePage({ params }: { params: Promise<{ slug: st
           )}
 
           {!club.zaloUrl && !club.phone && club.admins.length === 0 && (
-            <p className="text-sm text-muted py-4 text-center">No additional info available yet.</p>
+            <p className="text-sm text-muted py-4 text-center">{t("clubNoAdditionalInfo")}</p>
           )}
         </div>
       )}
@@ -390,7 +396,7 @@ function aggregateBuckets(
     .sort((a, b) => parseFloat(a.bucket) - parseFloat(b.bucket));
 }
 
-function DuprTab({ loading, data }: { loading: boolean; data: ClubDuprDistribution | null }) {
+function DuprTab({ loading, data, t }: { loading: boolean; data: ClubDuprDistribution | null; t: (k: import("@/lib/i18n").TranslationKey) => string }) {
   const [detail, setDetail] = useState(false);
   const bucketSize: 0.1 | 0.5 = detail ? 0.1 : 0.5;
 
@@ -412,7 +418,7 @@ function DuprTab({ loading, data }: { loading: boolean; data: ClubDuprDistributi
   if (!data || data.totalRatedPlayers < 10) {
     return (
       <div className="py-10 text-center text-sm text-muted">
-        Not enough DUPR data yet for this club.
+        {t("clubDuprNotEnoughData")}
       </div>
     );
   }
@@ -421,7 +427,6 @@ function DuprTab({ loading, data }: { loading: boolean; data: ClubDuprDistributi
   const buckets = aggregateBuckets(data.buckets, bucketSize);
   const maxCount = Math.max(...buckets.map((b) => b.count));
 
-  // Median bucket: last bucket whose lower bound ≤ medianDupr
   const medianBucket =
     medianDupr != null
       ? [...buckets]
@@ -433,8 +438,8 @@ function DuprTab({ loading, data }: { loading: boolean; data: ClubDuprDistributi
     <div>
       {/* Header stats */}
       <div className="grid grid-cols-2 gap-3 mb-5">
-        <Stat label="Rated players (90d)" value={totalRatedPlayers.toLocaleString()} />
-        <Stat label="Median DUPR" value={medianDupr != null ? medianDupr.toFixed(1) : "—"} />
+        <Stat label={t("clubDuprRatedPlayers")} value={totalRatedPlayers.toLocaleString()} />
+        <Stat label={t("clubDuprMedian")} value={medianDupr != null ? medianDupr.toFixed(1) : "—"} />
       </div>
 
       {/* Chart card */}
@@ -446,13 +451,13 @@ function DuprTab({ loading, data }: { loading: boolean; data: ClubDuprDistributi
               onClick={() => setDetail(false)}
               className={`px-3 py-1.5 transition ${!detail ? "bg-primary text-white font-semibold" : "text-muted hover:text-foreground"}`}
             >
-              Overview
+              {t("clubDuprOverview")}
             </button>
             <button
               onClick={() => setDetail(true)}
               className={`px-3 py-1.5 transition border-l border-card-border ${detail ? "bg-primary text-white font-semibold" : "text-muted hover:text-foreground"}`}
             >
-              Detail
+              {t("clubDuprDetail")}
             </button>
           </div>
         </div>
@@ -468,29 +473,22 @@ function DuprTab({ loading, data }: { loading: boolean; data: ClubDuprDistributi
 
             return (
               <div key={bucket} className="flex items-center gap-2">
-                {/* Bucket label */}
                 <span className="w-[68px] shrink-0 text-right text-xs text-muted tabular-nums">
                   {bucket}–{hi}
                 </span>
-
-                {/* Median pill or spacer */}
                 {isMedian ? (
                   <span className="text-[10px] bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-1.5 py-0.5 rounded-full whitespace-nowrap shrink-0">
-                    Median
+                    {t("clubDuprMedianBadge")}
                   </span>
                 ) : (
                   <span className="w-[52px] shrink-0" />
                 )}
-
-                {/* Bar track */}
                 <div className="flex-1 h-6 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
                   <div
                     className="h-full rounded-full"
                     style={{ width: `${pct}%`, backgroundColor: color }}
                   />
                 </div>
-
-                {/* Count */}
                 <span className="w-[36px] shrink-0 text-xs tabular-nums text-right text-muted">
                   {count}
                 </span>

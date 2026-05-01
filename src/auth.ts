@@ -4,6 +4,18 @@ import { PrismaAdapter } from "@auth/prisma-adapter";
 import { prisma } from "@/lib/db";
 import type { Adapter, AdapterSession, AdapterUser } from "next-auth/adapters";
 
+// Fail fast with a clear message if required env vars are missing.
+// This surfaces in Vercel/Railway function logs instead of a cryptic "Server error".
+if (!process.env.AUTH_SECRET && !process.env.NEXTAUTH_SECRET) {
+  console.error("[auth] FATAL: AUTH_SECRET is not set. Set it in your environment variables.");
+}
+if (!process.env.GOOGLE_CLIENT_ID && !process.env.AUTH_GOOGLE_ID) {
+  console.error("[auth] FATAL: GOOGLE_CLIENT_ID (or AUTH_GOOGLE_ID) is not set.");
+}
+if (!process.env.GOOGLE_CLIENT_SECRET && !process.env.AUTH_GOOGLE_SECRET) {
+  console.error("[auth] FATAL: GOOGLE_CLIENT_SECRET (or AUTH_GOOGLE_SECRET) is not set.");
+}
+
 /**
  * Wrap the default PrismaAdapter so that NextAuth's "session" operations
  * use our `authSession` model instead of the app's `session` model (pickleball sessions).
@@ -37,8 +49,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   adapter: buildAdapter(),
   providers: [
     Google({
-      clientId: process.env.GOOGLE_CLIENT_ID,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+      clientId: process.env.GOOGLE_CLIENT_ID ?? process.env.AUTH_GOOGLE_ID,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? process.env.AUTH_GOOGLE_SECRET,
     }),
   ],
   callbacks: {

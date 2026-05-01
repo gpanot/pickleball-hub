@@ -2,6 +2,7 @@
 
 import { signIn } from "next-auth/react";
 import { useHeatmapStore } from "@/store/heatmapStore";
+import { useI18n } from "@/lib/i18n";
 
 interface Props {
   open: boolean;
@@ -11,6 +12,7 @@ interface Props {
 
 export function HeatmapLoginModal({ open, onClose }: Props) {
   const softReset = useHeatmapStore((s) => s.softReset);
+  const { t } = useI18n();
 
   if (!open) return null;
 
@@ -44,9 +46,9 @@ export function HeatmapLoginModal({ open, onClose }: Props) {
 
         {/* Heading */}
         <div className="text-center">
-          <h2 className="text-xl font-bold mb-1">See where players go</h2>
+          <h2 className="text-xl font-bold mb-1">{t("heatmapLoginTitle")}</h2>
           <p className="text-sm text-muted leading-relaxed">
-            You&apos;ve explored 3 venues. Sign in to unlock full access — it&apos;s free.
+            {t("heatmapLoginDesc")}
           </p>
         </div>
 
@@ -56,17 +58,17 @@ export function HeatmapLoginModal({ open, onClose }: Props) {
           className="w-full flex items-center justify-center gap-3 bg-white text-gray-800 border border-gray-200 rounded-xl px-5 py-3 font-semibold text-sm shadow-sm hover:bg-gray-50 active:bg-gray-100 transition"
         >
           <GoogleIcon />
-          Continue with Google
+          {t("heatmapLoginGoogle")}
         </button>
 
-        <p className="text-xs text-muted text-center -mt-1">No password. No spam.</p>
+        <p className="text-xs text-muted text-center -mt-1">{t("heatmapLoginDisclaimer")}</p>
 
         {/* Dismiss */}
         <button
           onClick={handleDismiss}
           className="text-xs text-muted hover:text-foreground underline underline-offset-2 transition"
         >
-          Maybe later
+          {t("heatmapLoginMaybeLater")}
         </button>
       </div>
     </div>

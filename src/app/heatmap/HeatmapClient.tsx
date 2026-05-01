@@ -9,6 +9,7 @@ import { useProfileStore } from "@/store/profileStore";
 import { useHeatmapStore } from "@/store/heatmapStore";
 import { HeatmapLoginModal } from "@/components/HeatmapLoginModal";
 import { useSession } from "next-auth/react";
+import { useI18n } from "@/lib/i18n";
 
 // Dynamic import — Leaflet requires browser APIs (no SSR)
 const HeatmapView = dynamic(
@@ -72,6 +73,7 @@ function venueHeatScore(
 
 export function HeatmapClient({ heatmapData, sessions, hcmMedianCostPerHour }: Props) {
   const { duprRange, medianDupr, venues, totalPlayersWithDupr } = heatmapData;
+  const { t } = useI18n();
   const preferences = useProfileStore((s) => s.preferences);
   const hasCompletedOnboarding = useProfileStore((s) => s.hasCompletedOnboarding);
 
@@ -211,16 +213,16 @@ export function HeatmapClient({ heatmapData, sessions, hcmMedianCostPerHour }: P
       {/* Page header */}
       <div className="mb-6">
         <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
-          Where Players Go
+          {t("heatmapTitle")}
         </h1>
         <p className="mt-1 text-sm text-muted">
-          Showing activity for DUPR{" "}
+          {t("heatmapSubtitle")}{" "}
           <span className="font-semibold text-primary">
             {bandMin} – {bandMax}
           </span>
           {totalPlayersWithDupr > 0 && (
             <span className="ml-2 text-muted">
-              · {totalPlayersWithDupr.toLocaleString()} players with ratings (last 90 days)
+              · {totalPlayersWithDupr.toLocaleString()} {t("heatmapPlayersWithRatings")}
             </span>
           )}
         </p>
@@ -233,7 +235,7 @@ export function HeatmapClient({ heatmapData, sessions, hcmMedianCostPerHour }: P
             htmlFor="dupr-slider"
             className="text-sm font-semibold text-foreground"
           >
-            DUPR Level
+            {t("heatmapDuprLevel")}
           </label>
           <span className="rounded-full bg-primary/10 px-3 py-0.5 text-sm font-bold text-primary">
             {bandMin} – {bandMax}
@@ -261,7 +263,7 @@ export function HeatmapClient({ heatmapData, sessions, hcmMedianCostPerHour }: P
           <DuprTickMarks min={sliderMin} max={sliderMax} selected={selectedDupr} />
         </div>
         <p className="mt-2 text-xs text-muted">
-          Drag to filter. The heatmap and sessions below update instantly.
+          {t("heatmapDragToFilter")}
         </p>
       </div>
 
@@ -291,26 +293,26 @@ export function HeatmapClient({ heatmapData, sessions, hcmMedianCostPerHour }: P
       <section id="sessions-section">
         <h2 className="mb-1 text-lg font-bold text-foreground">
           {selectedVenue
-            ? `Sessions at ${selectedVenue.venueName}`
-            : "Sessions at the hotspots"}
+            ? `${t("heatmapSessionsAtVenue")} ${selectedVenue.venueName}`
+            : t("heatmapSessionsAtHotspots")}
         </h2>
         <p className="mb-4 text-sm text-muted">
           {selectedVenue
-            ? "Upcoming sessions from clubs at this court"
-            : `Upcoming sessions where DUPR ${bandMin}–${bandMax} players are most active.`}
+            ? t("heatmapUpcomingAtCourt")
+            : `${t("heatmapUpcomingHotspot")} ${bandMin}–${bandMax} ${t("heatmapUpcomingHotspotSuffix")}`}
         </p>
 
         {recommendedSessions.length === 0 ? (
           <div className="rounded-xl border border-card-border bg-card px-6 py-10 text-center">
             <p className="text-sm text-muted">
               {selectedVenue
-                ? `No upcoming sessions at ${selectedVenue.venueName} right now.`
-                : "No upcoming sessions at these venues right now."}
+                ? `${t("heatmapNoSessionsVenue")} ${selectedVenue.venueName} ${t("heatmapNoSessionsVenueSuffix")}`
+                : t("heatmapNoSessionsGeneral")}
             </p>
             <p className="mt-1 text-xs text-muted">
               {selectedVenue
-                ? "Check back later or tap another venue on the map."
-                : "Try adjusting the DUPR slider to find more activity."}
+                ? t("heatmapCheckBackLater")
+                : t("heatmapTrySlider")}
             </p>
           </div>
         ) : (
