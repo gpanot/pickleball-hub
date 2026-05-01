@@ -321,8 +321,8 @@ export function SessionScoreBadge({
   }, [open, isMobile]);
 
   const toggle = useCallback(() => {
-    setOpen((v) => !v);
-  }, []);
+    setOpen(!open);
+  }, [open]);
 
   const closeSheet = useCallback(() => {
     setOpen(false);

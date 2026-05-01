@@ -71,11 +71,7 @@ export function SessionBookPreviewSheet({
     return () => cancelAnimationFrame(id);
   }, [open, session]);
 
-  useEffect(() => {
-    if (!open) return;
-    const mq = window.matchMedia(`(max-width: ${PREVIEW_BREAKPOINT_PX}px)`);
-    if (!mq.matches) onClose();
-  }, [open, onClose]);
+  // Sheet works on all viewports; no auto-close on resize.
 
   useEffect(() => {
     if (!open) return;

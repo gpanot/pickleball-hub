@@ -177,6 +177,18 @@ model SessionRoster {
   @@map("session_rosters")
 }
 
+/// Anonymous or Zalo-identified player profile for personalised recommendations.
+model PlayerProfile {
+  id          String   @id @default(uuid())
+  zaloId      String?  @unique @map("zalo_id")
+  displayName String?  @map("display_name")
+  preferences Json     @default("{}")
+  createdAt   DateTime @default(now()) @map("created_at")
+  lastSeen    DateTime @updatedAt @map("last_seen")
+
+  @@map("player_profiles")
+}
+
 /// Aggregated DUPR participation for a session row (keyed by sessions.id).
 model SessionDuprStat {
   sessionId              Int      @id @map("session_id")

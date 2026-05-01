@@ -14,6 +14,10 @@ interface SessionCardProps {
   hcmMedianCostPerHour: number;
   /** When set and viewport is narrow, "Book on Reclub" opens preview sheet instead of navigating. */
   onMobileBookPreview?: () => void;
+  /** When set, tapping anywhere on the card (outside a/button) triggers this instead of the score popover. */
+  onCardClick?: () => void;
+  /** Optional match reasons pill shown below the session name (from recommendation engine). */
+  matchReasons?: string[];
   session: {
     id: number;
     referenceCode: string;
@@ -37,7 +41,7 @@ interface SessionCardProps {
   };
 }
 
-export function SessionCard({ session, userLocation, hcmMedianCostPerHour, onMobileBookPreview }: SessionCardProps) {
+export function SessionCard({ session, userLocation, hcmMedianCostPerHour, onMobileBookPreview, onCardClick, matchReasons }: SessionCardProps) {
   const s = session;
   const isBookPreviewViewport = useIsBookPreviewViewport();
   const useMobileBookPreview = Boolean(onMobileBookPreview) && isBookPreviewViewport;
@@ -59,7 +63,11 @@ export function SessionCard({ session, userLocation, hcmMedianCostPerHour, onMob
       onClick={(e) => {
         const target = e.target as HTMLElement;
         if (target.closest("a, button")) return;
-        setScoreOpen(true);
+        if (onCardClick) {
+          onCardClick();
+        } else {
+          setScoreOpen(true);
+        }
       }}
     >
       <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
@@ -71,6 +79,15 @@ export function SessionCard({ session, userLocation, hcmMedianCostPerHour, onMob
               </span>
             </div>
             <h3 className="mb-1 line-clamp-2 break-words text-sm font-semibold leading-tight">{s.name}</h3>
+            {matchReasons && matchReasons.length > 0 && (
+              <div className="mb-1 flex flex-wrap gap-1">
+                {matchReasons.slice(0, 1).map((r) => (
+                  <span key={r} className="inline-flex rounded-full bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-950/30 dark:border-emerald-800 dark:text-emerald-300">
+                    {r}
+                  </span>
+                ))}
+              </div>
+            )}
             <p className="mb-1 break-words text-xs text-muted">{s.club.name}</p>
             {s.venue && (
               <p className="truncate text-xs text-muted/70">

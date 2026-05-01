@@ -7,6 +7,8 @@ import { SessionCard } from "@/components/SessionCard";
 import { SessionBookPreviewSheet } from "@/components/SessionBookPreviewSheet";
 import { SessionsIntroBanner } from "@/components/SessionsIntroBanner";
 import { SessionFilters, type FilterState } from "@/components/SessionFilters";
+import { RecommendedForYou } from "@/components/RecommendedForYou";
+import { ZaloPrompt } from "@/components/ZaloPrompt";
 import {
   formatVND,
   parseSessionType,
@@ -18,6 +20,7 @@ import { useI18n } from "@/lib/i18n";
 import { mouseflowTag } from "@/lib/analytics";
 import { computeSessionScore, HCM_MEDIAN_COST_FALLBACK } from "@/lib/scoring";
 import type { GetSessionsListItem } from "@/lib/queries";
+import { useProfileStore } from "@/store/profileStore";
 
 const ZALO_GROUP_URL = "https://zalo.me/g/khebsp5x7jlkslmnroxh";
 
@@ -73,13 +76,13 @@ function TimeGroupedList({
   visibleCount,
   userLocation,
   hcmMedianCostPerHour,
-  onMobileBookPreview,
+  onCardClick,
 }: {
   groups: Map<string, HomeSession[]>;
   visibleCount: number;
   userLocation: { lat: number; lng: number } | null;
   hcmMedianCostPerHour: number;
-  onMobileBookPreview: (session: HomeSession) => void;
+  onCardClick: (session: HomeSession) => void;
 }) {
   const { t } = useI18n();
   let rendered = 0;
@@ -111,7 +114,7 @@ function TimeGroupedList({
                   session={s}
                   userLocation={userLocation}
                   hcmMedianCostPerHour={hcmMedianCostPerHour}
-                  onMobileBookPreview={() => onMobileBookPreview(s)}
+                  onCardClick={() => onCardClick(s)}
                 />
               ))}
             </div>
@@ -182,6 +185,7 @@ export function HomeClient({
   lastScrapedAtTomorrow,
 }: HomeClientProps) {
   const { t } = useI18n();
+  const { showZaloPrompt, zaloPromptDismissed, dismissZaloPrompt, saveToServer, incrementVisit } = useProfileStore();
   const [viewMode, setViewMode] = useState<"list" | "map">("list");
   const [dayTab, setDayTab] = useState<"today" | "tomorrow">("today");
 
@@ -208,42 +212,20 @@ export function HomeClient({
 
   const [searchDraft, setSearchDraft] = useState("");
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
-  const [freeTonightDetail, setFreeTonightDetail] = useState<HomeSession | null>(null);
   const [bookPreviewSession, setBookPreviewSession] = useState<HomeSession | null>(null);
   const [shareClipboardToast, setShareClipboardToast] = useState(false);
-  const [freeTonightCollapsed, setFreeTonightCollapsed] = useState(false);
   const [timeFilter, setTimeFilter] = useState<"fromNow" | "past">("fromNow");
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
   const [zaloJoined, setZaloJoined] = useState(true);
-  const [copyToast, setCopyToast] = useState(false);
-  const headingTapCount = useRef(0);
-  const headingTapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     setZaloJoined(localStorage.getItem("zalo_joined") === "true");
   }, []);
 
   useEffect(() => {
-    try {
-      const v = localStorage.getItem("free_tonight_collapsed");
-      if (v === "true") setFreeTonightCollapsed(true);
-      else if (v === "false") setFreeTonightCollapsed(false);
-    } catch {
-      /* ignore */
-    }
-  }, []);
-
-  const toggleFreeTonightCollapsed = useCallback(() => {
-    setFreeTonightCollapsed((prev) => {
-      const next = !prev;
-      try {
-        localStorage.setItem("free_tonight_collapsed", String(next));
-      } catch {
-        /* ignore */
-      }
-      return next;
-    });
+    incrementVisit();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const showShareClipboardToast = useCallback(() => {
@@ -270,15 +252,6 @@ export function HomeClient({
   useEffect(() => {
     setSearchDraft(filters.search);
   }, [filters.search]);
-
-  useEffect(() => {
-    if (!freeTonightDetail) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setFreeTonightDetail(null);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [freeTonightDetail]);
 
   useEffect(() => {
     if (!navigator.geolocation) return;
@@ -484,87 +457,6 @@ export function HomeClient({
   };
 
   /** Free, has spots, start at or after 18:00; nearest first, max 3 */
-  const freeTonightCards = useMemo(() => {
-    const min18 = 18 * 60;
-    const hasVenueLocation = (s: HomeSession) =>
-      Boolean(s.venue?.name?.trim() || s.venue?.address?.trim());
-    const eligible = sessions.filter((s) => {
-      if (s.feeAmount !== 0) return false;
-      if (s.fillRate >= 1) return false;
-      if (timeToMinutes(s.startTime) < min18) return false;
-      if (!hasVenueLocation(s)) return false;
-      if (!s.description?.trim()) return false;
-      return true;
-    });
-
-    const distKm = (s: HomeSession) => {
-      if (!userLocation || !s.venue?.latitude || !s.venue?.longitude) {
-        return Number.POSITIVE_INFINITY;
-      }
-      return haversineKm(
-        userLocation.lat,
-        userLocation.lng,
-        s.venue.latitude,
-        s.venue.longitude,
-      );
-    };
-
-    return [...eligible]
-      .sort((a, b) => {
-        const da = distKm(a);
-        const db = distKm(b);
-        if (da !== db) return da - db;
-        return a.startTime.localeCompare(b.startTime);
-      });
-  }, [sessions, userLocation]);
-
-  const copyFreeTonightMessage = useCallback(() => {
-    if (freeTonightCards.length === 0) return;
-    const vn = new Date(Date.now() + 7 * 60 * 60 * 1000);
-    const days = ["Chủ nhật", "Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7"];
-    const dayName = days[vn.getUTCDay()];
-    const dd = String(vn.getUTCDate()).padStart(2, "0");
-    const mm = String(vn.getUTCMonth() + 1).padStart(2, "0");
-
-    const eventBlocks = freeTonightCards.map((s, i) => {
-      const spotsLeft = Math.max(0, s.maxPlayers - s.joined);
-      const dist =
-        userLocation && s.venue?.latitude != null && s.venue?.longitude != null
-          ? formatDistanceKm(haversineKm(userLocation.lat, userLocation.lng, s.venue.latitude, s.venue.longitude))
-          : "—";
-      const venue = s.venue?.name ?? "TBA";
-      return `${i + 1}. ${s.name} — ${s.startTime} — còn ${spotsLeft} chỗ\n${venue}\n${dist}`;
-    });
-
-    const text = `🎾 PICKLEBALL FREE TỐI NAY — HCM
-${dayName}, ${dd}/${mm} | ${freeTonightCards.length} buổi FREE còn chỗ
-
-Gợi ý gần trung tâm:
-
-${eventBlocks.join("\n\n")}
-
-👉 Xem đầy đủ + lọc giá/giờ: https://pickleball-hub-gules.vercel.app
-💬 Nhận thông báo hàng ngày: zalo.me/g/khebsp5x7jlkslmnroxh`;
-
-    navigator.clipboard.writeText(text).then(() => {
-      setCopyToast(true);
-      setTimeout(() => setCopyToast(false), 2500);
-    });
-  }, [freeTonightCards, userLocation]);
-
-  const handleHeadingTap = useCallback(() => {
-    if (headingTapTimer.current) clearTimeout(headingTapTimer.current);
-    headingTapCount.current += 1;
-    if (headingTapCount.current >= 5) {
-      headingTapCount.current = 0;
-      copyFreeTonightMessage();
-    } else {
-      headingTapTimer.current = setTimeout(() => {
-        headingTapCount.current = 0;
-      }, 2000);
-    }
-  }, [copyFreeTonightMessage]);
-
   const mapPins = useMemo(() => {
     return filtered
       .filter((s) => s.venue?.latitude && s.venue?.longitude)
@@ -661,107 +553,18 @@ ${eventBlocks.join("\n\n")}
 
       <SessionsIntroBanner />
 
-      {freeTonightCards.length > 0 && (
-        <section className="mb-4 min-w-0">
-          <div className="mb-2 flex items-center justify-between gap-2">
-            <h2 className="min-w-0 flex-1 text-sm font-semibold text-foreground">
-              <span
-                onClick={handleHeadingTap}
-                className="cursor-default select-none"
-                role="presentation"
-              >
-                {dayTab === "today"
-                  ? `${t("freeTonight")} (${freeTonightCards.length})`
-                  : `${t("freeTomorrowNight")} (${freeTonightCards.length})`}
-              </span>
-            </h2>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                toggleFreeTonightCollapsed();
-              }}
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-card-border bg-card text-muted-foreground transition hover:border-primary/40 hover:text-foreground"
-              aria-expanded={!freeTonightCollapsed}
-              aria-label={freeTonightCollapsed ? t("expandFreeTonight") : t("collapseFreeTonight")}
-            >
-              {freeTonightCollapsed ? "▼" : "▲"}
-            </button>
-          </div>
-          <div
-            className="overflow-hidden transition-[max-height] duration-300 ease"
-            style={{ maxHeight: freeTonightCollapsed ? 0 : 2000 }}
-          >
-            <p className="mb-2 text-xs text-muted">
-              {dayTab === "today" ? t("freeSessionsFrom6pm") : t("freeSessionsTomorrow6pm")}
-            </p>
-            <div className="flex gap-3 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {freeTonightCards.map((s) => {
-              const distKm =
-                userLocation &&
-                s.venue?.latitude != null &&
-                s.venue?.longitude != null
-                  ? haversineKm(
-                      userLocation.lat,
-                      userLocation.lng,
-                      s.venue.latitude,
-                      s.venue.longitude,
-                    )
-                  : null;
-              const spotsLeft = Math.max(0, s.maxPlayers - s.joined);
-              return (
-                <button
-                  key={s.id}
-                  type="button"
-                  onClick={() => setFreeTonightDetail(s)}
-                  className="flex w-[min(280px,calc(100vw-3rem))] shrink-0 flex-col rounded-xl border border-card-border bg-card p-3 text-left shadow-sm transition hover:border-primary/40 hover:shadow-md"
-                >
-                  <div className="mb-1 flex flex-wrap items-center gap-1">
-                    <span className="inline-flex rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-primary">
-                      {t("freeFrom6pm")}
-                    </span>
-                    <span className="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold tabular-nums text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300">
-                      {spotsLeft} {t("left")}
-                    </span>
-                  </div>
-                  <span className="line-clamp-2 text-sm font-semibold leading-snug">{s.name}</span>
-                  <span className="mt-1 text-xs text-muted">
-                    {s.startTime} – {s.endTime} · {s.club.name}
-                  </span>
-                  {s.venue && (
-                    <span className="mt-0.5 line-clamp-1 text-xs text-muted/90">
-                      📍 {s.venue.name}
-                    </span>
-                  )}
-                  {distKm != null && (
-                    <span className="mt-1 text-xs font-medium text-primary">
-                      {formatDistanceKm(distKm)} {t("away")}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-
-            {/* Zalo Join Card */}
-            <a
-              href={ZALO_GROUP_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={() => mouseflowTag("zalo_intent:carousel")}
-              className="flex w-[min(280px,calc(100vw-3rem))] shrink-0 flex-col items-center justify-center rounded-xl border border-emerald-200 p-3 text-center shadow-sm transition hover:shadow-md dark:border-emerald-800"
-              style={{ background: "linear-gradient(135deg, #e6f9ee 0%, #d1f5e0 50%, #c3f0d4 100%)" }}
-            >
-              <svg viewBox="0 0 48 48" className="mb-2 h-10 w-10" aria-hidden>
-                <circle cx="24" cy="24" r="24" fill="#0068FF" />
-                <path d="M12.5 16.5c0-2.21 1.79-4 4-4h15c2.21 0 4 1.79 4 4v9c0 2.21-1.79 4-4 4h-3.5l-4.5 4v-4h-7c-2.21 0-4-1.79-4-4v-9z" fill="white" />
-              </svg>
-              <span className="text-sm font-bold text-emerald-900 dark:text-emerald-100">{t("getFreeSessions")}</span>
-              <span className="mt-0.5 text-xs text-emerald-700 dark:text-emerald-300">{t("joinZaloGroup")}</span>
-            </a>
-            </div>
-          </div>
-        </section>
+      {showZaloPrompt && !zaloPromptDismissed && (
+        <ZaloPrompt
+          onSave={(zaloId, displayName) => saveToServer(zaloId, displayName)}
+          onDismiss={dismissZaloPrompt}
+        />
       )}
+
+      <RecommendedForYou
+        date={activeDate}
+        userLocation={userLocation}
+        onSessionClick={(s) => setBookPreviewSession(s as unknown as HomeSession)}
+      />
 
       <SessionFilters
         filters={filters}
@@ -926,7 +729,7 @@ ${eventBlocks.join("\n\n")}
                 session={s}
                 userLocation={userLocation}
                 hcmMedianCostPerHour={hcmMedianCostPerHour}
-                onMobileBookPreview={() => setBookPreviewSession(s)}
+                onCardClick={() => setBookPreviewSession(s)}
               />
             ))}
           </div>
@@ -936,7 +739,7 @@ ${eventBlocks.join("\n\n")}
             visibleCount={visibleCount}
             userLocation={userLocation}
             hcmMedianCostPerHour={hcmMedianCostPerHour}
-            onMobileBookPreview={setBookPreviewSession}
+            onCardClick={setBookPreviewSession}
           />
         )}
 
@@ -962,41 +765,6 @@ ${eventBlocks.join("\n\n")}
         onShareClipboardToast={showShareClipboardToast}
       />
 
-      {freeTonightDetail ? (
-        <div
-          className="fixed inset-0 z-[100] flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4"
-          role="presentation"
-          onClick={() => setFreeTonightDetail(null)}
-        >
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="free-tonight-dialog-title"
-            className="max-h-[min(92dvh,900px)] w-full max-w-lg overflow-y-auto rounded-t-2xl border border-card-border bg-background p-4 shadow-xl sm:rounded-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="mb-3 flex items-center justify-between gap-2">
-              <h2 id="free-tonight-dialog-title" className="text-lg font-bold">
-                {t("sessionDetails")}
-              </h2>
-              <button
-                type="button"
-                onClick={() => setFreeTonightDetail(null)}
-                className="rounded-lg px-3 py-1.5 text-sm text-muted transition hover:bg-primary/10 hover:text-foreground"
-              >
-                {t("close")}
-              </button>
-            </div>
-            <SessionCard
-              session={freeTonightDetail}
-              userLocation={userLocation}
-              hcmMedianCostPerHour={hcmMedianCostPerHour}
-              onMobileBookPreview={() => setBookPreviewSession(freeTonightDetail)}
-            />
-          </div>
-        </div>
-      ) : null}
-
       {/* Floating Zalo CTA pill */}
       {!zaloJoined && (
         <button
@@ -1008,12 +776,6 @@ ${eventBlocks.join("\n\n")}
         </button>
       )}
 
-      {/* Copy toast */}
-      {copyToast && (
-        <div className="pointer-events-none fixed bottom-14 left-1/2 z-[110] -translate-x-1/2 rounded-lg bg-gray-900 px-4 py-2.5 text-xs font-medium text-white shadow-xl animate-in fade-in slide-in-from-bottom-2 duration-200">
-          {t("copiedToast")}
-        </div>
-      )}
       {shareClipboardToast && (
         <div className="pointer-events-none fixed bottom-14 left-1/2 z-[110] -translate-x-1/2 rounded-lg bg-gray-900 px-4 py-2.5 text-xs font-medium text-white shadow-xl animate-in fade-in slide-in-from-bottom-2 duration-200">
           {t("shareClipboardToast")}
