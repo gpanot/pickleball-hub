@@ -59,6 +59,21 @@ export function SessionBookPreviewSheet({
   const { t } = useI18n();
   const [entered, setEntered] = useState(false);
 
+  const BREAKDOWN_KEY = "score_breakdown_open";
+  const [breakdownOpen, setBreakdownOpen] = useState<boolean>(() => {
+    if (typeof window === "undefined") return true;
+    const stored = localStorage.getItem(BREAKDOWN_KEY);
+    return stored === null ? true : stored === "true";
+  });
+
+  const toggleBreakdown = useCallback(() => {
+    setBreakdownOpen((prev) => {
+      const next = !prev;
+      localStorage.setItem(BREAKDOWN_KEY, String(next));
+      return next;
+    });
+  }, []);
+
   useLayoutEffect(() => {
     if (!open || !session) {
       setEntered(false);
@@ -212,7 +227,29 @@ export function SessionBookPreviewSheet({
             <SessionScoreAndDuprBadges input={scoreInput} />
           </div>
           <div className="mt-3 border-t border-card-border pt-3">
-            <SessionScoreBreakdownPanel input={scoreInput} />
+            <button
+              type="button"
+              onClick={toggleBreakdown}
+              className="mb-2 flex w-full items-center justify-between text-left"
+            >
+              <span className="text-xs font-medium text-muted-foreground">{t("scoreHowCalculated")}</span>
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="shrink-0 text-muted-foreground transition-transform duration-200"
+                style={{ transform: breakdownOpen ? "rotate(180deg)" : "rotate(0deg)" }}
+                aria-hidden
+              >
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </button>
+            {breakdownOpen && <SessionScoreBreakdownPanel input={scoreInput} />}
           </div>
         </div>
         <div className="shrink-0 space-y-2 border-t border-card-border bg-white px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 dark:bg-card">

@@ -113,21 +113,50 @@ export function SessionCard({ session, userLocation, hcmMedianCostPerHour, onMob
             )}
           </div>
           <div className="flex shrink-0 flex-col items-end gap-1.5">
-            <SessionScoreBadge
-              open={scoreOpen}
-              onOpenChange={setScoreOpen}
-              input={{
-                confirmedPlayers: s.joined,
-                capacity: s.maxPlayers,
-                priceVnd: s.feeAmount,
-                durationMinutes: s.durationMin,
-                hasZalo: Boolean(s.club.zaloUrl),
-                hcmMedianCostPerHour,
-                sessionType,
-                duprParticipationPct: s.duprParticipationPct,
-                returningPlayerPct: s.returningPlayerPct,
-              }}
-            />
+            {onCardClick ? (
+              /* When the card has a click handler (home page), tapping the score
+                 badge should open the full preview sheet — not a separate popover. */
+              <div
+                role="button"
+                tabIndex={0}
+                aria-label="View session details"
+                className="cursor-pointer"
+                onClick={(e) => { e.stopPropagation(); onCardClick(); }}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onCardClick(); } }}
+              >
+                <SessionScoreBadge
+                  open={false}
+                  onOpenChange={() => undefined}
+                  input={{
+                    confirmedPlayers: s.joined,
+                    capacity: s.maxPlayers,
+                    priceVnd: s.feeAmount,
+                    durationMinutes: s.durationMin,
+                    hasZalo: Boolean(s.club.zaloUrl),
+                    hcmMedianCostPerHour,
+                    sessionType,
+                    duprParticipationPct: s.duprParticipationPct,
+                    returningPlayerPct: s.returningPlayerPct,
+                  }}
+                />
+              </div>
+            ) : (
+              <SessionScoreBadge
+                open={scoreOpen}
+                onOpenChange={setScoreOpen}
+                input={{
+                  confirmedPlayers: s.joined,
+                  capacity: s.maxPlayers,
+                  priceVnd: s.feeAmount,
+                  durationMinutes: s.durationMin,
+                  hasZalo: Boolean(s.club.zaloUrl),
+                  hcmMedianCostPerHour,
+                  sessionType,
+                  duprParticipationPct: s.duprParticipationPct,
+                  returningPlayerPct: s.returningPlayerPct,
+                }}
+              />
+            )}
             <PriceTag feeAmount={s.feeAmount} costPerHour={null} />
           </div>
         </div>
