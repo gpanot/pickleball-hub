@@ -116,12 +116,12 @@ function ScoreBreakRow({
   trackClassName?: string;
 }) {
   return (
-    <div className="flex min-h-[48px] items-start gap-3">
+    <div className="flex min-h-[36px] items-start gap-3">
       <div className={SCORE_BREAK_LABEL_COL}>
-        <span className="text-[11px] font-normal leading-tight text-foreground">{label}</span>
-        <span className="text-[10px] leading-snug text-muted-foreground">{subtitle}</span>
+        <span className="text-[11px] font-normal leading-tight text-muted-foreground">{label}</span>
+        <span className="text-[10px] leading-snug text-muted-foreground/60">{subtitle}</span>
       </div>
-      <div className="flex min-h-[48px] min-w-0 flex-1 items-start justify-center self-stretch px-1 pt-[3px]">
+      <div className="flex min-h-[36px] min-w-0 flex-1 items-start justify-center self-stretch px-1 pt-[3px]">
         {placeholder ? (
           <div
             className="relative h-2 w-full max-w-[9rem] rounded border border-dashed opacity-90"
@@ -154,10 +154,9 @@ function PlayerLevelsRow({
   const loading = isDuprParticipationLoading(duprParticipationPct);
 
   return (
-    <div className="flex min-h-[48px] items-start gap-3 pt-0.5">
+    <div className="flex min-h-[36px] items-start gap-3 pt-0.5">
       <div className={SCORE_BREAK_LABEL_COL}>
-        <span className="text-[11px] font-normal leading-tight text-foreground">{t("scorePlayerLevels")}</span>
-        <span className="text-[10px] leading-snug text-muted-foreground">{t("scoreDuprRosterSubtitle")}</span>
+        <span className="text-[11px] font-normal leading-tight text-muted-foreground">{t("scorePlayerLevels")}</span>
       </div>
       <div className="flex min-h-[48px] min-w-0 flex-1 items-start justify-end self-stretch px-1 pt-[3px]">
         {loading ? (
@@ -200,7 +199,7 @@ function ScoreBreakdownContent({
 
   return (
     <>
-      {showHeaderRatingPill ? (
+      {showHeaderRatingPill && (
         <div className="mb-2 flex items-start justify-between gap-2">
           <p className="min-w-0 flex-1 text-[11px] leading-snug text-muted-foreground">{t("scoreHowCalculated")}</p>
           <div
@@ -216,10 +215,8 @@ function ScoreBreakdownContent({
             />
           </div>
         </div>
-      ) : (
-        <p className="mb-2 text-[11px] leading-snug text-muted-foreground">{t("scoreHowCalculated")}</p>
       )}
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-1">
         <div className="h-px w-full shrink-0 bg-card-border" aria-hidden />
         <ScoreBreakRow
           label={t("scoreBreakFillLabel")}
@@ -434,7 +431,7 @@ export function SessionScoreBadge({
   );
 }
 
-/** Score pill + optional DUPR pill (same data as SessionScoreBadge header, for layouts that need two tiles). */
+/** Score pill + optional DUPR pill — larger variant used in the session detail sheet. */
 export function SessionScoreAndDuprBadges({
   input,
   className = "",
@@ -449,16 +446,17 @@ export function SessionScoreAndDuprBadges({
   const duprLoading = isDuprParticipationLoading(input.duprParticipationPct);
 
   return (
-    <div className={`flex flex-wrap items-start gap-2 ${className}`}>
+    <div className={`flex flex-wrap items-stretch gap-3 ${className}`}>
+      {/* Score badge — prominent */}
       <div
-        className={`${RATING_PILL_SURFACE_CLASS} pointer-events-none`}
+        className="inline-flex flex-col items-start gap-0.5 rounded-xl border-2 px-4 py-2.5"
         style={ratingPillSurfaceStyle(color)}
         aria-hidden
       >
-        <span className="inline-flex items-center gap-1 text-[11px] font-semibold leading-tight sm:text-xs">
+        <span className="inline-flex items-center gap-1.5 text-xl font-bold leading-tight tabular-nums">
           <svg
-            width="11"
-            height="11"
+            width="16"
+            height="16"
             viewBox="0 0 24 24"
             className="shrink-0 opacity-90"
             aria-hidden
@@ -466,25 +464,22 @@ export function SessionScoreAndDuprBadges({
           >
             <path d="M12 2l2.39 7.26h7.72l-6.25 4.54 2.39 7.26-6.25-4.54-6.25 4.54 2.39-7.26-6.25-4.54h7.72L12 2z" />
           </svg>
-          <span>
-            {result.score} · {scoreTextLabel}
-          </span>
+          {result.score}
         </span>
+        <span className="text-xs font-semibold leading-tight">{scoreTextLabel}</span>
       </div>
+
+      {/* DUPR badge — prominent */}
       {duprLoading ? (
-        <div
-          className={`${RATING_PILL_SURFACE_CLASS} pointer-events-none border-muted-foreground/35 bg-muted/20 text-muted-foreground`}
-        >
-          <span className="max-w-[180px] truncate text-[10px] font-normal leading-tight">
-            {t("scoreDuprLineLoading")}
-          </span>
+        <div className="inline-flex flex-col items-start justify-center gap-0.5 rounded-xl border-2 border-muted-foreground/25 bg-muted/15 px-4 py-2.5 text-muted-foreground">
+          <span className="text-xs font-semibold leading-tight">DUPR</span>
+          <span className="text-[11px] font-normal leading-tight">{t("scoreDuprLineLoading")}</span>
         </div>
       ) : result.duprBadge != null && result.duprPercent != null ? (
-        <div
-          className={`${RATING_PILL_SURFACE_CLASS} pointer-events-none border-muted-foreground/40 bg-muted/25 text-foreground`}
-        >
-          <span className="max-w-[200px] text-[10px] font-semibold leading-tight">
-            {`${result.duprPercent}% DUPR · ${duprTierLabel(result.duprBadge, t)}`}
+        <div className="inline-flex flex-col items-start justify-center gap-0.5 rounded-xl border-2 border-muted-foreground/30 bg-muted/15 px-4 py-2.5 text-foreground">
+          <span className="text-xl font-bold leading-tight tabular-nums">{result.duprPercent}%</span>
+          <span className="text-xs font-semibold leading-tight text-muted-foreground">
+            {`DUPR · ${duprTierLabel(result.duprBadge, t)}`}
           </span>
         </div>
       ) : null}

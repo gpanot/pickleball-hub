@@ -8,7 +8,6 @@ import { useI18n } from "@/lib/i18n";
 import { buildSessionShareText } from "@/lib/share-session-text";
 import { mouseflowTag } from "@/lib/analytics";
 import {
-  computeCostPerHour,
   formatVND,
   formatDistanceKm,
   haversineKm,
@@ -149,11 +148,6 @@ export function SessionBookPreviewSheet({
     return null;
   }
 
-  const costPerHourDisplay =
-    session.costPerHour != null && session.costPerHour > 0
-      ? session.costPerHour
-      : computeCostPerHour(session.feeAmount, session.durationMin);
-
   const distanceKm =
     userLocation &&
     session.venue?.latitude != null &&
@@ -184,7 +178,7 @@ export function SessionBookPreviewSheet({
         role="dialog"
         aria-modal="true"
         aria-labelledby="session-book-preview-title"
-        className="fixed bottom-0 left-0 right-0 z-[121] flex max-h-[85vh] flex-col rounded-t-[16px] bg-white font-sans shadow-[0_-8px_30px_rgba(0,0,0,0.12)] transition-transform ease dark:border-t dark:border-card-border dark:bg-card"
+        className="fixed bottom-0 left-0 right-0 z-[121] flex flex-col rounded-t-[16px] bg-white font-sans shadow-[0_-8px_30px_rgba(0,0,0,0.12)] transition-transform ease dark:border-t dark:border-card-border dark:bg-card"
         style={{
           transform: sheetTransform,
           transitionDuration: `${TRANSITION_MS}ms`,
@@ -194,33 +188,28 @@ export function SessionBookPreviewSheet({
         <div className="flex shrink-0 flex-col items-center pt-3 pb-1" aria-hidden>
           <div className="h-1 w-10 rounded-full bg-muted-foreground/35" />
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-4">
+        <div className="shrink-0 px-4 pb-3">
           <h2 id="session-book-preview-title" className="text-base font-bold leading-snug text-foreground">
             {session.name}
           </h2>
-          <p className="mt-1 text-sm text-muted-foreground">
+          <p className="mt-0.5 text-sm text-muted-foreground">
             {session.club.name}
             {session.venue?.name ? ` · ${session.venue.name}` : ""}
           </p>
-          <p className="mt-2 text-sm text-foreground">
-            {session.startTime} – {session.endTime} · {session.durationMin} min
+          <p className="mt-1 text-sm text-foreground">
+            {session.startTime} – {session.endTime}
             {distanceKm != null && <> · {formatDistanceKm(distanceKm)}</>}
           </p>
-          <div className="mt-2 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+          <div className="mt-1">
             <span className="text-lg font-bold tabular-nums">{formatVND(session.feeAmount)}</span>
-            {costPerHourDisplay > 0 && (
-              <span className="text-sm tabular-nums text-muted-foreground">
-                {formatVND(costPerHourDisplay)}/hr
-              </span>
-            )}
           </div>
-          <div className="mt-3">
+          <div className="mt-2">
             <FillRateBar joined={session.joined} maxPlayers={session.maxPlayers} waitlisted={session.waitlisted} />
           </div>
-          <div className="mt-3">
+          <div className="mt-2">
             <SessionScoreAndDuprBadges input={scoreInput} />
           </div>
-          <div className="mt-4 border-t border-card-border pt-4">
+          <div className="mt-3 border-t border-card-border pt-3">
             <SessionScoreBreakdownPanel input={scoreInput} />
           </div>
         </div>
