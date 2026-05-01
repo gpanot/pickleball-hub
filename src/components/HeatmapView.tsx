@@ -20,10 +20,20 @@ import { useGeoStore } from "@/store/geoStore";
 const HCM_CENTER: [number, number] = [10.79, 106.71];
 const DEFAULT_ZOOM = 12;
 
+export interface HeatmapPopupStrings {
+  clubsAtCourt: string;
+  playersInBand: string;
+  sessions90d: string;
+  players: string;
+  sessionsBelow: string;
+}
+
 export interface HeatmapViewProps {
   venues: HeatmapVenue[];
   selectedDupr: number;
   className?: string;
+  /** Localised strings for the venue popup */
+  popupStrings?: HeatmapPopupStrings;
   /**
    * Called before opening a venue popup. Receives a callback that opens the popup.
    * Should return true to allow the popup, false to block (e.g. show login modal).
@@ -88,20 +98,27 @@ function buildBubbleIcon(count: number, norm: number): L.DivIcon {
 
 // ── popup ─────────────────────────────────────────────────────────────────────
 
-function buildPopupHtml(venue: HeatmapVenue, lo: string, hi: string, count: number): string {
-  // Clubs sorted by player count desc (already sorted from query layer)
+const DEFAULT_POPUP_STRINGS: HeatmapPopupStrings = {
+  clubsAtCourt: "Clubs at this court",
+  playersInBand: "players in band",
+  sessions90d: "sessions (90d)",
+  players: "players",
+  sessionsBelow: "↓ Sessions below update for this venue",
+};
+
+function buildPopupHtml(venue: HeatmapVenue, lo: string, hi: string, count: number, s: HeatmapPopupStrings): string {
   const activeClubs = venue.clubs.filter((c) => c.players > 0 || c.sessions > 0);
 
   const clubRowsHtml = activeClubs.length > 0
     ? `<div style="border-top:1px solid #e5e7eb;margin:8px 0 6px;padding-top:4px;">
-        <div style="font-size:10px;color:#9ca3af;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px;">Clubs at this court</div>
+        <div style="font-size:10px;color:#9ca3af;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px;">${s.clubsAtCourt}</div>
         ${activeClubs.map((c) => {
           const href = c.slug ? `/clubs/${encodeURIComponent(c.slug)}` : "#";
           return `<a href="${href}" style="display:block;text-decoration:none;color:inherit;border-radius:6px;padding:4px 2px;transition:background 0.1s;" onmouseover="this.style.background='#f3f4f6'" onmouseout="this.style.background='transparent'">
             <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
               <span style="font-size:12px;font-weight:500;color:#111827;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${c.venueName}</span>
               <div style="display:flex;align-items:center;gap:4px;white-space:nowrap;flex-shrink:0;">
-                <span style="font-size:11px;color:#6b7280;">${c.players} players</span>
+                <span style="font-size:11px;color:#6b7280;">${c.players} ${s.players}</span>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
               </div>
             </div>
@@ -117,15 +134,15 @@ function buildPopupHtml(venue: HeatmapVenue, lo: string, hi: string, count: numb
       <div style="display:flex;gap:16px;margin-bottom:4px;">
         <div>
           <div style="font-size:18px;font-weight:800;color:#22c55e;">${count}</div>
-          <div style="font-size:10px;color:#6b7280;">players in band</div>
+          <div style="font-size:10px;color:#6b7280;">${s.playersInBand}</div>
         </div>
         <div>
           <div style="font-size:18px;font-weight:800;color:#22c55e;">${venue.totalSessions90d}</div>
-          <div style="font-size:10px;color:#6b7280;">sessions (90d)</div>
+          <div style="font-size:10px;color:#6b7280;">${s.sessions90d}</div>
         </div>
       </div>
       ${clubRowsHtml}
-      <p style="font-size:11px;color:#9ca3af;margin-top:6px;">↓ Sessions below update for this venue</p>
+      <p style="font-size:11px;color:#9ca3af;margin-top:6px;">${s.sessionsBelow}</p>
     </div>`;
 }
 
@@ -146,7 +163,10 @@ function buildUserDotIcon(): L.DivIcon {
 
 // ── component ─────────────────────────────────────────────────────────────────
 
-export function HeatmapView({ venues, selectedDupr, className = "h-[480px] w-full", onBubbleClick, onVenueSelect, onVenueDeselect }: HeatmapViewProps) {
+export function HeatmapView({ venues, selectedDupr, className = "h-[480px] w-full", popupStrings, onBubbleClick, onVenueSelect, onVenueDeselect }: HeatmapViewProps) {
+  const ps = popupStrings ?? DEFAULT_POPUP_STRINGS;
+  const psRef = useRef(ps);
+  psRef.current = ps;
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const bubblesRef = useRef<L.Marker[]>([]);
@@ -243,7 +263,7 @@ export function HeatmapView({ venues, selectedDupr, className = "h-[480px] w-ful
     for (const { venue, count, norm } of entries) {
       const icon = buildBubbleIcon(count, norm);
       const marker = L.marker([venue.lat, venue.lng], { icon, zIndexOffset: 400 });
-      const popupContent = buildPopupHtml(venue, lo, hi, count);
+      const popupContent = buildPopupHtml(venue, lo, hi, count, psRef.current);
 
       // Always pre-bind the popup so Leaflet knows about it
       marker.bindPopup(popupContent, { maxWidth: 280 });
@@ -283,7 +303,7 @@ export function HeatmapView({ venues, selectedDupr, className = "h-[480px] w-ful
     const loN = parseFloat(lo);
     const hiN = parseFloat(hi);
     const count = countInBand(open.venue, loN, hiN);
-    const freshHtml = buildPopupHtml(open.venue, lo, hi, count);
+    const freshHtml = buildPopupHtml(open.venue, lo, hi, count, psRef.current);
     open.marker.setPopupContent(freshHtml);
   }, [selectedDupr, mapReady]);
 

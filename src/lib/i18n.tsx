@@ -526,6 +526,18 @@ const translations = {
     heatmapLoginGoogle: "Continue with Google",
     heatmapLoginDisclaimer: "No password. No spam.",
     heatmapLoginMaybeLater: "Maybe later",
+    // Club card (ClubStatsCard)
+    clubCardMembers: "Members",
+    clubCardSessionsWeek: "Sessions/week",
+    clubCardPlayersToday: "Players today",
+    clubCardFillRate: "Fill rate",
+    clubCardAvgPrice: "Avg price",
+    // Heatmap popup
+    heatmapPopupClubsAtCourt: "Clubs at this court",
+    heatmapPopupPlayersInBand: "players in band",
+    heatmapPopupSessions90d: "sessions (90d)",
+    heatmapPopupPlayers: "người chơi",
+    heatmapPopupSessionsBelow: "↓ Sessions below update for this venue",
     // Club detail page
     clubBackToClubs: "← Back to clubs",
     clubMembers: "members",
@@ -1050,6 +1062,18 @@ const translations = {
     heatmapLoginGoogle: "Tiếp tục với Google",
     heatmapLoginDisclaimer: "Không cần mật khẩu. Không spam.",
     heatmapLoginMaybeLater: "Để sau",
+    // Club card (ClubStatsCard)
+    clubCardMembers: "Thành viên",
+    clubCardSessionsWeek: "Buổi/tuần",
+    clubCardPlayersToday: "Người chơi hôm nay",
+    clubCardFillRate: "Tỷ lệ đầy",
+    clubCardAvgPrice: "Giá TB",
+    // Heatmap popup
+    heatmapPopupClubsAtCourt: "CLB tại sân này",
+    heatmapPopupPlayersInBand: "người chơi trong dải",
+    heatmapPopupSessions90d: "buổi (90 ngày)",
+    heatmapPopupPlayers: "người chơi",
+    heatmapPopupSessionsBelow: "↓ Buổi chơi bên dưới cập nhật theo sân này",
     // Club detail page
     clubBackToClubs: "← Quay lại danh sách CLB",
     clubMembers: "thành viên",

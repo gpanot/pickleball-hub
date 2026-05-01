@@ -273,6 +273,13 @@ export function HeatmapClient({ heatmapData, sessions, hcmMedianCostPerHour }: P
           venues={venues}
           selectedDupr={selectedDupr}
           className="h-[480px] w-full"
+          popupStrings={{
+            clubsAtCourt: t("heatmapPopupClubsAtCourt"),
+            playersInBand: t("heatmapPopupPlayersInBand"),
+            sessions90d: t("heatmapPopupSessions90d"),
+            players: t("heatmapPopupPlayers"),
+            sessionsBelow: t("heatmapPopupSessionsBelow"),
+          }}
           onBubbleClick={handleBubbleClick}
           onVenueSelect={(venue) => {
             setSelectedVenue(venue);

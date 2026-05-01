@@ -46,22 +46,22 @@ export function ClubStatsCard({ club }: ClubStatsCardProps) {
       </div>
       <div className="grid grid-cols-2 gap-2 text-xs">
         <div>
-          <span className="text-muted">Members</span>
+          <span className="text-muted">{t("clubCardMembers")}</span>
           <p className="font-bold">{club.numMembers.toLocaleString()}</p>
         </div>
         <div>
-          <span className="text-muted">Sessions/week</span>
+          <span className="text-muted">{t("clubCardSessionsWeek")}</span>
           <p className="font-bold">{club.totalSessionsWeek}</p>
         </div>
         <div>
-          <span className="text-muted">Players today</span>
+          <span className="text-muted">{t("clubCardPlayersToday")}</span>
           <p className="font-bold">
             {club.totalJoined}/{club.totalCapacity}
           </p>
         </div>
         <div className="flex flex-col gap-1.5">
           <div>
-            <span className="text-muted">Fill rate</span>
+            <span className="text-muted">{t("clubCardFillRate")}</span>
             <p className={`font-bold ${fillPct >= 75 ? "text-yellow-500" : "text-green-500"}`}>
               {fillPct}%
             </p>
@@ -76,7 +76,7 @@ export function ClubStatsCard({ club }: ClubStatsCardProps) {
           )}
         </div>
         <div className="col-span-2">
-          <span className="text-muted">Avg price</span>
+          <span className="text-muted">{t("clubCardAvgPrice")}</span>
           <p className="font-bold">{formatVND(club.avgFee)}</p>
         </div>
       </div>
