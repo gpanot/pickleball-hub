@@ -1,7 +1,7 @@
 "use client";
 
 import { createPortal } from "react-dom";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { FillRateBar } from "@/components/FillRateBar";
 import { SessionScoreAndDuprBadges, SessionScoreBreakdownPanel } from "@/components/SessionScoreBadge";
 import { useI18n } from "@/lib/i18n";
@@ -65,6 +65,8 @@ export function SessionBookPreviewSheet({
     const stored = localStorage.getItem(BREAKDOWN_KEY);
     return stored === null ? true : stored === "true";
   });
+
+  const breakdownRef = useRef<HTMLDivElement>(null);
 
   const toggleBreakdown = useCallback(() => {
     setBreakdownOpen((prev) => {
@@ -224,13 +226,18 @@ export function SessionBookPreviewSheet({
             <FillRateBar joined={session.joined} maxPlayers={session.maxPlayers} waitlisted={session.waitlisted} />
           </div>
           <div className="mt-2">
-            <SessionScoreAndDuprBadges input={scoreInput} />
+            <SessionScoreAndDuprBadges
+              input={scoreInput}
+              onClick={toggleBreakdown}
+              className="transition-opacity hover:opacity-90"
+            />
           </div>
           <div className="mt-3 border-t border-card-border pt-3">
             <button
               type="button"
               onClick={toggleBreakdown}
               className="mb-2 flex w-full items-center justify-between text-left"
+              aria-expanded={breakdownOpen}
             >
               <span className="text-xs font-medium text-muted-foreground">{t("scoreHowCalculated")}</span>
               <svg
@@ -242,14 +249,26 @@ export function SessionBookPreviewSheet({
                 strokeWidth="2.5"
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                className="shrink-0 text-muted-foreground transition-transform duration-200"
+                className="shrink-0 text-muted-foreground transition-transform duration-300"
                 style={{ transform: breakdownOpen ? "rotate(180deg)" : "rotate(0deg)" }}
                 aria-hidden
               >
                 <polyline points="6 9 12 15 18 9" />
               </svg>
             </button>
-            {breakdownOpen && <SessionScoreBreakdownPanel input={scoreInput} />}
+            <div
+              ref={breakdownRef}
+              style={{
+                overflow: "hidden",
+                maxHeight: breakdownOpen
+                  ? `${breakdownRef.current?.scrollHeight ?? 600}px`
+                  : "0px",
+                opacity: breakdownOpen ? 1 : 0,
+                transition: "max-height 350ms ease, opacity 250ms ease",
+              }}
+            >
+              <SessionScoreBreakdownPanel input={scoreInput} />
+            </div>
           </div>
         </div>
         <div className="shrink-0 space-y-2 border-t border-card-border bg-white px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 dark:bg-card">

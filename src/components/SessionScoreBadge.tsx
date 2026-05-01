@@ -460,9 +460,12 @@ export function SessionScoreBadge({
 export function SessionScoreAndDuprBadges({
   input,
   className = "",
+  onClick,
 }: {
   input: SessionScoreInput;
   className?: string;
+  /** When set, the entire tile row acts as a toggle button (e.g. to expand/collapse the breakdown). */
+  onClick?: () => void;
 }) {
   const { t } = useI18n();
   const result = computeSessionScore(input);
@@ -472,8 +475,12 @@ export function SessionScoreAndDuprBadges({
   const hasRegulars = result.returningPlayerPct != null;
   const regularsColor = hasRegulars ? getRegularsColor(result.returningPlayerPct!) : "#9ca3af";
 
+  const Tag = onClick ? ("button" as const) : ("div" as const);
   return (
-    <div className={`flex items-stretch gap-2 ${className}`}>
+    <Tag
+      className={`flex items-stretch gap-2 ${className}${onClick ? " cursor-pointer" : ""}`}
+      {...(onClick ? { type: "button" as const, onClick } : {})}
+    >
       {/* Score KPI */}
       <div
         className="flex flex-1 flex-col items-start gap-0.5 rounded-xl border-2 px-3 py-2.5"
@@ -539,7 +546,7 @@ export function SessionScoreAndDuprBadges({
           </>
         )}
       </div>
-    </div>
+    </Tag>
   );
 }
 
