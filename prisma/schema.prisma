@@ -247,6 +247,47 @@ model VerificationToken {
   @@map("auth_verification_tokens")
 }
 
+model AdminSettings {
+  id                String   @id @default("singleton")
+  llmModel          String   @default("claude-haiku-4-5-20251001") @map("llm_model")
+  temperature       Float    @default(0.7)
+  maxTokens         Int      @default(1000) @map("max_tokens")
+  monthlyBudgetUsd  Float    @default(5.00) @map("monthly_budget_usd")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  @@map("admin_settings")
+}
+
+model LlmUsageLog {
+  id           String   @id @default(uuid())
+  model        String
+  inputTokens  Int      @map("input_tokens")
+  outputTokens Int      @map("output_tokens")
+  costUsd      Float    @map("cost_usd")
+  postType     String   @map("post_type")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@map("llm_usage_logs")
+}
+
+model ContentPost {
+  id            String    @id @default(uuid())
+  postType      String    @map("post_type")
+  channel       String
+  generatedText String    @map("generated_text")
+  status        String    @default("pending")
+  scheduledDate DateTime  @map("scheduled_date")
+  postedAt      DateTime? @map("posted_at")
+  postNow       Boolean   @default(false) @map("post_now")
+  error         String?
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  @@index([status])
+  @@index([scheduledDate])
+  @@map("content_posts")
+}
+
 /// Aggregated DUPR participation for a session row (keyed by sessions.id).
 model SessionDuprStat {
   sessionId              Int      @id @map("session_id")

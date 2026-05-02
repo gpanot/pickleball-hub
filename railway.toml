@@ -5,7 +5,10 @@ builder = "dockerfile"
 dockerfilePath = "scraper/Dockerfile"
 
 [deploy]
-# Runs 3x daily at 6:00 AM, 12:00 PM, and 9:00 PM Vietnam time (UTC+7).
-# UTC equivalents: 23:00 (prev day), 05:00, 14:00.
-# entrypoint.py decides whether to also refresh clubs (Mon/Wed only).
-cronSchedule = "0 23,5,14 * * *"
+# Scraper cron: 6:00 AM, 12:00 PM, 9:00 PM Vietnam time (UTC+7) → UTC: 23:00, 05:00, 14:00
+# Promotion cron: 6:00 AM (morning content) and 3:00 PM (competitive tonight) VN → UTC: 23:00, 08:00
+# All slots combined (UTC): 23:00, 05:00, 08:00, 14:00
+# entrypoint.py decides what to run based on the VN hour.
+cronSchedule = "0 23,5,8,14 * * *"
+# Token refresh: 1st of every month at 8:00 AM VN (01:00 UTC)
+# Handled by entrypoint.py when day==1 and hour==8 VN.

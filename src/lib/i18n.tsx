@@ -533,11 +533,11 @@ const translations = {
     clubCardFillRate: "Fill rate",
     clubCardAvgPrice: "Avg price",
     // Heatmap popup
-    heatmapPopupClubsAtCourt: "Clubs at this court",
-    heatmapPopupPlayersInBand: "players in band",
-    heatmapPopupSessions90d: "sessions (90d)",
-    heatmapPopupPlayers: "người chơi",
-    heatmapPopupSessionsBelow: "↓ Sessions below update for this venue",
+    heatmapPopupClubsAtCourt: "Who plays here",
+    heatmapPopupPlayersAtLevel: "players at your level visited here in the last 90 days",
+    heatmapPopupSessionsHeld: "sessions held at this venue",
+    heatmapPopupPlayers90d: "players (90d)",
+    heatmapPopupSessionsBelow: "Upcoming sessions below update for this venue",
     // Club detail page
     clubBackToClubs: "← Back to clubs",
     clubMembers: "members",
@@ -1069,11 +1069,11 @@ const translations = {
     clubCardFillRate: "Tỷ lệ đầy",
     clubCardAvgPrice: "Giá TB",
     // Heatmap popup
-    heatmapPopupClubsAtCourt: "CLB tại sân này",
-    heatmapPopupPlayersInBand: "người chơi trong dải",
-    heatmapPopupSessions90d: "buổi (90 ngày)",
-    heatmapPopupPlayers: "người chơi",
-    heatmapPopupSessionsBelow: "↓ Buổi chơi bên dưới cập nhật theo sân này",
+    heatmapPopupClubsAtCourt: "Câu lạc bộ tại sân này",
+    heatmapPopupPlayersAtLevel: "người chơi cùng trình độ đã đến đây trong 90 ngày qua",
+    heatmapPopupSessionsHeld: "buổi chơi đã diễn ra tại sân này",
+    heatmapPopupPlayers90d: "người chơi (90 ngày)",
+    heatmapPopupSessionsBelow: "Buổi chơi sắp tới bên dưới được lọc theo sân này",
     // Club detail page
     clubBackToClubs: "← Quay lại danh sách CLB",
     clubMembers: "thành viên",

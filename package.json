@@ -12,6 +12,7 @@
     "db:migrate-scrape-day": "npx tsx scripts/migrate-scrape-day.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.92.0",
     "@auth/prisma-adapter": "^2.11.2",
     "@prisma/client": "^6.19.3",
     "@vercel/analytics": "^1.5.0",

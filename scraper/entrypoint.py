@@ -32,6 +32,32 @@ from dupr_refresh import run_dupr_refresh
 VN_TZ = timezone(timedelta(hours=7))
 SCRAPER_SECRET = os.environ.get("SCRAPER_SECRET", "")
 
+# Promotion module is only imported when the required env vars are present
+# so missing API keys on the scraper-only deploys don't crash the container.
+def _try_run_promotion(force: bool = False, post_type: str | None = None):
+    """Run the promotion module if ANTHROPIC_API_KEY is configured."""
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        print("  [promotion] ANTHROPIC_API_KEY not set — skipping promotion run.", flush=True)
+        return
+    try:
+        from promotion.main import run as promotion_run
+        promotion_run(force=force, post_type=post_type)
+    except Exception as e:
+        print(f"  [promotion] ERROR (non-fatal): {e}", flush=True)
+
+
+def _try_refresh_tokens():
+    """Run token refresh on the 1st of each month."""
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        return
+    try:
+        from promotion.refresh_tokens import refresh_zalo_token, remind_facebook_refresh
+        print("\n=== Monthly token refresh ===", flush=True)
+        refresh_zalo_token()
+        remind_facebook_refresh()
+    except Exception as e:
+        print(f"  [token_refresh] ERROR (non-fatal): {e}", flush=True)
+
 _running_lock = threading.Lock()
 _is_running = False
 
@@ -80,6 +106,7 @@ def run_scrape() -> dict:
     try:
         now = datetime.now(VN_TZ)
         dow = now.isoweekday()
+        hour = now.hour
         print(f"\n=== Pickleball Hub Scrape — {now.strftime('%A %Y-%m-%d %H:%M')} VN ===", flush=True)
 
         scan_rc = None
@@ -117,6 +144,20 @@ def run_scrape() -> dict:
             print("\n=== STEP 3/3: Skipping DUPR refresh (runs Sundays only) ===", flush=True)
 
         print("\n=== Done ===", flush=True)
+
+        # ── Promotion module ──────────────────────────────────────────────
+        # 6am VN (UTC 23:00): morning content (club spotlight, heatmap on Mondays)
+        # 3pm VN (UTC 08:00): competitive tonight post
+        # Both runs also dispatch any approved/post_now posts.
+        # Token refresh runs on the 1st of each month at 6am/8am VN.
+        if hour in (6, 15):
+            print(f"\n=== Promotion — hour={hour} VN ===", flush=True)
+            _try_run_promotion()
+
+        if hour in (6, 8) and now.day == 1:
+            _try_refresh_tokens()
+        # ─────────────────────────────────────────────────────────────────
+
         return {
             "ok": ingest_rc == 0,
             "scan_clubs_rc": scan_rc,
@@ -155,10 +196,34 @@ class Handler(BaseHTTPRequestHandler):
         else:
             self._json_response(200, {
                 "service": "pickleball-hub-scraper",
-                "endpoints": {"POST /run": "trigger scrape", "GET /health": "health check"},
+                "endpoints": {
+                    "POST /run": "trigger scrape",
+                    "POST /promote": "trigger content generation (body: {force, post_type})",
+                    "GET /health": "health check",
+                },
             })
 
     def do_POST(self):
+        if self.path == "/promote":
+            if not self._check_auth():
+                return
+            # Parse optional JSON body for { force, post_type }
+            length = int(self.headers.get("Content-Length", 0))
+            body = {}
+            if length:
+                try:
+                    body = json.loads(self.rfile.read(length).decode("utf-8"))
+                except Exception:
+                    pass
+            force = bool(body.get("force", True))
+            post_type = body.get("post_type") or None
+            try:
+                _try_run_promotion(force=force, post_type=post_type)
+                self._json_response(200, {"ok": True, "force": force, "post_type": post_type})
+            except Exception as e:
+                self._json_response(500, {"ok": False, "error": str(e)})
+            return
+
         if self.path == "/run":
             if not self._check_auth():
                 return

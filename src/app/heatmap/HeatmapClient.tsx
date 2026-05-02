@@ -275,9 +275,9 @@ export function HeatmapClient({ heatmapData, sessions, hcmMedianCostPerHour }: P
           className="h-[480px] w-full"
           popupStrings={{
             clubsAtCourt: t("heatmapPopupClubsAtCourt"),
-            playersInBand: t("heatmapPopupPlayersInBand"),
-            sessions90d: t("heatmapPopupSessions90d"),
-            players: t("heatmapPopupPlayers"),
+            playersAtLevel: t("heatmapPopupPlayersAtLevel"),
+            sessionsHeld: t("heatmapPopupSessionsHeld"),
+            players90d: t("heatmapPopupPlayers90d"),
             sessionsBelow: t("heatmapPopupSessionsBelow"),
           }}
           onBubbleClick={handleBubbleClick}

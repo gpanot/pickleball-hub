@@ -22,9 +22,9 @@ const DEFAULT_ZOOM = 12;
 
 export interface HeatmapPopupStrings {
   clubsAtCourt: string;
-  playersInBand: string;
-  sessions90d: string;
-  players: string;
+  playersAtLevel: string;
+  sessionsHeld: string;
+  players90d: string;
   sessionsBelow: string;
 }
 
@@ -99,18 +99,23 @@ function buildBubbleIcon(count: number, norm: number): L.DivIcon {
 // ── popup ─────────────────────────────────────────────────────────────────────
 
 const DEFAULT_POPUP_STRINGS: HeatmapPopupStrings = {
-  clubsAtCourt: "Clubs at this court",
-  playersInBand: "players in band",
-  sessions90d: "sessions (90d)",
-  players: "players",
-  sessionsBelow: "↓ Sessions below update for this venue",
+  clubsAtCourt: "Who plays here",
+  playersAtLevel: "players at your level visited here in the last 90 days",
+  sessionsHeld: "sessions held at this venue",
+  players90d: "players (90d)",
+  sessionsBelow: "Upcoming sessions below update for this venue",
 };
 
 function buildPopupHtml(venue: HeatmapVenue, lo: string, hi: string, count: number, s: HeatmapPopupStrings): string {
   const activeClubs = venue.clubs.filter((c) => c.players > 0 || c.sessions > 0);
 
+  // Truncate long venue names — show full on hover via title attr
+  const rawName = venue.venueName;
+  const displayName = rawName.length > 40 ? rawName.slice(0, 40).trimEnd() + "…" : rawName;
+  const titleAttr = rawName.length > 40 ? ` title="${rawName.replace(/"/g, "&quot;")}"` : "";
+
   const clubRowsHtml = activeClubs.length > 0
-    ? `<div style="border-top:1px solid #e5e7eb;margin:8px 0 6px;padding-top:4px;">
+    ? `<div style="border-top:1px solid #e5e7eb;margin:10px 0 6px;padding-top:6px;">
         <div style="font-size:10px;color:#9ca3af;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px;">${s.clubsAtCourt}</div>
         ${activeClubs.map((c) => {
           const href = c.slug ? `/clubs/${encodeURIComponent(c.slug)}` : "#";
@@ -118,7 +123,7 @@ function buildPopupHtml(venue: HeatmapVenue, lo: string, hi: string, count: numb
             <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
               <span style="font-size:12px;font-weight:500;color:#111827;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${c.venueName}</span>
               <div style="display:flex;align-items:center;gap:4px;white-space:nowrap;flex-shrink:0;">
-                <span style="font-size:11px;color:#6b7280;">${c.players} ${s.players}</span>
+                <span style="font-size:11px;color:#6b7280;">${c.players} ${s.players90d}</span>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
               </div>
             </div>
@@ -128,21 +133,19 @@ function buildPopupHtml(venue: HeatmapVenue, lo: string, hi: string, count: numb
     : "";
 
   return `
-    <div style="font-family:system-ui,sans-serif;min-width:210px;max-width:290px;">
-      <div style="font-weight:700;font-size:13px;margin-bottom:2px;">${venue.venueName}</div>
-      <div style="font-size:11px;color:#6b7280;margin-bottom:8px;">DUPR ${lo} – ${hi}</div>
-      <div style="display:flex;gap:16px;margin-bottom:4px;">
-        <div>
-          <div style="font-size:18px;font-weight:800;color:#22c55e;">${count}</div>
-          <div style="font-size:10px;color:#6b7280;">${s.playersInBand}</div>
-        </div>
-        <div>
-          <div style="font-size:18px;font-weight:800;color:#22c55e;">${venue.totalSessions90d}</div>
-          <div style="font-size:10px;color:#6b7280;">${s.sessions90d}</div>
-        </div>
+    <div style="font-family:system-ui,sans-serif;min-width:220px;max-width:300px;">
+      <div style="font-weight:700;font-size:13px;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"${titleAttr}>${displayName}</div>
+      <div style="font-size:11px;color:#6b7280;margin-bottom:10px;">DUPR ${lo} – ${hi}</div>
+      <div style="margin-bottom:2px;">
+        <span style="font-size:20px;font-weight:800;color:#22c55e;">${count}</span>
+        <span style="font-size:11px;color:#6b7280;margin-left:4px;">${s.playersAtLevel}</span>
+      </div>
+      <div style="margin-bottom:4px;">
+        <span style="font-size:20px;font-weight:800;color:#22c55e;">${venue.totalSessions90d}</span>
+        <span style="font-size:11px;color:#6b7280;margin-left:4px;">${s.sessionsHeld}</span>
       </div>
       ${clubRowsHtml}
-      <p style="font-size:11px;color:#9ca3af;margin-top:6px;">${s.sessionsBelow}</p>
+      <p style="font-size:10px;color:#9ca3af;margin-top:6px;margin-bottom:0;">${s.sessionsBelow}</p>
     </div>`;
 }
 
