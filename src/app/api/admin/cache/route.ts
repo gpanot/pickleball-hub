@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { revalidateTag } from "next/cache";
+import { revalidatePath } from "next/cache";
 import { isAdminAuthenticated } from "@/lib/admin-auth";
 
 const ALLOWED_TAGS = ["heatmap", "dupr-distribution"] as const;
-type AllowedTag = (typeof ALLOWED_TAGS)[number];
+
+const TAG_PATHS: Record<string, string[]> = {
+  heatmap: ["/api/heatmap", "/heatmap"],
+  "dupr-distribution": ["/api/heatmap", "/heatmap"],
+};
 
 export async function POST(req: NextRequest) {
   if (!(await isAdminAuthenticated())) {
@@ -26,7 +30,9 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  revalidateTag(tag as AllowedTag);
+  for (const path of TAG_PATHS[tag] ?? []) {
+    revalidatePath(path);
+  }
 
   return NextResponse.json({
     success: true,
