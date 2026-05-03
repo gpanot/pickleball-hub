@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition, useCallback } from "react";
+import { useState, useTransition, useCallback, useEffect } from "react";
 
 type Post = {
   id: string;
@@ -179,6 +179,130 @@ function PostCard({
         </button>
       </div>
     </div>
+  );
+}
+
+type ToastState = { message: string; type: "success" | "error" } | null;
+
+function Toast({ toast, onDismiss }: { toast: ToastState; onDismiss: () => void }) {
+  useEffect(() => {
+    if (!toast) return;
+    const id = setTimeout(onDismiss, 4000);
+    return () => clearTimeout(id);
+  }, [toast, onDismiss]);
+
+  if (!toast) return null;
+
+  const isSuccess = toast.type === "success";
+  return (
+    <div
+      className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-4 py-3 rounded-xl shadow-xl border text-sm font-medium transition-all ${
+        isSuccess
+          ? "bg-emerald-950 border-emerald-700 text-emerald-300"
+          : "bg-red-950 border-red-700 text-red-300"
+      }`}
+    >
+      <span
+        className={`flex-shrink-0 w-4 h-4 rounded-full flex items-center justify-center text-xs font-bold ${
+          isSuccess ? "bg-emerald-600 text-white" : "bg-red-600 text-white"
+        }`}
+      >
+        {isSuccess ? "✓" : "✕"}
+      </span>
+      {toast.message}
+      <button
+        onClick={onDismiss}
+        className="ml-2 text-current opacity-50 hover:opacity-100 transition"
+        aria-label="Dismiss"
+      >
+        ×
+      </button>
+    </div>
+  );
+}
+
+function CacheManagement() {
+  const [clearing, setClearing] = useState<string | null>(null);
+  const [lastCleared, setLastCleared] = useState<Date | null>(null);
+  const [toast, setToast] = useState<ToastState>(null);
+
+  async function clearTag(tag: string) {
+    const res = await fetch("/api/admin/cache", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tag }),
+    });
+    const data = await res.json() as { success?: boolean; error?: string };
+    if (!res.ok || !data.success) {
+      throw new Error(data.error ?? `HTTP ${res.status}`);
+    }
+  }
+
+  async function handleClear(tags: string[]) {
+    const key = tags.join("+");
+    setClearing(key);
+    try {
+      for (const tag of tags) {
+        await clearTag(tag);
+      }
+      setLastCleared(new Date());
+      setToast({ message: "Cache cleared successfully", type: "success" });
+    } catch (e) {
+      setToast({ message: String(e), type: "error" });
+    } finally {
+      setClearing(null);
+    }
+  }
+
+  function lastClearedLabel() {
+    if (!lastCleared) return "never";
+    const secs = Math.floor((Date.now() - lastCleared.getTime()) / 1000);
+    if (secs < 60) return `${secs} second${secs !== 1 ? "s" : ""} ago`;
+    const mins = Math.floor(secs / 60);
+    return `${mins} minute${mins !== 1 ? "s" : ""} ago`;
+  }
+
+  const buttons: { label: string; tags: string[]; key: string }[] = [
+    { label: "Clear Heatmap Cache",       tags: ["heatmap"],           key: "heatmap" },
+    { label: "Clear DUPR Cache",           tags: ["dupr-distribution"], key: "dupr-distribution" },
+    { label: "Clear All",                  tags: ["heatmap", "dupr-distribution"], key: "heatmap+dupr-distribution" },
+  ];
+
+  return (
+    <>
+      <Toast toast={toast} onDismiss={() => setToast(null)} />
+      <section>
+        <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">
+          Cache Management
+        </h2>
+        <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 space-y-4">
+          <div className="flex flex-wrap gap-2">
+            {buttons.map(({ label, tags, key }) => {
+              const isActive = clearing === key;
+              const isBusy = clearing !== null;
+              const isAll = key === "heatmap+dupr-distribution";
+              return (
+                <button
+                  key={key}
+                  disabled={isBusy}
+                  onClick={() => handleClear(tags)}
+                  className={`flex items-center gap-1.5 px-3.5 py-1.5 text-sm rounded-lg border transition disabled:opacity-50 disabled:cursor-not-allowed ${
+                    isAll
+                      ? "border-orange-800 text-orange-400 hover:bg-orange-950/40"
+                      : "border-gray-700 text-gray-300 hover:border-gray-500 hover:text-white"
+                  }`}
+                >
+                  {isActive ? <><Spinner /> Clearing…</> : label}
+                </button>
+              );
+            })}
+          </div>
+          <p className="text-xs text-gray-500">
+            Last cleared: <span className="text-gray-400">{lastClearedLabel()}</span>
+          </p>
+        </div>
+      </section>
+    </>
   );
 }
 
@@ -397,6 +521,9 @@ export function ContentDashboard({
           </div>
         )}
       </section>
+
+      {/* Cache management */}
+      <CacheManagement />
 
       {/* Posted history */}
       <section>

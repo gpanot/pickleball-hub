@@ -778,6 +778,9 @@ export interface HeatmapVenueClub {
   slug: string;
   players: number;
   sessions: number;
+  /** Median dupr_doubles of confirmed players at this venue via this club (90d).
+   *  null when fewer than 3 rated players — not enough data for a meaningful median. */
+  medianDupr: number | null;
 }
 
 export interface HeatmapVenue {
@@ -805,6 +808,16 @@ export interface HeatmapData {
 /** Snap a coordinate to a ~100 m grid for deduplication. */
 function snapCoord(coord: number): number {
   return Math.round(coord / 0.0009) * 0.0009;
+}
+
+/** Compute the median of a sorted number array. Returns null for empty arrays. */
+function computeMedian(values: number[]): number | null {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0
+    ? (sorted[mid - 1] + sorted[mid]) / 2
+    : sorted[mid];
 }
 
 /**
@@ -852,8 +865,8 @@ export async function getHeatmapData(): Promise<HeatmapData> {
       lng: number;
       sessions: Set<number>;
       buckets: Map<string, Set<string>>; // duprBucket -> Set<userId>
-      // club_id -> { name, slug, sessions, unique players }
-      clubs: Map<number, { name: string; slug: string; sessions: Set<number>; players: Set<string> }>;
+      // club_id -> { name, slug, sessions, unique players, dupr values for median }
+      clubs: Map<number, { name: string; slug: string; sessions: Set<number>; players: Set<string>; duprValues: number[] }>;
     }
   >();
 
@@ -882,7 +895,7 @@ export async function getHeatmapData(): Promise<HeatmapData> {
     const club = roster.session.club;
     if (club) {
       if (!entry.clubs.has(club.id)) {
-        entry.clubs.set(club.id, { name: club.name, slug: club.slug ?? "", sessions: new Set(), players: new Set() });
+        entry.clubs.set(club.id, { name: club.name, slug: club.slug ?? "", sessions: new Set(), players: new Set(), duprValues: [] });
       }
       const clubEntry = entry.clubs.get(club.id)!;
       clubEntry.sessions.add(roster.session.id);
@@ -904,6 +917,11 @@ export async function getHeatmapData(): Promise<HeatmapData> {
     }
     entry.buckets.get(bucket)!.add(roster.userId.toString());
     allDuprValues.push(rawDupr);
+
+    // Also accumulate per-club DUPR values (only rated players with duprDoubles)
+    if (club && roster.player?.duprDoubles != null) {
+      entry.clubs.get(club.id)!.duprValues.push(Number(roster.player.duprDoubles));
+    }
   }
 
   // Step 2: Merge venue_ids by snapped coordinate
@@ -916,8 +934,8 @@ export async function getHeatmapData(): Promise<HeatmapData> {
       canonName: string;
       sessions: Set<number>;
       buckets: Map<string, Set<string>>;
-      // club_id -> { name, slug, sessions, unique players } — merged across all venue_ids at this coord
-      clubs: Map<number, { name: string; slug: string; sessions: Set<number>; players: Set<string> }>;
+      // club_id -> { name, slug, sessions, unique players, dupr values } — merged across all venue_ids at this coord
+      clubs: Map<number, { name: string; slug: string; sessions: Set<number>; players: Set<string>; duprValues: number[] }>;
     }
   >();
 
@@ -951,11 +969,12 @@ export async function getHeatmapData(): Promise<HeatmapData> {
     // Merge club breakdowns across duplicate venue_ids at this coord
     for (const [clubId, clubData] of raw.clubs) {
       if (!group.clubs.has(clubId)) {
-        group.clubs.set(clubId, { name: clubData.name, slug: clubData.slug, sessions: new Set(), players: new Set() });
+        group.clubs.set(clubId, { name: clubData.name, slug: clubData.slug, sessions: new Set(), players: new Set(), duprValues: [] });
       }
       const gc = group.clubs.get(clubId)!;
       for (const sid of clubData.sessions) gc.sessions.add(sid);
       for (const uid of clubData.players) gc.players.add(uid);
+      for (const v of clubData.duprValues) gc.duprValues.push(v);
     }
   }
 
@@ -969,13 +988,22 @@ export async function getHeatmapData(): Promise<HeatmapData> {
 
     // Build club list from actual club entities, sorted by player count desc
     const clubs: HeatmapVenueClub[] = [...group.clubs.values()]
-      .map((c) => ({
-        venueName: c.name,
-        venueId: group.venueIds[0] ? String(group.venueIds[0]) : "",
-        slug: c.slug,
-        players: c.players.size,
-        sessions: c.sessions.size,
-      }))
+      .map((c) => {
+        const rawMedian = c.duprValues.length >= 3
+          ? computeMedian(c.duprValues)
+          : null;
+        const medianDupr = rawMedian !== null
+          ? Math.round(rawMedian * 10) / 10
+          : null;
+        return {
+          venueName: c.name,
+          venueId: group.venueIds[0] ? String(group.venueIds[0]) : "",
+          slug: c.slug,
+          players: c.players.size,
+          sessions: c.sessions.size,
+          medianDupr,
+        };
+      })
       .filter((c) => c.players > 0 || c.sessions > 0)
       .sort((a, b) => b.players - a.players);
 

@@ -535,7 +535,7 @@ const translations = {
     clubCardFillRate: "Fill rate",
     clubCardAvgPrice: "Avg price",
     // Heatmap popup
-    heatmapPopupClubsAtCourt: "Who plays here",
+    heatmapPopupClubsAtCourt: "Who plays here (90 days)",
     heatmapPopupPlayersAtLevel: "players at your level visited here in the last 90 days",
     heatmapPopupSessionsHeld: "sessions held at this venue",
     heatmapPopupPlayers90d: "players (90d)",
@@ -1073,7 +1073,7 @@ const translations = {
     clubCardFillRate: "Tỷ lệ đầy",
     clubCardAvgPrice: "Giá TB",
     // Heatmap popup
-    heatmapPopupClubsAtCourt: "Câu lạc bộ tại sân này",
+    heatmapPopupClubsAtCourt: "AI CHƠI Ở ĐÂY (90 ngày)",
     heatmapPopupPlayersAtLevel: "người chơi cùng trình độ đã đến đây trong 90 ngày qua",
     heatmapPopupSessionsHeld: "buổi chơi đã diễn ra tại sân này",
     heatmapPopupPlayers90d: "người chơi (90 ngày)",

@@ -28,6 +28,16 @@ export interface HeatmapPopupStrings {
   sessionsBelow: string;
 }
 
+// ── DUPR colour scale (matches heatmap bubble thresholds) ─────────────────────
+
+function getDuprColor(dupr: number): string {
+  if (dupr < 2.5) return "#60a5fa"; // blue
+  if (dupr < 3.0) return "#34d399"; // teal
+  if (dupr < 3.5) return "#22c55e"; // green
+  if (dupr < 4.0) return "#f97316"; // orange
+  return "#ef4444";                  // red
+}
+
 export interface HeatmapViewProps {
   venues: HeatmapVenue[];
   selectedDupr: number;
@@ -99,15 +109,23 @@ function buildBubbleIcon(count: number, norm: number): L.DivIcon {
 // ── popup ─────────────────────────────────────────────────────────────────────
 
 const DEFAULT_POPUP_STRINGS: HeatmapPopupStrings = {
-  clubsAtCourt: "Who plays here",
+  clubsAtCourt: "Who plays here (90 days)",
   playersAtLevel: "players at your level visited here in the last 90 days",
   sessionsHeld: "sessions held at this venue",
   players90d: "players (90d)",
   sessionsBelow: "Upcoming sessions below update for this venue",
 };
 
-function buildPopupHtml(venue: HeatmapVenue, lo: string, hi: string, count: number, s: HeatmapPopupStrings): string {
-  const activeClubs = venue.clubs.filter((c) => c.players > 0 || c.sessions > 0);
+function buildPopupHtml(venue: HeatmapVenue, lo: string, hi: string, count: number, s: HeatmapPopupStrings, selectedDupr: number): string {
+  // Sort clubs by DUPR proximity to selectedDupr; no-rating clubs always last
+  const activeClubs = venue.clubs
+    .filter((c) => c.players > 0 || c.sessions > 0)
+    .slice()
+    .sort((a, b) => {
+      const distA = a.medianDupr !== null ? Math.abs(a.medianDupr - selectedDupr) : 999;
+      const distB = b.medianDupr !== null ? Math.abs(b.medianDupr - selectedDupr) : 999;
+      return distA - distB;
+    });
 
   // Truncate long venue names — show full on hover via title attr
   const rawName = venue.venueName;
@@ -119,11 +137,14 @@ function buildPopupHtml(venue: HeatmapVenue, lo: string, hi: string, count: numb
         <div style="font-size:10px;color:#9ca3af;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px;">${s.clubsAtCourt}</div>
         ${activeClubs.map((c) => {
           const href = c.slug ? `/clubs/${encodeURIComponent(c.slug)}` : "#";
+          const duprHtml = c.medianDupr !== null
+            ? `<span style="color:${getDuprColor(c.medianDupr)};font-weight:600;">~${c.medianDupr.toFixed(1)}</span><span style="color:#9ca3af;"> DUPR</span>`
+            : `<span style="color:#9ca3af;">no rating data</span>`;
           return `<a href="${href}" style="display:block;text-decoration:none;color:inherit;border-radius:6px;padding:4px 2px;transition:background 0.1s;" onmouseover="this.style.background='#f3f4f6'" onmouseout="this.style.background='transparent'">
             <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
               <span style="font-size:12px;font-weight:500;color:#111827;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${c.venueName}</span>
-              <div style="display:flex;align-items:center;gap:4px;white-space:nowrap;flex-shrink:0;">
-                <span style="font-size:11px;color:#6b7280;">${c.players} ${s.players90d}</span>
+              <div style="display:flex;align-items:center;gap:4px;white-space:nowrap;flex-shrink:0;font-size:11px;">
+                ${duprHtml}<span style="color:#6b7280;"> · ${c.players} players</span>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
               </div>
             </div>
@@ -266,7 +287,7 @@ export function HeatmapView({ venues, selectedDupr, className = "h-[480px] w-ful
     for (const { venue, count, norm } of entries) {
       const icon = buildBubbleIcon(count, norm);
       const marker = L.marker([venue.lat, venue.lng], { icon, zIndexOffset: 400 });
-      const popupContent = buildPopupHtml(venue, lo, hi, count, psRef.current);
+      const popupContent = buildPopupHtml(venue, lo, hi, count, psRef.current, selectedDupr);
 
       // Always pre-bind the popup so Leaflet knows about it
       marker.bindPopup(popupContent, { maxWidth: 280 });
@@ -306,7 +327,7 @@ export function HeatmapView({ venues, selectedDupr, className = "h-[480px] w-ful
     const loN = parseFloat(lo);
     const hiN = parseFloat(hi);
     const count = countInBand(open.venue, loN, hiN);
-    const freshHtml = buildPopupHtml(open.venue, lo, hi, count, psRef.current);
+    const freshHtml = buildPopupHtml(open.venue, lo, hi, count, psRef.current, selectedDupr);
     open.marker.setPopupContent(freshHtml);
   }, [selectedDupr, mapReady]);
 
