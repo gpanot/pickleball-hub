@@ -57,6 +57,36 @@ export async function GET() {
     const totalOutputTokens = messages.reduce((s, m) => s + (m.outputTokens ?? 0), 0);
     const totalCost = messages.reduce((s, m) => s + (m.estimatedCostUsd ?? 0), 0);
 
+    // Extract context metadata from the snapshot stored on the first message
+    const snapshotRaw = messages.find((m) => m.contextSnapshot)?.contextSnapshot ?? null;
+    let contextMeta: {
+      builtAt: string;
+      sessionCount: number;
+      venueCount: number;
+      clubCount: number;
+      estimatedTokens: number;
+    } | null = null;
+    if (snapshotRaw) {
+      try {
+        const snap = JSON.parse(snapshotRaw) as {
+          builtAt?: string;
+          upcomingSessions?: unknown[];
+          venues?: unknown[];
+          clubs?: unknown[];
+          estimatedTokens?: number;
+        };
+        contextMeta = {
+          builtAt: snap.builtAt ?? "",
+          sessionCount: snap.upcomingSessions?.length ?? 0,
+          venueCount: snap.venues?.length ?? 0,
+          clubCount: snap.clubs?.length ?? 0,
+          estimatedTokens: snap.estimatedTokens ?? 0,
+        };
+      } catch {
+        // ignore malformed snapshot
+      }
+    }
+
     return {
       sessionId: r.session_id,
       startedAt: r.first_at,
@@ -64,6 +94,7 @@ export async function GET() {
       totalInputTokens,
       totalOutputTokens,
       totalCostUsd: totalCost,
+      contextMeta,
       messages: messages.map((m) => ({
         id: m.id,
         role: m.role,
@@ -77,4 +108,13 @@ export async function GET() {
   });
 
   return NextResponse.json({ sessions });
+}
+
+export async function DELETE() {
+  if (!(await isAdminAuthenticated())) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  await prisma.aiAssistantLog.deleteMany({});
+  return NextResponse.json({ deleted: true });
 }

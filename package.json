@@ -7,6 +7,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "test": "vitest run",
     "lint": "eslint",
     "db:demo-codes": "npx tsx scripts/upsert-demo-access-codes.ts",
     "db:migrate-scrape-day": "npx tsx scripts/migrate-scrape-day.ts"
@@ -23,6 +24,7 @@
     "lucide-react": "^1.14.0",
     "next": "16.2.4",
     "next-auth": "^5.0.0-beta.31",
+    "openai": "^6.35.0",
     "prisma": "^6.19.3",
     "react": "19.2.4",
     "react-dom": "19.2.4",
@@ -37,10 +39,13 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@vitest/runner": "^4.1.5",
     "critters": "^0.0.23",
     "eslint": "^9",
     "eslint-config-next": "16.2.4",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vite-tsconfig-paths": "^6.1.1",
+    "vitest": "^3.2.4"
   }
 }

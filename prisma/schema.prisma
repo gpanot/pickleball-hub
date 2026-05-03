@@ -288,7 +288,23 @@ model ContentPost {
   @@map("content_posts")
 }
 
-/// Chat logs for the admin AI assistant (internal testing).
+/// Configuration for the AI chat assistant — single row, upserted on save.
+model AiChatSettings {
+  id                   String   @id @default(cuid())
+  model                String   @default("deepseek-chat")
+  contextHours         Int      @default(48) @map("context_hours")
+  maxVenues            Int      @default(20) @map("max_venues")
+  maxClubs             Int      @default(20) @map("max_clubs")
+  maxCostPerMessageUsd Float    @default(0.05) @map("max_cost_per_message_usd")
+  dailyCostAlertUsd    Float    @default(5.00) @map("daily_cost_alert_usd")
+  playerFacingEnabled  Boolean  @default(false) @map("player_facing_enabled")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+  updatedBy            String?  @map("updated_by")
+
+  @@map("ai_chat_settings")
+}
+
+/// Chat logs for the AI assistant (admin testing and player-facing).
 model AiAssistantLog {
   id               String   @id @default(cuid())
   sessionId        String   @map("session_id")
@@ -297,10 +313,15 @@ model AiAssistantLog {
   inputTokens      Int?     @map("input_tokens")
   outputTokens     Int?     @map("output_tokens")
   estimatedCostUsd Float?   @map("estimated_cost_usd")
+  /// JSON snapshot of the context payload used for this conversation session (stored on first message only).
+  contextSnapshot  String?  @map("context_snapshot")
+  /// "admin" or "player"
+  source           String   @default("admin")
   createdAt        DateTime @default(now()) @map("created_at")
 
   @@index([sessionId])
   @@index([createdAt])
+  @@index([source])
   @@map("ai_assistant_logs")
 }
 

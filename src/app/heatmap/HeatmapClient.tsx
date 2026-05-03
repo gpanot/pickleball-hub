@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { AiChatModal } from "@/components/heatmap/AiChatModal";
 import type { HeatmapData, HeatmapVenue } from "@/lib/queries";
 import type { GetSessionsListItem } from "@/lib/queries";
 import { SessionCard } from "@/components/SessionCard";
@@ -22,6 +23,7 @@ interface Props {
   sessions: GetSessionsListItem[];
   hcmMedianCostPerHour: number;
   todayStr: string;
+  showAiChat?: boolean;
 }
 
 const DEFAULT_DUPR = 2.9;
@@ -83,9 +85,18 @@ function venueHeatScore(
   return total;
 }
 
-export function HeatmapClient({ heatmapData, sessions, hcmMedianCostPerHour, todayStr }: Props) {
+export function HeatmapClient({ heatmapData, sessions, hcmMedianCostPerHour, todayStr, showAiChat = false }: Props) {
   const { duprRange, venues, totalPlayersWithDupr } = heatmapData;
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
+
+  // AI chat modal state — persists for the page session, resets on page reload
+  const [aiChatOpen, setAiChatOpen] = useState(false);
+  const [aiChatSessionId] = useState(() =>
+    typeof crypto !== "undefined" ? crypto.randomUUID() : Math.random().toString(36).slice(2),
+  );
+  const [aiChatMessages, setAiChatMessages] = useState<{ role: "user" | "assistant"; content: string }[]>([]);
+  // Experimental disclaimer — shown once per page load
+  const [aiDisclaimerSeen, setAiDisclaimerSeen] = useState(false);
 
   // Auth + gate
   const { data: authSession, status: authStatus } = useSession();
@@ -425,6 +436,34 @@ export function HeatmapClient({ heatmapData, sessions, hcmMedianCostPerHour, tod
           </div>
         )}
       </section>
+
+      {/* Floating AI chat button + modal — only when playerFacingEnabled */}
+      {showAiChat && (
+        <>
+          <button
+            onClick={() => setAiChatOpen(true)}
+            className="fixed right-6 z-40 flex items-center gap-2 rounded-full bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white text-sm font-medium px-5 py-3 shadow-xl transition"
+            style={{
+              bottom: "max(24px, env(safe-area-inset-bottom, 24px))",
+            }}
+            aria-label="Open AI assistant"
+          >
+            <span aria-hidden>🏓</span>
+            <span>{locale === "vi" ? "Hỏi AI" : "Ask AI"}</span>
+          </button>
+
+          <AiChatModal
+            isOpen={aiChatOpen}
+            onClose={() => setAiChatOpen(false)}
+            sessionId={aiChatSessionId}
+            messages={aiChatMessages}
+            onMessagesChange={setAiChatMessages}
+            locale={locale as "en" | "vi"}
+            disclaimerSeen={aiDisclaimerSeen}
+            onDisclaimerSeen={() => setAiDisclaimerSeen(true)}
+          />
+        </>
+      )}
     </div>
   );
 }
