@@ -14,8 +14,25 @@
 import { useEffect, useRef, useCallback, useState } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import type { HeatmapVenue } from "@/lib/queries";
+import type { HeatmapVenue, GetSessionsListItem } from "@/lib/queries";
 import { useGeoStore } from "@/store/geoStore";
+
+// ── Time-of-day helpers (shared with HeatmapClient) ──────────────────────────
+export type TimeSlot = "morning" | "afternoon" | "evening";
+
+const TIME_RANGES: Record<TimeSlot, [string, string]> = {
+  morning: ["00:00", "11:59"],
+  afternoon: ["12:00", "16:59"],
+  evening: ["17:00", "23:59"],
+};
+
+function sessionMatchesTimeSlots(startTime: string, activeSlots: TimeSlot[]): boolean {
+  if (activeSlots.length === 0 || activeSlots.length === 3) return true;
+  return activeSlots.some((slot) => {
+    const [min, max] = TIME_RANGES[slot];
+    return startTime >= min && startTime <= max;
+  });
+}
 
 const HCM_CENTER: [number, number] = [10.79, 106.71];
 const DEFAULT_ZOOM = 12;
@@ -41,6 +58,10 @@ function getDuprColor(dupr: number): string {
 export interface HeatmapViewProps {
   venues: HeatmapVenue[];
   selectedDupr: number;
+  /** Active time-of-day slots for filtering popup counts */
+  activeTimeSlots?: TimeSlot[];
+  /** Upcoming sessions list — used to compute time-filtered counts in popups */
+  sessions?: GetSessionsListItem[];
   className?: string;
   /** Localised strings for the venue popup */
   popupStrings?: HeatmapPopupStrings;
@@ -116,7 +137,7 @@ const DEFAULT_POPUP_STRINGS: HeatmapPopupStrings = {
   sessionsBelow: "Upcoming sessions below update for this venue",
 };
 
-function buildPopupHtml(venue: HeatmapVenue, lo: string, hi: string, count: number, s: HeatmapPopupStrings, selectedDupr: number): string {
+function buildPopupHtml(venue: HeatmapVenue, lo: string, hi: string, count: number, s: HeatmapPopupStrings, selectedDupr: number, filteredSessionCount?: number): string {
   // Sort clubs by DUPR proximity to selectedDupr; no-rating clubs always last
   const activeClubs = venue.clubs
     .filter((c) => c.players > 0 || c.sessions > 0)
@@ -162,7 +183,7 @@ function buildPopupHtml(venue: HeatmapVenue, lo: string, hi: string, count: numb
         <span style="font-size:11px;color:#6b7280;margin-left:4px;">${s.playersAtLevel}</span>
       </div>
       <div style="margin-bottom:4px;">
-        <span style="font-size:20px;font-weight:800;color:#22c55e;">${venue.totalSessions90d}</span>
+        <span style="font-size:20px;font-weight:800;color:#22c55e;">${filteredSessionCount ?? venue.totalSessions90d}</span>
         <span style="font-size:11px;color:#6b7280;margin-left:4px;">${s.sessionsHeld}</span>
       </div>
       ${clubRowsHtml}
@@ -187,10 +208,14 @@ function buildUserDotIcon(): L.DivIcon {
 
 // ── component ─────────────────────────────────────────────────────────────────
 
-export function HeatmapView({ venues, selectedDupr, className = "h-[480px] w-full", popupStrings, onBubbleClick, onVenueSelect, onVenueDeselect }: HeatmapViewProps) {
+export function HeatmapView({ venues, selectedDupr, activeTimeSlots = ["morning", "afternoon", "evening"], sessions = [], className = "h-[480px] w-full", popupStrings, onBubbleClick, onVenueSelect, onVenueDeselect }: HeatmapViewProps) {
   const ps = popupStrings ?? DEFAULT_POPUP_STRINGS;
   const psRef = useRef(ps);
   psRef.current = ps;
+  const activeTimeSlotsRef = useRef(activeTimeSlots);
+  activeTimeSlotsRef.current = activeTimeSlots;
+  const sessionsRef = useRef(sessions);
+  sessionsRef.current = sessions;
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const bubblesRef = useRef<L.Marker[]>([]);
@@ -210,6 +235,17 @@ export function HeatmapView({ venues, selectedDupr, className = "h-[480px] w-ful
   onVenueDeselectRef.current = onVenueDeselect;
 
   const { lat: geoLat, lng: geoLng, locating, locate } = useGeoStore();
+
+  // Count upcoming sessions for a venue filtered by active time slots
+  const getFilteredSessionCount = useCallback((venue: HeatmapVenue): number => {
+    const slots = activeTimeSlotsRef.current;
+    const isFiltered = slots.length > 0 && slots.length < 3;
+    if (!isFiltered) return venue.totalSessions90d;
+    const venueIdSet = new Set(venue.venueIds);
+    return sessionsRef.current.filter(
+      (s) => s.venueId != null && venueIdSet.has(String(s.venueId)) && sessionMatchesTimeSlots(s.startTime, slots),
+    ).length;
+  }, []);
 
   // ── build normalised entries for current DUPR band ────────────────────────
   const getEntries = useCallback(() => {
@@ -287,7 +323,8 @@ export function HeatmapView({ venues, selectedDupr, className = "h-[480px] w-ful
     for (const { venue, count, norm } of entries) {
       const icon = buildBubbleIcon(count, norm);
       const marker = L.marker([venue.lat, venue.lng], { icon, zIndexOffset: 400 });
-      const popupContent = buildPopupHtml(venue, lo, hi, count, psRef.current, selectedDupr);
+      const filteredSessionCount = getFilteredSessionCount(venue);
+      const popupContent = buildPopupHtml(venue, lo, hi, count, psRef.current, selectedDupr, filteredSessionCount);
 
       // Always pre-bind the popup so Leaflet knows about it
       marker.bindPopup(popupContent, { maxWidth: 280 });
@@ -315,10 +352,10 @@ export function HeatmapView({ venues, selectedDupr, className = "h-[480px] w-ful
       marker.addTo(map);
       bubblesRef.current.push(marker);
     }
-  }, [getEntries]); // onBubbleClick read via ref — no dep needed
+  }, [getEntries, getFilteredSessionCount]); // onBubbleClick, sessions, activeTimeSlots read via refs
 
-  // ── update open popup content when slider changes ─────────────────────────
-  // This runs whenever selectedDupr changes (via getEntries dep). If a popup
+  // ── update open popup content when slider or time filter changes ──────────
+  // This runs whenever selectedDupr or activeTimeSlots changes. If a popup
   // is currently open we refresh its HTML in-place without closing it.
   useEffect(() => {
     const open = openMarkerRef.current;
@@ -327,9 +364,10 @@ export function HeatmapView({ venues, selectedDupr, className = "h-[480px] w-ful
     const loN = parseFloat(lo);
     const hiN = parseFloat(hi);
     const count = countInBand(open.venue, loN, hiN);
-    const freshHtml = buildPopupHtml(open.venue, lo, hi, count, psRef.current, selectedDupr);
+    const filteredSessionCount = getFilteredSessionCount(open.venue);
+    const freshHtml = buildPopupHtml(open.venue, lo, hi, count, psRef.current, selectedDupr, filteredSessionCount);
     open.marker.setPopupContent(freshHtml);
-  }, [selectedDupr, mapReady]);
+  }, [selectedDupr, activeTimeSlots, sessions, mapReady, getFilteredSessionCount]);
 
   useEffect(() => {
     if (!mapReady) return;

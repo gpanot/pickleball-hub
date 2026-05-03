@@ -21,14 +21,26 @@ interface Props {
   heatmapData: HeatmapData;
   sessions: GetSessionsListItem[];
   hcmMedianCostPerHour: number;
+  todayStr: string;
 }
 
-// Map onboarding level to a sensible default DUPR position
-function levelToDupr(level: string | undefined, median: number): number {
-  if (level === "casual") return 2.5;
-  if (level === "competitive") return 4.5;
-  if (level === "intermediate") return 3.5;
-  return median;
+const DEFAULT_DUPR = 2.9;
+
+// ── Time-of-day filter ────────────────────────────────────────────────────────
+type TimeSlot = "morning" | "afternoon" | "evening";
+
+const TIME_RANGES: Record<TimeSlot, [string, string]> = {
+  morning: ["00:00", "11:59"],
+  afternoon: ["12:00", "16:59"],
+  evening: ["17:00", "23:59"],
+};
+
+function sessionMatchesTimeSlots(startTime: string, activeSlots: TimeSlot[]): boolean {
+  if (activeSlots.length === 0 || activeSlots.length === 3) return true;
+  return activeSlots.some((slot) => {
+    const [min, max] = TIME_RANGES[slot];
+    return startTime >= min && startTime <= max;
+  });
 }
 
 function clamp(v: number, min: number, max: number): number {
@@ -71,11 +83,9 @@ function venueHeatScore(
   return total;
 }
 
-export function HeatmapClient({ heatmapData, sessions, hcmMedianCostPerHour }: Props) {
-  const { duprRange, medianDupr, venues, totalPlayersWithDupr } = heatmapData;
+export function HeatmapClient({ heatmapData, sessions, hcmMedianCostPerHour, todayStr }: Props) {
+  const { duprRange, venues, totalPlayersWithDupr } = heatmapData;
   const { t } = useI18n();
-  const preferences = useProfileStore((s) => s.preferences);
-  const hasCompletedOnboarding = useProfileStore((s) => s.hasCompletedOnboarding);
 
   // Auth + gate
   const { data: authSession, status: authStatus } = useSession();
@@ -138,16 +148,13 @@ export function HeatmapClient({ heatmapData, sessions, hcmMedianCostPerHour }: P
   );
 
   const defaultDupr = useMemo(() => {
-    if (hasCompletedOnboarding && preferences?.level) {
-      const candidate = levelToDupr(preferences.level, medianDupr);
-      return clamp(roundToBucket(candidate), duprRange.min, duprRange.max);
-    }
-    return clamp(medianDupr, duprRange.min, duprRange.max);
-  }, [hasCompletedOnboarding, preferences?.level, medianDupr, duprRange]);
+    return clamp(DEFAULT_DUPR, duprRange.min, duprRange.max);
+  }, [duprRange]);
 
   const [selectedDupr, setSelectedDupr] = useState(defaultDupr);
   const [hydrated, setHydrated] = useState(false);
   const [selectedVenue, setSelectedVenue] = useState<HeatmapVenue | null>(null);
+  const [activeTimeSlots, setActiveTimeSlots] = useState<TimeSlot[]>(["morning", "afternoon", "evening"]);
 
   // Wait for zustand hydration before applying personalized default
   useEffect(() => {
@@ -178,35 +185,46 @@ export function HeatmapClient({ heatmapData, sessions, hcmMedianCostPerHour }: P
     [venues, selectedDupr],
   );
 
-  // Filter + sort sessions
-  const recommendedSessions = useMemo(() => {
-    if (selectedVenue) {
-      // Venue selected: show all sessions at that venue regardless of DUPR band
-      const venueIdSet = new Set(selectedVenue.venueIds);
-      const filtered = sessions.filter(
-        (s) => s.venueId != null && venueIdSet.has(String(s.venueId)),
-      );
-      filtered.sort((a, b) => a.startTime.localeCompare(b.startTime));
-      return filtered.slice(0, 20);
+  // Filter + sort sessions, then group by time slot
+  const sessionsBySlot = useMemo(() => {
+    const base = selectedVenue
+      ? (() => {
+          const venueIdSet = new Set(selectedVenue.venueIds);
+          return sessions
+            .filter((s) => s.venueId != null && venueIdSet.has(String(s.venueId)))
+            .sort((a, b) => a.startTime.localeCompare(b.startTime));
+        })()
+      : (() => {
+          const filtered = sessions.filter(
+            (s) => s.venueId != null && activeVenues.has(String(s.venueId)),
+          );
+          filtered.sort((a, b) => {
+            const heatA = venueHeatScoreMap.get(String(a.venueId)) ?? 0;
+            const heatB = venueHeatScoreMap.get(String(b.venueId)) ?? 0;
+            if (heatB !== heatA) return heatB - heatA;
+            return a.startTime.localeCompare(b.startTime);
+          });
+          return filtered;
+        })();
+
+    const result: Record<TimeSlot, typeof base> = { morning: [], afternoon: [], evening: [] };
+    for (const slot of (["morning", "afternoon", "evening"] as TimeSlot[])) {
+      if (!activeTimeSlots.includes(slot)) continue;
+      const [min, max] = TIME_RANGES[slot];
+      const slotSessions = base
+        .filter((s) => s.startTime >= min && s.startTime <= max)
+        .sort((a, b) => a.startTime.localeCompare(b.startTime))
+        .slice(0, 20);
+      result[slot] = slotSessions;
     }
-    // Default: only venues in the active DUPR band, sorted by heat desc then start time
-    const filtered = sessions.filter(
-      (s) => s.venueId != null && activeVenues.has(String(s.venueId)),
-    );
-    filtered.sort((a, b) => {
-      const heatA = venueHeatScoreMap.get(String(a.venueId)) ?? 0;
-      const heatB = venueHeatScoreMap.get(String(b.venueId)) ?? 0;
-      if (heatB !== heatA) return heatB - heatA;
-      return a.startTime.localeCompare(b.startTime);
-    });
-    return filtered.slice(0, 20);
-  }, [sessions, activeVenues, venueHeatScoreMap, selectedVenue]);
+    return result;
+  }, [sessions, activeVenues, venueHeatScoreMap, selectedVenue, activeTimeSlots]);
+
+  const totalRecommendedSessions = sessionsBySlot.morning.length + sessionsBySlot.afternoon.length + sessionsBySlot.evening.length;
 
   const sliderMin = duprRange.min;
   const sliderMax = duprRange.max;
   const sliderStep = 0.1;
-
-  const scrollRef = useRef<HTMLDivElement>(null);
 
   return (
     <div className="mx-auto max-w-7xl px-4 pb-12 pt-4 sm:px-6 lg:px-8">
@@ -262,9 +280,36 @@ export function HeatmapClient({ heatmapData, sessions, hcmMedianCostPerHour }: P
         <div className="mt-1.5 px-13">
           <DuprTickMarks min={sliderMin} max={sliderMax} selected={selectedDupr} />
         </div>
-        <p className="mt-2 text-xs text-muted">
-          {t("heatmapDragToFilter")}
-        </p>
+      </div>
+
+      {/* Time-of-day filter pills */}
+      <div className="mb-4 flex flex-wrap gap-1.5">
+        {(["morning", "afternoon", "evening"] as TimeSlot[]).map((slot) => {
+          const active = activeTimeSlots.includes(slot);
+          const label = t(slot);
+          return (
+            <button
+              key={slot}
+              type="button"
+              onClick={() => {
+                setActiveTimeSlots((prev) => {
+                  if (prev.includes(slot)) {
+                    const next = prev.filter((s) => s !== slot);
+                    return next.length === 0 ? ["morning", "afternoon", "evening"] : next;
+                  }
+                  return [...prev, slot];
+                });
+              }}
+              className={`inline-flex shrink-0 select-none items-center justify-center whitespace-nowrap rounded-full border px-3 py-1.5 text-[11px] font-semibold transition ${
+                active
+                  ? "border-primary bg-primary text-white"
+                  : "border-card-border bg-background hover:border-primary/40"
+              }`}
+            >
+              {label}
+            </button>
+          );
+        })}
       </div>
 
       {/* Leaflet heatmap — no overflow-hidden: Leaflet tiles render outside bounds during pan */}
@@ -272,6 +317,8 @@ export function HeatmapClient({ heatmapData, sessions, hcmMedianCostPerHour }: P
         <HeatmapView
           venues={venues}
           selectedDupr={selectedDupr}
+          activeTimeSlots={activeTimeSlots}
+          sessions={sessions}
           className="h-[480px] w-full"
           popupStrings={{
             clubsAtCourt: t("heatmapPopupClubsAtCourt"),
@@ -296,20 +343,37 @@ export function HeatmapClient({ heatmapData, sessions, hcmMedianCostPerHour }: P
         }}
       />
 
-      {/* Recommended sessions strip */}
+      {/* Recommended sessions — grouped by time of day */}
       <section id="sessions-section">
-        <h2 className="mb-1 text-lg font-bold text-foreground">
-          {selectedVenue
+        {(() => {
+          const firstSession =
+            sessionsBySlot.morning[0] ??
+            sessionsBySlot.afternoon[0] ??
+            sessionsBySlot.evening[0];
+          const datePrefix = firstSession
+            ? firstSession.scrapedDate === todayStr
+              ? t("heatmapToday")
+              : t("heatmapTomorrow")
+            : null;
+          const venueTitle = selectedVenue
             ? `${t("heatmapSessionsAtVenue")} ${selectedVenue.venueName}`
-            : t("heatmapSessionsAtHotspots")}
-        </h2>
+            : t("heatmapSessionsAtHotspots");
+          return (
+            <h2 className="mb-1 text-lg font-bold text-foreground">
+              {datePrefix && (
+                <span className="mr-2 text-primary">{datePrefix} –</span>
+              )}
+              {venueTitle}
+            </h2>
+          );
+        })()}
         <p className="mb-4 text-sm text-muted">
           {selectedVenue
             ? t("heatmapUpcomingAtCourt")
             : `${t("heatmapUpcomingHotspot")} ${bandMin}–${bandMax} ${t("heatmapUpcomingHotspotSuffix")}`}
         </p>
 
-        {recommendedSessions.length === 0 ? (
+        {totalRecommendedSessions === 0 ? (
           <div className="rounded-xl border border-card-border bg-card px-6 py-10 text-center">
             <p className="text-sm text-muted">
               {selectedVenue
@@ -323,22 +387,41 @@ export function HeatmapClient({ heatmapData, sessions, hcmMedianCostPerHour }: P
             </p>
           </div>
         ) : (
-          <div
-            ref={scrollRef}
-            className="flex gap-3 overflow-x-auto pb-3"
-            style={{ scrollbarWidth: "thin" }}
-          >
-            {recommendedSessions.map((session) => (
-              <div
-                key={`${session.id}-${session.scrapedDate}`}
-                className="w-72 shrink-0 sm:w-80"
-              >
-                <SessionCard
-                  session={session}
-                  hcmMedianCostPerHour={hcmMedianCostPerHour}
-                />
-              </div>
-            ))}
+          <div className="space-y-6">
+            {(
+              [
+                ["morning",   t("heatmapTimeMorning"),   t("heatmapTimeMorningSub")],
+                ["afternoon", t("heatmapTimeAfternoon"), t("heatmapTimeAfternoonSub")],
+                ["evening",   t("heatmapTimeEvening"),   t("heatmapTimeEveningSub")],
+              ] as [TimeSlot, string, string][]
+            ).map(([slot, label, sub]) => {
+              const slotSessions = sessionsBySlot[slot];
+              if (slotSessions.length === 0) return null;
+              return (
+                <div key={slot}>
+                  <div className="mb-2 flex items-baseline gap-1.5">
+                    <span className="text-sm font-semibold text-foreground">{label}</span>
+                    <span className="text-xs text-muted">· {sub}</span>
+                  </div>
+                  <div
+                    className="flex gap-3 overflow-x-auto pb-3"
+                    style={{ scrollbarWidth: "thin" }}
+                  >
+                    {slotSessions.map((session) => (
+                      <div
+                        key={`${session.id}-${session.scrapedDate}`}
+                        className="w-72 shrink-0 sm:w-80"
+                      >
+                        <SessionCard
+                          session={session}
+                          hcmMedianCostPerHour={hcmMedianCostPerHour}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </section>

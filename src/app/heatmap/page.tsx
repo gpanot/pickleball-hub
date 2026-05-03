@@ -7,10 +7,13 @@ import { HeatmapClient } from "./HeatmapClient";
 export const revalidate = 3600;
 
 export default async function HeatmapPage() {
+  const todayStr = vnCalendarDateString(0);
+  const tomorrowStr = vnCalendarDateString(1);
+
   const [heatmapData, todayData, tomorrowData] = await Promise.all([
     getHeatmapData(),
-    getSessions({ date: vnCalendarDateString(0) }),
-    getSessions({ date: vnCalendarDateString(1) }),
+    getSessions({ date: todayStr }),
+    getSessions({ date: tomorrowStr }),
   ]);
 
   // Combine today + tomorrow sessions for the recommendations strip
@@ -27,6 +30,7 @@ export default async function HeatmapPage() {
       heatmapData={heatmapData}
       sessions={allSessions}
       hcmMedianCostPerHour={hcmMedian}
+      todayStr={todayStr}
     />
   );
 }
