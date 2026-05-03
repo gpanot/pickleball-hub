@@ -18,6 +18,7 @@ import {
 } from "@/lib/utils";
 import { useI18n } from "@/lib/i18n";
 import { mouseflowTag } from "@/lib/analytics";
+import { Share2 } from "lucide-react";
 import { computeSessionScore, HCM_MEDIAN_COST_FALLBACK } from "@/lib/scoring";
 import type { GetSessionsListItem } from "@/lib/queries";
 import { useProfileStore } from "@/store/profileStore";
@@ -217,11 +218,7 @@ export function HomeClient({
   const [timeFilter, setTimeFilter] = useState<"fromNow" | "past">("fromNow");
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
-  const [zaloJoined, setZaloJoined] = useState(true);
-
-  useEffect(() => {
-    setZaloJoined(localStorage.getItem("zalo_joined") === "true");
-  }, []);
+  const [linkCopiedToast, setLinkCopiedToast] = useState(false);
 
   useEffect(() => {
     incrementVisit();
@@ -233,10 +230,27 @@ export function HomeClient({
     window.setTimeout(() => setShareClipboardToast(false), 2500);
   }, []);
 
+  const handleSharePill = useCallback(async () => {
+    mouseflowTag("share:floating_pill");
+    const shareData = {
+      title: "HCM Pickleball Hub",
+      text: "Tìm buổi chơi pickleball ở HCM dễ dàng hơn",
+      url: "https://hub.thecourtflow.com",
+    };
+    if (typeof navigator !== "undefined" && navigator.share) {
+      try { await navigator.share(shareData); } catch { /* user cancelled */ }
+    } else {
+      try { await navigator.clipboard.writeText(shareData.url); } catch { /* fallback */ }
+      setLinkCopiedToast(true);
+      window.setTimeout(() => setLinkCopiedToast(false), 2500);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // kept for any remaining references in the codebase
   const handleZaloPillClick = useCallback(() => {
     mouseflowTag("zalo_intent:floating_cta");
     localStorage.setItem("zalo_joined", "true");
-    setZaloJoined(true);
     window.open(ZALO_GROUP_URL, "_blank", "noopener");
   }, []);
 
@@ -788,15 +802,21 @@ export function HomeClient({
         onShareClipboardToast={showShareClipboardToast}
       />
 
-      {/* Floating Zalo CTA pill */}
-      {!zaloJoined && (
-        <button
-          type="button"
-          onClick={handleZaloPillClick}
-          className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 max-w-[260px] rounded-full bg-gray-900/75 px-4 py-2.5 text-xs font-medium text-white shadow-lg backdrop-blur-md transition hover:bg-gray-900/90 active:scale-95 dark:bg-white/20"
-        >
-          {t("zaloFloatingCta")}
-        </button>
+      {/* Floating Share pill */}
+      <button
+        type="button"
+        onClick={handleSharePill}
+        className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 flex items-center gap-2 rounded-full bg-gray-900/75 px-4 py-2.5 text-xs font-medium text-white shadow-lg backdrop-blur-md transition hover:bg-gray-900/90 active:scale-95 dark:bg-white/20"
+      >
+        <Share2 size={14} />
+        {t("shareWithFriends")}
+      </button>
+
+      {/* Link-copied toast (desktop fallback) */}
+      {linkCopiedToast && (
+        <div className="pointer-events-none fixed bottom-14 left-1/2 z-[110] -translate-x-1/2 rounded-lg bg-gray-900 px-4 py-2.5 text-xs font-medium text-white shadow-xl animate-in fade-in slide-in-from-bottom-2 duration-200">
+          {t("linkCopied")}
+        </div>
       )}
 
       {shareClipboardToast && (
