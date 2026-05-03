@@ -2,25 +2,20 @@ import { getHeatmapData } from "@/lib/queries";
 import { getSessions } from "@/lib/queries";
 import { vnCalendarDateString } from "@/lib/utils";
 import { HeatmapClient } from "./HeatmapClient";
-import { prisma } from "@/lib/db";
 
-// Always fetch fresh — needed so playerFacingEnabled toggle takes effect immediately
-export const dynamic = "force-dynamic";
+// ISR: serve from cache for instant navigation, revalidate in background every hour
+export const revalidate = 3600;
 
 export default async function HeatmapPage() {
   const todayStr = vnCalendarDateString(0);
   const tomorrowStr = vnCalendarDateString(1);
 
-  const [heatmapData, todayData, tomorrowData, aiChatSettings] = await Promise.all([
+  const [heatmapData, todayData, tomorrowData] = await Promise.all([
     getHeatmapData(),
     getSessions({ date: todayStr }),
     getSessions({ date: tomorrowStr }),
-    prisma.aiChatSettings
-      .findFirst({ where: { id: "singleton" }, select: { playerFacingEnabled: true } })
-      .catch(() => null),
   ]);
 
-  // Combine today + tomorrow sessions for the recommendations strip
   const allSessions = [
     ...todayData.sessions,
     ...tomorrowData.sessions,
@@ -35,7 +30,7 @@ export default async function HeatmapPage() {
       sessions={allSessions}
       hcmMedianCostPerHour={hcmMedian}
       todayStr={todayStr}
-      showAiChat={aiChatSettings?.playerFacingEnabled ?? false}
+      // showAiChat is now fetched client-side so page can stay ISR-cached
     />
   );
 }

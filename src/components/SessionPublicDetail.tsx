@@ -47,36 +47,37 @@ export function SessionPublicDetail({
 
   const dayLabel = formatCalendarDayLabel(session.scrapedDate, locale === "vi" ? "vi-VN" : "en-US");
 
-  const share = useCallback(async () => {
-    const text = buildSessionShareText(
-      {
-        name: session.name,
-        venue: session.venue,
-        club: session.club,
-        startTime: session.startTime,
-        endTime: session.endTime,
-        feeAmount: session.feeAmount,
-        referenceCode: session.referenceCode,
-        costPerHour: session.costPerHour,
-        durationMin: session.durationMin,
-      },
-      scoreInput,
-      t,
-    );
+  const shareText = buildSessionShareText(
+    {
+      name: session.name,
+      venue: session.venue,
+      club: session.club,
+      startTime: session.startTime,
+      endTime: session.endTime,
+      feeAmount: session.feeAmount,
+      referenceCode: session.referenceCode,
+      costPerHour: session.costPerHour,
+      durationMin: session.durationMin,
+    },
+    scoreInput,
+    t,
+  );
+
+  const handleShare = useCallback(async () => {
     if (typeof navigator !== "undefined" && navigator.share) {
       try {
-        await navigator.share({ text });
+        await navigator.share({ text: shareText });
         return;
       } catch (e) {
         if ((e as Error)?.name === "AbortError") return;
       }
     }
     if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(text);
+      await navigator.clipboard.writeText(shareText);
       setShareToast(true);
       window.setTimeout(() => setShareToast(false), 2500);
     }
-  }, [session, scoreInput, t]);
+  }, [shareText]);
 
   return (
     <div className="mx-auto w-full max-w-lg px-4 py-6 sm:py-8">
@@ -131,18 +132,18 @@ export function SessionPublicDetail({
         </a>
         <button
           type="button"
-          onClick={() => void share()}
+          onClick={() => void handleShare()}
           className="box-border flex min-h-[48px] w-full items-center justify-center rounded-lg border-2 border-primary bg-transparent px-4 py-3 text-sm font-medium text-primary transition hover:bg-primary/5"
         >
           {t("shareThisSession")}
         </button>
       </div>
 
-      {shareToast ? (
+      {shareToast && (
         <div className="pointer-events-none fixed bottom-14 left-1/2 z-[110] -translate-x-1/2 rounded-lg bg-gray-900 px-4 py-2.5 text-xs font-medium text-white shadow-xl">
           {t("shareClipboardToast")}
         </div>
-      ) : null}
+      )}
     </div>
   );
 }

@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { AiChatModal } from "@/components/heatmap/AiChatModal";
+import { ShareButton } from "@/components/ShareButton";
 import type { HeatmapData, HeatmapVenue } from "@/lib/queries";
 import type { GetSessionsListItem } from "@/lib/queries";
 import { SessionCard } from "@/components/SessionCard";
@@ -11,6 +12,7 @@ import { useHeatmapStore } from "@/store/heatmapStore";
 import { HeatmapLoginModal } from "@/components/HeatmapLoginModal";
 import { useSession } from "next-auth/react";
 import { useI18n } from "@/lib/i18n";
+import { HUB_SITE_ORIGIN } from "@/lib/site";
 
 // Dynamic import — Leaflet requires browser APIs (no SSR)
 const HeatmapView = dynamic(
@@ -23,7 +25,7 @@ interface Props {
   sessions: GetSessionsListItem[];
   hcmMedianCostPerHour: number;
   todayStr: string;
-  showAiChat?: boolean;
+  // showAiChat removed — now fetched client-side to keep the page ISR-cached
 }
 
 const DEFAULT_DUPR = 2.9;
@@ -85,9 +87,23 @@ function venueHeatScore(
   return total;
 }
 
-export function HeatmapClient({ heatmapData, sessions, hcmMedianCostPerHour, todayStr, showAiChat = false }: Props) {
+export function HeatmapClient({ heatmapData, sessions, hcmMedianCostPerHour, todayStr }: Props) {
   const { duprRange, venues, totalPlayersWithDupr } = heatmapData;
   const { t, locale } = useI18n();
+
+  // Fetch playerFacingEnabled live so the page can stay ISR-cached
+  const [showAiChat, setShowAiChat] = useState(false);
+  useEffect(() => {
+    fetch("/api/heatmap/ai-enabled")
+      .then((r) => r.json())
+      .then((d: { enabled: boolean }) => setShowAiChat(d.enabled === true))
+      .catch(() => {});
+  }, []);
+
+  const heatmapShareUrl = `${HUB_SITE_ORIGIN}/heatmap`;
+  const heatmapShareText = locale === "vi"
+    ? `Tìm buổi chơi pickleball ở TP.HCM 🏓\n${heatmapShareUrl}`
+    : `Find pickleball sessions in Ho Chi Minh City 🏓\n${heatmapShareUrl}`;
 
   // AI chat modal state — persists for the page session, resets on page reload
   const [aiChatOpen, setAiChatOpen] = useState(false);
@@ -437,15 +453,13 @@ export function HeatmapClient({ heatmapData, sessions, hcmMedianCostPerHour, tod
         )}
       </section>
 
-      {/* Floating AI chat button + modal — only when playerFacingEnabled */}
-      {showAiChat && (
+      {/* Floating CTA — AI chat when enabled, Share with friends when disabled */}
+      {showAiChat ? (
         <>
           <button
             onClick={() => setAiChatOpen(true)}
             className="fixed right-6 z-40 flex items-center gap-2 rounded-full bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white text-sm font-medium px-5 py-3 shadow-xl transition"
-            style={{
-              bottom: "max(24px, env(safe-area-inset-bottom, 24px))",
-            }}
+            style={{ bottom: "max(24px, env(safe-area-inset-bottom, 24px))" }}
             aria-label="Open AI assistant"
           >
             <span aria-hidden>🏓</span>
@@ -463,6 +477,12 @@ export function HeatmapClient({ heatmapData, sessions, hcmMedianCostPerHour, tod
             onDisclaimerSeen={() => setAiDisclaimerSeen(true)}
           />
         </>
+      ) : (
+        <ShareButton
+          shareText={heatmapShareText}
+          shareUrl={heatmapShareUrl}
+          label={t("shareWithFriends")}
+        />
       )}
     </div>
   );
