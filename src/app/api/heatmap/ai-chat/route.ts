@@ -93,19 +93,29 @@ export async function POST(request: NextRequest) {
   try {
     settings = await loadAiChatSettings();
   } catch (e) {
-    console.error("[heatmap/ai-chat] Failed to load settings:", errMsg(e));
+    console.error("[heatmap/ai-chat] BLOCKED: Failed to load settings:", errMsg(e));
     return NextResponse.json({ error: "AI assistant is not available right now" }, { status: 503 });
   }
 
+  console.log("[heatmap/ai-chat] Settings loaded:", {
+    playerFacingEnabled: settings.playerFacingEnabled,
+    model: settings.model,
+    hasDeepSeekKey: !!process.env.DEEPSEEK_API_KEY,
+    hasAnthropicKey: !!process.env.ANTHROPIC_API_KEY,
+  });
+
   if (!settings.playerFacingEnabled) {
+    console.warn("[heatmap/ai-chat] BLOCKED: playerFacingEnabled=false");
     return NextResponse.json({ error: "AI assistant is not available right now" }, { status: 403 });
   }
 
   const provider = getProvider(settings.model);
   if (provider === "anthropic" && !process.env.ANTHROPIC_API_KEY) {
+    console.error("[heatmap/ai-chat] BLOCKED: ANTHROPIC_API_KEY missing for model:", settings.model);
     return NextResponse.json({ error: "AI assistant is not available right now" }, { status: 503 });
   }
   if (provider === "deepseek" && !process.env.DEEPSEEK_API_KEY) {
+    console.error("[heatmap/ai-chat] BLOCKED: DEEPSEEK_API_KEY missing for model:", settings.model);
     return NextResponse.json({ error: "AI assistant is not available right now" }, { status: 503 });
   }
 
