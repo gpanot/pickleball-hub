@@ -802,9 +802,9 @@ export interface HeatmapData {
   totalPlayersWithDupr: number;
 }
 
-/** Snap a coordinate to a ~33 m grid for deduplication. */
+/** Snap a coordinate to a ~100 m grid for deduplication. */
 function snapCoord(coord: number): number {
-  return Math.round(coord / 0.0003) * 0.0003;
+  return Math.round(coord / 0.0009) * 0.0009;
 }
 
 /**
