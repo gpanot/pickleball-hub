@@ -4,8 +4,8 @@ import { vnCalendarDateString } from "@/lib/utils";
 import { HeatmapClient } from "./HeatmapClient";
 import { prisma } from "@/lib/db";
 
-// Revalidate at most once per hour (same as API route)
-export const revalidate = 3600;
+// Always fetch fresh — needed so playerFacingEnabled toggle takes effect immediately
+export const dynamic = "force-dynamic";
 
 export default async function HeatmapPage() {
   const todayStr = vnCalendarDateString(0);
