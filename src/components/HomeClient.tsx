@@ -135,6 +135,8 @@ export type HomeClientProps = {
   hcmMedianTomorrow: number;
   lastScrapedAtToday: string | null;
   lastScrapedAtTomorrow: string | null;
+  /** When true, the server page already rendered the hero stats header above this component. */
+  serverHeroRendered?: boolean;
 };
 
 function applyTimeMaxPriceSearchFilters(
@@ -184,6 +186,7 @@ export function HomeClient({
   hcmMedianTomorrow,
   lastScrapedAtToday,
   lastScrapedAtTomorrow,
+  serverHeroRendered = false,
 }: HomeClientProps) {
   const { t } = useI18n();
   const { showZaloPrompt, zaloPromptDismissed, dismissZaloPrompt, saveToServer, incrementVisit } = useProfileStore();
@@ -538,34 +541,40 @@ export function HomeClient({
     );
   }, [lastScrapedAt, t]);
 
+  // When server already rendered the hero stats above this component (today tab),
+  // suppress the duplicate header to avoid layout shift; show it when on tomorrow tab.
+  const showClientHeader = !serverHeroRendered || dayTab === "tomorrow";
+
   return (
-    <div className="mx-auto w-full min-w-0 max-w-7xl px-2 py-4 sm:px-6 sm:py-6 lg:px-8">
-      <div className="mb-4 sm:mb-6">
-        <h1 className="mb-1 hidden text-xl font-bold sm:block sm:text-2xl">
-          <span className="text-primary">{t("pickleball")}</span>{" "}
-          {dayTab === "today" ? t("sessionsToday") : t("sessionsTomorrow")}
-        </h1>
-        <p className="text-sm text-muted">
-          {t("hoChiMinhCity")} — {formatDayLabel(activeDate)}
-          {tomorrowPendingSync ? (
-            <> — {t("noSessionsLoadedYet")}</>
-          ) : (
-            <>
-              {" "}
-              — {sessions.length} {t("sessions")}, {totalPlayers.toLocaleString()} {t("players")}
-            </>
-          )}
+    <div className="mx-auto w-full min-w-0 max-w-7xl px-2 py-4 sm:px-6 sm:py-6 lg:px-8" style={serverHeroRendered && dayTab === "today" ? { paddingTop: 0 } : undefined}>
+      {showClientHeader && (
+        <div className="mb-4 sm:mb-6">
+          <h1 className="mb-1 hidden text-xl font-bold sm:block sm:text-2xl">
+            <span className="text-primary">{t("pickleball")}</span>{" "}
+            {dayTab === "today" ? t("sessionsToday") : t("sessionsTomorrow")}
+          </h1>
+          <p className="text-sm text-muted">
+            {t("hoChiMinhCity")} — {formatDayLabel(activeDate)}
+            {tomorrowPendingSync ? (
+              <> — {t("noSessionsLoadedYet")}</>
+            ) : (
+              <>
+                {" "}
+                — {sessions.length} {t("sessions")}, {totalPlayers.toLocaleString()} {t("players")}
+              </>
+            )}
+            {updatedAtLine && (
+              <>
+                <span className="sm:hidden"> - </span>
+                <span className="text-[11px] text-muted/70 sm:hidden">{updatedAtLine}</span>
+              </>
+            )}
+          </p>
           {updatedAtLine && (
-            <>
-              <span className="sm:hidden"> - </span>
-              <span className="text-[11px] text-muted/70 sm:hidden">{updatedAtLine}</span>
-            </>
+            <p className="mt-0.5 hidden text-[11px] text-muted/70 sm:block">{updatedAtLine}</p>
           )}
-        </p>
-        {updatedAtLine && (
-          <p className="mt-0.5 hidden text-[11px] text-muted/70 sm:block">{updatedAtLine}</p>
-        )}
-      </div>
+        </div>
+      )}
 
       {tomorrowPendingSync && (
         <div

@@ -52,6 +52,13 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <head>
+        {/* Preconnect to external origins to reduce connection latency */}
+        <link rel="preconnect" href="https://cloud.umami.is" />
+        <link rel="preconnect" href="https://cdn.mouseflow.com" />
+        <link rel="dns-prefetch" href="https://reclub.co" />
+        <link rel="preconnect" href="https://assets.reclub.co" />
+        <link rel="preconnect" href="https://d1upr18ac2olqz.cloudfront.net" />
+        <link rel="dns-prefetch" href="https://api.reclub.co" />
         {/* Per-build: if 404, replace href with the Geist woff2 name from `.next/static/media` after `next build` */}
         <link
           rel="preload"

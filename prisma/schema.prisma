@@ -288,6 +288,22 @@ model ContentPost {
   @@map("content_posts")
 }
 
+/// Chat logs for the admin AI assistant (internal testing).
+model AiAssistantLog {
+  id               String   @id @default(cuid())
+  sessionId        String   @map("session_id")
+  role             String
+  content          String
+  inputTokens      Int?     @map("input_tokens")
+  outputTokens     Int?     @map("output_tokens")
+  estimatedCostUsd Float?   @map("estimated_cost_usd")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  @@index([sessionId])
+  @@index([createdAt])
+  @@map("ai_assistant_logs")
+}
+
 /// Aggregated DUPR participation for a session row (keyed by sessions.id).
 model SessionDuprStat {
   sessionId              Int      @id @map("session_id")

@@ -283,7 +283,7 @@ export function HeatmapClient({ heatmapData, sessions, hcmMedianCostPerHour, tod
       </div>
 
       {/* Time-of-day filter pills */}
-      <div className="mb-4 flex flex-wrap gap-1.5">
+      <div className="mb-4 flex flex-nowrap gap-1.5 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {(["morning", "afternoon", "evening"] as TimeSlot[]).map((slot) => {
           const active = activeTimeSlots.includes(slot);
           const label = t(slot);
