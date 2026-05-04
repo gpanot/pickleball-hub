@@ -87,6 +87,7 @@ export function ClubsClient({
         result.sort((a, b) => b.avgFillRate - a.avgFillRate);
         break;
       case "price":
+        result = result.filter((c) => c.totalSessionsWeek > 0);
         result.sort((a, b) => a.avgFee - b.avgFee);
         break;
       default:
