@@ -407,6 +407,11 @@ def scrape_session_roster(
         # across all sessions in the past 60 days (excluding today).
         returning_pct: float | None = None
         non_host_total = sum(1 for p in participants if not p["isHost"])
+        host_total = sum(1 for p in participants if p["isHost"])
+        print(
+            f"[roster] {reference_code} participants breakdown — "
+            f"non_host={non_host_total}, host={host_total}, scraped_date={scraped_date_str}"
+        )
         if non_host_total > 0:
             try:
                 cur.execute(
@@ -430,24 +435,39 @@ def scrape_session_roster(
                     """,
                     (session_id, session_id, scraped_date_str, scraped_date_str),
                 )
-                (regulars,) = cur.fetchone()
-                returning_pct = round((int(regulars) / non_host_total) * 100, 2)
+                row = cur.fetchone()
+                if row is None:
+                    print(f"[roster] WARN: retention query returned no row for {reference_code} (session_id={session_id})")
+                else:
+                    (regulars,) = row
+                    returning_pct = round((int(regulars) / non_host_total) * 100, 2)
+                    print(f"[roster] {reference_code} regulars query — regulars={regulars}, non_host_total={non_host_total}")
             except Exception as e:
-                print(f"[roster] Retention query failed for {reference_code}: {e}")
+                import traceback
+                print(f"[roster] ERROR: retention query failed for {reference_code} (session_id={session_id}, date={scraped_date_str}): {type(e).__name__}: {e}")
+                print(traceback.format_exc())
+        else:
+            print(f"[roster] WARN: {reference_code} skipping regulars — non_host_total=0 (all {host_total} participants marked as host)")
 
-        cur.execute(
-            """
-            UPDATE session_dupr_stats
-               SET returning_player_pct = %s, updated_at = NOW()
-             WHERE session_id = %s
-            """,
-            (returning_pct, session_id),
-        )
+        try:
+            cur.execute(
+                """
+                UPDATE session_dupr_stats
+                   SET returning_player_pct = %s, updated_at = NOW()
+                 WHERE session_id = %s
+                """,
+                (returning_pct, session_id),
+            )
+        except Exception as e:
+            import traceback
+            print(f"[roster] ERROR: UPDATE returning_player_pct failed for {reference_code} (session_id={session_id}): {type(e).__name__}: {e}")
+            print(traceback.format_exc())
+            raise
 
         conn.commit()
         print(
             f"[roster] {reference_code} — {players_with_dupr}/{total} with DUPR ({dupr_pct}%)"
-            + (f", regulars {returning_pct}%" if returning_pct is not None else "")
+            + (f", regulars {returning_pct}%" if returning_pct is not None else ", regulars=NULL")
         )
         return {
             "dupr_participation_pct": dupr_pct,
@@ -474,6 +494,7 @@ def run_roster_pass_for_day(
     Failures are logged only.
     """
     if not reference_codes:
+        print(f"[roster] run_roster_pass_for_day({scraped_date_str}): no reference_codes, skipping")
         return
 
     max_n = os.environ.get("ROSTER_MAX_SESSIONS")
@@ -501,16 +522,34 @@ def run_roster_pass_for_day(
         cur.close()
         conn.close()
 
+    print(
+        f"[roster] run_roster_pass_for_day({scraped_date_str}): "
+        f"{len(reference_codes)} refs → {len(pairs)} sessions resolved"
+        + (f" (capped to {cap})" if cap is not None else "")
+    )
+
     if cap is not None:
         pairs = pairs[:cap]
 
     delay = float(os.environ.get("ROSTER_SLEEP_SECONDS", "1"))
+    success = 0
+    failed = 0
 
     for session_id, ref in pairs:
         try:
-            scrape_session_roster(url, session_id, ref, scraped_date_str)
+            result = scrape_session_roster(url, session_id, ref, scraped_date_str)
+            if result is not None:
+                success += 1
+            else:
+                failed += 1
         except Exception as e:
-            print(f"[ingest] Roster scrape failed for {ref}: {e}")
+            failed += 1
+            print(f"[roster] ERROR: scrape failed for {ref} (session_id={session_id}): {type(e).__name__}: {e}")
         time.sleep(delay)
+
+    print(
+        f"[roster] run_roster_pass_for_day({scraped_date_str}) done — "
+        f"{success} ok, {failed} failed out of {len(pairs)} sessions"
+    )
 
 

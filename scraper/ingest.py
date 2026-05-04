@@ -724,6 +724,7 @@ def ingest_day(day, club_map):
         # (does not use the committed ingest connection).
         day_key = day.strftime("%Y-%m-%d")
         today_key = NOW.strftime("%Y-%m-%d")
+        print(f"\n  Roster check — day={day_key}, today={today_key}, sessions={len(pickleball_meets)}")
         if day_key == today_key and pickleball_meets:
             print("\n  Scraping rosters (today only)...")
             try:
@@ -733,7 +734,11 @@ def ingest_day(day, club_map):
                     list(pickleball_meets.keys()),
                 )
             except Exception as e:
-                print(f"  [ingest] Roster pass error (non-fatal): {e}")
+                import traceback
+                print(f"  [ingest] Roster pass error (non-fatal): {type(e).__name__}: {e}")
+                print(traceback.format_exc())
+        elif day_key != today_key:
+            print(f"  Skipping roster pass for {day_key} (not today={today_key})")
 
         return len(pickleball_meets)
 
