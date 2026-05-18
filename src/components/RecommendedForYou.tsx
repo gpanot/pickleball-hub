@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useProfileStore } from "@/store/profileStore";
 import { useI18n } from "@/lib/i18n";
 import { SessionCardSkeleton } from "@/components/SessionCardSkeleton";
@@ -8,6 +8,7 @@ import { OnboardingQnA } from "@/components/OnboardingQnA";
 import type { PlayerPreferences } from "@/store/profileStore";
 import { haversineKm, formatDistanceKm, formatVND, parseSessionType } from "@/lib/utils";
 import { computeSessionScore, getScoreLabel, HCM_MEDIAN_COST_FALLBACK } from "@/lib/scoring";
+import { readPublicApiCache, writePublicApiCache } from "@/lib/public-api-cache";
 import type { TranslationKey } from "@/lib/i18n";
 
 interface RecommendedSession {
@@ -109,24 +110,47 @@ export function RecommendedForYou({ date, userLocation, onSessionClick }: Recomm
   const [loading, setLoading] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [editing, setEditing] = useState(false);
+  const fetchedKeyRef = useRef<string | null>(null);
+
+  const buildCacheUrl = useCallback(
+    (prefs: PlayerPreferences, pid: string | null) => {
+      const params = new URLSearchParams({ date });
+      if (pid) params.set("profileId", pid);
+      params.set("timeSlots", prefs.timeSlots);
+      params.set("level", prefs.level);
+      params.set("travelTime", prefs.travelTime);
+      if (userLocation) {
+        params.set("lat", String(userLocation.lat));
+        params.set("lng", String(userLocation.lng));
+      }
+      return `/api/sessions/recommended?${params}`;
+    },
+    [date, userLocation],
+  );
 
   const fetchRecommendations = useCallback(
-    async (prefs: PlayerPreferences, pid: string | null) => {
+    async (prefs: PlayerPreferences, pid: string | null, force = false) => {
+      const url = buildCacheUrl(prefs, pid);
+
+      if (!force) {
+        const cached = readPublicApiCache<{ sessions: RecommendedSession[] }>(url);
+        if (cached) {
+          setSessions(cached.sessions ?? []);
+          fetchedKeyRef.current = url;
+          return;
+        }
+      }
+
+      if (fetchedKeyRef.current === url && !force) return;
+
       setLoading(true);
       try {
-        const params = new URLSearchParams({ date });
-        if (pid) params.set("profileId", pid);
-        params.set("timeSlots", prefs.timeSlots);
-        params.set("level", prefs.level);
-        params.set("travelTime", prefs.travelTime);
-        if (userLocation) {
-          params.set("lat", String(userLocation.lat));
-          params.set("lng", String(userLocation.lng));
-        }
-        const res = await fetch(`/api/sessions/recommended?${params}`);
+        const res = await fetch(url);
         if (res.ok) {
           const data = (await res.json()) as { sessions: RecommendedSession[] };
+          writePublicApiCache(url, data);
           setSessions(data.sessions ?? []);
+          fetchedKeyRef.current = url;
         }
       } catch {
         setSessions([]);
@@ -134,7 +158,7 @@ export function RecommendedForYou({ date, userLocation, onSessionClick }: Recomm
         setLoading(false);
       }
     },
-    [date, userLocation],
+    [buildCacheUrl],
   );
 
   useEffect(() => {
@@ -152,6 +176,7 @@ export function RecommendedForYou({ date, userLocation, onSessionClick }: Recomm
       void fetchRecommendations(
         { ...prefs, clickedSessions: [], visitCount: 0 },
         profileId,
+        true,
       );
     },
     [setPreferences, completeOnboarding, fetchRecommendations, profileId],
