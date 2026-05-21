@@ -12,6 +12,7 @@ import {
   WeeklyDistributionChart,
   HourlyStatsDistributionChart,
   MarketMedianCostChart,
+  PlayersPerDayChart,
   DAY_LABELS,
 } from "@/components/DashboardCharts";
 import { formatVND } from "@/lib/utils";
@@ -118,6 +119,26 @@ export default function OrganizerDashboardPage({ params }: { params: Promise<{ c
   >([]);
   const [marketMedianLoading, setMarketMedianLoading] = useState(false);
   const [marketMedianFetched, setMarketMedianFetched] = useState(false);
+
+  const [playersPerDayData, setPlayersPerDayData] = useState<{ date: string; players: number }[]>([]);
+  const [playersPerDayDays, setPlayersPerDayDays] = useState<30 | 90 | 180>(30);
+  const [playersPerDayLoading, setPlayersPerDayLoading] = useState(false);
+
+  useEffect(() => {
+    if (!sessionOk || !data) return;
+    let cancelled = false;
+    setPlayersPerDayLoading(true);
+    const url = `/api/dashboard/organizer/players-per-day?clubId=${clubId}&days=${playersPerDayDays}`;
+    fetchPublicApiJson<{ data: { date: string; players: number }[] }>(url)
+      .then((res) => {
+        if (!cancelled) setPlayersPerDayData(res.data || []);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setPlayersPerDayLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [sessionOk, data, clubId, playersPerDayDays]);
 
   useEffect(() => {
     if (!Number.isFinite(clubId) || clubId <= 0) {
@@ -602,6 +623,31 @@ export default function OrganizerDashboardPage({ params }: { params: Promise<{ c
               <FillRateTrendChart data={dailyStats} />
             </Section>
           )}
+
+          <Section title={t("orgSectionPlayersPerDay")}>
+            <div className="flex gap-2 mb-3">
+              {([30, 90, 180] as const).map((d) => (
+                <button
+                  key={d}
+                  onClick={() => setPlayersPerDayDays(d)}
+                  className={`px-3 py-1 text-xs rounded-full font-medium transition-colors ${
+                    playersPerDayDays === d
+                      ? "bg-indigo-600 text-white"
+                      : "bg-surface-alt text-muted hover:bg-indigo-100"
+                  }`}
+                >
+                  {d} days
+                </button>
+              ))}
+            </div>
+            {playersPerDayLoading ? (
+              <div className="flex items-center justify-center h-[256px] text-muted text-sm">Loading...</div>
+            ) : playersPerDayData.length > 0 ? (
+              <PlayersPerDayChart data={playersPerDayData} />
+            ) : (
+              <p className="text-sm text-muted py-4">No data available.</p>
+            )}
+          </Section>
 
           {dailyStats.length > 0 && (
             <Section title={t("orgSectionRevenueTrend")}>

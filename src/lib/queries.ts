@@ -591,6 +591,20 @@ export async function getOrganizerAnalytics(clubId: number) {
   };
 }
 
+export async function getPlayersPerDay(clubId: number, days: number) {
+  const stats = await prisma.clubDailyStat.findMany({
+    where: { clubId },
+    orderBy: { date: "desc" },
+    take: days,
+    select: { date: true, totalJoined: true },
+  });
+
+  return stats.reverse().map((s) => ({
+    date: s.date,
+    players: s.totalJoined,
+  }));
+}
+
 export async function getClubComparison(clubIds: number[]) {
   const today = vnCalendarDateString(0);
 
