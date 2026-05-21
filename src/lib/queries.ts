@@ -591,6 +591,28 @@ export async function getOrganizerAnalytics(clubId: number) {
   };
 }
 
+export async function getMarketPlayersPerDay(days: number) {
+  const topClubs = await prisma.club.findMany({
+    orderBy: { numMembers: "desc" },
+    take: 100,
+    select: { id: true },
+  });
+  const clubIds = topClubs.map((c) => c.id);
+
+  const stats = await prisma.clubDailyStat.groupBy({
+    by: ["date"],
+    where: { clubId: { in: clubIds } },
+    _sum: { totalJoined: true },
+    orderBy: { date: "desc" },
+    take: days,
+  });
+
+  return stats.reverse().map((s) => ({
+    date: s.date,
+    players: s._sum.totalJoined ?? 0,
+  }));
+}
+
 export async function getPlayersPerDay(clubId: number, days: number) {
   const stats = await prisma.clubDailyStat.findMany({
     where: { clubId },

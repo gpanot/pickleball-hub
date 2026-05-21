@@ -13,6 +13,7 @@ import {
   HourlyStatsDistributionChart,
   MarketMedianCostChart,
   PlayersPerDayChart,
+  MarketPlayersPerDayChart,
   DAY_LABELS,
 } from "@/components/DashboardCharts";
 import { formatVND } from "@/lib/utils";
@@ -124,6 +125,10 @@ export default function OrganizerDashboardPage({ params }: { params: Promise<{ c
   const [playersPerDayDays, setPlayersPerDayDays] = useState<30 | 90 | 180>(30);
   const [playersPerDayLoading, setPlayersPerDayLoading] = useState(false);
 
+  const [marketPlayersData, setMarketPlayersData] = useState<{ date: string; players: number }[]>([]);
+  const [marketPlayersDays, setMarketPlayersDays] = useState<30 | 60 | 90>(30);
+  const [marketPlayersLoading, setMarketPlayersLoading] = useState(false);
+
   useEffect(() => {
     if (!sessionOk || !data) return;
     let cancelled = false;
@@ -139,6 +144,23 @@ export default function OrganizerDashboardPage({ params }: { params: Promise<{ c
       });
     return () => { cancelled = true; };
   }, [sessionOk, data, clubId, playersPerDayDays]);
+
+  useEffect(() => {
+    if (!sessionOk) return;
+    if (activeTab !== "ranking") return;
+    let cancelled = false;
+    setMarketPlayersLoading(true);
+    const url = `/api/dashboard/organizer/market-players-per-day?days=${marketPlayersDays}`;
+    fetchPublicApiJson<{ data: { date: string; players: number }[] }>(url)
+      .then((res) => {
+        if (!cancelled) setMarketPlayersData(res.data || []);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setMarketPlayersLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [sessionOk, activeTab, marketPlayersDays]);
 
   useEffect(() => {
     if (!Number.isFinite(clubId) || clubId <= 0) {
@@ -827,6 +849,32 @@ export default function OrganizerDashboardPage({ params }: { params: Promise<{ c
 
       {/* Ranking Tab */}
       {activeTab === "ranking" && (
+        <>
+        <Section title={t("orgRankingMarketPlayers")}>
+          <div className="flex gap-2 mb-3">
+            {([30, 60, 90] as const).map((d) => (
+              <button
+                key={d}
+                onClick={() => setMarketPlayersDays(d)}
+                className={`px-3 py-1 text-xs rounded-full font-medium transition-colors ${
+                  marketPlayersDays === d
+                    ? "bg-indigo-600 text-white"
+                    : "bg-surface-alt text-muted hover:bg-indigo-100"
+                }`}
+              >
+                {d} days
+              </button>
+            ))}
+          </div>
+          {marketPlayersLoading ? (
+            <div className="flex items-center justify-center h-[256px] text-muted text-sm">Loading...</div>
+          ) : marketPlayersData.length > 0 ? (
+            <MarketPlayersPerDayChart data={marketPlayersData} />
+          ) : (
+            <p className="text-sm text-muted py-4">No data available.</p>
+          )}
+        </Section>
+
         <Section title={t("orgRankingTitle")}>
           <p className="text-xs text-muted mb-3">
             {t("orgRankingDesc")}
@@ -930,6 +978,7 @@ export default function OrganizerDashboardPage({ params }: { params: Promise<{ c
             </button>
           )}
         </Section>
+        </>
       )}
 
       {/* Rival Comparison Tab */}

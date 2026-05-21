@@ -314,4 +314,39 @@ export function PlayersPerDayChart({ data }: PlayersPerDayChartProps) {
   );
 }
 
+interface MarketPlayersPerDayChartProps {
+  data: { date: string; players: number }[];
+}
+
+export function MarketPlayersPerDayChart({ data }: MarketPlayersPerDayChartProps) {
+  return (
+    <RechartsAutoSize height={256} className="w-full min-w-0">
+      {({ width, height }) => (
+        <LineChart width={width} height={height} data={data}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+          <XAxis
+            dataKey="date"
+            tick={{ fontSize: 11 }}
+            tickFormatter={(v: string) => v.slice(5)}
+            interval="preserveStartEnd"
+          />
+          <YAxis tick={{ fontSize: 11 }} />
+          <Tooltip
+            formatter={(value) => [value, "Players"]}
+            labelFormatter={(l) => `Date: ${l}`}
+          />
+          <Line
+            type="monotone"
+            dataKey="players"
+            stroke="#6366f1"
+            strokeWidth={2}
+            dot={{ r: 3 }}
+            name="Total Players"
+          />
+        </LineChart>
+      )}
+    </RechartsAutoSize>
+  );
+}
+
 export { DAY_LABELS };
