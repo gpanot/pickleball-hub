@@ -1,6 +1,9 @@
 # Caching in pickleball-hub
 
-The app is deployed on **Vercel** (Next.js). Caching is split across **static HTML** (SSG for `/` and `/clubs` + selected session details), **CDN / browser** (`Cache-Control` on API routes), **on-demand revalidation** after the Railway scraper, and a **client-side in-memory** layer on some routes. There is no `vercel.json` in the repo.
+The app is deployed on **Vercel** (Next.js). Caching is split across **static HTML** (ISR for `/`, `/clubs`, `/heatmap`), **CDN / browser** (`Cache-Control` on API routes), **on-demand revalidation** after the Railway scraper, and a **client-side in-memory** layer on some routes. There is no `vercel.json` in the repo.
+
+**ISR cost optimization:** API routes use CDN `Cache-Control` only (no `revalidate` export) to avoid ISR write units on Vercel. Pages use `revalidate = false` and rely on on-demand revalidation from the scraper.
+
 ---
 
 ## 1. HTTP: `Cache-Control` (browser + Vercel CDN)
@@ -9,11 +12,11 @@ Defined in `src/lib/http-cache-headers.ts`.
 
 ### Public listing APIs (clubs, venues, dashboard JSON, stats)
 
-- **Header:** `public, max-age=300, s-maxage=3600, stale-while-revalidate=14400`
+- **Header:** `public, max-age=300, s-maxage=3600, stale-while-revalidate=86400`
 - **Meaning:**
-  - **Browser (`max-age=300`):** may reuse a response for up to **5 minutes** before revalidating (cheap when the CDN is warm).
-  - **CDN (`s-maxage=3600`):** Vercel’s edge is allowed to treat the response as **fresh for 1 hour** (`s-maxage` applies to shared caches like the CDN, not the browser’s private cache in the same way, but the combined header is the standard pattern).
-  - **Stale-while-revalidate (14400s):** for up to **4 hours** after freshness expires, the CDN can **serve a stale copy** while revalidating in the background.
+  - **Browser (`max-age=300`):** may reuse a response for up to **5 minutes** before revalidating.
+  - **CDN (`s-maxage=3600`):** Vercel's edge treats the response as **fresh for 1 hour**.
+  - **Stale-while-revalidate (86400s):** for up to **24 hours** after freshness expires, the CDN can serve a stale copy while revalidating in the background.
 
 These routes attach `CACHE_CONTROL_PUBLIC_LISTINGS` on successful JSON responses, for example:
 
@@ -23,25 +26,37 @@ These routes attach `CACHE_CONTROL_PUBLIC_LISTINGS` on successful JSON responses
 - `/api/dashboard/compare-clubs`, `/api/dashboard/compare-venues`
 - `/api/dashboard/organizer/stats`, `/api/dashboard/organizer/market-median-series`
 
-Rationale in code comments: public listings change on the order of **~twice per day**, so short browser TTL + 1h CDN + SWR reduces load while staying reasonably fresh.
-
 ### Sessions list API
 
-- **Header:** `public, max-age=60, s-maxage=300, stale-while-revalidate=3600` (via `CACHE_CONTROL_SESSIONS` in `src/lib/http-cache-headers.ts`)
-- **File:** `src/app/api/sessions/route.ts` — kept for **dashboards, tooling, and other consumers** (not the public home page).
-- **Home page** (`/`) no longer calls `/api/sessions`. It is a **server component** that loads data with `getSessions({ date })` in `page.tsx` and passes the result to `HomeClient` as props; filtering, sorting, and search run **entirely on the client** against that data.
+- **Header:** `public, max-age=60, s-maxage=300, stale-while-revalidate=7200` (via `CACHE_CONTROL_SESSIONS`)
+- **File:** `src/app/api/sessions/route.ts`
+
+### DUPR distribution API
+
+- **Header:** `public, s-maxage=86400, stale-while-revalidate=604800` (24h fresh, 7d SWR)
+- **File:** `src/app/api/clubs/[slug]/dupr/route.ts`
+- DUPR data updates weekly; long CDN cache is appropriate.
+
+### Heatmap API
+
+- **Header:** `public, s-maxage=3600, stale-while-revalidate=86400`
+- **File:** `src/app/api/heatmap/route.ts`
+- `export const dynamic = "force-dynamic"` — no ISR, CDN only.
 
 ---
 
-## 2. On-demand revalidation (Next.js cache, triggered after scrapes)
+## 2. On-demand revalidation (Next.js ISR cache, triggered after scrapes)
 
 **Route:** `POST /api/revalidate` — `src/app/api/revalidate/route.ts`
 
-- Protected by header `x-revalidate-token` matching `REVALIDATE_SECRET` (set on Vercel and on the scraper side).
-- Calls `revalidatePath` in this order: `/`, `/clubs`, `revalidatePath("/sessions/[referenceCode]", "page")` (all public session detail pages — `[referenceCode]` is the dynamic segment, not a literal path), `/dashboard/organizer`, `/dashboard/venue`.
-- The **Railway scraper** (see `scraper/entrypoint.py`, `trigger_vercel_revalidation()`) best-effort POSTs to `VERCEL_APP_URL/api/revalidate` after a successful run so the **static / full route cache** in Next is invalidated for those entry points when new data lands, **including session detail pages** so they match fresh ingests without waiting for ISR or a new deploy.
+- Protected by header `x-revalidate-token` matching `REVALIDATE_SECRET`.
+- **Heatmap tag** (`?tag=heatmap`): revalidates `/heatmap` only.
+- **Default (no tag):** revalidates `/`, `/clubs`, `/heatmap`.
+- Only ISR-cached pages are revalidated. API routes use CDN `Cache-Control` and don't need `revalidatePath`.
+- Routes like `/sessions/[referenceCode]` are `force-dynamic` and don't use ISR.
+- Dashboard pages are client-side rendered and don't use ISR.
 
-This does not replace `Cache-Control` on API responses; it targets **Next.js cache** for the listed route segments. **Per-club** URLs (e.g. `/clubs/[slug]`) are still not on-demand revalidated as a group here—only the paths above.
+The **Railway scraper** (`scraper/entrypoint.py`, `trigger_vercel_revalidation()`) POSTs to this endpoint after each successful ingest.
 
 ---
 
@@ -49,37 +64,57 @@ This does not replace `Cache-Control` on API responses; it targets **Next.js cac
 
 **File:** `src/lib/public-api-cache.ts`
 
-- A **per-browser-tab `Map`**: key = request URL, value = `{ at, data }` with a default TTL of **4 hours** (`PUBLIC_API_CACHE_TTL_MS`).
-- **Purpose:** avoid refetching the same API URL on every client navigation or filter tweak while the user stays in the same JS session (soft navigation).
-- **Limitation:** in-memory only — **clears on full page reload** and is **not shared** across tabs or users.
-
-`fetchPublicApiJson` wraps `fetch` and fills this cache. `readPublicApiCache` / `writePublicApiCache` are still used on some routes (e.g. **club profile** `src/app/clubs/[slug]/page.tsx`); the **home and clubs directory** no longer use them for their primary data (that data is server-props).
-
-### Club profile default `fetch`
-
-`src/app/clubs/[slug]/page.tsx` uses `fetch(url)` **without** `no-store` for the club API (which has the public listing `Cache-Control`). Browsers may cache that GET according to `max-age`; the in-memory cache is layered on top for repeat visits in the same session.
+- A per-browser-tab `Map`: key = request URL, value = `{ at, data }` with a default TTL of **4 hours** (`PUBLIC_API_CACHE_TTL_MS`).
+- Clears on full page reload; not shared across tabs or users.
 
 ---
 
-## 4. Session detail route (`/sessions/[referenceCode]`)
+## 4. ISR page strategy
 
-**File:** `src/app/sessions/[referenceCode]/page.tsx`
+### Pages with `revalidate = false` (on-demand only)
 
-- `export const revalidate = false` — no time-based ISR; freshness comes from **on-demand** `revalidatePath` after each scraper run and from build-time/ISR for paths not in `generateStaticParams` as needed.
-- `generateStaticParams` pre-renders up to `STATIC_SESSION_DETAIL_MAX` (default **40** in code; override via env) **distinct** `referenceCode` values for “today’s” `scrapedDate` at build time so the first request can be static HTML. Other codes are generated on demand. If `next build` hits `too many database connections`, lower `STATIC_SESSION_DETAIL_MAX` or use a pooler.
+| Page | File | Notes |
+|------|------|-------|
+| `/` | `src/app/page.tsx` | Home — on-demand revalidation after scraper runs |
+| `/clubs` | `src/app/clubs/page.tsx` | Clubs directory — on-demand only |
+| `/heatmap` | `src/app/heatmap/page.tsx` | Heatmap — on-demand only |
+
+These pages are server-rendered once, cached until the scraper triggers `POST /api/revalidate`, then re-rendered on the next request.
+
+### Pages with `force-dynamic` (no caching)
+
+| Page | File |
+|------|------|
+| `/sessions/[referenceCode]` | `src/app/sessions/[referenceCode]/page.tsx` |
+| `/admin/*` | Various admin pages |
+
+### Client-only pages (no server caching needed)
+
+| Page | Notes |
+|------|-------|
+| `/clubs/[slug]` | `"use client"` — fetches from `/api/clubs/[slug]` |
+| `/dashboard/*` | Client-side with auth |
+
+### API routes — NO ISR (CDN `Cache-Control` only)
+
+| Route | CDN cache | Reason |
+|-------|-----------|--------|
+| `/api/heatmap` | 1h + 24h SWR | Avoid ISR write units |
+| `/api/clubs/[slug]` | 1h + 24h SWR | Avoid ISR write units |
+| `/api/clubs/[slug]/dupr` | 24h + 7d SWR | Weekly data, long cache |
 
 ---
 
 ## 5. Summary table
 
-| Layer | What | Typical duration / behavior |
-|--------|------|-----------------------------|
-| Vercel CDN | `s-maxage` on public list APIs | ~1h fresh, up to 4h stale-while-revalidate |
-| Browser | `max-age=300` on those same APIs | ~5 min before rechecking |
-| API `/api/sessions` | `Cache-Control` on responses | For API consumers; home does not use this for initial HTML |
-| Client JS | `public-api-cache` | Up to 4h per URL where still used (e.g. some club fetches) |
-| Next SSG + on-demand | `revalidate = false` on `/`, `/clubs`, session detail | Stale-while revalidate = scraper’s `POST /api/revalidate` (paths in §2) |
-| Next | `generateStaticParams` on session detail | Caps at `STATIC_SESSION_DETAIL_MAX` (default 40) to avoid build DB connection exhaustion |
+| Layer | What | Duration |
+|-------|------|----------|
+| Vercel CDN | `s-maxage` on public list APIs | 1h fresh, up to 24h SWR |
+| Browser | `max-age=300` on list APIs | 5 min before rechecking |
+| CDN (DUPR) | `s-maxage=86400` | 24h fresh, 7d SWR |
+| Client JS | `public-api-cache` | Up to 4h per URL |
+| Next ISR | `revalidate = false` on `/`, `/clubs`, `/heatmap` | On-demand via scraper only |
+| Next | `force-dynamic` on session detail, admin | No caching |
 
 ---
 
@@ -88,10 +123,7 @@ This does not replace `Cache-Control` on API responses; it targets **Next.js cac
 | Variable | Role |
 |----------|------|
 | `REVALIDATE_SECRET` | Token for `POST /api/revalidate` |
-| `VERCEL_APP_URL` | Scraper: base URL of the deployed app (no trailing slash), e.g. `https://…vercel.app` |
-| `STATIC_SESSION_DETAIL_MAX` (optional) | `next build`: max session detail pages to pre-render (default 40) |
-
-See `pickleball-hub/.env.example` for comments.
+| `VERCEL_APP_URL` | Scraper: base URL of the deployed app (no trailing slash) |
 
 ---
 
@@ -102,14 +134,13 @@ See `pickleball-hub/.env.example` for comments.
 - `src/app/api/revalidate/route.ts` — which paths on-demand revalidate
 - `scraper/entrypoint.py` — `trigger_vercel_revalidation()`
 
-If you add new public JSON routes that are safe to cache, attach `CACHE_CONTROL_PUBLIC_LISTINGS` (or a new constant with its own numbers) and document the choice here.
-
 ---
 
-## 8. Static page rendering (home + clubs)
+## 8. ISR cost optimization notes
 
-`/` and `/clubs` are **fully server-rendered** with `export const revalidate = false` in their `page.tsx` files, then **cached** at the Vercel edge until the next on-demand revalidation. They are **not** on a time-based revalidate interval.
+To minimize Vercel ISR read/write units:
 
-**Data flow:** Railway scraper → successful ingest → `POST /api/revalidate` (with `REVALIDATE_SECRET`) → Vercel purges the cached full-route + RSC data for the paths in **section 2** → the next request runs a **fresh** server render → result is cached again.
-
-**Client behavior:** Filtering, sorting, search, tabs (Today/Tomorrow), map/list, Free Tonight collapse, and the rest of the home UI run **entirely in the browser** on props already in the first response — **no** `/api/sessions` or `/api/clubs` call after the initial page load for those two routes.
+1. **No time-based revalidation** — all ISR pages use `revalidate = false` and rely on on-demand revalidation from the scraper (3x/day).
+2. **API routes use CDN only** — `export const dynamic = "force-dynamic"` + `Cache-Control` headers. This avoids ISR write units entirely for API responses.
+3. **No non-deterministic output** — `vnCalendarDateString()` returns the same value within a VN calendar day, ensuring ISR rewrites only occur when actual data changes.
+4. **Targeted revalidation** — `POST /api/revalidate` only purges ISR-cached pages (`/`, `/clubs`, `/heatmap`), not force-dynamic or client-only routes.

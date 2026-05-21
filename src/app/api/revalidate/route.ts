@@ -13,17 +13,15 @@ export async function POST(req: NextRequest) {
   const tag = new URL(req.url).searchParams.get("tag");
 
   try {
+    // Only revalidate ISR-cached pages. API routes now use CDN Cache-Control only.
+    // /sessions/[referenceCode] is force-dynamic — no ISR to purge.
+    // /dashboard/* are client-side pages — no ISR to purge.
     if (tag === "heatmap") {
-      revalidatePath("/api/heatmap");
       revalidatePath("/heatmap");
     } else {
       revalidatePath("/");
       revalidatePath("/clubs");
-      revalidatePath("/sessions/[referenceCode]", "page");
-      revalidatePath("/dashboard/organizer");
-      revalidatePath("/dashboard/venue");
       revalidatePath("/heatmap");
-      revalidatePath("/api/heatmap");
     }
 
     return NextResponse.json({

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getClubDuprDistribution } from "@/lib/queries";
 
-export const revalidate = 3600;
+// No ISR — CDN Cache-Control handles caching. DUPR data updates weekly.
+export const dynamic = "force-dynamic";
 
 export async function GET(
   _request: NextRequest,
@@ -13,7 +14,7 @@ export async function GET(
     const data = await getClubDuprDistribution(slug);
     return NextResponse.json(data, {
       headers: {
-        "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=86400",
+        "Cache-Control": "public, s-maxage=86400, stale-while-revalidate=604800",
       },
     });
   } catch (error) {

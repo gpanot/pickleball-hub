@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { getClubBySlug } from "@/lib/queries";
 import { CACHE_CONTROL_PUBLIC_LISTINGS } from "@/lib/http-cache-headers";
 
-// Cache this route for 1 hour via Next.js ISR — club data changes at most a few times per day.
-// On Vercel, the CDN also holds the response via the Cache-Control header below.
-export const revalidate = 3600;
+// No ISR — CDN Cache-Control handles caching without ISR write units.
+// Club data changes at most a few times per day; CDN + stale-while-revalidate suffices.
+export const dynamic = "force-dynamic";
 
 export async function GET(
   _request: NextRequest,

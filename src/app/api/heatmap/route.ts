@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { getHeatmapData } from "@/lib/queries";
 
-// Revalidate at most once per hour; scraper calls /api/revalidate after DUPR updates
-export const revalidate = 3600;
+// No ISR (revalidate) — use CDN Cache-Control only to avoid ISR write units.
+// Scraper calls POST /api/revalidate after updates; between scrapes the CDN serves stale.
+export const dynamic = "force-dynamic";
 
-// Edge-compatible cache headers so Vercel CDN caches the response for 1 hour
 const CACHE_HEADERS = {
-  "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=300",
+  "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=86400",
 };
 
 export async function GET() {
