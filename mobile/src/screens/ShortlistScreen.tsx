@@ -14,8 +14,10 @@ import Animated, {
 } from 'react-native-reanimated'
 import { X } from 'lucide-react-native'
 import { T } from '../theme'
-import { type Session, ALL_SESSIONS, SAVED_IDS } from '../data'
+import { type Session } from '../data'
 import { TopBar, CardBody } from '../components/CardBody'
+import { useAuthStore } from '../stores/authStore'
+import { useSessionStore } from '../stores/sessionStore'
 
 const { width: W } = Dimensions.get('window')
 const CARD_WIDTH = W * 0.84
@@ -92,18 +94,25 @@ function CarouselCta({ eventUrl, onRemove }: { eventUrl: string; onRemove: () =>
 }
 
 /* ── ShortlistScreen ─────────────────────────────────────────── */
-export function ShortlistScreen() {
+export function ShortlistScreen({
+  onSignUpPrompt,
+}: {
+  onSignUpPrompt?: () => void
+}) {
+  const signedIn = useAuthStore((s) => s.isSignedIn)()
   const [sort, setSort] = useState<SortKey>('match')
   const [removedIds, setRemovedIds] = useState<Set<number>>(new Set())
   const [carouselIdx, setCarouselIdx] = useState(0)
   const flatListRef = useRef<FlatList>(null)
 
-  const savedSessions = ALL_SESSIONS.filter((s) => SAVED_IDS.includes(s.id))
+  const savedSessions = useSessionStore((s) => s.getSavedSessions)()
   const visibleSessions = savedSessions.filter((s) => !removedIds.has(s.id))
 
+  const unsaveSession = useSessionStore((s) => s.unsaveSession)
   const handleRemove = useCallback((id: number) => {
     setRemovedIds((prev) => new Set([...prev, id]))
-  }, [])
+    unsaveSession(id)
+  }, [unsaveSession])
 
   const onViewableItemsChanged = useRef(
     ({ viewableItems }: { viewableItems: Array<{ index: number | null }> }) => {
@@ -121,11 +130,13 @@ export function ShortlistScreen() {
         <CardBody
           s={item}
           matchDialBelowTopRow
+          isSignedIn={signedIn}
+          onSignUpPrompt={onSignUpPrompt}
           renderCta={<CarouselCta eventUrl={item.eventUrl} onRemove={() => handleRemove(item.id)} />}
         />
       </View>
     ),
-    [handleRemove]
+    [handleRemove, signedIn, onSignUpPrompt]
   )
 
   return (

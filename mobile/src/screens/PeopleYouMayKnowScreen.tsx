@@ -37,8 +37,10 @@ type LastSession = {
 
 export function PeopleYouMayKnowScreen({
   onComplete,
+  embedded = false,
 }: {
   onComplete: () => void
+  embedded?: boolean
 }) {
   const insets = useSafeAreaInsets()
   const { authedFetch, reclubUserId } = useAuthStore()
@@ -89,9 +91,11 @@ export function PeopleYouMayKnowScreen({
     [authedFetch]
   )
 
+  const topPad = embedded ? 0 : insets.top + 12
+
   if (loading) {
     return (
-      <View style={[styles.container, { paddingTop: insets.top + 40 }]}>
+      <View style={[styles.container, { paddingTop: embedded ? 20 : insets.top + 40 }]}>
         <ActivityIndicator size="large" color={T.amber} />
       </View>
     )
@@ -99,7 +103,7 @@ export function PeopleYouMayKnowScreen({
 
   if (!reclubUserId) {
     return (
-      <View style={[styles.container, { paddingTop: insets.top + 40 }]}>
+      <View style={[styles.container, { paddingTop: embedded ? 20 : insets.top + 40 }]}>
         <Text style={styles.heading}>No Reclub profile linked</Text>
         <TouchableOpacity style={styles.skipBtn} onPress={onComplete}>
           <Text style={styles.skipLabel}>Continue</Text>
@@ -109,7 +113,7 @@ export function PeopleYouMayKnowScreen({
   }
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top + 12 }]}>
+    <View style={[styles.container, { paddingTop: topPad, paddingHorizontal: embedded ? 0 : 20 }]}>
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* Last sessions section */}
         {lastSessions.length > 0 && (
@@ -226,17 +230,19 @@ export function PeopleYouMayKnowScreen({
         )}
       </ScrollView>
 
-      <TouchableOpacity
-        style={styles.doneBtn}
-        onPress={onComplete}
-        activeOpacity={0.8}
-      >
-        <Text style={styles.doneLabel}>
-          {followedIds.size > 0
-            ? `Done (${followedIds.size} followed)`
-            : 'Skip'}
-        </Text>
-      </TouchableOpacity>
+      {!embedded && (
+        <TouchableOpacity
+          style={styles.doneBtn}
+          onPress={onComplete}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.doneLabel}>
+            {followedIds.size > 0
+              ? `Done (${followedIds.size} followed)`
+              : 'Skip'}
+          </Text>
+        </TouchableOpacity>
+      )}
     </View>
   )
 }

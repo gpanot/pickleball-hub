@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useRef } from 'react'
 import {
   View,
   Text,
@@ -7,26 +7,27 @@ import {
   ScrollView,
   StyleSheet,
   Dimensions,
+  ActivityIndicator,
 } from 'react-native'
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withSpring,
-  withTiming,
   runOnJS,
 } from 'react-native-reanimated'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import { X, RotateCcw, Heart } from 'lucide-react-native'
+import * as Location from 'expo-location'
 import { T } from '../theme'
 import {
   type Session,
-  ALL_SESSIONS,
   formatPriceDuration,
   formatDistance,
   formatTime,
 } from '../data'
 import { TopBar, CardBody, CARD_HEIGHT } from '../components/CardBody'
 import { useAuthStore } from '../stores/authStore'
+import { useSessionStore } from '../stores/sessionStore'
 
 /* eslint-disable @typescript-eslint/no-var-requires */
 const CARD_BG_IMAGES = [
@@ -36,43 +37,40 @@ const CARD_BG_IMAGES = [
 
 const { width: W } = Dimensions.get('window')
 
-/* ── ProgressDots ────────────────────────────────────────────── */
-function ProgressDot({ active }: { active: boolean }) {
-  const width = useSharedValue(active ? 14 : 5)
-
-  React.useEffect(() => {
-    width.value = withTiming(active ? 14 : 5, { duration: 250 })
-  }, [active])
-
-  const animStyle = useAnimatedStyle(() => ({
-    width: width.value,
-    height: 5,
-    borderRadius: active ? 3 : 999,
-    backgroundColor: active ? T.amber : '#2a2a2a',
-  }))
-
-  return <Animated.View style={animStyle} />
-}
-
-function ProgressDots({ total, current }: { total: number; current: number }) {
+/* ── ProgressBar ─────────────────────────────────────────────── */
+function ProgressBar({ total, current }: { total: number; current: number }) {
+  const pct = total > 0 ? Math.min(current / total, 1) : 0
   return (
     <View
       style={{
         flexDirection: 'row',
-        justifyContent: 'space-between',
         alignItems: 'center',
+        gap: 10,
         paddingHorizontal: 16,
         paddingBottom: 12,
       }}
     >
-      <Text style={{ fontSize: 11, color: '#666' }}>
-        {current} of {total} Selected
-      </Text>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-        {Array.from({ length: total }).map((_, i) => (
-          <ProgressDot key={i} active={i < current} />
-        ))}
+      <View
+        style={{
+          flex: 1,
+          height: 3,
+          borderRadius: 2,
+          backgroundColor: '#2a2a2a',
+          overflow: 'hidden',
+        }}
+      >
+        <View
+          style={{
+            width: `${pct * 100}%`,
+            height: '100%',
+            backgroundColor: T.amber,
+            borderRadius: 2,
+          }}
+        />
       </View>
+      <Text style={{ fontSize: 11, color: '#666', minWidth: 44, textAlign: 'right' }}>
+        {current}/{total}
+      </Text>
     </View>
   )
 }
@@ -177,8 +175,10 @@ function AnimatedSwipeCard({
 
 /* ── SecondaryCard ───────────────────────────────────────────── */
 function SecondaryCard({ s }: { s: Session }) {
-  const mc =
-    s.matchScore >= 85
+  const isNew = s.matchScore === 0
+  const mc = isNew
+    ? '#666'
+    : s.matchScore >= 85
       ? T.amber
       : s.matchScore >= 70
         ? 'rgba(255,255,255,0.5)'
@@ -249,196 +249,231 @@ function SecondaryCard({ s }: { s: Session }) {
         </View>
         <View style={{ alignItems: 'flex-end' }}>
           <Text style={{ fontSize: 20, fontWeight: '700', color: mc, lineHeight: 22 }}>
-            {s.matchScore}%
+            {isNew ? 'New' : `${s.matchScore}%`}
           </Text>
-          <Text
-            style={{
-              fontSize: 9,
-              color: 'rgba(255,255,255,0.3)',
-              textTransform: 'uppercase',
-              letterSpacing: 0.8,
-              marginTop: 2,
-            }}
-          >
-            Match
-          </Text>
+          {!isNew && (
+            <Text
+              style={{
+                fontSize: 9,
+                color: 'rgba(255,255,255,0.3)',
+                textTransform: 'uppercase',
+                letterSpacing: 0.8,
+                marginTop: 2,
+              }}
+            >
+              Match
+            </Text>
+          )}
         </View>
       </View>
     </View>
   )
 }
 
+const HCMC_LAT = 10.78
+const HCMC_LNG = 106.69
+
 /* ── SwipeScreen (main export) ───────────────────────────────── */
 export function SwipeScreen({
   onNavigateToShortlist,
   onSignUpPrompt,
-  onNavigateToProfile,
 }: {
   onNavigateToShortlist: () => void
   onSignUpPrompt?: () => void
-  onNavigateToProfile?: () => void
 }) {
   const signedIn = useAuthStore((s) => s.isSignedIn)()
-  const [currentIdx, setCurrentIdx] = useState(0)
-  const [history, setHistory] = useState<number[]>([])
-  const deck = ALL_SESSIONS
+  const deck = useSessionStore((s) => s.sessions)
+  const loading = useSessionStore((s) => s.loading)
+  const currentIdx = useSessionStore((s) => s.currentIdx)
+  const swipeHistory = useSessionStore((s) => s.swipeHistory)
+  const { fetchIfNeeded, loadSavedIds, advanceSave, advanceSkip, undo, resetDeck } =
+    useSessionStore.getState()
+  const bootedRef = useRef(false)
+
+  useEffect(() => {
+    if (bootedRef.current) return
+    bootedRef.current = true
+    loadSavedIds()
+    ;(async () => {
+      let lat: number | null = HCMC_LAT
+      let lng: number | null = HCMC_LNG
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync()
+        if (status === 'granted') {
+          const loc = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.Balanced,
+          })
+          lat = loc.coords.latitude
+          lng = loc.coords.longitude
+        }
+      } catch {
+        // fallback to HCMC
+      }
+      await fetchIfNeeded(lat, lng)
+    })()
+  }, [])
+
   const total = deck.length
   const current = deck[currentIdx]
   const upNext = deck.slice(currentIdx + 1, currentIdx + 4)
-  const isDone = currentIdx >= total
+  const isDone = currentIdx >= total && total > 0
 
   const handleSave = () => {
-    setHistory((prev) => [...prev, currentIdx])
-    const next = currentIdx + 1
-    setCurrentIdx(next)
-    if (next >= total) setTimeout(onNavigateToShortlist, 400)
+    advanceSave()
+    if (currentIdx + 1 >= total) setTimeout(onNavigateToShortlist, 400)
   }
 
-  const handleSkip = () => setCurrentIdx((prev) => prev + 1)
+  const handleSkip = () => advanceSkip()
 
-  const handleUndo = () => {
-    if (!history.length) return
-    setCurrentIdx(history[history.length - 1])
-    setHistory((prev) => prev.slice(0, -1))
-  }
+  const handleUndo = () => undo()
 
   return (
     <View style={{ flex: 1, backgroundColor: T.bg }}>
-      <TopBar title="Where to play?" onAvatarTap={onNavigateToProfile} />
+      <TopBar
+        title="Where to play?"
+        isSignedIn={signedIn}
+        onSignIn={onSignUpPrompt}
+      />
 
-      <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={{ paddingHorizontal: 16 }}
-        showsVerticalScrollIndicator={false}
-      >
-        <ProgressDots total={total} current={currentIdx} />
+      {loading && total === 0 ? (
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+          <ActivityIndicator size="large" color={T.amber} />
+          <Text style={{ fontSize: 13, color: '#666', marginTop: 12 }}>
+            Loading sessions...
+          </Text>
+        </View>
+      ) : (
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={{ paddingHorizontal: 16 }}
+          showsVerticalScrollIndicator={false}
+        >
+          <ProgressBar total={total} current={currentIdx} />
 
-        {isDone ? (
-          <View style={{ alignItems: 'center', paddingVertical: 56 }}>
-            <Text style={{ fontSize: 48, marginBottom: 16 }}>🏓</Text>
-            <Text
-              style={{
-                fontSize: 15,
-                color: 'rgba(255,255,255,0.35)',
-                marginBottom: 24,
-              }}
-            >
-              You've seen all games tonight.
-            </Text>
-            <TouchableOpacity
-              onPress={() => {
-                setCurrentIdx(0)
-                setHistory([])
-              }}
-              style={{
-                backgroundColor: T.amber,
-                borderRadius: 14,
-                paddingHorizontal: 28,
-                paddingVertical: 12,
-              }}
-            >
-              <Text style={{ fontSize: 14, fontWeight: '700', color: '#0B0B0C' }}>
-                Start over
-              </Text>
-            </TouchableOpacity>
-          </View>
-        ) : (
-          current && (
-            <>
-              <AnimatedSwipeCard s={current} onSkip={handleSkip} onSave={handleSave} isSignedIn={signedIn} onSignUpPrompt={onSignUpPrompt} />
-
-              {/* Action buttons */}
-              <View
+          {isDone ? (
+            <View style={{ alignItems: 'center', paddingVertical: 56 }}>
+              <Text style={{ fontSize: 48, marginBottom: 16 }}>🏓</Text>
+              <Text
                 style={{
-                  flexDirection: 'row',
-                  justifyContent: 'center',
-                  alignItems: 'center',
-                  gap: 28,
-                  marginVertical: 16,
+                  fontSize: 15,
+                  color: 'rgba(255,255,255,0.35)',
+                  marginBottom: 24,
                 }}
               >
-                <TouchableOpacity
-                  onPress={handleSkip}
+                You've seen all games tonight.
+              </Text>
+              <TouchableOpacity
+                onPress={resetDeck}
+                style={{
+                  backgroundColor: T.amber,
+                  borderRadius: 14,
+                  paddingHorizontal: 28,
+                  paddingVertical: 12,
+                }}
+              >
+                <Text style={{ fontSize: 14, fontWeight: '700', color: '#0B0B0C' }}>
+                  Start over
+                </Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            current && (
+              <>
+                <AnimatedSwipeCard s={current} onSkip={handleSkip} onSave={handleSave} isSignedIn={signedIn} onSignUpPrompt={onSignUpPrompt} />
+
+                {/* Action buttons */}
+                <View
                   style={{
-                    width: 58,
-                    height: 58,
-                    borderRadius: 29,
-                    backgroundColor: '#1a1a1a',
-                    borderWidth: 1.5,
-                    borderColor: '#2a2a2a',
-                    alignItems: 'center',
+                    flexDirection: 'row',
                     justifyContent: 'center',
+                    alignItems: 'center',
+                    gap: 28,
+                    marginVertical: 16,
                   }}
                 >
-                  <X size={24} color="#777" strokeWidth={2} />
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  onPress={handleUndo}
-                  style={{
-                    width: 52,
-                    height: 52,
-                    borderRadius: 26,
-                    backgroundColor: '#1a1a1a',
-                    borderWidth: 1.5,
-                    borderColor: '#2a2a2a',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    opacity: history.length ? 1 : 0.35,
-                  }}
-                >
-                  <RotateCcw size={18} color="#888" strokeWidth={2} />
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  onPress={handleSave}
-                  style={{
-                    width: 64,
-                    height: 64,
-                    borderRadius: 32,
-                    backgroundColor: T.amber,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    shadowColor: T.amber,
-                    shadowOffset: { width: 0, height: 0 },
-                    shadowOpacity: 0.35,
-                    shadowRadius: 18,
-                    elevation: 8,
-                  }}
-                >
-                  <Heart size={28} color="#0B0B0C" fill="#0B0B0C" strokeWidth={2} />
-                </TouchableOpacity>
-              </View>
-
-              {/* Up Next */}
-              {upNext.length > 0 && (
-                <View>
-                  <Text
+                  <TouchableOpacity
+                    onPress={handleSkip}
                     style={{
-                      fontSize: 12,
-                      color: 'rgba(255,255,255,0.3)',
-                      textTransform: 'uppercase',
-                      letterSpacing: 1,
-                      marginBottom: 10,
+                      width: 58,
+                      height: 58,
+                      borderRadius: 29,
+                      backgroundColor: '#1a1a1a',
+                      borderWidth: 1.5,
+                      borderColor: '#2a2a2a',
+                      alignItems: 'center',
+                      justifyContent: 'center',
                     }}
                   >
-                    Up next
-                  </Text>
-                  <View style={{ gap: 10 }}>
-                    {upNext.map((sess, i) => (
-                      <View key={sess.id} style={{ opacity: 1 - i * 0.2 }}>
-                        <SecondaryCard s={sess} />
-                      </View>
-                    ))}
-                  </View>
-                </View>
-              )}
-            </>
-          )
-        )}
+                    <X size={24} color="#777" strokeWidth={2} />
+                  </TouchableOpacity>
 
-        <View style={{ height: 24 }} />
-      </ScrollView>
+                  <TouchableOpacity
+                    onPress={handleUndo}
+                    style={{
+                      width: 52,
+                      height: 52,
+                      borderRadius: 26,
+                      backgroundColor: '#1a1a1a',
+                      borderWidth: 1.5,
+                      borderColor: '#2a2a2a',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      opacity: swipeHistory.length ? 1 : 0.35,
+                    }}
+                  >
+                    <RotateCcw size={18} color="#888" strokeWidth={2} />
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    onPress={handleSave}
+                    style={{
+                      width: 64,
+                      height: 64,
+                      borderRadius: 32,
+                      backgroundColor: T.amber,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      shadowColor: T.amber,
+                      shadowOffset: { width: 0, height: 0 },
+                      shadowOpacity: 0.35,
+                      shadowRadius: 18,
+                      elevation: 8,
+                    }}
+                  >
+                    <Heart size={28} color="#0B0B0C" fill="#0B0B0C" strokeWidth={2} />
+                  </TouchableOpacity>
+                </View>
+
+                {/* Up Next */}
+                {upNext.length > 0 && (
+                  <View>
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        color: 'rgba(255,255,255,0.3)',
+                        textTransform: 'uppercase',
+                        letterSpacing: 1,
+                        marginBottom: 10,
+                      }}
+                    >
+                      Up next
+                    </Text>
+                    <View style={{ gap: 10 }}>
+                      {upNext.map((sess, i) => (
+                        <View key={sess.id} style={{ opacity: 1 - i * 0.2 }}>
+                          <SecondaryCard s={sess} />
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+                )}
+              </>
+            )
+          )}
+
+          <View style={{ height: 24 }} />
+        </ScrollView>
+      )}
     </View>
   )
 }

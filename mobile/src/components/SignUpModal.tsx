@@ -6,18 +6,24 @@ import {
   Modal,
   ActivityIndicator,
   StyleSheet,
+  Pressable,
 } from 'react-native'
-import { BlurView } from 'expo-blur'
-import * as AuthSession from 'expo-auth-session'
-import * as WebBrowser from 'expo-web-browser'
+import Constants from 'expo-constants'
 import { T } from '../theme'
 import { useAuthStore } from '../stores/authStore'
 
-WebBrowser.maybeCompleteAuthSession()
-
 const GOOGLE_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID ?? ''
 
-const discovery = AuthSession.useAutoDiscovery('https://accounts.google.com')
+function resolveApiBase(): string {
+  if (process.env.EXPO_PUBLIC_API_URL) return process.env.EXPO_PUBLIC_API_URL
+  const debuggerHost =
+    Constants.expoConfig?.hostUri ?? Constants.manifest2?.extra?.expoGo?.debuggerHost
+  if (debuggerHost) {
+    const ip = debuggerHost.split(':')[0]
+    return `http://${ip}:3000`
+  }
+  return 'http://localhost:3000'
+}
 
 export function SignUpModal({
   visible,
@@ -31,33 +37,73 @@ export function SignUpModal({
   const [loading, setLoading] = useState(false)
   const signIn = useAuthStore((s) => s.signIn)
 
-  const [request, response, promptAsync] = AuthSession.useAuthRequest(
-    {
-      clientId: GOOGLE_CLIENT_ID,
-      scopes: ['openid', 'profile', 'email'],
-      responseType: AuthSession.ResponseType.IdToken,
-      redirectUri: AuthSession.makeRedirectUri({ scheme: 'com.thehub.app' }),
-    },
-    discovery
-  )
-
-  React.useEffect(() => {
-    if (response?.type === 'success') {
-      const idToken = response.params.id_token
-      if (idToken) {
-        handleIdToken(idToken)
-      }
-    }
-  }, [response])
-
-  const handleIdToken = async (idToken: string) => {
+  const handleDevSignIn = async () => {
     setLoading(true)
-    const ok = await signIn(idToken)
-    setLoading(false)
-    if (ok) {
-      const state = useAuthStore.getState()
+    try {
+      const base = resolveApiBase()
+      const res = await fetch(`${base}/api/auth/mobile-token?dev=1`)
+      if (!res.ok) throw new Error('Dev sign-in failed')
+      const data = await res.json()
+      useAuthStore.setState({
+        jwt: data.jwt,
+        userId: data.userId,
+        profileId: data.profileId,
+        displayName: data.displayName,
+        imageUrl: data.imageUrl,
+        reclubUserId: data.reclubUserId,
+        hasCompletedOnboarding: data.hasCompletedOnboarding,
+      })
       onClose()
-      onSignedIn(!state.hasCompletedOnboarding)
+      onSignedIn(!data.hasCompletedOnboarding)
+    } catch (err) {
+      console.warn('[SignUpModal] Dev sign-in error:', err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleRealSignIn = async () => {
+    const AuthSession = await import('expo-auth-session')
+    const WebBrowser = await import('expo-web-browser')
+    WebBrowser.maybeCompleteAuthSession()
+
+    const redirectUri = AuthSession.makeRedirectUri({
+      scheme: 'com.thehub.app',
+    })
+
+    setLoading(true)
+    try {
+      const result = await AuthSession.startAsync({
+        authUrl:
+          `https://accounts.google.com/o/oauth2/v2/auth?` +
+          `client_id=${GOOGLE_CLIENT_ID}` +
+          `&redirect_uri=${encodeURIComponent(redirectUri)}` +
+          `&response_type=id_token` +
+          `&scope=${encodeURIComponent('openid profile email')}` +
+          `&nonce=${Math.random().toString(36).slice(2)}`,
+      } as { authUrl: string })
+
+      if (result.type === 'success' && result.params?.id_token) {
+        const ok = await signIn(result.params.id_token)
+        if (ok) {
+          const state = useAuthStore.getState()
+          onClose()
+          onSignedIn(!state.hasCompletedOnboarding)
+          return
+        }
+      }
+    } catch (err) {
+      console.warn('[SignUpModal] Google sign-in error:', err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handlePress = () => {
+    if (!GOOGLE_CLIENT_ID) {
+      handleDevSignIn()
+    } else {
+      handleRealSignIn()
     }
   }
 
@@ -66,21 +112,22 @@ export function SignUpModal({
       visible={visible}
       transparent
       animationType="fade"
+      statusBarTranslucent
       onRequestClose={onClose}
     >
       <View style={styles.overlay}>
-        <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
+        <Pressable style={styles.backdrop} onPress={onClose} accessibilityRole="button" accessibilityLabel="Dismiss" />
+
         <View style={styles.card}>
           <Text style={styles.title}>See who's joining</Text>
           <Text style={styles.subtitle}>
-            Sign up to see if your friends and the regulars are joining the
-            session
+            Sign up to see if your friends and the regulars are joining the session
           </Text>
 
           <TouchableOpacity
-            style={[styles.googleBtn, !request && styles.disabled]}
-            disabled={!request || loading}
-            onPress={() => promptAsync()}
+            style={[styles.googleBtn, loading && styles.disabled]}
+            disabled={loading}
+            onPress={handlePress}
             activeOpacity={0.8}
           >
             {loading ? (
@@ -88,7 +135,9 @@ export function SignUpModal({
             ) : (
               <>
                 <Text style={styles.gLogo}>G</Text>
-                <Text style={styles.googleLabel}>Continue with Google</Text>
+                <Text style={styles.googleLabel}>
+                  {GOOGLE_CLIENT_ID ? 'Sign in with Google' : 'Dev Sign-in'}
+                </Text>
               </>
             )}
           </TouchableOpacity>
@@ -107,16 +156,22 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  backdrop: {
+    ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.6)',
   },
   card: {
     width: '85%',
+    maxWidth: 360,
     backgroundColor: '#1a1a1a',
     borderRadius: 20,
     padding: 28,
     alignItems: 'center',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
+    zIndex: 1,
+    elevation: 8,
   },
   title: {
     fontSize: 22,

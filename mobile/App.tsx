@@ -11,6 +11,7 @@ import { OnboardingScreen } from './src/screens/OnboardingScreen'
 import { PeopleYouMayKnowScreen } from './src/screens/PeopleYouMayKnowScreen'
 import { SignUpModal } from './src/components/SignUpModal'
 import { useAuthStore } from './src/stores/authStore'
+import { useSessionStore } from './src/stores/sessionStore'
 
 type FlowScreen = 'main' | 'onboarding' | 'people'
 
@@ -20,6 +21,7 @@ export default function App() {
   const [showSignUp, setShowSignUp] = useState(false)
 
   const isSignedIn = useAuthStore((s) => s.isSignedIn)
+  const savedCount = useSessionStore((s) => s.savedIds.size)
 
   const handleSignedIn = (needsOnboarding: boolean) => {
     if (needsOnboarding) {
@@ -72,13 +74,12 @@ export default function App() {
           <SwipeScreen
             onNavigateToShortlist={() => setActiveTab('shortlist')}
             onSignUpPrompt={() => setShowSignUp(true)}
-            onNavigateToProfile={() => setActiveTab('profile')}
           />
         )
       case 'shortlist':
-        return <ShortlistScreen />
+        return <ShortlistScreen onSignUpPrompt={() => setShowSignUp(true)} />
       case 'profile':
-        return <ProfileScreen />
+        return <ProfileScreen onSignUpPrompt={() => setShowSignUp(true)} />
       default:
         return null
     }
@@ -90,7 +91,11 @@ export default function App() {
         <StatusBar style="light" />
         <View style={{ flex: 1 }}>
           {renderScreen()}
-          <NavBar active={activeTab} onChange={setActiveTab} />
+          <NavBar
+            active={activeTab}
+            onChange={setActiveTab}
+            badges={{ shortlist: savedCount }}
+          />
         </View>
 
         <SignUpModal

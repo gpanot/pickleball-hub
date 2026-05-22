@@ -1,8 +1,22 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage, type StateStorage } from 'zustand/middleware'
 import * as SecureStore from 'expo-secure-store'
+import Constants from 'expo-constants'
 
-const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000'
+function resolveApiBase(): string {
+  if (process.env.EXPO_PUBLIC_API_URL) return process.env.EXPO_PUBLIC_API_URL
+  // In dev on a physical device, localhost won't work.
+  // Grab the host IP from the Expo manifest so the device can reach the machine.
+  const debuggerHost =
+    Constants.expoConfig?.hostUri ?? Constants.manifest2?.extra?.expoGo?.debuggerHost
+  if (debuggerHost) {
+    const ip = debuggerHost.split(':')[0]
+    return `http://${ip}:3000`
+  }
+  return 'http://localhost:3000'
+}
+
+const API_BASE = resolveApiBase()
 
 const secureStorage: StateStorage = {
   getItem: (key) => SecureStore.getItemAsync(key),

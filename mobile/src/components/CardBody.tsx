@@ -27,7 +27,6 @@ import {
 import { T } from '../theme'
 import {
   type Session,
-  AVATAR_PHOTOS,
   RING_COLORS,
   formatPriceDuration,
   formatDistance,
@@ -47,35 +46,6 @@ const VIBE_LABELS: Record<string, string> = {
   social: 'Social',
   competitive: 'Competitive',
   chill: 'Chill',
-}
-
-/* ── PhotoAvatar (initials-based, used by TopBar) ────────────── */
-export function PhotoAvatar({ initials, size }: { initials: string; size: number }) {
-  const src = AVATAR_PHOTOS[initials]
-  if (src) {
-    return (
-      <Image
-        source={{ uri: src }}
-        style={{ width: size, height: size, borderRadius: size / 2 }}
-      />
-    )
-  }
-  return (
-    <View
-      style={{
-        width: size,
-        height: size,
-        borderRadius: size / 2,
-        backgroundColor: '#333',
-        alignItems: 'center',
-        justifyContent: 'center',
-      }}
-    >
-      <Text style={{ fontSize: size * 0.35, fontWeight: '600', color: '#fff' }}>
-        {initials}
-      </Text>
-    </View>
-  )
 }
 
 /* ── ImageAvatar (URL-based, used by card roster) ────────────── */
@@ -100,10 +70,12 @@ function ImageAvatar({ url, name, size }: { url: string; name: string; size: num
 /* ── TopBar ───────────────────────────────────────────────────── */
 export function TopBar({
   title,
-  onAvatarTap,
+  isSignedIn = true,
+  onSignIn,
 }: {
   title: string
-  onAvatarTap?: () => void
+  isSignedIn?: boolean
+  onSignIn?: () => void
 }) {
   const insets = useSafeAreaInsets()
   return (
@@ -118,22 +90,38 @@ export function TopBar({
         alignItems: 'center',
       }}
     >
-      <Text style={{ fontSize: 22, fontWeight: '600', color: '#fff' }}>
+      <Text style={{ fontSize: 22, fontWeight: '600', color: '#fff', flex: 1 }}>
         {title}
       </Text>
-      <TouchableOpacity onPress={onAvatarTap}>
-        <PhotoAvatar initials="AR" size={34} />
-      </TouchableOpacity>
+      {!isSignedIn && onSignIn && (
+        <TouchableOpacity
+          onPress={onSignIn}
+          style={{
+            backgroundColor: 'rgba(245,166,35,0.12)',
+            borderWidth: 1,
+            borderColor: 'rgba(245,166,35,0.25)',
+            borderRadius: 18,
+            paddingHorizontal: 14,
+            paddingVertical: 7,
+          }}
+          activeOpacity={0.8}
+        >
+          <Text style={{ fontSize: 13, fontWeight: '600', color: T.amber }}>
+            Sign in
+          </Text>
+        </TouchableOpacity>
+      )}
     </View>
   )
 }
 
 /* ── MatchDial ───────────────────────────────────────────────── */
 export function MatchDial({ pct }: { pct: number }) {
+  const isNew = pct === 0
   const size = 72
   const radius = 30
   const circumference = 2 * Math.PI * radius
-  const offset = circumference - (pct / 100) * circumference
+  const offset = isNew ? circumference : circumference - (pct / 100) * circumference
   return (
     <View
       style={{
@@ -152,22 +140,24 @@ export function MatchDial({ pct }: { pct: number }) {
           strokeWidth={3}
           fill="transparent"
         />
-        <Circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          stroke={T.amber}
-          strokeWidth={3}
-          fill="transparent"
-          strokeDasharray={`${circumference}`}
-          strokeDashoffset={offset}
-          strokeLinecap="round"
-          rotation={-90}
-          origin={`${size / 2}, ${size / 2}`}
-        />
+        {!isNew && (
+          <Circle
+            cx={size / 2}
+            cy={size / 2}
+            r={radius}
+            stroke={T.amber}
+            strokeWidth={3}
+            fill="transparent"
+            strokeDasharray={`${circumference}`}
+            strokeDashoffset={offset}
+            strokeLinecap="round"
+            rotation={-90}
+            origin={`${size / 2}, ${size / 2}`}
+          />
+        )}
       </Svg>
-      <Text style={{ fontSize: 18, fontWeight: '700', color: T.amber }}>
-        {pct}%
+      <Text style={{ fontSize: isNew ? 13 : 18, fontWeight: '700', color: isNew ? '#888' : T.amber }}>
+        {isNew ? 'New' : `${pct}%`}
       </Text>
     </View>
   )
@@ -233,13 +223,14 @@ export function CardBody({
   const price = formatPriceDuration(s.feeAmount, s.durationMin)
   const distance = formatDistance(s.distanceKm)
   const timeLabel = formatTime(s.startTime)
-  const duprLabel = s.duprRange
-    ? `Mostly ${s.duprRange.min.toFixed(1)}–${s.duprRange.max.toFixed(1)}`
+  const safeDupr =
+    s.duprRange && s.duprRange.min <= 8 && s.duprRange.max <= 8
+      ? s.duprRange
+      : null
+  const duprLabel = safeDupr
+    ? `Mostly ${safeDupr.min.toFixed(1)}–${safeDupr.max.toFixed(1)}`
     : null
   const displayRegulars = s.regulars.slice(0, 3)
-  const nameParts = s.name.split(' ')
-  const firstWord = nameParts[0]
-  const restWords = nameParts.slice(1).join(' ')
   const vibeLabel = VIBE_LABELS[s.vibeTag] ?? 'Social'
   const friendsOverflow =
     s.friendsOverflow > 0
@@ -371,6 +362,7 @@ export function CardBody({
 
         {/* Session name */}
         <Text
+          numberOfLines={3}
           style={{
             fontSize: 28,
             fontWeight: '800',
@@ -380,9 +372,7 @@ export function CardBody({
             maxWidth: '75%',
           }}
         >
-          {firstWord}
-          {'\n'}
-          {restWords}
+          {s.name}
         </Text>
 
         {/* Price + distance */}
@@ -472,7 +462,7 @@ export function CardBody({
         {/* Frosted placeholder avatars — shown when NOT signed in */}
         {!isSignedIn && (
           <TouchableOpacity
-            onPress={onSignUpPrompt}
+            onPress={() => onSignUpPrompt?.()}
             activeOpacity={0.7}
             style={{ marginBottom: 10 }}
           >
@@ -481,43 +471,47 @@ export function CardBody({
                 flexDirection: 'row',
                 alignItems: 'center',
                 gap: 8,
-                borderRadius: 30,
-                overflow: 'hidden',
               }}
             >
-              {[0, 1, 2, 3].map((i) => (
-                <View
-                  key={`frost-${i}`}
-                  style={{
-                    width: 52,
-                    height: 52,
-                    borderRadius: 26,
-                    borderWidth: 2.5,
-                    borderColor: RING_COLORS[i % RING_COLORS.length],
-                    overflow: 'hidden',
-                  }}
-                >
+              {[0, 1, 2, 3].map((i) => {
+                const frostColors = [
+                  ['#6B4C3B', '#A67C52'],
+                  ['#3B5C6B', '#5A8FA3'],
+                  ['#6B3B5C', '#A35A8F'],
+                  ['#3B6B4C', '#5AA370'],
+                ]
+                return (
                   <View
+                    key={`frost-${i}`}
                     style={{
-                      width: 47,
-                      height: 47,
-                      borderRadius: 24,
-                      backgroundColor: '#333',
+                      width: 52,
+                      height: 52,
+                      borderRadius: 26,
+                      borderWidth: 2.5,
+                      borderColor: RING_COLORS[i % RING_COLORS.length],
+                      overflow: 'hidden',
                     }}
-                  />
-                  <BlurView
-                    intensity={25}
-                    tint="dark"
-                    style={StyleSheet.absoluteFill}
-                  />
-                </View>
-              ))}
+                  >
+                    <LinearGradient
+                      colors={frostColors[i]}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={{ width: 47, height: 47, borderRadius: 24 }}
+                    />
+                    <BlurView
+                      intensity={40}
+                      tint="dark"
+                      style={StyleSheet.absoluteFill}
+                    />
+                  </View>
+                )
+              })}
               <View
                 style={{
                   width: 52,
                   height: 52,
                   borderRadius: 26,
-                  backgroundColor: 'rgba(0,0,0,0.45)',
+                  backgroundColor: 'rgba(255,255,255,0.06)',
                   borderWidth: 1.5,
                   borderColor: 'rgba(255,255,255,0.12)',
                   alignItems: 'center',
@@ -604,7 +598,7 @@ export function CardBody({
               {vibeLabel}
             </Text>
           </View>
-          {displayRegulars.length > 0 && (
+          {displayRegulars.length > 0 ? (
             <View style={{ alignItems: 'center', gap: 4 }}>
               <View style={{ flexDirection: 'row' }}>
                 {displayRegulars.map((p, i) => (
@@ -629,7 +623,11 @@ export function CardBody({
                 Your regulars are here
               </Text>
             </View>
-          )}
+          ) : s.roster.length === 0 ? (
+            <Text style={{ fontSize: 11, color: '#555' }}>
+              No roster yet
+            </Text>
+          ) : null}
         </View>
 
         {renderCta}

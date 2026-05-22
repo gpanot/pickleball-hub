@@ -3,6 +3,55 @@ import { prisma } from "@/lib/db";
 import { signMobileJwt } from "@/lib/mobile-auth";
 
 const GOOGLE_TOKEN_INFO = "https://oauth2.googleapis.com/tokeninfo";
+const DEV_EMAIL = "dev@thehub.local";
+
+/**
+ * GET /api/auth/mobile-token?dev=1
+ * Dev-only shortcut: creates/retrieves a dev user and returns a real JWT
+ * so the full onboarding + follow flow can be tested without Google.
+ */
+export async function GET(req: NextRequest) {
+  const isDev = req.nextUrl.searchParams.get("dev");
+  if (!isDev) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  let user = await prisma.user.findUnique({ where: { email: DEV_EMAIL } });
+  if (!user) {
+    user = await prisma.user.create({
+      data: {
+        email: DEV_EMAIL,
+        name: "Dev Player",
+        image: "https://i.pravatar.cc/80?img=33",
+      },
+    });
+  }
+
+  let profile = await prisma.playerProfile.findUnique({
+    where: { userId: user.id },
+  });
+  if (!profile) {
+    profile = await prisma.playerProfile.create({
+      data: { userId: user.id, displayName: user.name },
+    });
+  }
+
+  const jwt = await signMobileJwt({ sub: user.id, profileId: profile.id });
+
+  return NextResponse.json({
+    jwt,
+    userId: user.id,
+    profileId: profile.id,
+    displayName: user.name,
+    imageUrl: user.image,
+    reclubUserId: profile.reclubUserId
+      ? profile.reclubUserId.toString()
+      : null,
+    hasCompletedOnboarding:
+      Object.keys((profile.preferences as Record<string, unknown>) ?? {})
+        .length > 0,
+  });
+}
 
 /**
  * POST /api/auth/mobile-token
