@@ -219,10 +219,14 @@ export function CardBody({
   s,
   renderCta,
   matchDialBelowTopRow = false,
+  isSignedIn = true,
+  onSignUpPrompt,
 }: {
   s: Session
   renderCta: React.ReactNode
   matchDialBelowTopRow?: boolean
+  isSignedIn?: boolean
+  onSignUpPrompt?: () => void
 }) {
   const displayFriends = s.friends.slice(0, 4)
   const price = formatPriceDuration(s.feeAmount, s.durationMin)

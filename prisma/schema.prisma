@@ -155,7 +155,9 @@ model Player {
   createdAt                DateTime  @default(now()) @map("created_at")
   updatedAt                DateTime  @updatedAt @map("updated_at")
 
-  rosters SessionRoster[]
+  rosters   SessionRoster[]
+  followers Follow[]        @relation("followers")
+  profile   PlayerProfile?
 
   @@map("players")
 }
@@ -181,17 +183,36 @@ model SessionRoster {
 /// Anonymous or Zalo-identified player profile for personalised recommendations.
 /// After Google login, userId is linked to the NextAuth User record.
 model PlayerProfile {
-  id          String   @id @default(uuid())
-  userId      String?  @unique @map("user_id")
-  zaloId      String?  @unique @map("zalo_id")
-  displayName String?  @map("display_name")
-  preferences Json     @default("{}")
-  createdAt   DateTime @default(now()) @map("created_at")
-  lastSeen    DateTime @updatedAt @map("last_seen")
+  id           String   @id @default(uuid())
+  userId       String?  @unique @map("user_id")
+  zaloId       String?  @unique @map("zalo_id")
+  reclubUserId BigInt?  @unique @map("reclub_user_id")
+  displayName  String?  @map("display_name")
+  preferences  Json     @default("{}")
+  createdAt    DateTime @default(now()) @map("created_at")
+  lastSeen     DateTime @updatedAt @map("last_seen")
 
-  user        User?    @relation(fields: [userId], references: [id])
+  user         User?    @relation(fields: [userId], references: [id])
+  reclubPlayer Player?  @relation(fields: [reclubUserId], references: [userId])
+  following    Follow[] @relation("following")
 
   @@map("player_profiles")
+}
+
+/// Social graph: an app user (PlayerProfile) follows a Reclub player.
+model Follow {
+  id         Int      @id @default(autoincrement())
+  followerId String   @map("follower_id")
+  followeeId BigInt   @map("followee_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  follower   PlayerProfile @relation("following", fields: [followerId], references: [id], onDelete: Cascade)
+  followee   Player        @relation("followers", fields: [followeeId], references: [userId], onDelete: Cascade)
+
+  @@unique([followerId, followeeId])
+  @@index([followerId])
+  @@index([followeeId])
+  @@map("follows")
 }
 
 // ── NextAuth.js v5 required models ────────────────────────────────────────────
