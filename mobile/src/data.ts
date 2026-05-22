@@ -12,6 +12,12 @@ export type RegularPlayer = {
   imageUrl: string
 }
 
+/** Friends of the current user who are joining this session (not full roster). */
+export type FriendPlayer = {
+  displayName: string
+  imageUrl: string
+}
+
 export type Session = {
   id: number
   referenceCode: string
@@ -39,6 +45,11 @@ export type Session = {
 
   roster: RosterPlayer[]
   regulars: RegularPlayer[]
+  /** Friends joining — shown as ringed avatars + "X friends joining" (not roster). */
+  friends: FriendPlayer[]
+  friendCount: number
+  /** Extra friends beyond the avatars shown (for "+N" pill). */
+  friendsOverflow: number
 
   eventUrl: string
 }
@@ -130,6 +141,14 @@ export const ALL_SESSIONS: Session[] = [
       { displayName: 'Taylor M.', imageUrl: MOCK_AVATARS.TM },
       { displayName: 'Mike T.', imageUrl: MOCK_AVATARS.MT },
     ],
+    friends: [
+      { displayName: 'Sarah K.', imageUrl: MOCK_AVATARS.SK },
+      { displayName: 'Taylor M.', imageUrl: MOCK_AVATARS.TM },
+      { displayName: 'Jordan P.', imageUrl: MOCK_AVATARS.JP },
+      { displayName: 'Mike T.', imageUrl: MOCK_AVATARS.MT },
+    ],
+    friendCount: 4,
+    friendsOverflow: 6,
     eventUrl: 'https://reclub.co/m/ABC123',
   },
   {
@@ -163,6 +182,9 @@ export const ALL_SESSIONS: Session[] = [
       { displayName: 'Dane W.', imageUrl: MOCK_AVATARS.DW },
       { displayName: 'Priya R.', imageUrl: MOCK_AVATARS.PR },
     ],
+    friends: [],
+    friendCount: 0,
+    friendsOverflow: 0,
     eventUrl: 'https://reclub.co/m/DEF456',
   },
   {
@@ -191,6 +213,9 @@ export const ALL_SESSIONS: Session[] = [
       { displayName: 'Ben P.', imageUrl: MOCK_AVATARS.BP, duprDoubles: 2.95, isHost: false },
     ],
     regulars: [],
+    friends: [],
+    friendCount: 0,
+    friendsOverflow: 0,
     eventUrl: 'https://reclub.co/m/GHI789',
   },
   {
@@ -222,6 +247,9 @@ export const ALL_SESSIONS: Session[] = [
     regulars: [
       { displayName: 'Anna N.', imageUrl: MOCK_AVATARS.AN },
     ],
+    friends: [{ displayName: 'Anna N.', imageUrl: MOCK_AVATARS.AN }],
+    friendCount: 1,
+    friendsOverflow: 0,
     eventUrl: 'https://reclub.co/m/JKL012',
   },
   {
@@ -250,6 +278,9 @@ export const ALL_SESSIONS: Session[] = [
       { displayName: 'Nam M.', imageUrl: MOCK_AVATARS.NM, duprDoubles: 3.3, isHost: false },
     ],
     regulars: [],
+    friends: [],
+    friendCount: 0,
+    friendsOverflow: 0,
     eventUrl: 'https://reclub.co/m/MNO345',
   },
 ]

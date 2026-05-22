@@ -224,10 +224,12 @@ function SecondaryCard({ s }: { s: Session }) {
               </>
             )}
           </View>
-          {s.roster.length > 0 && (
+          {s.friendCount > 0 && (
             <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginTop: 4 }}>
-              {s.roster[0].displayName}
-              {s.roster.length > 1 ? ` +${s.roster.length - 1} players` : ' going'}
+              {s.friends[0]?.displayName ?? 'A friend'}
+              {s.friendCount > 1
+                ? ` +${s.friendCount - 1} ${s.friendCount === 2 ? 'friend' : 'friends'}`
+                : ' joining'}
             </Text>
           )}
         </View>

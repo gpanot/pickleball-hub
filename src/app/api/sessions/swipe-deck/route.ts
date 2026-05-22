@@ -209,6 +209,11 @@ export async function GET(req: NextRequest) {
         roster,
         regulars,
 
+        // Friend graph not wired yet — populate when user Reclub ID + co-attendance exist
+        friends: [] as { displayName: string; imageUrl: string }[],
+        friendCount: 0,
+        friendsOverflow: 0,
+
         eventUrl: s.eventUrl,
       };
     });

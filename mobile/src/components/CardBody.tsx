@@ -224,7 +224,7 @@ export function CardBody({
   renderCta: React.ReactNode
   matchDialBelowTopRow?: boolean
 }) {
-  const displayRoster = s.roster.slice(0, 4)
+  const displayFriends = s.friends.slice(0, 4)
   const price = formatPriceDuration(s.feeAmount, s.durationMin)
   const distance = formatDistance(s.distanceKm)
   const timeLabel = formatTime(s.startTime)
@@ -236,7 +236,11 @@ export function CardBody({
   const firstWord = nameParts[0]
   const restWords = nameParts.slice(1).join(' ')
   const vibeLabel = VIBE_LABELS[s.vibeTag] ?? 'Social'
-  const overflowCount = Math.max(0, s.joined - displayRoster.length)
+  const friendsOverflow =
+    s.friendsOverflow > 0
+      ? s.friendsOverflow
+      : Math.max(0, s.friendCount - displayFriends.length)
+  const hasFriends = s.friendCount > 0
 
   return (
     <View
@@ -400,63 +404,65 @@ export function CardBody({
           )}
         </View>
 
-        {/* Ringed avatars */}
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 8,
-            marginBottom: 10,
-          }}
-        >
-          {displayRoster.map((p, i) => (
-            <View key={`${p.displayName}-${i}`} style={{ position: 'relative' }}>
+        {/* Friend avatars (your friends joining — not full roster) */}
+        {hasFriends && (
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 8,
+              marginBottom: 10,
+            }}
+          >
+            {displayFriends.map((p, i) => (
+              <View key={`friend-${p.displayName}-${i}`} style={{ position: 'relative' }}>
+                <View
+                  style={{
+                    width: 52,
+                    height: 52,
+                    borderRadius: 26,
+                    borderWidth: 2.5,
+                    borderColor: RING_COLORS[i % RING_COLORS.length],
+                    overflow: 'hidden',
+                  }}
+                >
+                  <ImageAvatar url={p.imageUrl} name={p.displayName} size={47} />
+                </View>
+                <View
+                  style={{
+                    position: 'absolute',
+                    bottom: 2,
+                    right: 2,
+                    width: 10,
+                    height: 10,
+                    borderRadius: 5,
+                    backgroundColor: T.green,
+                    borderWidth: 2,
+                    borderColor: '#0a0a0a',
+                  }}
+                />
+              </View>
+            ))}
+            {friendsOverflow > 0 && (
               <View
                 style={{
                   width: 52,
                   height: 52,
                   borderRadius: 26,
-                  borderWidth: 2.5,
-                  borderColor: RING_COLORS[i % RING_COLORS.length],
-                  overflow: 'hidden',
+                  backgroundColor: 'rgba(0,0,0,0.45)',
+                  borderWidth: 1.5,
+                  borderColor: 'rgba(255,255,255,0.12)',
+                  alignItems: 'center',
+                  justifyContent: 'center',
                 }}
               >
-                <ImageAvatar url={p.imageUrl} name={p.displayName} size={47} />
+                <Text style={{ fontSize: 14, color: '#aaa', fontWeight: '500' }}>
+                  +{friendsOverflow}
+                </Text>
               </View>
-              <View
-                style={{
-                  position: 'absolute',
-                  bottom: 2,
-                  right: 2,
-                  width: 10,
-                  height: 10,
-                  borderRadius: 5,
-                  backgroundColor: T.green,
-                  borderWidth: 2,
-                  borderColor: '#0a0a0a',
-                }}
-              />
-            </View>
-          ))}
-          {overflowCount > 0 && (
-            <View
-              style={{
-                width: 52,
-                height: 52,
-                borderRadius: 26,
-                backgroundColor: 'rgba(0,0,0,0.45)',
-                borderWidth: 1.5,
-                borderColor: 'rgba(255,255,255,0.12)',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <Text style={{ fontSize: 14, color: '#aaa', fontWeight: '500' }}>
-                +{overflowCount}
-              </Text>
-            </View>
-          )}
-        </View>
+            )}
+          </View>
+        )}
 
         {/* Metadata strip */}
         <View
@@ -467,17 +473,23 @@ export function CardBody({
             marginBottom: 12,
           }}
         >
-          <Users size={12} color={T.amber} strokeWidth={2} />
-          <Text style={{ fontSize: 12, color: T.amber, fontWeight: '500' }}>
-            {s.roster.length} players
-          </Text>
-          {duprLabel && (
+          {hasFriends && (
             <>
-              <Text style={{ fontSize: 12, color: '#555' }}>|</Text>
-              <Text style={{ fontSize: 12, color: '#7F77DD' }}>{duprLabel}</Text>
+              <Users size={12} color={T.amber} strokeWidth={2} />
+              <Text style={{ fontSize: 12, color: T.amber, fontWeight: '500' }}>
+                {s.friendCount} {s.friendCount === 1 ? 'friend' : 'friends'} joining
+              </Text>
             </>
           )}
-          <Text style={{ fontSize: 12, color: '#555' }}>|</Text>
+          {hasFriends && duprLabel && (
+            <Text style={{ fontSize: 12, color: '#555' }}>|</Text>
+          )}
+          {duprLabel && (
+            <Text style={{ fontSize: 12, color: '#7F77DD' }}>{duprLabel}</Text>
+          )}
+          {(hasFriends || duprLabel) && (
+            <Text style={{ fontSize: 12, color: '#555' }}>|</Text>
+          )}
           <Smile size={12} color="#1D9E75" strokeWidth={2} />
           <Text style={{ fontSize: 12, color: '#1D9E75' }}>
             {vibeLabel === 'Competitive' ? 'Intense' : 'Great vibes'}
