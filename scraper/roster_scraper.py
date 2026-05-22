@@ -324,18 +324,20 @@ def scrape_session_roster(
 
             dupr_ts = _parse_dupr_updated_at(dupr["dupr_updated_at"])
             display_name = profile.get("displayName") or profile.get("name")
+            image_url = profile.get("imageUrl")
 
             cur.execute(
                 """
                 INSERT INTO players (
-                    user_id, username, display_name,
+                    user_id, username, display_name, image_url,
                     dupr_singles, dupr_doubles,
                     dupr_singles_reliability, dupr_doubles_reliability,
                     dupr_id, dupr_updated_at, last_seen_at, updated_at
-                ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW(),NOW())
+                ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW(),NOW())
                 ON CONFLICT (user_id) DO UPDATE SET
                     username = COALESCE(EXCLUDED.username, players.username),
                     display_name = COALESCE(EXCLUDED.display_name, players.display_name),
+                    image_url = COALESCE(EXCLUDED.image_url, players.image_url),
                     dupr_singles = COALESCE(EXCLUDED.dupr_singles, players.dupr_singles),
                     dupr_doubles = COALESCE(EXCLUDED.dupr_doubles, players.dupr_doubles),
                     dupr_singles_reliability = COALESCE(EXCLUDED.dupr_singles_reliability, players.dupr_singles_reliability),
@@ -349,6 +351,7 @@ def scrape_session_roster(
                     uid,
                     profile.get("username"),
                     display_name,
+                    image_url,
                     dupr["dupr_singles"],
                     dupr["dupr_doubles"],
                     dupr["dupr_singles_reliability"],

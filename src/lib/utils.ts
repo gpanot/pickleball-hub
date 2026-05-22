@@ -143,3 +143,38 @@ export function perkEmoji(perk: string): string {
   };
   return map[perk] || "✨";
 }
+
+export type VibeTag = "social" | "competitive" | "chill";
+
+export function deriveVibeTag(
+  name: string,
+  skillLevelMin: number | null,
+  duprParticipationPct: number | null,
+): VibeTag {
+  const lower = name.toLowerCase();
+  if (
+    lower.includes("competitive") ||
+    lower.includes("advanced") ||
+    lower.includes("tournament") ||
+    lower.includes("pro") ||
+    (skillLevelMin != null && skillLevelMin >= 3.5) ||
+    (duprParticipationPct != null && duprParticipationPct >= 30)
+  ) return "competitive";
+  if (
+    lower.includes("chill") ||
+    lower.includes("beginner") ||
+    lower.includes("casual") ||
+    lower.includes("open play") ||
+    lower.includes("friendly")
+  ) return "chill";
+  return "social";
+}
+
+export function isFillingFast(fillRate: number, joinedRecently: number): boolean {
+  return fillRate >= 0.80 || (fillRate >= 0.60 && joinedRecently >= 3);
+}
+
+/** Fallback Reclub avatar URL when image_url is not stored yet. */
+export function reclubAvatarUrl(userId: bigint | number): string {
+  return `https://assets.reclub.co/user-avatars/${userId}.webp`;
+}

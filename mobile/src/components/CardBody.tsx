@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useEffect } from 'react'
 import {
   View,
   Text,
@@ -27,9 +27,10 @@ import { T } from '../theme'
 import {
   type Session,
   AVATAR_PHOTOS,
-  VENUE_DISTANCE,
-  SESSION_PRICE,
   RING_COLORS,
+  formatPriceDuration,
+  formatDistance,
+  formatTime,
 } from '../data'
 
 /* eslint-disable @typescript-eslint/no-var-requires */
@@ -41,7 +42,13 @@ const CARD_BG_IMAGES = [
 const { height: H } = Dimensions.get('window')
 export const CARD_HEIGHT = Math.min(H * 0.706, 631)
 
-/* ── PhotoAvatar ─────────────────────────────────────────────── */
+const VIBE_LABELS: Record<string, string> = {
+  social: 'Social',
+  competitive: 'Competitive',
+  chill: 'Chill',
+}
+
+/* ── PhotoAvatar (initials-based, used by TopBar) ────────────── */
 export function PhotoAvatar({ initials, size }: { initials: string; size: number }) {
   const src = AVATAR_PHOTOS[initials]
   if (src) {
@@ -67,6 +74,25 @@ export function PhotoAvatar({ initials, size }: { initials: string; size: number
         {initials}
       </Text>
     </View>
+  )
+}
+
+/* ── ImageAvatar (URL-based, used by card roster) ────────────── */
+function ImageAvatar({ url, name, size }: { url: string; name: string; size: number }) {
+  const initials = name
+    .split(' ')
+    .map((w) => w[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase()
+
+  return (
+    <Image
+      source={{ uri: url }}
+      style={{ width: size, height: size, borderRadius: size / 2 }}
+      defaultSource={undefined}
+      onError={() => {}}
+    />
   )
 }
 
@@ -196,22 +222,21 @@ export function CardBody({
 }: {
   s: Session
   renderCta: React.ReactNode
-  /** Shortlist carousel: dial sits on its own row under the filling-fast line */
   matchDialBelowTopRow?: boolean
 }) {
-  const displayPlayers = s.players.slice(0, 4)
-  const friendCount = Math.max(
-    s.friendCount,
-    displayPlayers.filter((p) => p.isFriend).length,
-    4
-  )
-  const price = SESSION_PRICE[s.id] || '90k · 2h'
-  const distance = VENUE_DISTANCE[s.venue] || '3.2 km'
-  const duprLabel = `Mostly ${s.duprRange.min.toFixed(1)}–${s.duprRange.max.toFixed(1)}`
-  const regulars = displayPlayers.slice(0, 3)
+  const displayRoster = s.roster.slice(0, 4)
+  const price = formatPriceDuration(s.feeAmount, s.durationMin)
+  const distance = formatDistance(s.distanceKm)
+  const timeLabel = formatTime(s.startTime)
+  const duprLabel = s.duprRange
+    ? `Mostly ${s.duprRange.min.toFixed(1)}–${s.duprRange.max.toFixed(1)}`
+    : null
+  const displayRegulars = s.regulars.slice(0, 3)
   const nameParts = s.name.split(' ')
   const firstWord = nameParts[0]
   const restWords = nameParts.slice(1).join(' ')
+  const vibeLabel = VIBE_LABELS[s.vibeTag] ?? 'Social'
+  const overflowCount = Math.max(0, s.joined - displayRoster.length)
 
   return (
     <View
@@ -259,7 +284,6 @@ export function CardBody({
           paddingBottom: 18,
         }}
       >
-        {/* Match dial — overlay top-right (Swipe) or below top row (Shortlist) */}
         {!matchDialBelowTopRow && (
           <View style={{ position: 'absolute', top: 10, right: 10, zIndex: 20 }}>
             <MatchDial pct={s.matchScore} />
@@ -293,22 +317,32 @@ export function CardBody({
           >
             <Clock size={10} color={T.amber} strokeWidth={2} />
             <Text style={{ fontSize: 10, fontWeight: '600', color: T.amber }}>
-              {s.time}
+              {timeLabel}
             </Text>
           </View>
-          <View
-            style={{
-              width: 8,
-              height: 8,
-              borderRadius: 4,
-              backgroundColor: T.green,
-            }}
-          />
-          <Text style={{ fontSize: 11, fontWeight: '600', color: T.green }}>
-            FILLING FAST
-          </Text>
-          <Text style={{ fontSize: 11, color: '#555' }}>·</Text>
-          <Text style={{ fontSize: 11, color: '#888' }}>6 joined recently</Text>
+          {s.fillingFast && (
+            <>
+              <View
+                style={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: 4,
+                  backgroundColor: T.green,
+                }}
+              />
+              <Text style={{ fontSize: 11, fontWeight: '600', color: T.green }}>
+                FILLING FAST
+              </Text>
+              {s.joinedRecently > 0 && (
+                <>
+                  <Text style={{ fontSize: 11, color: '#555' }}>·</Text>
+                  <Text style={{ fontSize: 11, color: '#888' }}>
+                    {s.joinedRecently} joined recently
+                  </Text>
+                </>
+              )}
+            </>
+          )}
         </View>
 
         {matchDialBelowTopRow && (
@@ -324,7 +358,6 @@ export function CardBody({
           </View>
         )}
 
-        {/* Spacer */}
         <View style={{ flex: 1 }} />
 
         {/* Session name */}
@@ -356,11 +389,15 @@ export function CardBody({
           <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)' }}>
             {price}
           </Text>
-          <Text style={{ fontSize: 12, color: '#555' }}>|</Text>
-          <MapPin size={11} color="rgba(255,255,255,0.55)" strokeWidth={1.5} />
-          <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)' }}>
-            {distance}
-          </Text>
+          {distance !== '' && (
+            <>
+              <Text style={{ fontSize: 12, color: '#555' }}>|</Text>
+              <MapPin size={11} color="rgba(255,255,255,0.55)" strokeWidth={1.5} />
+              <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)' }}>
+                {distance}
+              </Text>
+            </>
+          )}
         </View>
 
         {/* Ringed avatars */}
@@ -372,8 +409,8 @@ export function CardBody({
             marginBottom: 10,
           }}
         >
-          {displayPlayers.map((p, i) => (
-            <View key={p.avatar} style={{ position: 'relative' }}>
+          {displayRoster.map((p, i) => (
+            <View key={`${p.displayName}-${i}`} style={{ position: 'relative' }}>
               <View
                 style={{
                   width: 52,
@@ -384,7 +421,7 @@ export function CardBody({
                   overflow: 'hidden',
                 }}
               >
-                <PhotoAvatar initials={p.avatar} size={47} />
+                <ImageAvatar url={p.imageUrl} name={p.displayName} size={47} />
               </View>
               <View
                 style={{
@@ -401,22 +438,24 @@ export function CardBody({
               />
             </View>
           ))}
-          <View
-            style={{
-              width: 52,
-              height: 52,
-              borderRadius: 26,
-              backgroundColor: 'rgba(0,0,0,0.45)',
-              borderWidth: 1.5,
-              borderColor: 'rgba(255,255,255,0.12)',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <Text style={{ fontSize: 14, color: '#aaa', fontWeight: '500' }}>
-              +{Math.max(s.players.length - 4, 0) + 6}
-            </Text>
-          </View>
+          {overflowCount > 0 && (
+            <View
+              style={{
+                width: 52,
+                height: 52,
+                borderRadius: 26,
+                backgroundColor: 'rgba(0,0,0,0.45)',
+                borderWidth: 1.5,
+                borderColor: 'rgba(255,255,255,0.12)',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Text style={{ fontSize: 14, color: '#aaa', fontWeight: '500' }}>
+                +{overflowCount}
+              </Text>
+            </View>
+          )}
         </View>
 
         {/* Metadata strip */}
@@ -430,16 +469,22 @@ export function CardBody({
         >
           <Users size={12} color={T.amber} strokeWidth={2} />
           <Text style={{ fontSize: 12, color: T.amber, fontWeight: '500' }}>
-            {friendCount} friends joining
+            {s.roster.length} players
           </Text>
-          <Text style={{ fontSize: 12, color: '#555' }}>|</Text>
-          <Text style={{ fontSize: 12, color: '#7F77DD' }}>{duprLabel}</Text>
+          {duprLabel && (
+            <>
+              <Text style={{ fontSize: 12, color: '#555' }}>|</Text>
+              <Text style={{ fontSize: 12, color: '#7F77DD' }}>{duprLabel}</Text>
+            </>
+          )}
           <Text style={{ fontSize: 12, color: '#555' }}>|</Text>
           <Smile size={12} color="#1D9E75" strokeWidth={2} />
-          <Text style={{ fontSize: 12, color: '#1D9E75' }}>Great vibes</Text>
+          <Text style={{ fontSize: 12, color: '#1D9E75' }}>
+            {vibeLabel === 'Competitive' ? 'Intense' : 'Great vibes'}
+          </Text>
         </View>
 
-        {/* Competitive panel */}
+        {/* Vibe panel + regulars */}
         <View
           style={{
             flexDirection: 'row',
@@ -468,36 +513,37 @@ export function CardBody({
               <Zap size={20} color={T.amber} strokeWidth={2.5} />
             </View>
             <Text style={{ fontSize: 14, fontWeight: '600', color: '#fff' }}>
-              Competitive
+              {vibeLabel}
             </Text>
           </View>
-          <View style={{ alignItems: 'center', gap: 4 }}>
-            <View style={{ flexDirection: 'row' }}>
-              {regulars.map((p, i) => (
-                <View
-                  key={p.avatar}
-                  style={{
-                    width: 33,
-                    height: 33,
-                    borderRadius: 17,
-                    overflow: 'hidden',
-                    marginLeft: i > 0 ? -8 : 0,
-                    borderWidth: 1,
-                    borderColor: 'rgba(255,255,255,0.2)',
-                    zIndex: 3 - i,
-                  }}
-                >
-                  <PhotoAvatar initials={p.avatar} size={33} />
-                </View>
-              ))}
+          {displayRegulars.length > 0 && (
+            <View style={{ alignItems: 'center', gap: 4 }}>
+              <View style={{ flexDirection: 'row' }}>
+                {displayRegulars.map((p, i) => (
+                  <View
+                    key={`reg-${p.displayName}-${i}`}
+                    style={{
+                      width: 33,
+                      height: 33,
+                      borderRadius: 17,
+                      overflow: 'hidden',
+                      marginLeft: i > 0 ? -8 : 0,
+                      borderWidth: 1,
+                      borderColor: 'rgba(255,255,255,0.2)',
+                      zIndex: 3 - i,
+                    }}
+                  >
+                    <ImageAvatar url={p.imageUrl} name={p.displayName} size={33} />
+                  </View>
+                ))}
+              </View>
+              <Text style={{ fontSize: 11, color: '#666' }}>
+                Your regulars are here
+              </Text>
             </View>
-            <Text style={{ fontSize: 11, color: '#666' }}>
-              Your regulars are here
-            </Text>
-          </View>
+          )}
         </View>
 
-        {/* CTA slot */}
         {renderCta}
       </View>
     </View>

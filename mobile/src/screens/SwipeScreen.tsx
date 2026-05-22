@@ -18,8 +18,14 @@ import Animated, {
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import { X, RotateCcw, Heart } from 'lucide-react-native'
 import { T } from '../theme'
-import { type Session, ALL_SESSIONS, VENUE_DISTANCE, SESSION_PRICE } from '../data'
-import { TopBar, PhotoAvatar, CardBody, CARD_HEIGHT } from '../components/CardBody'
+import {
+  type Session,
+  ALL_SESSIONS,
+  formatPriceDuration,
+  formatDistance,
+  formatTime,
+} from '../data'
+import { TopBar, CardBody, CARD_HEIGHT } from '../components/CardBody'
 
 /* eslint-disable @typescript-eslint/no-var-requires */
 const CARD_BG_IMAGES = [
@@ -79,8 +85,6 @@ function SwipeCard({
   onSkip: () => void
   onSave: () => void
 }) {
-  const spotsLeft = s.totalSpots - s.filled
-
   const cta = (
     <TouchableOpacity
       onPress={onSave}
@@ -97,10 +101,10 @@ function SwipeCard({
       }}
     >
       <Text style={{ fontSize: 14, fontWeight: '600', color: '#1a0a00' }}>
-        Shortlist · {spotsLeft} spots left
+        Shortlist · {s.spotsLeft} spots left
       </Text>
       <Text style={{ fontSize: 11, color: 'rgba(0,0,0,0.5)', marginTop: 2 }}>
-        {s.filled} / {s.totalSpots} filled
+        {s.joined} / {s.maxPlayers} filled
       </Text>
     </TouchableOpacity>
   )
@@ -165,9 +169,9 @@ function SecondaryCard({ s }: { s: Session }) {
       : s.matchScore >= 70
         ? 'rgba(255,255,255,0.5)'
         : 'rgba(255,255,255,0.3)'
-  const price = SESSION_PRICE[s.id] || '90k · 2h'
-  const distance = VENUE_DISTANCE[s.venue] || '3.2 km'
-  const friends = s.players.filter((p) => p.isFriend)
+  const price = formatPriceDuration(s.feeAmount, s.durationMin)
+  const distance = formatDistance(s.distanceKm)
+  const timeLabel = formatTime(s.startTime)
 
   return (
     <View
@@ -210,15 +214,20 @@ function SecondaryCard({ s }: { s: Session }) {
             {s.name}
           </Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>{s.time}</Text>
+            <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>{timeLabel}</Text>
             <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>·</Text>
             <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>{price}</Text>
-            <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>·</Text>
-            <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>{distance}</Text>
+            {distance !== '' && (
+              <>
+                <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>·</Text>
+                <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>{distance}</Text>
+              </>
+            )}
           </View>
-          {friends.length > 0 && (
+          {s.roster.length > 0 && (
             <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginTop: 4 }}>
-              {friends[0].name} {friends.length > 1 ? `+${friends.length - 1} friends` : 'going'}
+              {s.roster[0].displayName}
+              {s.roster.length > 1 ? ` +${s.roster.length - 1} players` : ' going'}
             </Text>
           )}
         </View>

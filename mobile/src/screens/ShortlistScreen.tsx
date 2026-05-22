@@ -50,11 +50,11 @@ function CarouselDot({ active }: { active: boolean }) {
 }
 
 /* ── Carousel card CTA — "Join on Reclub" + X remove ────────── */
-function CarouselCta({ onRemove }: { onRemove: () => void }) {
+function CarouselCta({ eventUrl, onRemove }: { eventUrl: string; onRemove: () => void }) {
   return (
     <View style={{ flexDirection: 'row', gap: 8 }}>
       <TouchableOpacity
-        onPress={() => Linking.openURL('https://reclub.co/m/3CUP8A')}
+        onPress={() => Linking.openURL(eventUrl)}
         style={{
           flex: 1,
           backgroundColor: T.amber,
@@ -121,7 +121,7 @@ export function ShortlistScreen() {
         <CardBody
           s={item}
           matchDialBelowTopRow
-          renderCta={<CarouselCta onRemove={() => handleRemove(item.id)} />}
+          renderCta={<CarouselCta eventUrl={item.eventUrl} onRemove={() => handleRemove(item.id)} />}
         />
       </View>
     ),

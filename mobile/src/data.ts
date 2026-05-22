@@ -1,32 +1,81 @@
-export type Session = {
-  id: number
-  name: string
-  venue: string
-  court: string
-  time: string
-  format: string
-  totalSpots: number
-  filled: number
-  matchScore: number
-  gameQuality: number
-  waitMinutes: number
-  duprRange: { min: number; max: number; avg: number }
-  vibe: string
-  vibeExtra: string[]
-  players: { name: string; dupr: number; avatar: string; isFriend: boolean }[]
-  friendCount: number
+export type VibeTag = 'social' | 'competitive' | 'chill'
+
+export type RosterPlayer = {
+  displayName: string
+  imageUrl: string
+  duprDoubles: number | null
+  isHost: boolean
 }
 
-export const ALL_SESSIONS: Session[] = [
-  { id: 1, name: 'Saigon Smash Social', venue: 'D9 Sports Club', court: 'Courts 3–5c', time: '7:30 PM', format: 'Round Robin', totalSpots: 20, filled: 14, matchScore: 92, gameQuality: 4.6, waitMinutes: 6, duprRange: { min: 3.1, max: 3.7, avg: 3.38 }, vibe: 'Social', vibeExtra: ['Fast rotations', 'Beer after'], players: [{ name: 'Sarah', dupr: 3.41, avatar: 'SK', isFriend: true }, { name: 'Taylor', dupr: 3.47, avatar: 'TM', isFriend: true }, { name: 'Jordan', dupr: 3.19, avatar: 'JP', isFriend: true }, { name: 'Mike', dupr: 3.28, avatar: 'MT', isFriend: false }, { name: 'Chris', dupr: 3.33, avatar: 'CL', isFriend: false }, { name: 'Sam', dupr: 3.55, avatar: 'SB', isFriend: false }], friendCount: 3 },
-  { id: 2, name: 'D7 Competitive RR', venue: 'District 7 Courts', court: 'Courts 1–2', time: '8:00 PM', format: 'Competitive', totalSpots: 16, filled: 12, matchScore: 78, gameQuality: 4.9, waitMinutes: 14, duprRange: { min: 3.3, max: 4.1, avg: 3.72 }, vibe: 'Intense', vibeExtra: ['Skill-first', 'No mercy'], players: [{ name: 'Priya', dupr: 3.88, avatar: 'PR', isFriend: false }, { name: 'Tom', dupr: 3.71, avatar: 'TN', isFriend: false }, { name: 'Dane', dupr: 4.02, avatar: 'DW', isFriend: false }, { name: 'Mai', dupr: 3.45, avatar: 'ML', isFriend: false }], friendCount: 0 },
-  { id: 3, name: 'Rooftop Rally Chill', venue: 'Landmark 81', court: 'Courts R1–R2', time: '7:00 PM', format: 'Open Play', totalSpots: 12, filled: 4, matchScore: 63, gameQuality: 3.7, waitMinutes: 2, duprRange: { min: 2.8, max: 3.5, avg: 3.1 }, vibe: 'Chill', vibeExtra: ['Relaxed', 'City views'], players: [{ name: 'Lin', dupr: 3.2, avatar: 'LC', isFriend: false }, { name: 'Ben', dupr: 2.95, avatar: 'BP', isFriend: false }], friendCount: 0 },
-  { id: 4, name: 'Ben Thanh Night Rally', venue: 'Ben Thanh Sports', court: 'Courts 2–4', time: '9:00 PM', format: 'Open Play', totalSpots: 18, filled: 9, matchScore: 85, gameQuality: 4.3, waitMinutes: 4, duprRange: { min: 3.0, max: 3.8, avg: 3.45 }, vibe: 'Social', vibeExtra: ['Late night', 'Fun energy'], players: [{ name: 'Anna', dupr: 3.52, avatar: 'AN', isFriend: true }, { name: 'Leon', dupr: 3.38, avatar: 'LN', isFriend: false }, { name: 'Rosa', dupr: 3.44, avatar: 'RS', isFriend: false }], friendCount: 1 },
-  { id: 5, name: 'Thao Dien Morning', venue: 'Thao Dien Courts', court: 'Courts 1–3', time: '6:30 AM', format: 'Round Robin', totalSpots: 16, filled: 11, matchScore: 71, gameQuality: 4.1, waitMinutes: 8, duprRange: { min: 2.9, max: 3.6, avg: 3.25 }, vibe: 'Chill', vibeExtra: ['Early birds', 'Cool temps'], players: [{ name: 'Hoa', dupr: 3.1, avatar: 'HO', isFriend: false }, { name: 'Nam', dupr: 3.3, avatar: 'NM', isFriend: false }], friendCount: 0 },
-]
+export type RegularPlayer = {
+  displayName: string
+  imageUrl: string
+}
 
-export const AVATAR_PHOTOS: Record<string, string> = {
-  AR: 'https://i.pravatar.cc/80?img=33',
+export type Session = {
+  id: number
+  referenceCode: string
+  name: string
+  startTime: string
+  endTime: string
+  durationMin: number
+  maxPlayers: number
+  feeAmount: number
+  feeCurrency: string
+
+  joined: number
+  spotsLeft: number
+  fillRate: number
+  fillingFast: boolean
+  joinedRecently: number
+  matchScore: number
+  distanceKm: number | null
+  vibeTag: VibeTag
+
+  duprRange: { min: number; max: number } | null
+
+  venue: { name: string; latitude: number; longitude: number } | null
+  club: { name: string; slug: string }
+
+  roster: RosterPlayer[]
+  regulars: RegularPlayer[]
+
+  eventUrl: string
+}
+
+// --- Helpers for card display ---
+
+export function formatPrice(feeAmount: number): string {
+  if (feeAmount === 0) return 'Free'
+  return `${Math.round(feeAmount / 1000)}k`
+}
+
+export function formatDuration(durationMin: number): string {
+  const h = durationMin / 60
+  return h % 1 === 0 ? `${h}h` : `${h.toFixed(1)}h`
+}
+
+export function formatPriceDuration(feeAmount: number, durationMin: number): string {
+  return `${formatPrice(feeAmount)} · ${formatDuration(durationMin)}`
+}
+
+export function formatDistance(km: number | null): string {
+  if (km === null) return ''
+  return `${km.toFixed(1)} km`
+}
+
+export function formatTime(startTime: string): string {
+  const [hStr, mStr] = startTime.split(':')
+  const h = parseInt(hStr, 10)
+  const m = mStr ?? '00'
+  const ampm = h >= 12 ? 'PM' : 'AM'
+  const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h
+  return m === '00' ? `${h12} ${ampm}` : `${h12}:${m} ${ampm}`
+}
+
+// --- Mock data (matches API shape from /api/sessions/swipe-deck) ---
+
+const MOCK_AVATARS = {
   SK: 'https://i.pravatar.cc/80?img=5',
   TM: 'https://i.pravatar.cc/80?img=12',
   JP: 'https://i.pravatar.cc/80?img=18',
@@ -44,24 +93,171 @@ export const AVATAR_PHOTOS: Record<string, string> = {
   RS: 'https://i.pravatar.cc/80?img=20',
   HO: 'https://i.pravatar.cc/80?img=24',
   NM: 'https://i.pravatar.cc/80?img=56',
-  MR: 'https://i.pravatar.cc/80?img=11',
-  JL: 'https://i.pravatar.cc/80?img=13',
-}
+} as const
 
-export const VENUE_DISTANCE: Record<string, string> = {
-  'D9 Sports Club': '3.2 km',
-  'District 7 Courts': '5.1 km',
-  'Landmark 81': '1.8 km',
-  'Ben Thanh Sports': '2.4 km',
-  'Thao Dien Courts': '4.3 km',
-}
+export const ALL_SESSIONS: Session[] = [
+  {
+    id: 1,
+    referenceCode: 'ABC123',
+    name: 'Saigon Smash Social',
+    startTime: '19:30',
+    endTime: '21:30',
+    durationMin: 120,
+    maxPlayers: 20,
+    feeAmount: 90000,
+    feeCurrency: 'VND',
+    joined: 14,
+    spotsLeft: 6,
+    fillRate: 0.7,
+    fillingFast: true,
+    joinedRecently: 6,
+    matchScore: 92,
+    distanceKm: 3.2,
+    vibeTag: 'social',
+    duprRange: { min: 3.1, max: 3.7 },
+    venue: { name: 'D9 Sports Club', latitude: 10.8, longitude: 106.7 },
+    club: { name: 'Saigon Smash', slug: 'saigon-smash' },
+    roster: [
+      { displayName: 'Sarah K.', imageUrl: MOCK_AVATARS.SK, duprDoubles: 3.41, isHost: false },
+      { displayName: 'Taylor M.', imageUrl: MOCK_AVATARS.TM, duprDoubles: 3.47, isHost: false },
+      { displayName: 'Jordan P.', imageUrl: MOCK_AVATARS.JP, duprDoubles: 3.19, isHost: false },
+      { displayName: 'Mike T.', imageUrl: MOCK_AVATARS.MT, duprDoubles: 3.28, isHost: false },
+      { displayName: 'Chris L.', imageUrl: MOCK_AVATARS.CL, duprDoubles: 3.33, isHost: true },
+      { displayName: 'Sam B.', imageUrl: MOCK_AVATARS.SB, duprDoubles: 3.55, isHost: false },
+    ],
+    regulars: [
+      { displayName: 'Sarah K.', imageUrl: MOCK_AVATARS.SK },
+      { displayName: 'Taylor M.', imageUrl: MOCK_AVATARS.TM },
+      { displayName: 'Mike T.', imageUrl: MOCK_AVATARS.MT },
+    ],
+    eventUrl: 'https://reclub.co/m/ABC123',
+  },
+  {
+    id: 2,
+    referenceCode: 'DEF456',
+    name: 'D7 Competitive RR',
+    startTime: '20:00',
+    endTime: '21:30',
+    durationMin: 90,
+    maxPlayers: 16,
+    feeAmount: 120000,
+    feeCurrency: 'VND',
+    joined: 12,
+    spotsLeft: 4,
+    fillRate: 0.75,
+    fillingFast: false,
+    joinedRecently: 2,
+    matchScore: 78,
+    distanceKm: 5.1,
+    vibeTag: 'competitive',
+    duprRange: { min: 3.3, max: 4.1 },
+    venue: { name: 'District 7 Courts', latitude: 10.73, longitude: 106.72 },
+    club: { name: 'D7 Pickle', slug: 'd7-pickle' },
+    roster: [
+      { displayName: 'Priya R.', imageUrl: MOCK_AVATARS.PR, duprDoubles: 3.88, isHost: false },
+      { displayName: 'Tom N.', imageUrl: MOCK_AVATARS.TN, duprDoubles: 3.71, isHost: false },
+      { displayName: 'Dane W.', imageUrl: MOCK_AVATARS.DW, duprDoubles: 4.02, isHost: true },
+      { displayName: 'Mai L.', imageUrl: MOCK_AVATARS.ML, duprDoubles: 3.45, isHost: false },
+    ],
+    regulars: [
+      { displayName: 'Dane W.', imageUrl: MOCK_AVATARS.DW },
+      { displayName: 'Priya R.', imageUrl: MOCK_AVATARS.PR },
+    ],
+    eventUrl: 'https://reclub.co/m/DEF456',
+  },
+  {
+    id: 3,
+    referenceCode: 'GHI789',
+    name: 'Rooftop Rally Chill',
+    startTime: '19:00',
+    endTime: '21:00',
+    durationMin: 120,
+    maxPlayers: 12,
+    feeAmount: 75000,
+    feeCurrency: 'VND',
+    joined: 4,
+    spotsLeft: 8,
+    fillRate: 0.33,
+    fillingFast: false,
+    joinedRecently: 0,
+    matchScore: 63,
+    distanceKm: 1.8,
+    vibeTag: 'chill',
+    duprRange: { min: 2.8, max: 3.5 },
+    venue: { name: 'Landmark 81', latitude: 10.79, longitude: 106.72 },
+    club: { name: 'Rooftop Rally', slug: 'rooftop-rally' },
+    roster: [
+      { displayName: 'Lin C.', imageUrl: MOCK_AVATARS.LC, duprDoubles: 3.2, isHost: true },
+      { displayName: 'Ben P.', imageUrl: MOCK_AVATARS.BP, duprDoubles: 2.95, isHost: false },
+    ],
+    regulars: [],
+    eventUrl: 'https://reclub.co/m/GHI789',
+  },
+  {
+    id: 4,
+    referenceCode: 'JKL012',
+    name: 'Ben Thanh Night Rally',
+    startTime: '21:00',
+    endTime: '23:00',
+    durationMin: 120,
+    maxPlayers: 18,
+    feeAmount: 100000,
+    feeCurrency: 'VND',
+    joined: 9,
+    spotsLeft: 9,
+    fillRate: 0.5,
+    fillingFast: false,
+    joinedRecently: 3,
+    matchScore: 85,
+    distanceKm: 2.4,
+    vibeTag: 'social',
+    duprRange: { min: 3.0, max: 3.8 },
+    venue: { name: 'Ben Thanh Sports', latitude: 10.77, longitude: 106.7 },
+    club: { name: 'Ben Thanh PB', slug: 'ben-thanh-pb' },
+    roster: [
+      { displayName: 'Anna N.', imageUrl: MOCK_AVATARS.AN, duprDoubles: 3.52, isHost: false },
+      { displayName: 'Leon N.', imageUrl: MOCK_AVATARS.LN, duprDoubles: 3.38, isHost: true },
+      { displayName: 'Rosa S.', imageUrl: MOCK_AVATARS.RS, duprDoubles: 3.44, isHost: false },
+    ],
+    regulars: [
+      { displayName: 'Anna N.', imageUrl: MOCK_AVATARS.AN },
+    ],
+    eventUrl: 'https://reclub.co/m/JKL012',
+  },
+  {
+    id: 5,
+    referenceCode: 'MNO345',
+    name: 'Thao Dien Morning',
+    startTime: '06:30',
+    endTime: '08:00',
+    durationMin: 90,
+    maxPlayers: 16,
+    feeAmount: 80000,
+    feeCurrency: 'VND',
+    joined: 11,
+    spotsLeft: 5,
+    fillRate: 0.69,
+    fillingFast: false,
+    joinedRecently: 1,
+    matchScore: 71,
+    distanceKm: 4.3,
+    vibeTag: 'chill',
+    duprRange: { min: 2.9, max: 3.6 },
+    venue: { name: 'Thao Dien Courts', latitude: 10.8, longitude: 106.74 },
+    club: { name: 'Thao Dien PB', slug: 'thao-dien-pb' },
+    roster: [
+      { displayName: 'Hoa O.', imageUrl: MOCK_AVATARS.HO, duprDoubles: 3.1, isHost: true },
+      { displayName: 'Nam M.', imageUrl: MOCK_AVATARS.NM, duprDoubles: 3.3, isHost: false },
+    ],
+    regulars: [],
+    eventUrl: 'https://reclub.co/m/MNO345',
+  },
+]
 
-export const SESSION_PRICE: Record<number, string> = {
-  1: '90k · 2h',
-  2: '120k · 1.5h',
-  3: '75k · 2h',
-  4: '100k · 2h',
-  5: '80k · 1.5h',
+// Legacy avatar map — still used by TopBar user avatar
+export const AVATAR_PHOTOS: Record<string, string> = {
+  AR: 'https://i.pravatar.cc/80?img=33',
+  ...MOCK_AVATARS,
 }
 
 export const RING_COLORS = ['#7F77DD', '#1D9E75', '#D4537E', '#f5a623']

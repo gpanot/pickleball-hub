@@ -144,6 +144,7 @@ model Player {
   userId                   BigInt    @id @map("user_id")
   username                 String?
   displayName              String?   @map("display_name")
+  imageUrl                 String?   @map("image_url")
   duprSingles              Decimal?  @map("dupr_singles") @db.Decimal(5, 3)
   duprDoubles              Decimal?  @map("dupr_doubles") @db.Decimal(5, 3)
   duprSinglesReliability   Int?      @map("dupr_singles_reliability")
