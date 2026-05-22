@@ -8,6 +8,7 @@ import {
   reclubAvatarUrl,
 } from "@/lib/utils";
 import { CACHE_CONTROL_SESSIONS } from "@/lib/http-cache-headers";
+import { getMobileUser } from "@/lib/mobile-auth";
 
 const ROSTER_CAP = 10;
 const REGULARS_CAP = 5;
@@ -26,6 +27,17 @@ export async function GET(req: NextRequest) {
     const lng = parseFloat(searchParams.get("lng") ?? "");
     const userLat = Number.isFinite(lat) ? lat : null;
     const userLng = Number.isFinite(lng) ? lng : null;
+
+    // Resolve followed player IDs for the authenticated mobile user
+    const mobileUser = await getMobileUser(req);
+    let followedPlayerIds: Set<string> = new Set();
+    if (mobileUser?.profileId) {
+      const follows = await prisma.follow.findMany({
+        where: { followerId: mobileUser.profileId },
+        select: { followeeId: true },
+      });
+      followedPlayerIds = new Set(follows.map((f) => f.followeeId.toString()));
+    }
 
     const sessions = await prisma.session.findMany({
       where: { scrapedDate: date, status: "active" },
@@ -209,10 +221,25 @@ export async function GET(req: NextRequest) {
         roster,
         regulars,
 
-        // Friend graph not wired yet — populate when user Reclub ID + co-attendance exist
-        friends: [] as { displayName: string; imageUrl: string }[],
-        friendCount: 0,
-        friendsOverflow: 0,
+        ...(() => {
+          const FRIENDS_AVATAR_CAP = 4;
+          const friendsInRoster = followedPlayerIds.size > 0
+            ? s.rosters
+                .filter((r) => followedPlayerIds.has(r.userId.toString()))
+                .map((r) => ({
+                  displayName: r.player?.displayName ?? "Player",
+                  imageUrl:
+                    r.player?.imageUrl ??
+                    reclubAvatarUrl(r.player?.userId ?? r.userId),
+                }))
+            : [];
+          const friendCount = friendsInRoster.length;
+          return {
+            friends: friendsInRoster.slice(0, FRIENDS_AVATAR_CAP),
+            friendCount,
+            friendsOverflow: Math.max(0, friendCount - FRIENDS_AVATAR_CAP),
+          };
+        })(),
 
         eventUrl: s.eventUrl,
       };

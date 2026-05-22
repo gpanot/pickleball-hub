@@ -26,6 +26,7 @@ import {
   formatTime,
 } from '../data'
 import { TopBar, CardBody, CARD_HEIGHT } from '../components/CardBody'
+import { useAuthStore } from '../stores/authStore'
 
 /* eslint-disable @typescript-eslint/no-var-requires */
 const CARD_BG_IMAGES = [
@@ -80,10 +81,14 @@ function ProgressDots({ total, current }: { total: number; current: number }) {
 function SwipeCard({
   s,
   onSave,
+  isSignedIn,
+  onSignUpPrompt,
 }: {
   s: Session
   onSkip: () => void
   onSave: () => void
+  isSignedIn: boolean
+  onSignUpPrompt?: () => void
 }) {
   const cta = (
     <TouchableOpacity
@@ -111,7 +116,12 @@ function SwipeCard({
 
   return (
     <View style={{ width: '100%', height: CARD_HEIGHT }}>
-      <CardBody s={s} renderCta={cta} />
+      <CardBody
+        s={s}
+        renderCta={cta}
+        isSignedIn={isSignedIn}
+        onSignUpPrompt={onSignUpPrompt}
+      />
     </View>
   )
 }
@@ -121,10 +131,14 @@ function AnimatedSwipeCard({
   s,
   onSkip,
   onSave,
+  isSignedIn,
+  onSignUpPrompt,
 }: {
   s: Session
   onSkip: () => void
   onSave: () => void
+  isSignedIn: boolean
+  onSignUpPrompt?: () => void
 }) {
   const translateX = useSharedValue(0)
   const rotate = useSharedValue(0)
@@ -155,7 +169,7 @@ function AnimatedSwipeCard({
   return (
     <GestureDetector gesture={gesture}>
       <Animated.View style={[{ width: '100%' }, animStyle]}>
-        <SwipeCard s={s} onSkip={onSkip} onSave={onSave} />
+        <SwipeCard s={s} onSkip={onSkip} onSave={onSave} isSignedIn={isSignedIn} onSignUpPrompt={onSignUpPrompt} />
       </Animated.View>
     </GestureDetector>
   )
@@ -257,9 +271,14 @@ function SecondaryCard({ s }: { s: Session }) {
 /* ── SwipeScreen (main export) ───────────────────────────────── */
 export function SwipeScreen({
   onNavigateToShortlist,
+  onSignUpPrompt,
+  onNavigateToProfile,
 }: {
   onNavigateToShortlist: () => void
+  onSignUpPrompt?: () => void
+  onNavigateToProfile?: () => void
 }) {
+  const signedIn = useAuthStore((s) => s.isSignedIn)()
   const [currentIdx, setCurrentIdx] = useState(0)
   const [history, setHistory] = useState<number[]>([])
   const deck = ALL_SESSIONS
@@ -285,7 +304,7 @@ export function SwipeScreen({
 
   return (
     <View style={{ flex: 1, backgroundColor: T.bg }}>
-      <TopBar title="Where to play?" />
+      <TopBar title="Where to play?" onAvatarTap={onNavigateToProfile} />
 
       <ScrollView
         style={{ flex: 1 }}
@@ -326,7 +345,7 @@ export function SwipeScreen({
         ) : (
           current && (
             <>
-              <AnimatedSwipeCard s={current} onSkip={handleSkip} onSave={handleSave} />
+              <AnimatedSwipeCard s={current} onSkip={handleSkip} onSave={handleSave} isSignedIn={signedIn} onSignUpPrompt={onSignUpPrompt} />
 
               {/* Action buttons */}
               <View

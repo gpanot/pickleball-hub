@@ -1,10 +1,10 @@
 import React from 'react'
 import { View, Text, TouchableOpacity, Platform } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { Zap, Bookmark } from 'lucide-react-native'
+import { Zap, Bookmark, User } from 'lucide-react-native'
 import { T } from '../theme'
 
-export type TabId = 'swipe' | 'shortlist'
+export type TabId = 'swipe' | 'shortlist' | 'profile'
 
 export function NavBar({
   active,
@@ -19,6 +19,7 @@ export function NavBar({
   const tabs: { key: TabId; icon: typeof Zap; label: string }[] = [
     { key: 'swipe', icon: Zap, label: 'Swipe' },
     { key: 'shortlist', icon: Bookmark, label: 'Shortlist' },
+    { key: 'profile', icon: User, label: 'Profile' },
   ]
 
   return (

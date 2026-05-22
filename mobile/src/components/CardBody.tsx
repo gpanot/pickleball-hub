@@ -7,6 +7,7 @@ import {
   StyleSheet,
   Dimensions,
 } from 'react-native'
+import { BlurView } from 'expo-blur'
 import { LinearGradient } from 'expo-linear-gradient'
 import Animated, {
   useSharedValue,
@@ -408,8 +409,8 @@ export function CardBody({
           )}
         </View>
 
-        {/* Friend avatars (your friends joining — not full roster) */}
-        {hasFriends && (
+        {/* Friend avatars — frosted when signed out, real when signed in */}
+        {isSignedIn && hasFriends && (
           <View
             style={{
               flexDirection: 'row',
@@ -468,6 +469,69 @@ export function CardBody({
           </View>
         )}
 
+        {/* Frosted placeholder avatars — shown when NOT signed in */}
+        {!isSignedIn && (
+          <TouchableOpacity
+            onPress={onSignUpPrompt}
+            activeOpacity={0.7}
+            style={{ marginBottom: 10 }}
+          >
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 8,
+                borderRadius: 30,
+                overflow: 'hidden',
+              }}
+            >
+              {[0, 1, 2, 3].map((i) => (
+                <View
+                  key={`frost-${i}`}
+                  style={{
+                    width: 52,
+                    height: 52,
+                    borderRadius: 26,
+                    borderWidth: 2.5,
+                    borderColor: RING_COLORS[i % RING_COLORS.length],
+                    overflow: 'hidden',
+                  }}
+                >
+                  <View
+                    style={{
+                      width: 47,
+                      height: 47,
+                      borderRadius: 24,
+                      backgroundColor: '#333',
+                    }}
+                  />
+                  <BlurView
+                    intensity={25}
+                    tint="dark"
+                    style={StyleSheet.absoluteFill}
+                  />
+                </View>
+              ))}
+              <View
+                style={{
+                  width: 52,
+                  height: 52,
+                  borderRadius: 26,
+                  backgroundColor: 'rgba(0,0,0,0.45)',
+                  borderWidth: 1.5,
+                  borderColor: 'rgba(255,255,255,0.12)',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Text style={{ fontSize: 14, color: '#aaa', fontWeight: '500' }}>
+                  +?
+                </Text>
+              </View>
+            </View>
+          </TouchableOpacity>
+        )}
+
         {/* Metadata strip */}
         <View
           style={{
@@ -477,7 +541,7 @@ export function CardBody({
             marginBottom: 12,
           }}
         >
-          {hasFriends && (
+          {isSignedIn && hasFriends && (
             <>
               <Users size={12} color={T.amber} strokeWidth={2} />
               <Text style={{ fontSize: 12, color: T.amber, fontWeight: '500' }}>
@@ -485,13 +549,21 @@ export function CardBody({
               </Text>
             </>
           )}
-          {hasFriends && duprLabel && (
+          {!isSignedIn && (
+            <>
+              <Users size={12} color={T.amber} strokeWidth={2} />
+              <Text style={{ fontSize: 12, color: T.amber, fontWeight: '500' }}>
+                ? friends joining
+              </Text>
+            </>
+          )}
+          {(isSignedIn ? hasFriends : true) && duprLabel && (
             <Text style={{ fontSize: 12, color: '#555' }}>|</Text>
           )}
           {duprLabel && (
             <Text style={{ fontSize: 12, color: '#7F77DD' }}>{duprLabel}</Text>
           )}
-          {(hasFriends || duprLabel) && (
+          {((isSignedIn ? hasFriends : true) || duprLabel) && (
             <Text style={{ fontSize: 12, color: '#555' }}>|</Text>
           )}
           <Smile size={12} color="#1D9E75" strokeWidth={2} />
