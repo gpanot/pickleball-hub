@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { reclubAvatarUrl } from "@/lib/utils";
 
 /**
  * GET /api/players/search?q=<query>
@@ -36,7 +37,7 @@ export async function GET(req: NextRequest) {
       userId: p.userId.toString(),
       displayName: p.displayName,
       username: p.username,
-      imageUrl: p.imageUrl,
+      imageUrl: p.imageUrl ?? reclubAvatarUrl(p.userId),
       duprDoubles: p.duprDoubles ? Number(p.duprDoubles) : null,
     }))
   );

@@ -17,7 +17,8 @@
       "package": "com.thehub.app",
       "adaptiveIcon": {
         "backgroundColor": "#0a0a0a"
-      }
+      },
+      "googleServicesFile": "./google-services.json"
     },
     "scheme": "com.thehub.app",
     "plugins": [
@@ -27,6 +28,13 @@
       [
         "expo-location",
         { "locationWhenInUsePermission": "Allow TheHub to show distances to sessions near you." }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#f5a623",
+          "defaultChannel": "default"
+        }
       ]
     ]
   }

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getMobileUser } from "@/lib/mobile-auth";
+import { reclubAvatarUrl } from "@/lib/utils";
+import { notifyNewFollower } from "@/lib/notifications/pn4-new-follower";
 
 /**
  * GET /api/follows
@@ -31,7 +33,8 @@ export async function GET(req: NextRequest) {
     follows.map((f) => ({
       userId: f.followee.userId.toString(),
       displayName: f.followee.displayName,
-      imageUrl: f.followee.imageUrl,
+      imageUrl:
+        f.followee.imageUrl ?? reclubAvatarUrl(f.followee.userId),
       duprDoubles: f.followee.duprDoubles
         ? Number(f.followee.duprDoubles)
         : null,
@@ -66,6 +69,13 @@ export async function POST(req: NextRequest) {
         followeeId: BigInt(followeeId),
       },
     });
+
+    // Fire-and-forget: notify the followee
+    notifyNewFollower({
+      followerProfileId: user.profileId,
+      followeeReclubUserId: BigInt(followeeId),
+    }).catch((err) => console.error("PN4 notification error:", err));
+
     return NextResponse.json({ ok: true });
   } catch (err: unknown) {
     const prismaErr = err as { code?: string };

@@ -11,11 +11,15 @@ import {
   ActivityIndicator,
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { User, Users, Trash2, LogOut, Search, ArrowLeft, Sparkles } from 'lucide-react-native'
+import { User, Users, Trash2, LogOut, Search, ArrowLeft, Sparkles, Link2, RotateCcw, Bell, BellOff } from 'lucide-react-native'
 import { T } from '../theme'
 import { useAuthStore } from '../stores/authStore'
+import { useSignUpModal } from '../contexts/SignUpModalContext'
 import { PlayerSearch } from '../components/PlayerSearch'
+import { FriendListRow } from '../components/FriendListRow'
+import { useToast } from '../components/Toast'
 import { PeopleYouMayKnowScreen } from './PeopleYouMayKnowScreen'
+import { registerForPushNotifications } from '../services/notifications'
 
 type FollowedPlayer = {
   userId: string
@@ -28,58 +32,170 @@ type FollowedPlayer = {
 type ProfileTab = 'profile' | 'friends'
 
 export function ProfileScreen({
-  onSignUpPrompt,
+  openFriendsTab = false,
+  onFriendsTabOpened,
+  onLinkReclub,
+  onRedoOnboarding,
 }: {
-  onSignUpPrompt?: () => void
+  openFriendsTab?: boolean
+  onFriendsTabOpened?: () => void
+  onLinkReclub?: () => void
+  onRedoOnboarding?: () => void
 }) {
+  const { openSignUp } = useSignUpModal()
   const insets = useSafeAreaInsets()
   const [tab, setTab] = useState<ProfileTab>('profile')
+
+  useEffect(() => {
+    if (openFriendsTab) {
+      setTab('friends')
+      onFriendsTabOpened?.()
+    }
+  }, [openFriendsTab, onFriendsTabOpened])
   const [friends, setFriends] = useState<FollowedPlayer[]>([])
   const [loadingFriends, setLoadingFriends] = useState(false)
   const [showSearch, setShowSearch] = useState(false)
   const [showSuggested, setShowSuggested] = useState(false)
+  const [pnsRegistered, setPnsRegistered] = useState<boolean | null>(null)
+  const [pnsSending, setPnsSending] = useState(false)
 
   const {
     displayName,
     imageUrl,
     reclubUserId,
-    hasCompletedOnboarding,
     signOut,
     deleteAccount,
     authedFetch,
-    isSignedIn,
+    jwt,
+    ensureServerAuth,
   } = useAuthStore()
 
   const loadFriends = useCallback(async () => {
+    if (!jwt) return
+    await ensureServerAuth()
     setLoadingFriends(true)
     try {
       const res = await authedFetch('/api/follows')
       if (res.ok) {
-        setFriends(await res.json())
+        const list = await res.json()
+        setFriends(list)
+        if (__DEV__) {
+          console.log('[Profile] friends loaded', list.length)
+        }
+      } else if (__DEV__) {
+        const body = await res.text()
+        console.warn('[Profile] GET /api/follows', res.status, body)
       }
-    } catch {
-      // ignore
+    } catch (e) {
+      if (__DEV__) console.warn('[Profile] loadFriends', e)
     } finally {
       setLoadingFriends(false)
     }
-  }, [authedFetch])
+  }, [authedFetch, jwt, ensureServerAuth])
 
   useEffect(() => {
-    if (tab === 'friends' && isSignedIn()) {
+    if (jwt) {
       loadFriends()
     }
-  }, [tab])
+  }, [jwt, tab, loadFriends])
 
-  const handleUnfollow = async (userId: string) => {
-    setFriends((prev) => prev.filter((f) => f.userId !== userId))
+  const toast = useToast((s) => s.show)
+
+  // Check PNS registration status
+  useEffect(() => {
+    if (!jwt) return
+    authedFetch('/api/notifications/test')
+      .then((res) => res.json())
+      .then((data) => setPnsRegistered(data.registered))
+      .catch(() => setPnsRegistered(null))
+  }, [jwt, authedFetch])
+
+  const handleRegisterPns = useCallback(async () => {
+    setPnsSending(true)
     try {
-      await authedFetch('/api/follows', {
-        method: 'DELETE',
-        body: JSON.stringify({ followeeId: userId }),
+      const token = await registerForPushNotifications()
+      if (!token) {
+        Alert.alert('Permission denied', 'Please enable notifications in your device settings.')
+        return
+      }
+      await authedFetch('/api/players/push-token', {
+        method: 'POST',
+        body: JSON.stringify({ token }),
       })
-    } catch {
-      loadFriends()
+      setPnsRegistered(true)
+      toast('Push notifications enabled!', 'success')
+    } catch (e) {
+      if (__DEV__) console.warn('[PNS] register error', e)
+      toast('Failed to register. Try again.', 'error')
+    } finally {
+      setPnsSending(false)
     }
+  }, [authedFetch, toast])
+
+  const handleTestPush = useCallback(async () => {
+    setPnsSending(true)
+    try {
+      const res = await authedFetch('/api/notifications/test', { method: 'POST' })
+      const data = await res.json()
+      if (data.ok) {
+        toast('Test notification sent!', 'success')
+      } else {
+        toast(data.error ?? 'Failed to send', 'error')
+      }
+    } catch {
+      toast('Network error', 'error')
+    } finally {
+      setPnsSending(false)
+    }
+  }, [authedFetch, toast])
+
+  const performUnfollow = useCallback(
+    async (userId: string) => {
+      const player = friends.find((f) => f.userId === userId)
+      setFriends((prev) => prev.filter((f) => f.userId !== userId))
+      try {
+        const res = await authedFetch('/api/follows', {
+          method: 'DELETE',
+          body: JSON.stringify({ followeeId: userId }),
+        })
+        if (!res.ok) throw new Error('Unfollow failed')
+        toast(`Unfollowed ${player?.displayName ?? 'player'}`, 'info')
+      } catch {
+        loadFriends()
+        toast('Failed to unfollow. Try again.', 'error')
+      }
+    },
+    [friends, authedFetch, toast, loadFriends]
+  )
+
+  const handleUnfollow = (userId: string) => {
+    const player = friends.find((f) => f.userId === userId)
+    const name = player?.displayName ?? 'this player'
+    Alert.alert(
+      'Unfollow?',
+      `Stop following ${name}? They will no longer appear in your friends filter.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Unfollow',
+          style: 'destructive',
+          onPress: () => {
+            Alert.alert(
+              'Are you sure?',
+              `${name} will be removed from your friends list.`,
+              [
+                { text: 'Keep following', style: 'cancel' },
+                {
+                  text: 'Yes, unfollow',
+                  style: 'destructive',
+                  onPress: () => performUnfollow(userId),
+                },
+              ]
+            )
+          },
+        },
+      ]
+    )
   }
 
   const handleDeleteData = () => {
@@ -101,12 +217,38 @@ export function ProfileScreen({
 
   const handleFollowFromSearch = useCallback(
     async (userId: string) => {
-      await authedFetch('/api/follows', {
-        method: 'POST',
-        body: JSON.stringify({ followeeId: userId }),
-      })
+      try {
+        const res = await authedFetch('/api/follows', {
+          method: 'POST',
+          body: JSON.stringify({ followeeId: userId }),
+        })
+        if (!res.ok) throw new Error('Follow failed')
+        toast('Followed!', 'success')
+        loadFriends()
+      } catch {
+        toast('Failed to follow. Try again.', 'error')
+        throw new Error('Follow failed')
+      }
     },
-    [authedFetch]
+    [authedFetch, toast, loadFriends]
+  )
+
+  const handleUnfollowFromSearch = useCallback(
+    async (userId: string) => {
+      try {
+        const res = await authedFetch('/api/follows', {
+          method: 'DELETE',
+          body: JSON.stringify({ followeeId: userId }),
+        })
+        if (!res.ok) throw new Error('Unfollow failed')
+        toast('Removed from friends', 'info')
+        loadFriends()
+      } catch {
+        toast('Failed to unfollow. Try again.', 'error')
+        throw new Error('Unfollow failed')
+      }
+    },
+    [authedFetch, toast, loadFriends]
   )
 
   const handleCloseSearch = useCallback(() => {
@@ -122,7 +264,7 @@ export function ProfileScreen({
     ])
   }
 
-  if (!isSignedIn()) {
+  if (!jwt) {
     return (
       <View
         style={[
@@ -157,7 +299,7 @@ export function ProfileScreen({
           Sign in to see your friends, follow players, and track your sessions
         </Text>
         <TouchableOpacity
-          onPress={onSignUpPrompt}
+          onPress={openSignUp}
           style={{
             marginTop: 24,
             backgroundColor: T.amber,
@@ -166,6 +308,8 @@ export function ProfileScreen({
             paddingHorizontal: 40,
           }}
           activeOpacity={0.8}
+          accessibilityLabel="Sign in with Google"
+          accessibilityRole="button"
         >
           <Text style={{ fontSize: 16, fontWeight: '700', color: '#000' }}>
             Sign in with Google
@@ -250,16 +394,95 @@ export function ProfileScreen({
 
           {/* Info rows */}
           <View style={styles.infoSection}>
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Onboarding</Text>
-              <Text style={styles.infoValue}>
-                {hasCompletedOnboarding ? 'Completed' : 'Not completed'}
+            {reclubUserId && (
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>Reclub</Text>
+                <Text style={styles.infoValue}>Linked</Text>
+              </View>
+            )}
+            <TouchableOpacity
+              style={styles.infoRow}
+              onPress={() => setTab('friends')}
+            >
+              <Text style={styles.infoLabel}>Friends</Text>
+              <Text style={[styles.infoValue, { color: T.amber }]}>
+                {friends.length}
               </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Push Notifications */}
+          <View style={[styles.actionsSection, { marginBottom: 16 }]}>
+            <View style={styles.actionRow}>
+              {pnsRegistered ? (
+                <Bell size={18} color="#22c55e" strokeWidth={2} />
+              ) : (
+                <BellOff size={18} color="#666" strokeWidth={2} />
+              )}
+              <Text style={[styles.actionLabel, { flex: 1 }]}>
+                Push notifications
+              </Text>
+              <View
+                style={{
+                  backgroundColor: pnsRegistered ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.06)',
+                  borderRadius: 8,
+                  paddingHorizontal: 10,
+                  paddingVertical: 4,
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 12,
+                    fontWeight: '600',
+                    color: pnsRegistered ? '#22c55e' : '#666',
+                  }}
+                >
+                  {pnsRegistered === null ? '...' : pnsRegistered ? 'Active' : 'Off'}
+                </Text>
+              </View>
             </View>
+            {!pnsRegistered && (
+              <TouchableOpacity
+                style={styles.actionRow}
+                onPress={handleRegisterPns}
+                disabled={pnsSending}
+              >
+                <Bell size={18} color={T.amber} strokeWidth={2} />
+                <Text style={[styles.actionLabel, { color: T.amber }]}>
+                  {pnsSending ? 'Enabling...' : 'Enable push notifications'}
+                </Text>
+              </TouchableOpacity>
+            )}
+            {pnsRegistered && (
+              <TouchableOpacity
+                style={styles.actionRow}
+                onPress={handleTestPush}
+                disabled={pnsSending}
+              >
+                <Bell size={18} color="#999" strokeWidth={2} />
+                <Text style={styles.actionLabel}>
+                  {pnsSending ? 'Sending...' : 'Send test notification'}
+                </Text>
+              </TouchableOpacity>
+            )}
           </View>
 
           {/* Actions */}
           <View style={styles.actionsSection}>
+            {!reclubUserId && onLinkReclub && (
+              <TouchableOpacity style={styles.actionRow} onPress={onLinkReclub}>
+                <Link2 size={18} color={T.amber} strokeWidth={2} />
+                <Text style={[styles.actionLabel, { color: T.amber }]}>
+                  Link your Reclub name
+                </Text>
+              </TouchableOpacity>
+            )}
+            {onRedoOnboarding && (
+              <TouchableOpacity style={styles.actionRow} onPress={onRedoOnboarding}>
+                <RotateCcw size={18} color="#999" strokeWidth={2} />
+                <Text style={styles.actionLabel}>Redo setup</Text>
+              </TouchableOpacity>
+            )}
             <TouchableOpacity
               style={styles.actionRow}
               onPress={handleSignOut}
@@ -320,6 +543,8 @@ export function ProfileScreen({
               <PlayerSearch
                 mode="follow"
                 onFollow={handleFollowFromSearch}
+                onUnfollow={handleUnfollowFromSearch}
+                initialFollowedIds={friends.map((f) => f.userId)}
                 autoFocus
               />
             </View>
@@ -370,38 +595,10 @@ export function ProfileScreen({
                   data={friends}
                   keyExtractor={(item) => item.userId}
                   renderItem={({ item }) => (
-                    <View style={styles.friendRow}>
-                      {item.imageUrl ? (
-                        <Image
-                          source={{ uri: item.imageUrl }}
-                          style={styles.friendAvatar}
-                        />
-                      ) : (
-                        <View
-                          style={[styles.friendAvatar, styles.avatarFallback]}
-                        >
-                          <Text style={styles.avatarInitial}>
-                            {(item.displayName ?? '?')[0]}
-                          </Text>
-                        </View>
-                      )}
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.friendName}>
-                          {item.displayName ?? 'Unknown'}
-                        </Text>
-                        {item.duprDoubles != null && (
-                          <Text style={styles.friendDupr}>
-                            DUPR {item.duprDoubles.toFixed(1)}
-                          </Text>
-                        )}
-                      </View>
-                      <TouchableOpacity
-                        style={styles.unfollowBtn}
-                        onPress={() => handleUnfollow(item.userId)}
-                      >
-                        <Text style={styles.unfollowLabel}>Unfollow</Text>
-                      </TouchableOpacity>
-                    </View>
+                    <FriendListRow
+                      item={item}
+                      onUnfollow={() => handleUnfollow(item.userId)}
+                    />
                   )}
                   contentContainerStyle={{ paddingBottom: 20 }}
                 />

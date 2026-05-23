@@ -14,8 +14,9 @@ export type RegularPlayer = {
 
 /** Friends of the current user who are joining this session (not full roster). */
 export type FriendPlayer = {
+  userId: string
   displayName: string
-  imageUrl: string
+  imageUrl: string | null
 }
 
 export type Session = {
@@ -85,3 +86,44 @@ export function formatTime(startTime: string): string {
 }
 
 export const RING_COLORS = ['#7F77DD', '#1D9E75', '#D4537E', '#f5a623']
+
+// ── Feed types ────────────────────────────────────────────────────────────────
+
+export type FeedItemType = 'joining' | 'played' | 'dupr_update'
+
+export type FeedItem = {
+  id: string
+  type: FeedItemType
+  player: {
+    userId: string
+    displayName: string | null
+    imageUrl: string | null
+    duprDoubles: number | null
+  }
+  isFollowing: boolean
+  timestamp: string
+
+  // type === 'joining' or 'played'
+  venueName?: string
+  sessionName?: string
+  sessionTime?: string
+  district?: string
+  spotsLeft?: number
+  sessionId?: number
+  eventUrl?: string
+  sessionCount?: number
+
+  // type === 'dupr_update'
+  duprOld?: number
+  duprNew?: number
+  venueNameDupr?: string
+}
+
+export type CoPlayerSuggestion = {
+  userId: string
+  displayName: string | null
+  imageUrl: string | null
+  duprDoubles: number | null
+  coSessionCount: number
+  venueName: string
+}

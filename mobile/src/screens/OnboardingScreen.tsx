@@ -8,6 +8,8 @@ import {
   KeyboardAvoidingView,
   Platform,
   Keyboard,
+  ActivityIndicator,
+  Alert,
 } from 'react-native'
 import Animated, {
   useSharedValue,
@@ -29,48 +31,80 @@ type TimeSlot =
   | 'weekday_afternoons'
   | 'weekend_evenings'
 
-export function OnboardingScreen({ onComplete }: { onComplete: () => void }) {
+export function OnboardingScreen({
+  onComplete,
+  onCancel,
+  initialStep = 0,
+}: {
+  onComplete: () => void
+  onCancel?: () => void
+  initialStep?: number
+}) {
   const insets = useSafeAreaInsets()
-  const [step, setStep] = useState(0)
+  const [step, setStep] = useState(initialStep)
   const [dupr, setDupr] = useState('')
+  const [duprError, setDuprError] = useState('')
   const [timeSlot, setTimeSlot] = useState<TimeSlot | null>(null)
   const [otherExpanded, setOtherExpanded] = useState(false)
   const [selectedPlayer, setSelectedPlayer] = useState<SearchResult | null>(null)
+  const [finishing, setFinishing] = useState(false)
 
-  const { authedFetch, setOnboardingComplete, setReclubUserId, profileId } =
+  const { authedFetch, setOnboardingComplete, setReclubUserId, setDuprRating, profileId } =
     useAuthStore()
 
+  const validateDupr = (value: string): boolean => {
+    if (!value) return true
+    const num = parseFloat(value)
+    if (isNaN(num) || num < 0 || num > 8) {
+      setDuprError('Enter a value between 0.0 and 8.0')
+      return false
+    }
+    setDuprError('')
+    return true
+  }
+
   const nextStep = () => {
+    if (step === 0 && !validateDupr(dupr)) return
     if (step < TOTAL_STEPS - 1) setStep(step + 1)
   }
 
   const prevStep = () => {
-    if (step > 0) {
-      setStep(step - 1)
-      setOtherExpanded(false)
+    if (step <= initialStep) {
+      onCancel?.()
+      return
     }
+    setStep(step - 1)
+    setOtherExpanded(false)
   }
 
   const handleFinish = async () => {
-    const prefs: Record<string, unknown> = {
-      dupr: dupr ? parseFloat(dupr) : null,
-      timeSlots: timeSlot,
-    }
+    if (finishing) return
+    setFinishing(true)
+    try {
+      const prefs: Record<string, unknown> = {
+        dupr: dupr ? parseFloat(dupr) : null,
+        timeSlots: timeSlot,
+      }
 
-    await authedFetch('/api/profile', {
-      method: 'POST',
-      body: JSON.stringify({
-        profileId,
-        preferences: prefs,
-        reclubUserId: selectedPlayer?.userId ?? undefined,
-      }),
-    })
+      await authedFetch('/api/profile', {
+        method: 'POST',
+        body: JSON.stringify({
+          profileId,
+          preferences: prefs,
+          reclubUserId: selectedPlayer?.userId ?? undefined,
+        }),
+      })
 
-    if (selectedPlayer) {
-      setReclubUserId(selectedPlayer.userId)
+      if (selectedPlayer) {
+        setReclubUserId(selectedPlayer.userId)
+      }
+      setDuprRating(dupr ? parseFloat(dupr) : null)
+      setOnboardingComplete()
+      onComplete()
+    } catch {
+      Alert.alert('Connection error', 'Could not save your profile. Please try again.')
+      setFinishing(false)
     }
-    setOnboardingComplete()
-    onComplete()
   }
 
   const handleTimeSelect = (value: string) => {
@@ -180,14 +214,22 @@ export function OnboardingScreen({ onComplete }: { onComplete: () => void }) {
             Enter your doubles rating (0.0–8.0) or leave blank if unsure
           </Text>
           <TextInput
-            style={styles.textInput}
+            style={[styles.textInput, duprError ? { borderColor: '#ef4444' } : undefined]}
             value={dupr}
-            onChangeText={setDupr}
+            onChangeText={(v) => {
+              setDupr(v)
+              if (duprError) setDuprError('')
+            }}
             placeholder="e.g. 3.5"
             placeholderTextColor="#555"
             keyboardType="decimal-pad"
             maxLength={4}
           />
+          {duprError !== '' && (
+            <Text style={{ fontSize: 12, color: '#ef4444', marginTop: 6 }}>
+              {duprError}
+            </Text>
+          )}
           <TouchableOpacity
             style={styles.nextBtn}
             onPress={nextStep}
@@ -279,16 +321,21 @@ export function OnboardingScreen({ onComplete }: { onComplete: () => void }) {
           />
 
           <TouchableOpacity
-            style={[styles.nextBtn, { marginTop: 12, marginBottom: insets.bottom + 8 }]}
+            style={[styles.nextBtn, { marginTop: 12, marginBottom: insets.bottom + 8 }, finishing && { opacity: 0.6 }]}
             onPress={() => {
               Keyboard.dismiss()
               handleFinish()
             }}
             activeOpacity={0.8}
+            disabled={finishing}
           >
-            <Text style={styles.nextLabel}>
-              {selectedPlayer ? 'Continue' : 'Skip'}
-            </Text>
+            {finishing ? (
+              <ActivityIndicator color="#000" />
+            ) : (
+              <Text style={styles.nextLabel}>
+                {selectedPlayer ? 'Continue' : 'Skip'}
+              </Text>
+            )}
           </TouchableOpacity>
         </View>
       )}

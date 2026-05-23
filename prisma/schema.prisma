@@ -183,18 +183,23 @@ model SessionRoster {
 /// Anonymous or Zalo-identified player profile for personalised recommendations.
 /// After Google login, userId is linked to the NextAuth User record.
 model PlayerProfile {
-  id           String   @id @default(uuid())
-  userId       String?  @unique @map("user_id")
-  zaloId       String?  @unique @map("zalo_id")
-  reclubUserId BigInt?  @unique @map("reclub_user_id")
-  displayName  String?  @map("display_name")
-  preferences  Json     @default("{}")
-  createdAt    DateTime @default(now()) @map("created_at")
-  lastSeen     DateTime @updatedAt @map("last_seen")
+  id                  String    @id @default(uuid())
+  userId              String?   @unique @map("user_id")
+  zaloId              String?   @unique @map("zalo_id")
+  reclubUserId        BigInt?   @unique @map("reclub_user_id")
+  displayName         String?   @map("display_name")
+  preferences         Json      @default("{}")
+  pushToken           String?   @map("push_token")
+  pushTokenUpdatedAt  DateTime? @map("push_token_updated_at")
+  lastActiveAt        DateTime? @map("last_active_at")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  lastSeen            DateTime  @updatedAt @map("last_seen")
 
   user         User?    @relation(fields: [userId], references: [id])
   reclubPlayer Player?  @relation(fields: [reclubUserId], references: [userId])
   following    Follow[] @relation("following")
+  notificationsReceived NotificationSent[] @relation("recipient")
+  notificationsSent     NotificationSent[] @relation("sender")
 
   @@map("player_profiles")
 }
@@ -345,6 +350,21 @@ model AiAssistantLog {
   @@index([createdAt])
   @@index([source])
   @@map("ai_assistant_logs")
+}
+
+/// Push notification delivery log for throttling and analytics.
+model NotificationSent {
+  id          Int      @id @default(autoincrement())
+  recipientId String   @map("recipient_id")
+  senderId    String?  @map("sender_id")
+  type        String
+  sentAt      DateTime @default(now()) @map("sent_at")
+
+  recipient   PlayerProfile @relation("recipient", fields: [recipientId], references: [id], onDelete: Cascade)
+  sender      PlayerProfile? @relation("sender", fields: [senderId], references: [id], onDelete: SetNull)
+
+  @@index([recipientId, type, sentAt])
+  @@map("notifications_sent")
 }
 
 /// Aggregated DUPR participation for a session row (keyed by sessions.id).

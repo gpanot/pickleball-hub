@@ -4,15 +4,15 @@ import {
   Text,
   TouchableOpacity,
   FlatList,
-  Image,
   StyleSheet,
   ActivityIndicator,
   ScrollView,
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { UserPlus, Check } from 'lucide-react-native'
+import { UserPlus, Check, AlertCircle, RefreshCw } from 'lucide-react-native'
 import { T } from '../theme'
 import { useAuthStore } from '../stores/authStore'
+import { PlayerAvatar } from '../components/PlayerAvatar'
 
 type CoPlayer = {
   userId: string
@@ -43,44 +43,105 @@ export function PeopleYouMayKnowScreen({
   embedded?: boolean
 }) {
   const insets = useSafeAreaInsets()
-  const { authedFetch, reclubUserId } = useAuthStore()
+  const { authedFetch, reclubUserId, ensureServerAuth } = useAuthStore()
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(false)
+  const [authReady, setAuthReady] = useState(false)
   const [lastSessions, setLastSessions] = useState<LastSession[]>([])
   const [coPlayers, setCoPlayers] = useState<CoPlayer[]>([])
   const [followedIds, setFollowedIds] = useState<Set<string>>(new Set())
 
-  useEffect(() => {
+  const loadExistingFollows = useCallback(async () => {
+    try {
+      const res = await authedFetch('/api/follows')
+      if (res.ok) {
+        const list = (await res.json()) as { userId: string }[]
+        setFollowedIds(new Set(list.map((f) => f.userId)))
+        if (__DEV__) {
+          console.log('[PeopleYouMayKnow] existing follows', list.length)
+        }
+      } else if (__DEV__) {
+        const body = await res.text()
+        console.warn('[PeopleYouMayKnow] GET /api/follows', res.status, body)
+      }
+    } catch (e) {
+      if (__DEV__) console.warn('[PeopleYouMayKnow] loadExistingFollows', e)
+    }
+  }, [authedFetch])
+
+  const loadData = useCallback(async () => {
     if (!reclubUserId) {
       setLoading(false)
       return
     }
-    loadData()
-  }, [reclubUserId])
-
-  const loadData = async () => {
+    setError(false)
+    setLoading(true)
     try {
       const res = await authedFetch(`/api/players/${reclubUserId}/co-players`)
       if (res.ok) {
         const data = await res.json()
         setLastSessions(data.lastSessions ?? [])
         setCoPlayers(data.coPlayers ?? [])
+      } else {
+        setError(true)
       }
     } catch {
-      // ignore
+      setError(true)
     } finally {
       setLoading(false)
     }
-  }
+  }, [authedFetch, reclubUserId])
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      const ok = await ensureServerAuth()
+      if (cancelled) return
+      setAuthReady(ok)
+      if (__DEV__) {
+        console.log(
+          '[PeopleYouMayKnow] authReady',
+          ok,
+          'jwt',
+          useAuthStore.getState().jwt?.slice(0, 20)
+        )
+      }
+      if (!reclubUserId) {
+        setLoading(false)
+        return
+      }
+      if (ok) await loadExistingFollows()
+      await loadData()
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [reclubUserId, ensureServerAuth, loadExistingFollows, loadData])
 
   const handleFollow = useCallback(
     async (userId: string) => {
+      if (!authReady) {
+        const ok = await ensureServerAuth()
+        setAuthReady(ok)
+        if (!ok) {
+          if (__DEV__) console.warn('[PeopleYouMayKnow] follow blocked: no server auth')
+          return
+        }
+      }
+
       setFollowedIds((prev) => new Set(prev).add(userId))
       try {
-        await authedFetch('/api/follows', {
+        const res = await authedFetch('/api/follows', {
           method: 'POST',
           body: JSON.stringify({ followeeId: userId }),
         })
-      } catch {
+        const body = await res.text()
+        if (__DEV__) {
+          console.log('[PeopleYouMayKnow] POST /api/follows', userId, res.status, body)
+        }
+        if (!res.ok) throw new Error(`Follow failed: ${res.status} ${body}`)
+      } catch (e) {
+        if (__DEV__) console.warn('[PeopleYouMayKnow] follow error', userId, e)
         setFollowedIds((prev) => {
           const next = new Set(prev)
           next.delete(userId)
@@ -88,7 +149,7 @@ export function PeopleYouMayKnowScreen({
         })
       }
     },
-    [authedFetch]
+    [authedFetch, authReady, ensureServerAuth]
   )
 
   const topPad = embedded ? 0 : insets.top + 12
@@ -101,11 +162,49 @@ export function PeopleYouMayKnowScreen({
     )
   }
 
+  if (error) {
+    return (
+      <View style={[styles.container, { paddingTop: embedded ? 20 : insets.top + 40, alignItems: 'center', justifyContent: 'center' }]}>
+        <AlertCircle size={40} color="#666" strokeWidth={1.5} />
+        <Text style={{ fontSize: 16, fontWeight: '600', color: '#fff', marginTop: 16 }}>
+          Couldn't load suggestions
+        </Text>
+        <Text style={{ fontSize: 13, color: '#888', marginTop: 6, textAlign: 'center' }}>
+          Check your connection and try again
+        </Text>
+        <TouchableOpacity
+          onPress={loadData}
+          style={{
+            marginTop: 20,
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 8,
+            backgroundColor: T.amber,
+            borderRadius: 12,
+            paddingVertical: 12,
+            paddingHorizontal: 24,
+          }}
+        >
+          <RefreshCw size={16} color="#0B0B0C" strokeWidth={2} />
+          <Text style={{ fontSize: 15, fontWeight: '700', color: '#0B0B0C' }}>Retry</Text>
+        </TouchableOpacity>
+        {!embedded && (
+          <TouchableOpacity style={[styles.skipBtn, { marginTop: 16 }]} onPress={onComplete}>
+            <Text style={styles.skipLabel}>Skip</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    )
+  }
+
   if (!reclubUserId) {
     return (
-      <View style={[styles.container, { paddingTop: embedded ? 20 : insets.top + 40 }]}>
+      <View style={[styles.container, { paddingTop: embedded ? 20 : insets.top + 40, alignItems: 'center' }]}>
         <Text style={styles.heading}>No Reclub profile linked</Text>
-        <TouchableOpacity style={styles.skipBtn} onPress={onComplete}>
+        <Text style={{ fontSize: 13, color: '#888', marginTop: 6, textAlign: 'center', paddingHorizontal: 20 }}>
+          Link your Reclub account in settings to see people you've played with
+        </Text>
+        <TouchableOpacity style={[styles.skipBtn, { marginTop: 16 }]} onPress={onComplete}>
           <Text style={styles.skipLabel}>Continue</Text>
         </TouchableOpacity>
       </View>
@@ -115,88 +214,29 @@ export function PeopleYouMayKnowScreen({
   return (
     <View style={[styles.container, { paddingTop: topPad, paddingHorizontal: embedded ? 0 : 20 }]}>
       <ScrollView showsVerticalScrollIndicator={false}>
-        {/* Last sessions section */}
-        {lastSessions.length > 0 && (
-          <View style={{ marginBottom: 24 }}>
-            <Text style={styles.heading}>Your recent sessions</Text>
-            {lastSessions.map((session) => (
-              <View key={session.sessionId} style={styles.sessionCard}>
-                <Text style={styles.sessionName}>{session.name}</Text>
-                <Text style={styles.sessionMeta}>
-                  {session.clubName} · {session.startTime}
-                </Text>
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  style={{ marginTop: 10 }}
-                >
-                  {session.roster.map((p) => {
-                    const isFollowed = followedIds.has(p.userId)
-                    return (
-                      <View key={p.userId} style={styles.rosterItem}>
-                        {p.imageUrl ? (
-                          <Image
-                            source={{ uri: p.imageUrl }}
-                            style={styles.avatar}
-                          />
-                        ) : (
-                          <View style={[styles.avatar, styles.avatarFallback]}>
-                            <Text style={styles.avatarInitial}>
-                              {(p.displayName ?? '?')[0]}
-                            </Text>
-                          </View>
-                        )}
-                        <Text style={styles.rosterName} numberOfLines={1}>
-                          {p.displayName ?? 'Unknown'}
-                        </Text>
-                        {p.userId !== reclubUserId && (
-                          <TouchableOpacity
-                            style={[
-                              styles.followBtnSmall,
-                              isFollowed && styles.followedBtn,
-                            ]}
-                            onPress={() => handleFollow(p.userId)}
-                            disabled={isFollowed}
-                          >
-                            {isFollowed ? (
-                              <Check size={12} color={T.green} />
-                            ) : (
-                              <UserPlus size={12} color={T.amber} />
-                            )}
-                          </TouchableOpacity>
-                        )}
-                      </View>
-                    )
-                  })}
-                </ScrollView>
-              </View>
-            ))}
-          </View>
+        {(coPlayers.length > 0 || lastSessions.length > 0) && (
+          <Text style={styles.purposeText}>
+            Follow players you've played with. You'll see their games in your
+            feed, join the same sessions, and get alerts when they book a court.
+          </Text>
         )}
 
-        {/* People you may know */}
         {coPlayers.length > 0 && (
           <View style={{ marginBottom: 24 }}>
             <Text style={styles.heading}>People you may know</Text>
             <Text style={styles.subheading}>
-              Based on your past sessions together
+              Tap Follow on anyone you want to keep track of
             </Text>
             {coPlayers.map((p) => {
               const isFollowed = followedIds.has(p.userId)
               return (
                 <View key={p.userId} style={styles.coPlayerRow}>
-                  {p.imageUrl ? (
-                    <Image
-                      source={{ uri: p.imageUrl }}
-                      style={styles.coAvatar}
-                    />
-                  ) : (
-                    <View style={[styles.coAvatar, styles.avatarFallback]}>
-                      <Text style={styles.avatarInitial}>
-                        {(p.displayName ?? '?')[0]}
-                      </Text>
-                    </View>
-                  )}
+                  <PlayerAvatar
+                    userId={p.userId}
+                    displayName={p.displayName}
+                    imageUrl={p.imageUrl}
+                    size={48}
+                  />
                   <View style={{ flex: 1 }}>
                     <Text style={styles.coName}>
                       {p.displayName ?? 'Unknown'}
@@ -228,6 +268,61 @@ export function PeopleYouMayKnowScreen({
             })}
           </View>
         )}
+
+        {lastSessions.length > 0 && (
+          <View style={{ marginBottom: 24 }}>
+            <Text style={styles.heading}>Your recent sessions</Text>
+            <Text style={styles.subheading}>
+              Players from games you've already joined
+            </Text>
+            {lastSessions.map((session) => (
+              <View key={session.sessionId} style={styles.sessionCard}>
+                <Text style={styles.sessionName}>{session.name}</Text>
+                <Text style={styles.sessionMeta}>
+                  {session.clubName} · {session.startTime}
+                </Text>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  style={{ marginTop: 10 }}
+                >
+                  {session.roster.map((p) => {
+                    const isFollowed = followedIds.has(p.userId)
+                    return (
+                      <View key={p.userId} style={styles.rosterItem}>
+                        <PlayerAvatar
+                          userId={p.userId}
+                          displayName={p.displayName}
+                          imageUrl={p.imageUrl}
+                          size={42}
+                        />
+                        <Text style={styles.rosterName} numberOfLines={1}>
+                          {p.displayName ?? 'Unknown'}
+                        </Text>
+                        {p.userId !== reclubUserId && (
+                          <TouchableOpacity
+                            style={[
+                              styles.followBtnSmall,
+                              isFollowed && styles.followedBtn,
+                            ]}
+                            onPress={() => handleFollow(p.userId)}
+                            disabled={isFollowed}
+                          >
+                            {isFollowed ? (
+                              <Check size={12} color={T.green} />
+                            ) : (
+                              <UserPlus size={12} color={T.amber} />
+                            )}
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    )
+                  })}
+                </ScrollView>
+              </View>
+            ))}
+          </View>
+        )}
       </ScrollView>
 
       {!embedded && (
@@ -252,6 +347,12 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: T.bg,
     paddingHorizontal: 20,
+  },
+  purposeText: {
+    fontSize: 15,
+    lineHeight: 22,
+    color: '#ccc',
+    marginBottom: 20,
   },
   heading: {
     fontSize: 20,
@@ -310,9 +411,9 @@ const styles = StyleSheet.create({
   },
   followBtnSmall: {
     marginTop: 4,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: 'rgba(245,166,35,0.12)',
     alignItems: 'center',
     justifyContent: 'center',

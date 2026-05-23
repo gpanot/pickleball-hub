@@ -28,6 +28,16 @@ interface SessionState {
   resetDeck: () => void
 }
 
+function vnNowMinutes(): number {
+  const vn = new Date(Date.now() + 7 * 60 * 60 * 1000)
+  return vn.getUTCHours() * 60 + vn.getUTCMinutes()
+}
+
+function timeToMinutes(t: string): number {
+  const [h, m] = t.split(':').map(Number)
+  return h * 60 + (m || 0)
+}
+
 export const useSessionStore = create<SessionState>()((set, get) => ({
   sessions: [],
   savedIds: new Set(),
@@ -52,9 +62,21 @@ export const useSessionStore = create<SessionState>()((set, get) => ({
       const res = await authedFetch(path)
       if (!res.ok) throw new Error(`API ${res.status}`)
       const data = await res.json()
-      const sessions: Session[] = data.sessions ?? []
+      const all: Session[] = data.sessions ?? []
+      const nowMin = vnNowMinutes()
+      const sessions = all.filter(
+        (s) => s.spotsLeft > 0 && timeToMinutes(s.startTime) >= nowMin,
+      )
 
-      set({ sessions, loading: false, lastFetchedAt: Date.now(), currentIdx: 0, swipeHistory: [] })
+      // Prune stale saved IDs that don't exist in today's sessions
+      const sessionIdSet = new Set(sessions.map((s) => s.id))
+      const { savedIds: prevSaved } = get()
+      const pruned = new Set([...prevSaved].filter((id) => sessionIdSet.has(id)))
+      if (pruned.size !== prevSaved.size) {
+        AsyncStorage.setItem(SAVED_IDS_KEY, JSON.stringify([...pruned]))
+      }
+
+      set({ sessions, savedIds: pruned, loading: false, lastFetchedAt: Date.now(), currentIdx: 0, swipeHistory: [] })
     } catch (err) {
       set({
         loading: false,
@@ -116,13 +138,20 @@ export const useSessionStore = create<SessionState>()((set, get) => ({
   },
 
   advanceSkip: () => {
-    set((state) => ({ currentIdx: state.currentIdx + 1 }))
+    set((state) => ({
+      swipeHistory: [...state.swipeHistory, state.currentIdx],
+      currentIdx: state.currentIdx + 1,
+    }))
   },
 
   undo: () => {
-    const { swipeHistory } = get()
+    const { swipeHistory, sessions, savedIds } = get()
     if (!swipeHistory.length) return
     const prevIdx = swipeHistory[swipeHistory.length - 1]
+    const prevSession = sessions[prevIdx]
+    if (prevSession && savedIds.has(prevSession.id)) {
+      get().unsaveSession(prevSession.id)
+    }
     set((state) => ({
       currentIdx: prevIdx,
       swipeHistory: state.swipeHistory.slice(0, -1),

@@ -1,10 +1,10 @@
 import React from 'react'
 import { View, Text, TouchableOpacity, Platform } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { Zap, Bookmark, User } from 'lucide-react-native'
+import { Zap, Bookmark, Users } from 'lucide-react-native'
 import { T } from '../theme'
 
-export type TabId = 'swipe' | 'shortlist' | 'profile'
+export type TabId = 'swipe' | 'circle' | 'shortlist'
 
 export function NavBar({
   active,
@@ -19,9 +19,9 @@ export function NavBar({
   const bottomPad = Math.max(insets.bottom, Platform.OS === 'android' ? 12 : 0)
 
   const tabs: { key: TabId; icon: typeof Zap; label: string }[] = [
-    { key: 'swipe', icon: Zap, label: 'Swipe' },
+    { key: 'swipe', icon: Zap, label: 'Play' },
+    { key: 'circle', icon: Users, label: 'Circle' },
     { key: 'shortlist', icon: Bookmark, label: 'Shortlist' },
-    { key: 'profile', icon: User, label: 'Profile' },
   ]
 
   return (
@@ -42,6 +42,9 @@ export function NavBar({
             key={key}
             onPress={() => onChange(key)}
             style={{ flex: 1, alignItems: 'center', gap: 3 }}
+            accessibilityLabel={`${label} tab${badge > 0 ? `, ${badge} items` : ''}`}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: active === key }}
           >
             <View style={{ position: 'relative' }}>
               <Icon

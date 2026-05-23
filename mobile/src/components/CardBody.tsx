@@ -7,7 +7,6 @@ import {
   StyleSheet,
   Dimensions,
 } from 'react-native'
-import { BlurView } from 'expo-blur'
 import { LinearGradient } from 'expo-linear-gradient'
 import Animated, {
   useSharedValue,
@@ -25,6 +24,7 @@ import {
   MapPin,
 } from 'lucide-react-native'
 import { T } from '../theme'
+import { ProfileAvatar } from './ProfileAvatar'
 import {
   type Session,
   RING_COLORS,
@@ -32,6 +32,7 @@ import {
   formatDistance,
   formatTime,
 } from '../data'
+import { PlayerAvatar } from './PlayerAvatar'
 
 /* eslint-disable @typescript-eslint/no-var-requires */
 const CARD_BG_IMAGES = [
@@ -40,7 +41,7 @@ const CARD_BG_IMAGES = [
 ]
 
 const { height: H } = Dimensions.get('window')
-export const CARD_HEIGHT = Math.min(H * 0.706, 631)
+export const CARD_HEIGHT = Math.min(H * 0.635, 568)
 
 const VIBE_LABELS: Record<string, string> = {
   social: 'Social',
@@ -50,6 +51,7 @@ const VIBE_LABELS: Record<string, string> = {
 
 /* ── ImageAvatar (URL-based, used by card roster) ────────────── */
 function ImageAvatar({ url, name, size }: { url: string; name: string; size: number }) {
+  const [failed, setFailed] = React.useState(false)
   const initials = name
     .split(' ')
     .map((w) => w[0])
@@ -57,25 +59,45 @@ function ImageAvatar({ url, name, size }: { url: string; name: string; size: num
     .slice(0, 2)
     .toUpperCase()
 
+  if (failed || !url) {
+    return (
+      <View
+        style={{
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          backgroundColor: '#333',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <Text style={{ color: '#fff', fontWeight: '600', fontSize: size * 0.36 }}>
+          {initials || '?'}
+        </Text>
+      </View>
+    )
+  }
+
   return (
     <Image
       source={{ uri: url }}
       style={{ width: size, height: size, borderRadius: size / 2 }}
-      defaultSource={undefined}
-      onError={() => {}}
+      onError={() => setFailed(true)}
     />
   )
 }
 
 /* ── TopBar ───────────────────────────────────────────────────── */
 export function TopBar({
+  supertitle,
   title,
-  isSignedIn = true,
-  onSignIn,
+  counter,
+  showAvatar = false,
 }: {
+  supertitle?: string
   title: string
-  isSignedIn?: boolean
-  onSignIn?: () => void
+  counter?: string
+  showAvatar?: boolean
 }) {
   const insets = useSafeAreaInsets()
   return (
@@ -90,27 +112,39 @@ export function TopBar({
         alignItems: 'center',
       }}
     >
-      <Text style={{ fontSize: 22, fontWeight: '600', color: '#fff', flex: 1 }}>
-        {title}
-      </Text>
-      {!isSignedIn && onSignIn && (
-        <TouchableOpacity
-          onPress={onSignIn}
-          style={{
-            backgroundColor: 'rgba(245,166,35,0.12)',
-            borderWidth: 1,
-            borderColor: 'rgba(245,166,35,0.25)',
-            borderRadius: 18,
-            paddingHorizontal: 14,
-            paddingVertical: 7,
-          }}
-          activeOpacity={0.8}
-        >
-          <Text style={{ fontSize: 13, fontWeight: '600', color: T.amber }}>
-            Sign in
+      <View style={{ flex: 1, paddingRight: 12 }}>
+        {supertitle ? (
+          <Text
+            style={{
+              fontSize: 9,
+              fontWeight: '600',
+              color: '#555',
+              textTransform: 'uppercase',
+              letterSpacing: 0.5,
+              marginBottom: 2,
+            }}
+          >
+            {supertitle}
           </Text>
-        </TouchableOpacity>
-      )}
+        ) : null}
+        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
+          <Text
+            style={{
+              fontSize: supertitle ? 16 : 22,
+              fontWeight: '600',
+              color: '#fff',
+            }}
+          >
+            {title}
+          </Text>
+          {counter ? (
+            <Text style={{ fontSize: 15, fontWeight: '700', color: T.amber }}>
+              {counter}
+            </Text>
+          ) : null}
+        </View>
+      </View>
+      {showAvatar ? <ProfileAvatar /> : null}
     </View>
   )
 }
@@ -211,13 +245,20 @@ export function CardBody({
   renderCta,
   matchDialBelowTopRow = false,
   isSignedIn = true,
-  onSignUpPrompt,
+  lockedFriendsSlot,
+  onSignIn,
+  onFriendsPress,
 }: {
   s: Session
   renderCta: React.ReactNode
   matchDialBelowTopRow?: boolean
   isSignedIn?: boolean
-  onSignUpPrompt?: () => void
+  /** When signed out, parent supplies locked friend row (tap opens sign-up modal). */
+  lockedFriendsSlot?: React.ReactNode
+  /** Called when "Sign in to see friends" is tapped. */
+  onSignIn?: () => void
+  /** Signed-in: tap avatars or "X friends joining" to open friends list. */
+  onFriendsPress?: () => void
 }) {
   const displayFriends = s.friends.slice(0, 4)
   const price = formatPriceDuration(s.feeAmount, s.durationMin)
@@ -360,6 +401,23 @@ export function CardBody({
 
         <View style={{ flex: 1 }} />
 
+        {/* Club name */}
+        {s.club?.name && (
+          <Text
+            numberOfLines={1}
+            style={{
+              fontSize: 11,
+              fontWeight: '600',
+              color: 'rgba(255,255,255,0.45)',
+              textTransform: 'uppercase',
+              letterSpacing: 0.8,
+              marginBottom: 4,
+            }}
+          >
+            {s.club.name}
+          </Text>
+        )}
+
         {/* Session name */}
         <Text
           numberOfLines={3}
@@ -390,7 +448,7 @@ export function CardBody({
           </Text>
           {distance !== '' && (
             <>
-              <Text style={{ fontSize: 12, color: '#555' }}>|</Text>
+              <Text style={{ fontSize: 12, color: '#555' }}>·</Text>
               <MapPin size={11} color="rgba(255,255,255,0.55)" strokeWidth={1.5} />
               <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)' }}>
                 {distance}
@@ -399,9 +457,14 @@ export function CardBody({
           )}
         </View>
 
-        {/* Friend avatars — frosted when signed out, real when signed in */}
-        {isSignedIn && hasFriends && (
-          <View
+        {/* Friend avatars — real when signed in; locked slot when signed out */}
+        {lockedFriendsSlot}
+
+        {isSignedIn && (
+          <TouchableOpacity
+            activeOpacity={onFriendsPress ? 0.85 : 1}
+            onPress={onFriendsPress}
+            disabled={!onFriendsPress}
             style={{
               flexDirection: 'row',
               alignItems: 'center',
@@ -409,120 +472,82 @@ export function CardBody({
               marginBottom: 10,
             }}
           >
-            {displayFriends.map((p, i) => (
-              <View key={`friend-${p.displayName}-${i}`} style={{ position: 'relative' }}>
-                <View
-                  style={{
-                    width: 52,
-                    height: 52,
-                    borderRadius: 26,
-                    borderWidth: 2.5,
-                    borderColor: RING_COLORS[i % RING_COLORS.length],
-                    overflow: 'hidden',
-                  }}
-                >
-                  <ImageAvatar url={p.imageUrl} name={p.displayName} size={47} />
-                </View>
-                <View
-                  style={{
-                    position: 'absolute',
-                    bottom: 2,
-                    right: 2,
-                    width: 10,
-                    height: 10,
-                    borderRadius: 5,
-                    backgroundColor: T.green,
-                    borderWidth: 2,
-                    borderColor: '#0a0a0a',
-                  }}
-                />
-              </View>
-            ))}
-            {friendsOverflow > 0 && (
-              <View
-                style={{
-                  width: 52,
-                  height: 52,
-                  borderRadius: 26,
-                  backgroundColor: 'rgba(0,0,0,0.45)',
-                  borderWidth: 1.5,
-                  borderColor: 'rgba(255,255,255,0.12)',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <Text style={{ fontSize: 14, color: '#aaa', fontWeight: '500' }}>
-                  +{friendsOverflow}
-                </Text>
-              </View>
-            )}
-          </View>
-        )}
-
-        {/* Frosted placeholder avatars — shown when NOT signed in */}
-        {!isSignedIn && (
-          <TouchableOpacity
-            onPress={() => onSignUpPrompt?.()}
-            activeOpacity={0.7}
-            style={{ marginBottom: 10 }}
-          >
-            <View
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: 8,
-              }}
-            >
-              {[0, 1, 2, 3].map((i) => {
-                const frostColors = [
-                  ['#6B4C3B', '#A67C52'],
-                  ['#3B5C6B', '#5A8FA3'],
-                  ['#6B3B5C', '#A35A8F'],
-                  ['#3B6B4C', '#5AA370'],
-                ]
-                return (
+            {hasFriends ? (
+              <>
+                {displayFriends.map((p, i) => (
+                  <View key={`friend-${p.userId}-${i}`} style={{ position: 'relative' }}>
+                    <View
+                      style={{
+                        width: 52,
+                        height: 52,
+                        borderRadius: 26,
+                        borderWidth: 2.5,
+                        borderColor: RING_COLORS[i % RING_COLORS.length],
+                        overflow: 'hidden',
+                      }}
+                    >
+                      <PlayerAvatar
+                        userId={p.userId}
+                        displayName={p.displayName}
+                        imageUrl={p.imageUrl}
+                        size={47}
+                      />
+                    </View>
+                    <View
+                      style={{
+                        position: 'absolute',
+                        bottom: 2,
+                        right: 2,
+                        width: 10,
+                        height: 10,
+                        borderRadius: 5,
+                        backgroundColor: T.green,
+                        borderWidth: 2,
+                        borderColor: '#0a0a0a',
+                      }}
+                    />
+                  </View>
+                ))}
+                {friendsOverflow > 0 && (
                   <View
-                    key={`frost-${i}`}
                     style={{
                       width: 52,
                       height: 52,
                       borderRadius: 26,
-                      borderWidth: 2.5,
-                      borderColor: RING_COLORS[i % RING_COLORS.length],
-                      overflow: 'hidden',
+                      backgroundColor: 'rgba(0,0,0,0.45)',
+                      borderWidth: 1.5,
+                      borderColor: 'rgba(255,255,255,0.12)',
+                      alignItems: 'center',
+                      justifyContent: 'center',
                     }}
                   >
-                    <LinearGradient
-                      colors={frostColors[i]}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 1 }}
-                      style={{ width: 47, height: 47, borderRadius: 24 }}
-                    />
-                    <BlurView
-                      intensity={40}
-                      tint="dark"
-                      style={StyleSheet.absoluteFill}
-                    />
+                    <Text style={{ fontSize: 14, color: '#aaa', fontWeight: '500' }}>
+                      +{friendsOverflow}
+                    </Text>
                   </View>
-                )
-              })}
-              <View
-                style={{
-                  width: 52,
-                  height: 52,
-                  borderRadius: 26,
-                  backgroundColor: 'rgba(255,255,255,0.06)',
-                  borderWidth: 1.5,
-                  borderColor: 'rgba(255,255,255,0.12)',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <Text style={{ fontSize: 14, color: '#aaa', fontWeight: '500' }}>
-                  +?
+                )}
+              </>
+            ) : (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                {[0, 1, 2].map((i) => (
+                  <View
+                    key={`empty-${i}`}
+                    style={{
+                      width: 52,
+                      height: 52,
+                      borderRadius: 26,
+                      borderWidth: 2,
+                      borderColor: 'rgba(255,255,255,0.08)',
+                      borderStyle: 'dashed',
+                      backgroundColor: 'rgba(255,255,255,0.03)',
+                    }}
+                  />
+                ))}
+                <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.25)', marginLeft: 4 }}>
+                  Follow players to see them here
                 </Text>
               </View>
-            </View>
+            )}
           </TouchableOpacity>
         )}
 
@@ -535,34 +560,34 @@ export function CardBody({
             marginBottom: 12,
           }}
         >
-          {isSignedIn && hasFriends && (
-            <>
-              <Users size={12} color={T.amber} strokeWidth={2} />
+          <Users size={12} color={T.amber} strokeWidth={2} />
+          {isSignedIn ? (
+            <TouchableOpacity
+              onPress={onFriendsPress}
+              disabled={!onFriendsPress}
+              activeOpacity={0.7}
+            >
               <Text style={{ fontSize: 12, color: T.amber, fontWeight: '500' }}>
-                {s.friendCount} {s.friendCount === 1 ? 'friend' : 'friends'} joining
+                {`${s.friendCount} ${s.friendCount === 1 ? 'friend' : 'friends'} joining`}
               </Text>
-            </>
-          )}
-          {!isSignedIn && (
-            <>
-              <Users size={12} color={T.amber} strokeWidth={2} />
-              <Text style={{ fontSize: 12, color: T.amber, fontWeight: '500' }}>
-                ? friends joining
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity onPress={onSignIn} activeOpacity={0.7}>
+              <Text style={{ fontSize: 12, color: T.amber, fontWeight: '500', textDecorationLine: 'underline' }}>
+                Sign in to see friends
               </Text>
-            </>
+            </TouchableOpacity>
           )}
-          {(isSignedIn ? hasFriends : true) && duprLabel && (
+          {duprLabel && (
             <Text style={{ fontSize: 12, color: '#555' }}>|</Text>
           )}
           {duprLabel && (
             <Text style={{ fontSize: 12, color: '#7F77DD' }}>{duprLabel}</Text>
           )}
-          {((isSignedIn ? hasFriends : true) || duprLabel) && (
-            <Text style={{ fontSize: 12, color: '#555' }}>|</Text>
-          )}
+          <Text style={{ fontSize: 12, color: '#555' }}>|</Text>
           <Smile size={12} color="#1D9E75" strokeWidth={2} />
           <Text style={{ fontSize: 12, color: '#1D9E75' }}>
-            {vibeLabel === 'Competitive' ? 'Intense' : 'Great vibes'}
+            {vibeLabel === 'Competitive' ? 'Intense' : vibeLabel === 'Chill' ? 'Relaxed vibes' : 'Great vibes'}
           </Text>
         </View>
 

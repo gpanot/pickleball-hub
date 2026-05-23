@@ -226,12 +226,15 @@ export async function GET(req: NextRequest) {
           const friendsInRoster = followedPlayerIds.size > 0
             ? s.rosters
                 .filter((r) => followedPlayerIds.has(r.userId.toString()))
-                .map((r) => ({
-                  displayName: r.player?.displayName ?? "Player",
-                  imageUrl:
-                    r.player?.imageUrl ??
-                    reclubAvatarUrl(r.player?.userId ?? r.userId),
-                }))
+                .map((r) => {
+                  const uid = r.player?.userId ?? r.userId;
+                  return {
+                    userId: uid.toString(),
+                    displayName: r.player?.displayName ?? "Player",
+                    imageUrl:
+                      r.player?.imageUrl ?? reclubAvatarUrl(uid),
+                  };
+                })
             : [];
           const friendCount = friendsInRoster.length;
           return {

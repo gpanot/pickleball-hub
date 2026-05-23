@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react'
+import React, { useState, useRef, useCallback, useMemo } from 'react'
 import {
   View,
   Text,
@@ -6,18 +6,25 @@ import {
   FlatList,
   Dimensions,
   Linking,
+  Alert,
 } from 'react-native'
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withTiming,
 } from 'react-native-reanimated'
-import { X } from 'lucide-react-native'
+import { X, Zap } from 'lucide-react-native'
+import * as Haptics from 'expo-haptics'
 import { T } from '../theme'
 import { type Session } from '../data'
 import { TopBar, CardBody } from '../components/CardBody'
+import { LockedFriendsRow } from '../components/LockedFriendsRow'
+import { useSignUpModal } from '../contexts/SignUpModalContext'
 import { useAuthStore } from '../stores/authStore'
 import { useSessionStore } from '../stores/sessionStore'
+import { useUiStore } from '../stores/uiStore'
+import { FriendsListModal } from '../components/FriendsListModal'
+import type { FriendListItem } from '../components/FriendListRow'
 
 const { width: W } = Dimensions.get('window')
 const CARD_WIDTH = W * 0.84
@@ -25,11 +32,10 @@ const CARD_GAP = 12
 const SNAP_INTERVAL = CARD_WIDTH + CARD_GAP
 
 /* ── Sort pill types ─────────────────────────────────────────── */
-type SortKey = 'match' | 'wait' | 'friends'
+type SortKey = 'match' | 'friends'
 
 const SORT_LABELS: Record<SortKey, string> = {
   match: 'Best match',
-  wait: 'Wait time',
   friends: 'Friends',
 }
 
@@ -57,6 +63,8 @@ function CarouselCta({ eventUrl, onRemove }: { eventUrl: string; onRemove: () =>
     <View style={{ flexDirection: 'row', gap: 8 }}>
       <TouchableOpacity
         onPress={() => Linking.openURL(eventUrl)}
+        accessibilityLabel="Join this session on Reclub"
+        accessibilityRole="link"
         style={{
           flex: 1,
           backgroundColor: T.amber,
@@ -77,6 +85,8 @@ function CarouselCta({ eventUrl, onRemove }: { eventUrl: string; onRemove: () =>
 
       <TouchableOpacity
         onPress={onRemove}
+        accessibilityLabel="Remove from shortlist"
+        accessibilityRole="button"
         style={{
           width: 48,
           backgroundColor: 'rgba(255,255,255,0.04)',
@@ -94,24 +104,75 @@ function CarouselCta({ eventUrl, onRemove }: { eventUrl: string; onRemove: () =>
 }
 
 /* ── ShortlistScreen ─────────────────────────────────────────── */
-export function ShortlistScreen({
-  onSignUpPrompt,
-}: {
-  onSignUpPrompt?: () => void
-}) {
+export function ShortlistScreen({ onNavigateToSwipe }: { onNavigateToSwipe?: () => void } = {}) {
+  const { openSignUp } = useSignUpModal()
   const signedIn = useAuthStore((s) => s.isSignedIn)()
-  const [sort, setSort] = useState<SortKey>('match')
+  const sort = useUiStore((s) => s.shortlistSort)
+  const setShortlistSort = useUiStore((s) => s.setShortlistSort)
   const [removedIds, setRemovedIds] = useState<Set<number>>(new Set())
   const [carouselIdx, setCarouselIdx] = useState(0)
+  const [friendsModal, setFriendsModal] = useState<{
+    visible: boolean
+    title: string
+    friends: FriendListItem[]
+    overflowNote?: string
+  }>({ visible: false, title: '', friends: [] })
   const flatListRef = useRef<FlatList>(null)
 
   const savedSessions = useSessionStore((s) => s.getSavedSessions)()
-  const visibleSessions = savedSessions.filter((s) => !removedIds.has(s.id))
+  const visibleSessions = useMemo(() => {
+    const filtered = savedSessions.filter((s) => !removedIds.has(s.id))
+    switch (sort) {
+      case 'match':
+        return [...filtered].sort((a, b) => b.matchScore - a.matchScore)
+      case 'friends':
+        return [...filtered]
+          .filter((s) => s.friendCount > 0)
+          .sort((a, b) => b.friendCount - a.friendCount)
+      default:
+        return filtered
+    }
+  }, [savedSessions, removedIds, sort])
 
   const unsaveSession = useSessionStore((s) => s.unsaveSession)
+
+  const openSessionFriends = useCallback(
+    (session: Session) => {
+      if (!signedIn) return
+      setFriendsModal({
+        visible: true,
+        title: `${session.friendCount} ${session.friendCount === 1 ? 'friend' : 'friends'} joining`,
+        friends: session.friends.map((f) => ({
+          userId: f.userId,
+          displayName: f.displayName,
+          imageUrl: f.imageUrl,
+        })),
+        overflowNote:
+          session.friendsOverflow > 0
+            ? `+${session.friendsOverflow} more on this session`
+            : undefined,
+      })
+    },
+    [signedIn]
+  )
+
   const handleRemove = useCallback((id: number) => {
-    setRemovedIds((prev) => new Set([...prev, id]))
-    unsaveSession(id)
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+    Alert.alert(
+      'Remove from shortlist?',
+      'You can always add it back by swiping again.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: () => {
+            setRemovedIds((prev) => new Set([...prev, id]))
+            unsaveSession(id)
+          },
+        },
+      ]
+    )
   }, [unsaveSession])
 
   const onViewableItemsChanged = useRef(
@@ -131,17 +192,24 @@ export function ShortlistScreen({
           s={item}
           matchDialBelowTopRow
           isSignedIn={signedIn}
-          onSignUpPrompt={onSignUpPrompt}
+          lockedFriendsSlot={
+            !signedIn ? <LockedFriendsRow onPress={openSignUp} /> : undefined
+          }
+          onSignIn={openSignUp}
+          onFriendsPress={() => openSessionFriends(item)}
           renderCta={<CarouselCta eventUrl={item.eventUrl} onRemove={() => handleRemove(item.id)} />}
         />
       </View>
     ),
-    [handleRemove, signedIn, onSignUpPrompt]
+    [handleRemove, signedIn, openSignUp, openSessionFriends]
   )
 
   return (
     <View style={{ flex: 1, backgroundColor: T.bg }}>
-      <TopBar title="Your shortlist" />
+      <TopBar
+        title="Your shortlist"
+        counter={visibleSessions.length > 0 ? `${visibleSessions.length}` : undefined}
+      />
 
       {/* Sort pills */}
       <View
@@ -152,15 +220,15 @@ export function ShortlistScreen({
           marginBottom: 12,
         }}
       >
-        {(['match', 'wait', 'friends'] as const).map((key) => {
+        {(['match', 'friends'] as const).map((key) => {
           const on = sort === key
           return (
             <TouchableOpacity
               key={key}
-              onPress={() => setSort(key)}
+              onPress={() => setShortlistSort(key)}
               style={{
                 paddingHorizontal: 14,
-                paddingVertical: 6,
+                paddingVertical: 5,
                 borderRadius: 20,
                 backgroundColor: on ? T.amber : T.input,
                 borderWidth: 1,
@@ -226,16 +294,54 @@ export function ShortlistScreen({
             padding: 24,
           }}
         >
+          <Zap size={40} color="#444" strokeWidth={1.5} />
+          <Text
+            style={{
+              fontSize: 16,
+              fontWeight: '600',
+              color: '#fff',
+              marginTop: 16,
+            }}
+          >
+            No saved sessions yet
+          </Text>
           <Text
             style={{
               fontSize: 13,
-              color: 'rgba(255,255,255,0.3)',
+              color: '#888',
+              marginTop: 6,
+              textAlign: 'center',
             }}
           >
-            No saved sessions yet.
+            Swipe right on sessions you like to save them here
           </Text>
+          {onNavigateToSwipe && (
+            <TouchableOpacity
+              onPress={onNavigateToSwipe}
+              style={{
+                marginTop: 20,
+                backgroundColor: T.amber,
+                borderRadius: 12,
+                paddingVertical: 12,
+                paddingHorizontal: 28,
+              }}
+              accessibilityLabel="Start swiping sessions"
+            >
+              <Text style={{ fontSize: 15, fontWeight: '700', color: '#0B0B0C' }}>
+                Start swiping
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
       )}
+
+      <FriendsListModal
+        visible={friendsModal.visible}
+        onClose={() => setFriendsModal((m) => ({ ...m, visible: false }))}
+        title={friendsModal.title}
+        friends={friendsModal.friends}
+        overflowNote={friendsModal.overflowNote}
+      />
     </View>
   )
 }

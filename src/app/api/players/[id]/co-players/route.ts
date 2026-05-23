@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getMobileUser } from "@/lib/mobile-auth";
+import { reclubAvatarUrl } from "@/lib/utils";
 
 /**
  * GET /api/players/:id/co-players
@@ -68,7 +69,7 @@ export async function GET(
     roster: r.session.rosters.map((sr) => ({
       userId: sr.player.userId.toString(),
       displayName: sr.player.displayName,
-      imageUrl: sr.player.imageUrl,
+      imageUrl: sr.player.imageUrl ?? reclubAvatarUrl(sr.player.userId),
       duprDoubles: sr.player.duprDoubles
         ? Number(sr.player.duprDoubles)
         : null,
@@ -121,7 +122,7 @@ export async function GET(
       return {
         userId: p.userId.toString(),
         displayName: p.displayName,
-        imageUrl: p.imageUrl,
+        imageUrl: p.imageUrl ?? reclubAvatarUrl(p.userId),
         duprDoubles: p.duprDoubles ? Number(p.duprDoubles) : null,
         coSessionCount: c._count.sessionId,
       };

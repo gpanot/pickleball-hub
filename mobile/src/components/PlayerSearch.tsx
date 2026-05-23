@@ -4,7 +4,6 @@ import {
   Text,
   TextInput,
   FlatList,
-  Image,
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
@@ -12,6 +11,7 @@ import {
 import { Search, Check, UserPlus } from 'lucide-react-native'
 import { T } from '../theme'
 import { useAuthStore } from '../stores/authStore'
+import { PlayerAvatar } from './PlayerAvatar'
 
 export type SearchResult = {
   userId: string
@@ -30,36 +30,53 @@ export function PlayerSearch({
   selectedPlayer,
   onSelectPlayer,
   onFollow,
+  onUnfollow,
+  initialFollowedIds,
   autoFocus = false,
 }: {
   mode?: 'select' | 'follow'
   selectedPlayer?: SearchResult | null
   onSelectPlayer?: (player: SearchResult | null) => void
   onFollow?: (userId: string) => Promise<void>
+  onUnfollow?: (userId: string) => Promise<void>
+  initialFollowedIds?: string[]
   autoFocus?: boolean
 }) {
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<SearchResult[]>([])
   const [searching, setSearching] = useState(false)
-  const [followedIds, setFollowedIds] = useState<Set<string>>(new Set())
+  const [error, setError] = useState(false)
+  const [followedIds, setFollowedIds] = useState<Set<string>>(
+    () => new Set(initialFollowedIds ?? [])
+  )
   const { authedFetch } = useAuthStore()
+
+  useEffect(() => {
+    if (initialFollowedIds) {
+      setFollowedIds(new Set(initialFollowedIds))
+    }
+  }, [initialFollowedIds])
 
   useEffect(() => {
     if (query.length < 2) {
       setResults([])
+      setError(false)
       return
     }
     const timer = setTimeout(async () => {
       setSearching(true)
+      setError(false)
       try {
         const res = await authedFetch(
           `/api/players/search?q=${encodeURIComponent(query)}`
         )
         if (res.ok) {
           setResults(await res.json())
+        } else {
+          setError(true)
         }
       } catch {
-        // ignore
+        setError(true)
       } finally {
         setSearching(false)
       }
@@ -67,8 +84,25 @@ export function PlayerSearch({
     return () => clearTimeout(timer)
   }, [query])
 
-  const handleFollow = useCallback(
+  const handleFollowToggle = useCallback(
     async (userId: string) => {
+      const isFollowed = followedIds.has(userId)
+      if (isFollowed) {
+        setFollowedIds((prev) => {
+          const next = new Set(prev)
+          next.delete(userId)
+          return next
+        })
+        if (onUnfollow) {
+          try {
+            await onUnfollow(userId)
+          } catch {
+            setFollowedIds((prev) => new Set(prev).add(userId))
+          }
+        }
+        return
+      }
+
       setFollowedIds((prev) => new Set(prev).add(userId))
       if (onFollow) {
         try {
@@ -82,7 +116,7 @@ export function PlayerSearch({
         }
       }
     },
-    [onFollow]
+    [followedIds, onFollow, onUnfollow]
   )
 
   const renderItem = useCallback(
@@ -95,7 +129,12 @@ export function PlayerSearch({
             style={[styles.row, isSelected && styles.rowSelected]}
             activeOpacity={0.7}
           >
-            <PlayerAvatar item={item} />
+            <PlayerAvatar
+              userId={item.userId}
+              displayName={item.displayName}
+              imageUrl={item.imageUrl}
+              size={40}
+            />
             <View style={{ flex: 1 }}>
               <Text style={styles.name}>
                 {item.displayName ?? item.username ?? 'Unknown'}
@@ -112,7 +151,12 @@ export function PlayerSearch({
       const isFollowed = followedIds.has(item.userId)
       return (
         <View style={styles.row}>
-          <PlayerAvatar item={item} />
+          <PlayerAvatar
+            userId={item.userId}
+            displayName={item.displayName}
+            imageUrl={item.imageUrl}
+            size={40}
+          />
           <View style={{ flex: 1 }}>
             <Text style={styles.name}>
               {item.displayName ?? item.username ?? 'Unknown'}
@@ -123,8 +167,8 @@ export function PlayerSearch({
           </View>
           <TouchableOpacity
             style={[styles.followBtn, isFollowed && styles.followedBtn]}
-            onPress={() => handleFollow(item.userId)}
-            disabled={isFollowed}
+            onPress={() => handleFollowToggle(item.userId)}
+            accessibilityLabel={isFollowed ? 'Remove friend' : 'Follow player'}
           >
             {isFollowed ? (
               <Check size={14} color={T.green} strokeWidth={2.5} />
@@ -140,7 +184,7 @@ export function PlayerSearch({
         </View>
       )
     },
-    [mode, selectedPlayer, followedIds, handleFollow, onSelectPlayer]
+    [mode, selectedPlayer, followedIds, handleFollowToggle, onSelectPlayer]
   )
 
   return (
@@ -165,23 +209,12 @@ export function PlayerSearch({
         keyboardShouldPersistTaps="handled"
         ListEmptyComponent={
           query.length >= 2 && !searching ? (
-            <Text style={styles.emptyText}>No players found</Text>
+            <Text style={styles.emptyText}>
+              {error ? 'Could not reach server — try again' : 'No players found'}
+            </Text>
           ) : null
         }
       />
-    </View>
-  )
-}
-
-function PlayerAvatar({ item }: { item: SearchResult }) {
-  if (item.imageUrl) {
-    return <Image source={{ uri: item.imageUrl }} style={styles.avatar} />
-  }
-  return (
-    <View style={[styles.avatar, styles.avatarFallback]}>
-      <Text style={{ color: '#fff', fontWeight: '600', fontSize: 14 }}>
-        {(item.displayName ?? '?')[0]}
-      </Text>
     </View>
   )
 }
