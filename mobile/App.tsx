@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { View } from 'react-native'
+import { View, Platform } from 'react-native'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { StatusBar } from 'expo-status-bar'
+import Constants from 'expo-constants'
 import { NavBar, type TabId } from './src/components/NavBar'
 import { SwipeScreen } from './src/screens/SwipeScreen'
 import { ShortlistScreen } from './src/screens/ShortlistScreen'
@@ -12,11 +13,12 @@ import { PeopleYouMayKnowScreen } from './src/screens/PeopleYouMayKnowScreen'
 import { SignUpModalProvider } from './src/contexts/SignUpModalContext'
 import { ProfileMenuProvider } from './src/contexts/ProfileMenuContext'
 import { ToastOverlay } from './src/components/Toast'
-import { useAuthStore } from './src/stores/authStore'
+import { useAuthStore, resolveApiBase } from './src/stores/authStore'
 import { useSessionStore } from './src/stores/sessionStore'
 import { useUiStore } from './src/stores/uiStore'
 import { useAvatarCacheStore } from './src/stores/avatarCacheStore'
 import { registerForPushNotifications, useNotificationListeners } from './src/services/notifications'
+import { debugLog } from './src/lib/debug'
 
 type FlowScreen = 'main' | 'onboarding' | 'people'
 
@@ -28,6 +30,17 @@ export default function App() {
 
   const jwt = useAuthStore((s) => s.jwt)
   const pushTokenRegistered = useRef(false)
+
+  useEffect(() => {
+    debugLog('App', '=== TheHub Boot Diagnostics ===')
+    debugLog('App', `Platform: ${Platform.OS} ${Platform.Version}`)
+    debugLog('App', `__DEV__: ${__DEV__}`)
+    debugLog('App', `API Base: ${resolveApiBase()}`)
+    debugLog('App', `EXPO_PUBLIC_API_URL env: ${process.env.EXPO_PUBLIC_API_URL ?? '<not set>'}`)
+    debugLog('App', `expoConfig.extra.apiUrl: ${Constants.expoConfig?.extra?.apiUrl ?? '<not set>'}`)
+    debugLog('App', `EXPO_PUBLIC_GOOGLE_CLIENT_ID env: ${process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID ? 'set' : '<not set>'}`)
+    debugLog('App', '================================')
+  }, [])
 
   useEffect(() => {
     void useUiStore.getState().hydrate()

@@ -7,12 +7,14 @@ import {
   StyleSheet,
   Pressable,
   Alert,
+  Platform,
 } from 'react-native'
 import Svg, { Path } from 'react-native-svg'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { T } from '../theme'
 import { useAuthStore, resolveApiBase } from '../stores/authStore'
 import { fetchWithTimeout } from '../lib/fetchWithTimeout'
+import { debugLog, debugError, debugWarn } from '../lib/debug'
 
 function GoogleLogo({ size = 20 }: { size?: number }) {
   return (
@@ -45,11 +47,15 @@ export function SignUpModalOverlay({
 
   const handleDevSignIn = async () => {
     setLoading(true)
+    const base = resolveApiBase()
+    const url = `${base}/api/auth/mobile-token?dev=1`
+    debugLog('signIn', `Dev sign-in → ${url}`)
     try {
-      const base = resolveApiBase()
-      const res = await fetchWithTimeout(`${base}/api/auth/mobile-token?dev=1`, undefined, 10000)
-      if (!res.ok) throw new Error('Dev sign-in failed')
+      const res = await fetchWithTimeout(url, undefined, 10000)
+      debugLog('signIn', `Dev sign-in status=${res.status}`)
+      if (!res.ok) throw new Error(`Dev sign-in failed: ${res.status}`)
       const data = await res.json()
+      debugLog('signIn', `Dev sign-in OK, userId=${data.userId}`)
       useAuthStore.setState({
         jwt: data.jwt,
         userId: data.userId,
@@ -60,7 +66,8 @@ export function SignUpModalOverlay({
         hasCompletedOnboarding: data.hasCompletedOnboarding,
       })
       onSignedIn(!data.hasCompletedOnboarding)
-    } catch {
+    } catch (e) {
+      debugError('signIn', 'Dev sign-in failed, using offline token', e)
       useAuthStore.setState({
         jwt: 'dev-token',
         userId: 'dev-user',
@@ -77,6 +84,9 @@ export function SignUpModalOverlay({
   }
 
   const handleRealSignIn = async () => {
+    debugLog('signIn', `Google sign-in starting (Platform=${Platform.OS}, __DEV__=${__DEV__})`)
+    debugLog('signIn', `Google clientId=${GOOGLE_CLIENT_ID}`)
+
     const AuthSession = await import('expo-auth-session')
     const WebBrowser = await import('expo-web-browser')
     WebBrowser.maybeCompleteAuthSession()
@@ -84,29 +94,43 @@ export function SignUpModalOverlay({
     const redirectUri = AuthSession.makeRedirectUri({
       scheme: 'com.thehub.app',
     })
+    debugLog('signIn', `redirectUri=${redirectUri}`)
+
+    const discovery = {
+      authorizationEndpoint: 'https://accounts.google.com/o/oauth2/v2/auth',
+    }
+    const nonce = Math.random().toString(36).slice(2)
 
     setLoading(true)
     try {
-      const result = await AuthSession.startAsync({
-        authUrl:
-          `https://accounts.google.com/o/oauth2/v2/auth?` +
-          `client_id=${GOOGLE_CLIENT_ID}` +
-          `&redirect_uri=${encodeURIComponent(redirectUri)}` +
-          `&response_type=id_token` +
-          `&scope=${encodeURIComponent('openid profile email')}` +
-          `&nonce=${Math.random().toString(36).slice(2)}`,
-      } as { authUrl: string })
+      const request = new AuthSession.AuthRequest({
+        clientId: GOOGLE_CLIENT_ID,
+        redirectUri,
+        scopes: ['openid', 'profile', 'email'],
+        responseType: AuthSession.ResponseType.IdToken,
+        extraParams: { nonce },
+      })
+
+      debugLog('signIn', 'Prompting AuthRequest...')
+      const result = await request.promptAsync(discovery)
+      debugLog('signIn', `AuthRequest result type=${result.type}`)
 
       if (result.type === 'success' && result.params?.id_token) {
+        debugLog('signIn', 'Got id_token, calling signIn...')
         const ok = await signIn(result.params.id_token)
         if (ok) {
+          debugLog('signIn', 'signIn OK')
           const state = useAuthStore.getState()
           onSignedIn(!state.hasCompletedOnboarding)
           return
         }
+        debugWarn('signIn', 'signIn returned false (server rejected token)')
         Alert.alert('Sign-in failed', 'Could not verify your Google account. Please try again.')
+      } else {
+        debugWarn('signIn', `Auth result not success: type=${result.type}`, result)
       }
-    } catch {
+    } catch (e) {
+      debugError('signIn', 'Google sign-in error', e)
       Alert.alert('Sign-in failed', 'Something went wrong. Please check your connection and try again.')
     } finally {
       setLoading(false)
@@ -114,7 +138,7 @@ export function SignUpModalOverlay({
   }
 
   const handlePress = () => {
-    if (!GOOGLE_CLIENT_ID) {
+    if (__DEV__) {
       handleDevSignIn()
     } else {
       handleRealSignIn()

@@ -3,20 +3,35 @@ import { persist, createJSONStorage, type StateStorage } from 'zustand/middlewar
 import * as SecureStore from 'expo-secure-store'
 import Constants from 'expo-constants'
 import { fetchWithTimeout } from '../lib/fetchWithTimeout'
+import { debugLog, debugWarn, debugError } from '../lib/debug'
 
 const PROD_API_URL = 'https://hub.thecourtflow.com'
 
 export function resolveApiBase(): string {
-  if (process.env.EXPO_PUBLIC_API_URL) return process.env.EXPO_PUBLIC_API_URL
-  // In dev, resolve from Expo debugger host for local network access
+  const envUrl = process.env.EXPO_PUBLIC_API_URL
+  const configUrl = Constants.expoConfig?.extra?.apiUrl
+
+  if (envUrl) {
+    debugLog('resolveApiBase', `Using EXPO_PUBLIC_API_URL: ${envUrl}`)
+    return envUrl
+  }
+  if (configUrl) {
+    debugLog('resolveApiBase', `Using expoConfig.extra.apiUrl: ${configUrl}`)
+    return configUrl
+  }
+
   const debuggerHost =
     Constants.expoConfig?.hostUri ?? Constants.manifest2?.extra?.expoGo?.debuggerHost
   if (debuggerHost) {
     const ip = debuggerHost.split(':')[0]
-    return `http://${ip}:3000`
+    const url = `http://${ip}:3000`
+    debugLog('resolveApiBase', `Using debuggerHost: ${url}`)
+    return url
   }
-  // Release builds (no debugger host) hit production
-  return __DEV__ ? 'http://localhost:3000' : PROD_API_URL
+
+  const fallback = __DEV__ ? 'http://localhost:3000' : PROD_API_URL
+  debugLog('resolveApiBase', `Fallback (__DEV__=${__DEV__}): ${fallback}`)
+  return fallback
 }
 
 const secureStorage: StateStorage = {
@@ -70,12 +85,11 @@ export const useAuthStore = create<AuthState>()(
       ensureServerAuth: async () => {
         const { jwt } = get()
         if (jwt && jwt !== 'dev-token') return true
+        const url = `${resolveApiBase()}/api/auth/mobile-token?dev=1`
+        debugLog('auth', `ensureServerAuth → ${url}`)
         try {
-          const res = await fetchWithTimeout(
-            `${resolveApiBase()}/api/auth/mobile-token?dev=1`,
-            undefined,
-            10000
-          )
+          const res = await fetchWithTimeout(url, undefined, 10000)
+          debugLog('auth', `ensureServerAuth status=${res.status}`)
           if (!res.ok) return false
           const data = await res.json()
           set({
@@ -88,28 +102,32 @@ export const useAuthStore = create<AuthState>()(
             hasCompletedOnboarding:
               data.hasCompletedOnboarding ?? get().hasCompletedOnboarding,
           })
-          if (__DEV__) {
-            console.log('[auth] ensureServerAuth: got real JWT', data.profileId)
-          }
+          debugLog('auth', `ensureServerAuth OK, profileId=${data.profileId}`)
           return true
         } catch (e) {
-          if (__DEV__) {
-            console.warn('[auth] ensureServerAuth failed', e)
-          }
+          debugError('auth', 'ensureServerAuth FAILED', e)
           return false
         }
       },
 
       signIn: async (idToken: string) => {
+        const url = `${resolveApiBase()}/api/auth/mobile-token`
+        debugLog('auth', `signIn POST → ${url}`)
         try {
-          const res = await fetch(`${resolveApiBase()}/api/auth/mobile-token`, {
+          const res = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ idToken }),
           })
-          if (!res.ok) return false
+          debugLog('auth', `signIn response status=${res.status}`)
+          if (!res.ok) {
+            const body = await res.text().catch(() => '<unreadable>')
+            debugWarn('auth', `signIn failed: ${res.status}`, body)
+            return false
+          }
 
           const data = await res.json()
+          debugLog('auth', `signIn OK, userId=${data.userId}`)
           set({
             jwt: data.jwt,
             userId: data.userId,
@@ -120,7 +138,8 @@ export const useAuthStore = create<AuthState>()(
             hasCompletedOnboarding: data.hasCompletedOnboarding,
           })
           return true
-        } catch {
+        } catch (e) {
+          debugError('auth', 'signIn network error', e)
           return false
         }
       },
@@ -160,20 +179,22 @@ export const useAuthStore = create<AuthState>()(
       authedFetch: async (path: string, init?: RequestInit) => {
         const { jwt } = get()
         const url = `${resolveApiBase()}${path}`
-        if (__DEV__) {
-          console.log('[authedFetch]', init?.method ?? 'GET', url, {
-            hasJwt: !!jwt,
-            devToken: jwt === 'dev-token',
+        debugLog('fetch', `${init?.method ?? 'GET'} ${url} jwt=${jwt ? (jwt === 'dev-token' ? 'dev-token' : 'real') : 'none'}`)
+        try {
+          const res = await fetch(url, {
+            ...init,
+            headers: {
+              ...init?.headers,
+              'Content-Type': 'application/json',
+              ...(jwt ? { Authorization: `Bearer ${jwt}` } : {}),
+            },
           })
+          debugLog('fetch', `${init?.method ?? 'GET'} ${path} → ${res.status}`)
+          return res
+        } catch (e) {
+          debugError('fetch', `${init?.method ?? 'GET'} ${path} NETWORK ERROR`, e)
+          throw e
         }
-        return fetch(url, {
-          ...init,
-          headers: {
-            ...init?.headers,
-            'Content-Type': 'application/json',
-            ...(jwt ? { Authorization: `Bearer ${jwt}` } : {}),
-          },
-        })
       },
     }),
     {

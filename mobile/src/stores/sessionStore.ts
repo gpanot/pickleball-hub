@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { useAuthStore } from './authStore'
+import { debugLog, debugError } from '../lib/debug'
 import type { Session } from '../data'
 
 const SAVED_IDS_KEY = 'saved-session-ids'
@@ -59,16 +60,22 @@ export const useSessionStore = create<SessionState>()((set, get) => ({
       }
       const qs = params.toString()
       const path = `/api/sessions/swipe-deck${qs ? `?${qs}` : ''}`
+      debugLog('sessions', `fetchSessions → ${path}`)
       const res = await authedFetch(path)
-      if (!res.ok) throw new Error(`API ${res.status}`)
+      if (!res.ok) {
+        const body = await res.text().catch(() => '<unreadable>')
+        debugError('sessions', `API error ${res.status}`, body)
+        throw new Error(`API ${res.status}`)
+      }
       const data = await res.json()
       const all: Session[] = data.sessions ?? []
+      debugLog('sessions', `API returned ${all.length} sessions`)
       const nowMin = vnNowMinutes()
       const sessions = all.filter(
         (s) => s.spotsLeft > 0 && timeToMinutes(s.startTime) >= nowMin,
       )
+      debugLog('sessions', `After time/spots filter: ${sessions.length} sessions (nowMin=${nowMin})`)
 
-      // Prune stale saved IDs that don't exist in today's sessions
       const sessionIdSet = new Set(sessions.map((s) => s.id))
       const { savedIds: prevSaved } = get()
       const pruned = new Set([...prevSaved].filter((id) => sessionIdSet.has(id)))
@@ -78,6 +85,7 @@ export const useSessionStore = create<SessionState>()((set, get) => ({
 
       set({ sessions, savedIds: pruned, loading: false, lastFetchedAt: Date.now(), currentIdx: 0, swipeHistory: [] })
     } catch (err) {
+      debugError('sessions', 'fetchSessions FAILED', err)
       set({
         loading: false,
         error: err instanceof Error ? err.message : 'Failed to load sessions',
