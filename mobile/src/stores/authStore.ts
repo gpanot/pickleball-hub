@@ -4,16 +4,19 @@ import * as SecureStore from 'expo-secure-store'
 import Constants from 'expo-constants'
 import { fetchWithTimeout } from '../lib/fetchWithTimeout'
 
+const PROD_API_URL = 'https://hub.thecourtflow.com'
+
 export function resolveApiBase(): string {
   if (process.env.EXPO_PUBLIC_API_URL) return process.env.EXPO_PUBLIC_API_URL
-  // Resolve on each request — hostUri is often unset at module load on device.
+  // In dev, resolve from Expo debugger host for local network access
   const debuggerHost =
     Constants.expoConfig?.hostUri ?? Constants.manifest2?.extra?.expoGo?.debuggerHost
   if (debuggerHost) {
     const ip = debuggerHost.split(':')[0]
     return `http://${ip}:3000`
   }
-  return 'http://localhost:3000'
+  // Release builds (no debugger host) hit production
+  return __DEV__ ? 'http://localhost:3000' : PROD_API_URL
 }
 
 const secureStorage: StateStorage = {

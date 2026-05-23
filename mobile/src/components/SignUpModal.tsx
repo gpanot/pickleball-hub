@@ -25,7 +25,7 @@ function GoogleLogo({ size = 20 }: { size?: number }) {
   )
 }
 
-const GOOGLE_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID ?? ''
+const GOOGLE_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID || '140906288105-0do1cdl3ldk2ceblnu56f6oguh3u5odb.apps.googleusercontent.com'
 
 /** Root-level overlay (not RN Modal) — avoids Android layout glitches inside Expo Go. */
 export function SignUpModalOverlay({

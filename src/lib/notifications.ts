@@ -1,4 +1,4 @@
-import { messaging } from "@/lib/firebase-admin";
+import { getMessaging } from "@/lib/firebase-admin";
 import { prisma } from "@/lib/db";
 
 export async function sendPushNotification({
@@ -13,7 +13,7 @@ export async function sendPushNotification({
   data?: Record<string, string>;
 }) {
   try {
-    await messaging.send({
+    await getMessaging().send({
       token,
       notification: { title, body },
       data,
