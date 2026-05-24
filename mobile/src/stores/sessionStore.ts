@@ -21,13 +21,14 @@ interface SessionState {
   lastFetchedAt: number | null
   _lastLat: number | null
   _lastLng: number | null
+  _lastDate: string | undefined
 
   currentIdx: number
   swipeHistory: number[]
 
-  fetchSessions: (lat?: number | null, lng?: number | null) => Promise<void>
-  fetchIfNeeded: (lat?: number | null, lng?: number | null) => Promise<void>
-  prefetchNextBatch: () => Promise<void>
+  fetchSessions: (lat?: number | null, lng?: number | null, date?: string) => Promise<void>
+  fetchIfNeeded: (lat?: number | null, lng?: number | null, date?: string) => Promise<void>
+  prefetchNextBatch: (date?: string) => Promise<void>
   saveSession: (id: number) => void
   unsaveSession: (id: number) => void
   getSavedSessions: () => Session[]
@@ -52,11 +53,12 @@ export const useSessionStore = create<SessionState>()((set, get) => ({
   lastFetchedAt: null,
   _lastLat: null,
   _lastLng: null,
+  _lastDate: undefined,
 
   currentIdx: 0,
   swipeHistory: [],
 
-  fetchSessions: async (lat, lng) => {
+  fetchSessions: async (lat, lng, date) => {
     set({ loading: true, error: null })
     try {
       const { authedFetch } = useAuthStore.getState()
@@ -65,6 +67,7 @@ export const useSessionStore = create<SessionState>()((set, get) => ({
         params.set('lat', lat.toString())
         params.set('lng', lng.toString())
       }
+      if (date) params.set('date', date)
       params.set('limit', PAGE_SIZE.toString())
       params.set('offset', '0')
       const path = `/api/sessions/swipe-deck?${params.toString()}`
@@ -100,6 +103,7 @@ export const useSessionStore = create<SessionState>()((set, get) => ({
         totalCount: data.total ?? null,
         _lastLat: lat ?? null,
         _lastLng: lng ?? null,
+        _lastDate: date,
       })
     } catch (err) {
       debugError('sessions', 'fetchSessions FAILED', err)
@@ -110,15 +114,15 @@ export const useSessionStore = create<SessionState>()((set, get) => ({
     }
   },
 
-  fetchIfNeeded: async (lat, lng) => {
+  fetchIfNeeded: async (lat, lng, date) => {
     const { lastFetchedAt, loading } = get()
     if (loading) return
     if (lastFetchedAt !== null) return
-    await get().fetchSessions(lat, lng)
+    await get().fetchSessions(lat, lng, date)
   },
 
-  prefetchNextBatch: async () => {
-    const { hasMore, prefetching, loading, nextOffset, _lastLat, _lastLng } = get()
+  prefetchNextBatch: async (date) => {
+    const { hasMore, prefetching, loading, nextOffset, _lastLat, _lastLng, _lastDate } = get()
     if (!hasMore || prefetching || loading) return
     set({ prefetching: true })
     try {
@@ -128,6 +132,8 @@ export const useSessionStore = create<SessionState>()((set, get) => ({
         params.set('lat', _lastLat.toString())
         params.set('lng', _lastLng.toString())
       }
+      const resolvedDate = date ?? _lastDate
+      if (resolvedDate) params.set('date', resolvedDate)
       params.set('limit', PAGE_SIZE.toString())
       params.set('offset', nextOffset.toString())
       const path = `/api/sessions/swipe-deck?${params.toString()}`

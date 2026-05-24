@@ -41,6 +41,7 @@ import { SignInPrompt } from '../components/SignInPrompt'
 import { useAuthStore } from '../stores/authStore'
 import { useSessionStore } from '../stores/sessionStore'
 import { useUiStore } from '../stores/uiStore'
+import type { SwipeDateFilter } from '../stores/uiStore'
 import { FriendsListModal } from '../components/FriendsListModal'
 import type { FriendListItem } from '../components/FriendListRow'
 
@@ -332,6 +333,13 @@ function SecondaryCard({ s }: { s: Session }) {
 const HCMC_LAT = 10.78
 const HCMC_LNG = 106.69
 
+/** Returns a YYYY-MM-DD date string offset by `days` days in Vietnam time (UTC+7). */
+function vnDateString(offsetDays: number): string {
+  const now = new Date()
+  now.setTime(now.getTime() + (7 * 60 + offsetDays * 24 * 60) * 60 * 1000)
+  return now.toISOString().slice(0, 10)
+}
+
 /* ── SwipeScreen (main export) ───────────────────────────────── */
 export function SwipeScreen() {
   const { openSignUp } = useSignUpModal()
@@ -348,6 +356,8 @@ export function SwipeScreen() {
   const [refreshing, setRefreshing] = useState(false)
   const sort = useUiStore((s) => s.swipeSort)
   const setSwipeSort = useUiStore((s) => s.setSwipeSort)
+  const dateFilter = useUiStore((s) => s.swipeDateFilter)
+  const setDateFilter = useUiStore((s) => s.setSwipeDateFilter)
   const [viewIdx, setViewIdx] = useState(0)
   const [viewHistory, setViewHistory] = useState<{ id: number; saved: boolean }[]>([])
   const [friendsModal, setFriendsModal] = useState<{
@@ -401,6 +411,11 @@ export function SwipeScreen() {
   }, [deck.length])
 
   useEffect(() => {
+    const date = dateFilter === 'tomorrow' ? vnDateString(1) : undefined
+    fetchSessions(locationRef.current.lat, locationRef.current.lng, date)
+  }, [dateFilter])
+
+  useEffect(() => {
     if (bootedRef.current) return
     bootedRef.current = true
     loadSavedIds()
@@ -416,15 +431,17 @@ export function SwipeScreen() {
       } catch {
         // fallback to HCMC
       }
-      await fetchIfNeeded(locationRef.current.lat, locationRef.current.lng)
+      const date = dateFilter === 'tomorrow' ? vnDateString(1) : undefined
+      await fetchIfNeeded(locationRef.current.lat, locationRef.current.lng, date)
     })()
   }, [])
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true)
-    await fetchSessions(locationRef.current.lat, locationRef.current.lng)
+    const date = dateFilter === 'tomorrow' ? vnDateString(1) : undefined
+    await fetchSessions(locationRef.current.lat, locationRef.current.lng, date)
     setRefreshing(false)
-  }, [fetchSessions])
+  }, [fetchSessions, dateFilter])
 
   const total = displayDeck.length
   const current = displayDeck[viewIdx]
@@ -591,12 +608,13 @@ export function SwipeScreen() {
                 <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={T.amber} />
               }
             >
-              {/* Filter pills */}
+              {/* Filter pills — all in one row */}
               <View
                 style={{
                   flexDirection: 'row',
                   gap: 8,
                   paddingBottom: 10,
+                  alignItems: 'center',
                 }}
               >
                 {(['match', 'friends'] as const).map((key) => {
@@ -627,13 +645,38 @@ export function SwipeScreen() {
                     </TouchableOpacity>
                   )
                 })}
+
+                {/* Divider */}
+                <View style={{ width: 1, height: 16, backgroundColor: T.border, marginHorizontal: 2 }} />
+
+                {(['today', 'tomorrow'] as const).map((key: SwipeDateFilter) => {
+                  const on = dateFilter === key
+                  const label = key === 'today' ? 'Today' : 'Tomorrow'
+                  return (
+                    <TouchableOpacity
+                      key={key}
+                      onPress={() => setDateFilter(key)}
+                      style={{ paddingVertical: 5, paddingHorizontal: 2 }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 12,
+                          fontWeight: on ? '600' : '400',
+                          color: on ? '#fff' : T.muted,
+                        }}
+                      >
+                        {label}
+                      </Text>
+                    </TouchableOpacity>
+                  )
+                })}
               </View>
 
               {friendsFilterEmpty && signedIn ? (
                 <View style={{ alignItems: 'center', paddingVertical: 48, paddingHorizontal: 24 }}>
                   <Users size={40} color="#444" strokeWidth={1.5} style={{ marginBottom: 12 }} />
                   <Text style={{ fontSize: 16, fontWeight: '600', color: '#fff', textAlign: 'center' }}>
-                    No games with friends joining
+                    {`None of your friends are playing ${dateFilter === 'tomorrow' ? 'Tomorrow' : 'Today'}`}
                   </Text>
                   <Text style={{ fontSize: 13, color: '#888', marginTop: 8, textAlign: 'center' }}>
                     Follow players from your sessions, or switch to Best match.

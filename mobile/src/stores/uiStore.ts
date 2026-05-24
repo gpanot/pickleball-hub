@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 
 export type SessionSort = 'match' | 'friends'
+export type SwipeDateFilter = 'today' | 'tomorrow'
 
 const STORAGE_KEY = 'ui-session-sort'
 
@@ -9,6 +10,7 @@ type Stored = {
   swipeSort: SessionSort
   shortlistSort: SessionSort
   notificationsEnabled: boolean
+  swipeDateFilter: SwipeDateFilter
 }
 
 interface UiState extends Stored {
@@ -17,6 +19,7 @@ interface UiState extends Stored {
   setSwipeSort: (sort: SessionSort) => void
   setShortlistSort: (sort: SessionSort) => void
   setNotificationsEnabled: (enabled: boolean) => void
+  setSwipeDateFilter: (filter: SwipeDateFilter) => void
 }
 
 async function persist(prefs: Stored) {
@@ -27,6 +30,7 @@ export const useUiStore = create<UiState>((set, get) => ({
   swipeSort: 'match',
   shortlistSort: 'match',
   notificationsEnabled: true,
+  swipeDateFilter: 'today',
   hydrated: false,
 
   hydrate: async () => {
@@ -38,6 +42,7 @@ export const useUiStore = create<UiState>((set, get) => ({
           swipeSort: data.swipeSort === 'friends' ? 'friends' : 'match',
           shortlistSort: data.shortlistSort === 'friends' ? 'friends' : 'match',
           notificationsEnabled: data.notificationsEnabled !== false,
+          swipeDateFilter: data.swipeDateFilter === 'tomorrow' ? 'tomorrow' : 'today',
           hydrated: true,
         })
         return
@@ -50,19 +55,25 @@ export const useUiStore = create<UiState>((set, get) => ({
 
   setSwipeSort: (swipeSort) => {
     set({ swipeSort })
-    const { shortlistSort, notificationsEnabled } = get()
-    void persist({ swipeSort, shortlistSort, notificationsEnabled })
+    const { shortlistSort, notificationsEnabled, swipeDateFilter } = get()
+    void persist({ swipeSort, shortlistSort, notificationsEnabled, swipeDateFilter })
   },
 
   setShortlistSort: (shortlistSort) => {
     set({ shortlistSort })
-    const { swipeSort, notificationsEnabled } = get()
-    void persist({ swipeSort, shortlistSort, notificationsEnabled })
+    const { swipeSort, notificationsEnabled, swipeDateFilter } = get()
+    void persist({ swipeSort, shortlistSort, notificationsEnabled, swipeDateFilter })
   },
 
   setNotificationsEnabled: (notificationsEnabled) => {
     set({ notificationsEnabled })
-    const { swipeSort, shortlistSort } = get()
-    void persist({ swipeSort, shortlistSort, notificationsEnabled })
+    const { swipeSort, shortlistSort, swipeDateFilter } = get()
+    void persist({ swipeSort, shortlistSort, notificationsEnabled, swipeDateFilter })
+  },
+
+  setSwipeDateFilter: (swipeDateFilter) => {
+    set({ swipeDateFilter })
+    const { swipeSort, shortlistSort, notificationsEnabled } = get()
+    void persist({ swipeSort, shortlistSort, notificationsEnabled, swipeDateFilter })
   },
 }))
