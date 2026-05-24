@@ -16,9 +16,7 @@ export async function DELETE(req: NextRequest) {
 
   await prisma.$transaction(async (tx) => {
     // Delete kudos sent by this user
-    if (user.reclubUserId) {
-      await tx.kudos.deleteMany({ where: { fromPlayerId: user.reclubUserId } });
-    }
+    await tx.kudos.deleteMany({ where: { fromPlayerId: user.profileId } });
 
     // Delete follows (where this user is the follower)
     await tx.follow.deleteMany({ where: { followerId: user.profileId } });
