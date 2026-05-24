@@ -77,6 +77,7 @@ export function SignUpModalOverlay({
       if (!res.ok) throw new Error(`Dev sign-in failed: ${res.status}`)
       const data = await res.json()
       debugLog('signIn', `Dev sign-in OK, userId=${data.userId}`)
+      const hasCompleted = data.hasCompletedOnboarding ?? useAuthStore.getState().hasCompletedOnboarding
       useAuthStore.setState({
         jwt: data.jwt,
         userId: data.userId,
@@ -84,9 +85,9 @@ export function SignUpModalOverlay({
         displayName: data.displayName,
         imageUrl: data.imageUrl,
         reclubUserId: data.reclubUserId,
-        hasCompletedOnboarding: data.hasCompletedOnboarding,
+        hasCompletedOnboarding: hasCompleted,
       })
-      onSignedIn(!data.hasCompletedOnboarding)
+      onSignedIn(!hasCompleted)
     } catch (e) {
       debugError('signIn', 'Dev sign-in failed, using offline token', e)
       useAuthStore.setState({

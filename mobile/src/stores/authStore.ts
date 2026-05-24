@@ -155,7 +155,6 @@ export const useAuthStore = create<AuthState>()(
           displayName: null,
           imageUrl: null,
           duprRating: null,
-          hasCompletedOnboarding: false,
         })
       },
 
