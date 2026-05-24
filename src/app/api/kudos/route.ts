@@ -84,13 +84,13 @@ export async function GET(req: NextRequest) {
     })
   ])
 
-  const result = {
-    fistbump: 0, flame: 0, star: 0,
-    myReactions: myKudos.map(k => k.type)
-  }
+  const totals: Record<string, number> = { fistbump: 0, flame: 0, star: 0 }
   counts.forEach(c => {
-    result[c.type as keyof typeof result] = c._count.type
+    totals[c.type] = c._count.type
   })
 
-  return NextResponse.json(result)
+  return NextResponse.json({
+    ...totals,
+    myReactions: myKudos.map(k => k.type)
+  })
 }
