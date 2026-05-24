@@ -15,6 +15,7 @@ interface LiveVenue {
   sessionId: number
   startTime: string
   endTime: string
+  eventUrl: string
   players: LivePlayer[]
   totalRoster: number
   nextSessionTime: string | null
@@ -49,7 +50,7 @@ export async function GET(req: NextRequest) {
         endTime: { gte: nowTime },
       }
     },
-    include: {
+      include: {
       player: {
         select: {
           userId: true,
@@ -63,6 +64,7 @@ export async function GET(req: NextRequest) {
           id: true,
           startTime: true,
           endTime: true,
+          eventUrl: true,
           clubId: true,
           club: { select: { name: true } },
           _count: { select: { rosters: true } }
@@ -94,6 +96,7 @@ export async function GET(req: NextRequest) {
         sessionId,
         startTime: r.session.startTime,
         endTime: r.session.endTime,
+        eventUrl: r.session.eventUrl,
         players: [],
         totalRoster: r.session._count.rosters,
         nextSessionTime: nextSession?.startTime ?? null
@@ -120,6 +123,7 @@ export async function GET(req: NextRequest) {
       sessionId: v.sessionId,
       startTime: v.startTime,
       endTime: v.endTime,
+      eventUrl: v.eventUrl,
       players: v.players.slice(0, 4),
       totalRoster: v.totalRoster,
       circleCount: v.players.length,

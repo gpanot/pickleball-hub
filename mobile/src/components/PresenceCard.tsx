@@ -1,5 +1,5 @@
-import React from 'react'
-import { View, Text, TouchableOpacity, StyleSheet, Image } from 'react-native'
+import React, { useEffect, useRef } from 'react'
+import { View, Text, TouchableOpacity, StyleSheet, Image, Animated, Linking } from 'react-native'
 import { T } from '../theme'
 
 interface LiveVenue {
@@ -7,6 +7,7 @@ interface LiveVenue {
   sessionId: number
   startTime: string
   endTime: string
+  eventUrl: string
   players: Array<{
     userId: string
     displayName: string | null
@@ -45,6 +46,19 @@ export function PresenceCard({ venue, onPlayerPress }: Props) {
   const durationH = sessionDurationHours(venue.startTime, venue.endTime)
   const endingSoon = minsLeft <= 60
 
+  const dotOpacity = useRef(new Animated.Value(1)).current
+
+  useEffect(() => {
+    const anim = Animated.loop(
+      Animated.sequence([
+        Animated.timing(dotOpacity, { toValue: 0, duration: 600, useNativeDriver: true }),
+        Animated.timing(dotOpacity, { toValue: 1, duration: 600, useNativeDriver: true }),
+      ])
+    )
+    anim.start()
+    return () => anim.stop()
+  }, [dotOpacity])
+
   const circleNames = venue.players
     .slice(0, 2)
     .map(p => p.displayName?.split(' ')[0] ?? 'Player')
@@ -62,15 +76,14 @@ export function PresenceCard({ venue, onPlayerPress }: Props) {
         </View>
       )
     }
-    if (venue.nextSessionTime) {
-      return (
-        <Text style={s.nextSession}>
-          Next session {formatTime(venue.nextSessionTime)} →
-        </Text>
-      )
-    }
     return (
-      <Text style={s.endsAt}>Ends at {formatTime(venue.endTime)}</Text>
+      <TouchableOpacity
+        style={s.checkClubBtn}
+        onPress={() => venue.eventUrl && Linking.openURL(venue.eventUrl)}
+        activeOpacity={0.75}
+      >
+        <Text style={s.checkClubText}>Check club</Text>
+      </TouchableOpacity>
     )
   }
 
@@ -84,7 +97,7 @@ export function PresenceCard({ venue, onPlayerPress }: Props) {
           </Text>
         </View>
         <View style={s.liveBadge}>
-          <View style={s.liveDot} />
+          <Animated.View style={[s.liveDot, { opacity: dotOpacity }]} />
           <Text style={s.liveText}>LIVE</Text>
         </View>
       </View>
@@ -251,8 +264,15 @@ const s = StyleSheet.create({
     color: '#f5a623',
     fontWeight: '500',
   },
-  nextSession: {
+  checkClubBtn: {
+    backgroundColor: T.amber,
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  checkClubText: {
     fontSize: 10,
-    color: '#f5a623',
+    fontWeight: '600',
+    color: '#1a0a00',
   },
 })

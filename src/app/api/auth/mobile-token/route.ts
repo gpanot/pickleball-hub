@@ -39,7 +39,11 @@ export async function GET(req: NextRequest) {
   const jwt = await signMobileJwt({ sub: user.id, profileId: profile.id });
 
   const prefs = (profile.preferences as Record<string, unknown>) ?? {};
-  const duprRating = typeof prefs.dupr === 'number' ? prefs.dupr : null;
+  const rawDupr = prefs.dupr;
+  const duprRating =
+    typeof rawDupr === 'number' ? rawDupr :
+    typeof rawDupr === 'string' && rawDupr !== '' ? parseFloat(rawDupr) || null :
+    null;
 
   return NextResponse.json({
     jwt,
@@ -138,7 +142,12 @@ export async function POST(req: NextRequest) {
     });
 
     const prefs = (profile.preferences as Record<string, unknown>) ?? {};
-    const duprRating = typeof prefs.dupr === 'number' ? prefs.dupr : null;
+    // Coerce string values saved before type enforcement was added
+    const rawDupr = prefs.dupr;
+    const duprRating =
+      typeof rawDupr === 'number' ? rawDupr :
+      typeof rawDupr === 'string' && rawDupr !== '' ? parseFloat(rawDupr) || null :
+      null;
 
     return NextResponse.json({
       jwt,

@@ -98,10 +98,9 @@ export const useAuthStore = create<AuthState>()(
             profileId: data.profileId,
             displayName: data.displayName,
             imageUrl: data.imageUrl,
-            reclubUserId: data.reclubUserId ?? get().reclubUserId,
-            duprRating: data.duprRating ?? get().duprRating,
-            hasCompletedOnboarding:
-              data.hasCompletedOnboarding ?? get().hasCompletedOnboarding,
+            reclubUserId: data.reclubUserId,
+            duprRating: data.duprRating ?? null,
+            hasCompletedOnboarding: data.hasCompletedOnboarding ?? false,
           })
           debugLog('auth', `ensureServerAuth OK, profileId=${data.profileId}`)
           return true
@@ -128,16 +127,17 @@ export const useAuthStore = create<AuthState>()(
           }
 
           const data = await res.json()
-          debugLog('auth', `signIn OK, userId=${data.userId}`)
+          debugLog('auth', `signIn OK, userId=${data.userId}, duprRating=${data.duprRating}, reclubUserId=${data.reclubUserId}`)
           set({
             jwt: data.jwt,
             userId: data.userId,
             profileId: data.profileId,
             displayName: data.displayName,
             imageUrl: data.imageUrl,
+            // Server is authoritative — use its values directly
             reclubUserId: data.reclubUserId,
-            duprRating: data.duprRating ?? get().duprRating,
-            hasCompletedOnboarding: data.hasCompletedOnboarding ?? get().hasCompletedOnboarding,
+            duprRating: data.duprRating ?? null,
+            hasCompletedOnboarding: data.hasCompletedOnboarding ?? false,
           })
           return true
         } catch (e) {

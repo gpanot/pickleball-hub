@@ -38,6 +38,7 @@ export async function POST(req: NextRequest) {
       {
         error: "Push send failed",
         code: result.error,
+        message: result.message,
         tokenPrefix: profile.pushToken.slice(0, 20),
         registered: true,
       },

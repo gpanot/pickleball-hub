@@ -4,17 +4,29 @@ function getFirebaseAdmin() {
   if (!admin.apps.length) {
     const projectId = process.env.FIREBASE_PROJECT_ID;
     const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
-    const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n");
+    const rawKey = process.env.FIREBASE_PRIVATE_KEY;
 
-    if (!projectId || !clientEmail || !privateKey) {
-      throw new Error(
-        "Missing Firebase Admin credentials. Set FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, and FIREBASE_PRIVATE_KEY."
-      );
+    console.log("[firebase-admin] init — projectId:", projectId ?? "MISSING",
+      "| clientEmail:", clientEmail ?? "MISSING",
+      "| privateKey:", rawKey ? `set (${rawKey.length} chars)` : "MISSING"
+    );
+
+    if (!projectId || !clientEmail || !rawKey) {
+      const missing = [
+        !projectId && "FIREBASE_PROJECT_ID",
+        !clientEmail && "FIREBASE_CLIENT_EMAIL",
+        !rawKey && "FIREBASE_PRIVATE_KEY",
+      ].filter(Boolean).join(", ");
+      throw new Error(`Missing Firebase Admin credentials: ${missing}`);
     }
+
+    // Normalize: if stored with escaped \n replace them; if already real newlines leave as-is
+    const privateKey = rawKey.includes("\\n") ? rawKey.replace(/\\n/g, "\n") : rawKey;
 
     admin.initializeApp({
       credential: admin.credential.cert({ projectId, clientEmail, privateKey }),
     });
+    console.log("[firebase-admin] initialized for project:", projectId);
   }
   return admin;
 }

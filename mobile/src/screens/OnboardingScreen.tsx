@@ -87,7 +87,7 @@ export function OnboardingScreen({
         timeSlots: timeSlot,
       }
 
-      await authedFetch('/api/profile', {
+      const res = await authedFetch('/api/profile', {
         method: 'POST',
         body: JSON.stringify({
           profileId,
@@ -96,8 +96,15 @@ export function OnboardingScreen({
         }),
       })
 
+      if (!res.ok) {
+        const errBody = await res.text().catch(() => '')
+        console.error('[onboarding] profile save failed:', res.status, errBody)
+        Alert.alert('Could not save', 'Your profile could not be saved. Please try again.')
+        setFinishing(false)
+        return
+      }
+
       // Only overwrite the stored Reclub ID if the user actively selected one.
-      // If they skipped step 3, preserve whatever was already linked on their account.
       if (selectedPlayer) {
         setReclubUserId(selectedPlayer.userId)
       }
