@@ -13,11 +13,11 @@ interface LivePlayer {
 interface LiveVenue {
   venueName: string
   sessionId: number
-  startTime: Date
-  endTime: Date
+  startTime: string
+  endTime: string
   players: LivePlayer[]
   totalRoster: number
-  nextSessionTime: Date | null
+  nextSessionTime: string | null
 }
 
 export async function GET(req: NextRequest) {
@@ -34,20 +34,24 @@ export async function GET(req: NextRequest) {
   }
 
   const followeeIds = follows.map(f => f.followeeId)
-  const now = new Date()
+
+  // Current VN time (UTC+7) as comparable strings
+  const vnNow = new Date(Date.now() + 7 * 60 * 60 * 1000)
+  const todayStr = vnNow.toISOString().slice(0, 10)
+  const nowTime = vnNow.toISOString().slice(11, 16) // "HH:mm"
 
   const liveRosters = await prisma.sessionRoster.findMany({
     where: {
       userId: { in: followeeIds },
       session: {
-        startTime: { lte: now },
-        endTime: { gte: now }
+        scrapedDate: todayStr,
+        startTime: { lte: nowTime },
+        endTime: { gte: nowTime },
       }
     },
     include: {
       player: {
         select: {
-          id: true,
           userId: true,
           displayName: true,
           imageUrl: true,
@@ -114,12 +118,12 @@ export async function GET(req: NextRequest) {
     liveVenues: liveVenues.map(v => ({
       venueName: v.venueName,
       sessionId: v.sessionId,
-      startTime: v.startTime.toISOString(),
-      endTime: v.endTime.toISOString(),
+      startTime: v.startTime,
+      endTime: v.endTime,
       players: v.players.slice(0, 4),
       totalRoster: v.totalRoster,
       circleCount: v.players.length,
-      nextSessionTime: v.nextSessionTime?.toISOString() ?? null
+      nextSessionTime: v.nextSessionTime ?? null
     })),
     totalLive
   })
