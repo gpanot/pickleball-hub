@@ -39,15 +39,19 @@ function truncateSessionName(raw: string | undefined): string {
   return name.length > 40 ? name.slice(0, 40) + '…' : name
 }
 
+interface Props {
+  item: FeedItem
+  onJoinToo: (eventUrl: string) => void
+  onAvatarPress?: (userId: string) => void
+  isLive?: boolean
+}
+
 export function FeedItemRow({
   item,
   onJoinToo,
   onAvatarPress,
-}: {
-  item: FeedItem
-  onJoinToo: (eventUrl: string) => void
-  onAvatarPress?: (userId: string) => void
-}) {
+  isLive,
+}: Props) {
   const name = item.player.displayName ?? 'Player'
   const dupr = item.player.duprDoubles?.toFixed(2) ?? '–'
   const sessionLabel = truncateSessionName(item.sessionName)
@@ -109,6 +113,12 @@ export function FeedItemRow({
           <Text style={s.name}>{name}</Text>
           {item.isFollowing && (
             <Text style={s.followingLabel}> · following</Text>
+          )}
+          {isLive && (
+            <View style={s.liveBadge}>
+              <View style={s.liveBadgeDot} />
+              <Text style={s.liveBadgeText}>On court</Text>
+            </View>
           )}
         </View>
 
@@ -269,5 +279,28 @@ const s = StyleSheet.create({
   },
   kudosCountActive: {
     color: '#f5a623',
+  },
+  liveBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: '#0a1f0a',
+    borderWidth: 0.5,
+    borderColor: '#1D9E75',
+    borderRadius: 6,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    marginLeft: 6,
+  },
+  liveBadgeDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#1D9E75',
+  },
+  liveBadgeText: {
+    fontSize: 8,
+    color: '#5DCAA5',
+    fontWeight: '500',
   },
 })

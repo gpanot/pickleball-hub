@@ -15,6 +15,7 @@ import {
   LogOut,
   Trash2,
   Link2,
+  BellRing,
 } from 'lucide-react-native'
 import { T } from '../theme'
 import { useAuthStore } from '../stores/authStore'
@@ -109,6 +110,24 @@ export function ProfileSheet({
     duprRating != null && !Number.isNaN(duprRating)
       ? duprRating.toFixed(1)
       : '–'
+
+  const [pnsStatus, setPnsStatus] = useState<'idle' | 'sending' | 'ok' | 'no_token' | 'error'>('idle')
+
+  const handleTestPns = async () => {
+    setPnsStatus('sending')
+    try {
+      const res = await authedFetch('/api/notifications/test', { method: 'POST' })
+      const data = await res.json()
+      if (!res.ok) {
+        setPnsStatus(data.registered === false ? 'no_token' : 'error')
+      } else {
+        setPnsStatus('ok')
+      }
+    } catch {
+      setPnsStatus('error')
+    }
+    setTimeout(() => setPnsStatus('idle'), 4000)
+  }
 
   const handleSignOut = () => {
     Alert.alert('Sign out', 'Are you sure?', [
@@ -213,55 +232,60 @@ export function ProfileSheet({
 
       {streakDataLoaded && (
         <View style={styles.streakCard}>
-          <View style={styles.streakTopRow}>
-            <View>
-              <Text style={styles.streakNum}>
-                {streakData.currentStreak > 0 ? `🔥 ${streakData.currentStreak}` : '–'}
-              </Text>
+          <View style={styles.streakHero}>
+            <Text style={styles.streakNum}>
+              {streakData.currentStreak > 0 ? `🔥 ${streakData.currentStreak}` : '–'}
+            </Text>
+            <View style={styles.streakHeroRight}>
               <Text style={styles.streakLabel}>
                 {streakData.currentStreak > 0 ? 'week streak' : 'No streak yet'}
               </Text>
-            </View>
-            <View style={styles.streakMeta}>
-              <Text style={styles.streakMetaText}>
+              <Text style={styles.streakSub}>
                 {streakData.currentStreak > 0 && streakData.streakStartDate
                   ? `Playing every week since ${new Date(streakData.streakStartDate).toLocaleDateString('en-US', { month: 'long' })}`
                   : 'Join a session to start your streak'}
               </Text>
-              <View style={styles.weeksRow}>
-                {(streakData.weeklyPlayed.length > 0
-                  ? streakData.weeklyPlayed
-                  : [false, false, false, false, false, false]
-                ).map((played, i) => (
-                  <View key={i} style={[styles.weekDot, played && styles.weekDotPlayed]}>
-                    <Text style={[styles.weekDotText, played && styles.weekDotTextPlayed]}>
-                      W{i + 1}
-                    </Text>
-                  </View>
-                ))}
-              </View>
             </View>
           </View>
-          {streakData.circleSessionsThisWeek > 0 && (
-            <View style={styles.compareBlock}>
-              <Text style={styles.compareText}>
-                Your circle played{' '}
-                <Text style={styles.compareHighlight}>{streakData.circleSessionsThisWeek} sessions</Text>
-                {' '}this week · you played{' '}
-                <Text style={styles.compareHighlight}>{streakData.mySessionsThisWeek}</Text>
-              </Text>
-              <View style={styles.barBg}>
-                <View style={[styles.barFill, {
-                  width: `${Math.min(
-                    streakData.circleSessionsThisWeek > 0
-                      ? (streakData.mySessionsThisWeek / streakData.circleSessionsThisWeek) * 100
-                      : 0,
-                    100
-                  )}%`
-                }]} />
+
+          <View style={styles.weeksRow}>
+            {(streakData.weeklyPlayed.length > 0
+              ? [...streakData.weeklyPlayed, ...Array(6).fill(false)].slice(0, 6)
+              : Array(6).fill(false)
+            ).map((played, i) => (
+              <View key={i} style={[styles.weekDot, played && styles.weekDotPlayed]}>
+                <Text style={[styles.weekDotText, played && styles.weekDotTextPlayed]}>
+                  W{i + 1}
+                </Text>
               </View>
+            ))}
+          </View>
+
+          <View style={styles.compareBlock}>
+            <View style={styles.compareHeader}>
+              <Text style={styles.compareTitle}>Your circle this week</Text>
+              <Text style={styles.compareVals}>
+                <Text style={styles.compareHighlight}>{streakData.mySessionsThisWeek}</Text>
+                <Text style={styles.compareDivider}> / </Text>
+                <Text style={styles.compareHighlight}>{streakData.circleSessionsThisWeek}</Text>
+                <Text style={styles.compareSub}> sessions</Text>
+              </Text>
             </View>
-          )}
+            <View style={styles.barBg}>
+              <View style={[styles.barFill, {
+                width: streakData.circleSessionsThisWeek > 0
+                  ? `${Math.min((streakData.mySessionsThisWeek / streakData.circleSessionsThisWeek) * 100, 100)}%`
+                  : '0%'
+              }]} />
+            </View>
+            <Text style={styles.compareCaption}>
+              {streakData.circleSessionsThisWeek === 0
+                ? 'Follow players to see how your circle is doing'
+                : streakData.mySessionsThisWeek === 0
+                  ? 'Your circle is active · join a session this week'
+                  : `You played ${streakData.mySessionsThisWeek} of ${streakData.circleSessionsThisWeek} sessions in your circle`}
+            </Text>
+          </View>
         </View>
       )}
 
@@ -300,6 +324,24 @@ export function ProfileSheet({
           <Text style={styles.settingsLabel}>Notifications</Text>
           <Text style={styles.settingsRight}>
             {notificationsOn ? 'On' : 'Off'}
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.settingsRow}
+          onPress={handleTestPns}
+          disabled={pnsStatus === 'sending'}
+        >
+          <BellRing size={20} color={
+            pnsStatus === 'ok' ? '#22c55e'
+            : pnsStatus === 'no_token' || pnsStatus === 'error' ? '#e24b4a'
+            : '#555'
+          } strokeWidth={2} />
+          <Text style={styles.settingsLabel}>
+            {pnsStatus === 'sending' ? 'Sending…'
+              : pnsStatus === 'ok' ? 'Notification sent ✓'
+              : pnsStatus === 'no_token' ? 'No token registered'
+              : pnsStatus === 'error' ? 'Send failed'
+              : 'Test push notification'}
           </Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.settingsRow} onPress={handleSignOut}>
@@ -465,42 +507,44 @@ const styles = StyleSheet.create({
     borderWidth: 0.5,
     borderColor: '#f5a623',
     borderRadius: 16,
-    padding: 14,
+    padding: 16,
   },
-  streakTopRow: {
+  streakHero: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
-    marginBottom: 10,
+    alignItems: 'center',
+    gap: 14,
+    marginBottom: 14,
   },
   streakNum: {
-    fontSize: 30,
+    fontSize: 42,
     fontWeight: '700',
     color: '#f5a623',
-    lineHeight: 34,
+    lineHeight: 46,
+    flexShrink: 0,
   },
-  streakLabel: {
-    fontSize: 11,
-    color: '#888',
-    marginTop: 3,
-  },
-  streakMeta: {
+  streakHeroRight: {
     flex: 1,
   },
-  streakMetaText: {
-    fontSize: 10,
-    color: '#555',
-    marginBottom: 8,
-    lineHeight: 14,
+  streakLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#fff',
+    marginBottom: 3,
+  },
+  streakSub: {
+    fontSize: 11,
+    color: '#666',
+    lineHeight: 15,
   },
   weeksRow: {
     flexDirection: 'row',
-    gap: 4,
+    gap: 6,
+    marginBottom: 14,
   },
   weekDot: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    flex: 1,
+    height: 36,
+    borderRadius: 10,
     backgroundColor: '#141414',
     borderWidth: 0.5,
     borderColor: '#2a2a2a',
@@ -512,8 +556,8 @@ const styles = StyleSheet.create({
     borderColor: '#f5a623',
   },
   weekDotText: {
-    fontSize: 8,
-    color: '#444',
+    fontSize: 9,
+    color: '#333',
     fontWeight: '500',
   },
   weekDotTextPlayed: {
@@ -524,27 +568,49 @@ const styles = StyleSheet.create({
     backgroundColor: '#1a1a1a',
     borderWidth: 0.5,
     borderColor: '#2a2a2a',
-    borderRadius: 10,
-    padding: 10,
+    borderRadius: 12,
+    padding: 12,
   },
-  compareText: {
+  compareHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  compareTitle: {
     fontSize: 11,
     color: '#888',
-    lineHeight: 16,
-    marginBottom: 7,
-  },
-  compareHighlight: {
-    color: '#f5a623',
     fontWeight: '500',
   },
+  compareVals: {
+    fontSize: 12,
+  },
+  compareHighlight: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#f5a623',
+  },
+  compareDivider: {
+    color: '#333',
+  },
+  compareSub: {
+    fontSize: 11,
+    color: '#555',
+  },
   barBg: {
-    height: 4,
+    height: 5,
     backgroundColor: '#111',
-    borderRadius: 2,
+    borderRadius: 3,
+    marginBottom: 7,
   },
   barFill: {
-    height: 4,
+    height: 5,
     backgroundColor: '#f5a623',
-    borderRadius: 2,
+    borderRadius: 3,
+  },
+  compareCaption: {
+    fontSize: 10,
+    color: '#444',
+    lineHeight: 14,
   },
 })

@@ -20,6 +20,7 @@ import { PlayerSearch } from '../components/PlayerSearch'
 import { PlayerAvatar } from '../components/PlayerAvatar'
 import { FriendListRow } from '../components/FriendListRow'
 import { FeedItemRow } from '../components/FeedItemRow'
+import { PresenceCard } from '../components/PresenceCard'
 import { PlayerProfileSheet } from '../components/PlayerProfileSheet'
 import { useToast } from '../components/Toast'
 import { PeopleYouMayKnowScreen } from './PeopleYouMayKnowScreen'
@@ -43,6 +44,7 @@ export function CircleScreen() {
 
   const feedLoadedRef = useRef(false)
   const friendsLoadedRef = useRef(false)
+  const suggestionsLoadedRef = useRef(false)
   const [showSearch, setShowSearch] = useState(false)
   const [showSuggested, setShowSuggested] = useState(false)
 
@@ -56,6 +58,10 @@ export function CircleScreen() {
   const [hasFollows, setHasFollows] = useState(true)
   const [suggestions, setSuggestions] = useState<CoPlayerSuggestion[]>([])
   const [followedSuggestionIds, setFollowedSuggestionIds] = useState<Set<string>>(new Set())
+  const [presence, setPresence] = useState<{
+    liveVenues: any[]
+    totalLive: number
+  } | null>(null)
   const [dismissedSuggestions, setDismissedSuggestions] = useState<Set<string>>(
     new Set()
   )
@@ -98,13 +104,36 @@ export function CircleScreen() {
     }
   }, [authedFetch, reclubUserId])
 
+  const loadPresence = useCallback(async () => {
+    if (!jwt) return
+    try {
+      const res = await authedFetch('/api/feed/presence')
+      const data = await res.json()
+      setPresence(data)
+    } catch {}
+  }, [jwt, authedFetch])
+
   useEffect(() => {
     if (jwt && subTab === 'feed' && !feedLoadedRef.current) {
       feedLoadedRef.current = true
       loadFeed()
+    }
+  }, [jwt, subTab, loadFeed])
+
+  useEffect(() => {
+    if (jwt && subTab === 'feed') {
+      loadPresence()
+      const interval = setInterval(loadPresence, 60000)
+      return () => clearInterval(interval)
+    }
+  }, [jwt, subTab, loadPresence])
+
+  useEffect(() => {
+    if (jwt && subTab === 'players' && reclubUserId && !suggestionsLoadedRef.current) {
+      suggestionsLoadedRef.current = true
       loadSuggestions()
     }
-  }, [jwt, subTab, loadFeed, loadSuggestions])
+  }, [jwt, subTab, reclubUserId, loadSuggestions])
 
   const handleFeedRefresh = useCallback(async () => {
     setFeedRefreshing(true)
@@ -112,7 +141,7 @@ export function CircleScreen() {
     setFeedRefreshing(false)
   }, [loadFeed])
 
-  const handleFollowFromFeed = useCallback(
+  const handleFollowFromSuggestion = useCallback(
     async (userId: string) => {
       // Optimistic update — show "Following" immediately, no feed reload
       setFollowedSuggestionIds((prev) => new Set(prev).add(userId))
@@ -338,74 +367,6 @@ export function CircleScreen() {
             />
           }
         >
-          {/* Suggestions carousel */}
-          {suggestions.filter((s) => !dismissedSuggestions.has(s.userId))
-            .length > 0 && (
-            <View>
-              <View style={styles.sectionHeaderRow}>
-                <Text style={styles.sectionLabel}>CROSSED PATHS WITH</Text>
-                <TouchableOpacity
-                  onPress={() => setShowSuggested(true)}
-                >
-                  <Text style={styles.sectionLink}>See all</Text>
-                </TouchableOpacity>
-              </View>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.carouselContent}
-              >
-                {suggestions
-                  .filter((s) => !dismissedSuggestions.has(s.userId))
-                  .map((s) => {
-                    const isFollowed = followedSuggestionIds.has(s.userId)
-                    return (
-                      <View key={s.userId} style={styles.suggestionCard}>
-                        <TouchableOpacity
-                          style={styles.dismissBtn}
-                          onPress={() =>
-                            setDismissedSuggestions(
-                              (prev) => new Set([...prev, s.userId])
-                            )
-                          }
-                        >
-                          <X size={10} color="#2a2a2a" />
-                        </TouchableOpacity>
-                        <TouchableOpacity onPress={() => setSelectedPlayerId(s.userId)}>
-                          <PlayerAvatar
-                            userId={s.userId}
-                            imageUrl={s.imageUrl}
-                            size={42}
-                            style={styles.suggestionAvatar}
-                          />
-                        </TouchableOpacity>
-                        <Text style={styles.suggestionDupr}>
-                          {s.duprDoubles?.toFixed(2) ?? '–'}
-                        </Text>
-                        <Text style={styles.suggestionName} numberOfLines={1}>
-                          {s.displayName ?? 'Player'}
-                        </Text>
-                        <Text style={styles.suggestionCtx} numberOfLines={2}>
-                          {s.coSessionCount}× sessions together
-                        </Text>
-                        <TouchableOpacity
-                          style={[styles.feedFollowBtn, isFollowed && styles.feedFollowedBtn]}
-                          onPress={() => !isFollowed && handleFollowFromFeed(s.userId)}
-                          disabled={isFollowed}
-                        >
-                          <Text style={[styles.feedFollowBtnText, isFollowed && styles.feedFollowedBtnText]}>
-                            {isFollowed ? 'Following' : 'Follow'}
-                          </Text>
-                        </TouchableOpacity>
-                      </View>
-                    )
-                  })}
-              </ScrollView>
-            </View>
-          )}
-
-          <View style={styles.feedDivider} />
-
           {/* Feed empty state */}
           {!feedLoading && !hasFollows && (
             <View style={styles.emptyState}>
@@ -427,16 +388,59 @@ export function CircleScreen() {
             <ActivityIndicator color={T.amber} style={{ marginTop: 40 }} />
           )}
 
+          {/* Presence section */}
+          {!feedLoading && presence && presence.totalLive > 0 && (
+            <>
+              <View style={styles.liveBanner}>
+                <View style={styles.liveBannerDot} />
+                <View style={styles.liveBannerText}>
+                  <Text style={styles.liveBannerTitle}>
+                    {presence.totalLive} from your circle {presence.totalLive === 1 ? 'is' : 'are'} on court
+                  </Text>
+                  <Text style={styles.liveBannerSub}>
+                    Right now · across {presence.liveVenues.length} {presence.liveVenues.length === 1 ? 'venue' : 'venues'}
+                  </Text>
+                </View>
+                <Text style={styles.liveBannerCount}>{presence.totalLive}</Text>
+              </View>
+
+              {presence.liveVenues.map((venue: any) => (
+                <PresenceCard
+                  key={venue.sessionId}
+                  venue={venue}
+                  onPlayerPress={(userId) => setSelectedPlayerId(userId)}
+                />
+              ))}
+
+              <View style={styles.presenceDivider} />
+            </>
+          )}
+
+          {!feedLoading && presence && presence.totalLive === 0 && (
+            <View style={styles.noOneLive}>
+              <View style={styles.noOneLiveDot} />
+              <View>
+                <Text style={styles.noOneLiveTitle}>Nobody on court right now</Text>
+                <Text style={styles.noOneLiveSub}>Check back this evening</Text>
+              </View>
+            </View>
+          )}
+
           {/* Feed items */}
-          {!feedLoading &&
-            feedItems.map((item) => (
+          {!feedLoading && (() => {
+            const livePlayerIds = new Set(
+              presence?.liveVenues.flatMap((v: any) => v.players.map((p: any) => p.userId)) ?? []
+            )
+            return feedItems.map((item) => (
               <FeedItemRow
                 key={item.id}
                 item={item}
                 onJoinToo={(eventUrl) => Linking.openURL(eventUrl)}
                 onAvatarPress={(uid) => setSelectedPlayerId(uid)}
+                isLive={livePlayerIds.has(item.player.userId)}
               />
-            ))}
+            ))
+          })()}
         </ScrollView>
       )}
 
@@ -497,6 +501,83 @@ export function CircleScreen() {
                 <Search size={16} color="#666" strokeWidth={2} />
                 <Text style={styles.findFriendsText}>Find friends</Text>
               </TouchableOpacity>
+
+              {suggestions.filter((s) => !dismissedSuggestions.has(s.userId))
+                .length > 0 && (
+                <View style={styles.suggestionsSection}>
+                  <View style={styles.sectionHeaderRow}>
+                    <Text style={styles.sectionLabel}>CROSSED PATHS WITH</Text>
+                    <TouchableOpacity onPress={() => setShowSuggested(true)}>
+                      <Text style={styles.sectionLink}>See all</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.carouselContent}
+                  >
+                    {suggestions
+                      .filter((s) => !dismissedSuggestions.has(s.userId))
+                      .map((s) => {
+                        const isFollowed = followedSuggestionIds.has(s.userId)
+                        return (
+                          <View key={s.userId} style={styles.suggestionCard}>
+                            <TouchableOpacity
+                              style={styles.dismissBtn}
+                              onPress={() =>
+                                setDismissedSuggestions(
+                                  (prev) => new Set([...prev, s.userId])
+                                )
+                              }
+                            >
+                              <X size={10} color="#2a2a2a" />
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              onPress={() => setSelectedPlayerId(s.userId)}
+                            >
+                              <PlayerAvatar
+                                userId={s.userId}
+                                imageUrl={s.imageUrl}
+                                size={42}
+                                style={styles.suggestionAvatar}
+                              />
+                            </TouchableOpacity>
+                            <Text style={styles.suggestionName} numberOfLines={1}>
+                              {s.displayName ?? 'Player'}
+                            </Text>
+                            <Text style={styles.suggestionSessions} numberOfLines={2}>
+                              <Text style={styles.suggestionSessionsCount}>
+                                {s.coSessionCount}×
+                              </Text>
+                              <Text style={styles.suggestionSessionsLabel}>
+                                {' '}sessions together
+                              </Text>
+                            </Text>
+                            <TouchableOpacity
+                              style={[
+                                styles.feedFollowBtn,
+                                isFollowed && styles.feedFollowedBtn,
+                              ]}
+                              onPress={() =>
+                                !isFollowed && handleFollowFromSuggestion(s.userId)
+                              }
+                              disabled={isFollowed}
+                            >
+                              <Text
+                                style={[
+                                  styles.feedFollowBtnText,
+                                  isFollowed && styles.feedFollowedBtnText,
+                                ]}
+                              >
+                                {isFollowed ? 'Following' : 'Follow'}
+                              </Text>
+                            </TouchableOpacity>
+                          </View>
+                        )
+                      })}
+                  </ScrollView>
+                </View>
+              )}
 
               {loadingFriends ? (
                 <ActivityIndicator
@@ -600,7 +681,10 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: T.amber,
   },
-  // ── Feed styles ─────────────────────────────────────────────────────────────
+  suggestionsSection: {
+    marginHorizontal: -8,
+    marginBottom: 16,
+  },
   sectionHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -618,37 +702,50 @@ const styles = StyleSheet.create({
   sectionLink: { fontSize: 11, color: '#555' },
   carouselContent: { paddingHorizontal: 12, gap: 10 },
   suggestionCard: {
-    minWidth: 100,
+    minWidth: 108,
     backgroundColor: '#141414',
     borderWidth: 0.5,
-    borderColor: '#1e1e1e',
+    borderColor: '#252525',
     borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 8,
+    paddingTop: 8,
+    paddingBottom: 8,
+    paddingHorizontal: 10,
     alignItems: 'center',
     position: 'relative',
   },
-  dismissBtn: { position: 'absolute', top: 5, right: 5 },
-  suggestionAvatar: { marginBottom: 2 },
-  suggestionDupr: { fontSize: 11, fontWeight: '500', color: T.amber },
+  dismissBtn: { position: 'absolute', top: 5, right: 5, zIndex: 1 },
+  suggestionAvatar: { marginBottom: 0 },
   suggestionName: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: '#ddd',
-    marginVertical: 1,
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#f0f0f0',
+    marginTop: 5,
+    marginBottom: 2,
     textAlign: 'center',
+    maxWidth: 96,
   },
-  suggestionCtx: {
-    fontSize: 10,
-    color: '#444',
-    marginBottom: 5,
-    lineHeight: 14,
+  suggestionSessions: {
+    fontSize: 13,
+    fontWeight: '500',
+    lineHeight: 17,
     textAlign: 'center',
+    marginBottom: 6,
+    maxWidth: 96,
+  },
+  suggestionSessionsCount: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: T.amber,
+  },
+  suggestionSessionsLabel: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: 'rgba(255,255,255,0.55)',
   },
   feedFollowBtn: {
     backgroundColor: T.amber,
     borderRadius: 6,
-    paddingVertical: 4,
+    paddingVertical: 5,
     width: '100%',
     alignItems: 'center',
   },
@@ -659,7 +756,6 @@ const styles = StyleSheet.create({
   },
   feedFollowBtnText: { fontSize: 11, fontWeight: '500', color: '#1a0a00' },
   feedFollowedBtnText: { fontSize: 11, fontWeight: '600', color: '#22c55e' },
-  feedDivider: { height: 0.5, backgroundColor: '#111', marginBottom: 6 },
   emptyState: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -681,4 +777,77 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   emptyBtnText: { fontSize: 11, fontWeight: '600', color: '#1a0a00' },
+  liveBanner: {
+    marginHorizontal: 12,
+    marginBottom: 10,
+    backgroundColor: '#0a1f0a',
+    borderWidth: 0.5,
+    borderColor: '#1D9E75',
+    borderRadius: 12,
+    padding: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  liveBannerDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#1D9E75',
+    flexShrink: 0,
+  },
+  liveBannerText: {
+    flex: 1,
+  },
+  liveBannerTitle: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#5DCAA5',
+  },
+  liveBannerSub: {
+    fontSize: 10,
+    color: '#0F6E56',
+    marginTop: 1,
+  },
+  liveBannerCount: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1D9E75',
+    flexShrink: 0,
+  },
+  presenceDivider: {
+    height: 0.5,
+    backgroundColor: '#111',
+    marginHorizontal: 12,
+    marginBottom: 8,
+  },
+  noOneLive: {
+    marginHorizontal: 12,
+    marginBottom: 10,
+    backgroundColor: '#141414',
+    borderWidth: 0.5,
+    borderColor: '#1e1e1e',
+    borderRadius: 12,
+    padding: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  noOneLiveDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#2a2a2a',
+    flexShrink: 0,
+  },
+  noOneLiveTitle: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#444',
+  },
+  noOneLiveSub: {
+    fontSize: 10,
+    color: '#2a2a2a',
+    marginTop: 1,
+  },
 })

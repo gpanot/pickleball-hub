@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { getMobileUser } from '@/lib/mobile-auth'
+import { sendPushNotification } from '@/lib/notifications'
 
 export async function POST(req: NextRequest) {
   const user = await getMobileUser(req)
@@ -28,11 +29,8 @@ export async function POST(req: NextRequest) {
       }
     })
 
-    await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/notifications/kudos`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fromPlayerId: user.profileId, toPlayerId, type })
-    })
+    // Fire push notification without blocking the response
+    sendKudosNotification(user.profileId, toPlayerId, type)
 
     return NextResponse.json({ ok: true })
   } catch (err: any) {
@@ -93,4 +91,37 @@ export async function GET(req: NextRequest) {
     ...totals,
     myReactions: myKudos.map(k => k.type)
   })
+}
+
+const emojiMap: Record<string, string> = { fistbump: '🤜', flame: '🔥', star: '⭐' }
+const labelMap: Record<string, string> = {
+  fistbump: 'gave you a fist bump',
+  flame: 'thinks you are on fire',
+  star: 'gave you a star',
+}
+
+async function sendKudosNotification(fromProfileId: string, toPlayerId: string, type: string) {
+  try {
+    const [sender, target] = await Promise.all([
+      prisma.playerProfile.findUnique({
+        where: { id: fromProfileId },
+        select: { displayName: true },
+      }),
+      prisma.playerProfile.findFirst({
+        where: { reclubUserId: BigInt(toPlayerId) },
+        select: { pushToken: true },
+      }),
+    ])
+
+    if (!target?.pushToken) return
+
+    await sendPushNotification({
+      token: target.pushToken,
+      title: `${emojiMap[type] ?? '👏'} ${sender?.displayName ?? 'Someone'} ${labelMap[type] ?? 'sent you kudos'}`,
+      body: 'Open Squadd to see your kudos',
+      data: { type: 'kudos', screen: 'Circle' },
+    })
+  } catch (err) {
+    console.error('[kudos] sendKudosNotification failed:', err)
+  }
 }
