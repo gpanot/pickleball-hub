@@ -188,8 +188,56 @@ export async function GET(req: NextRequest) {
     return true;
   });
 
+  const finalItems = filtered.slice(0, 20);
+
+  // Fetch kudos counts for all feed items in one batch
+  const feedItemIds = finalItems.map((i) => i.id);
+  const [kudosCounts, myKudos] = await Promise.all([
+    prisma.kudos.groupBy({
+      by: ["feedItemId", "type"],
+      where: { feedItemId: { in: feedItemIds } },
+      _count: { type: true },
+    }),
+    prisma.kudos.findMany({
+      where: {
+        fromPlayerId: user.profileId,
+        feedItemId: { in: feedItemIds },
+      },
+      select: { feedItemId: true, type: true },
+    }),
+  ]);
+
+  // Build lookup maps
+  const countMap = new Map<string, Record<string, number>>();
+  for (const row of kudosCounts) {
+    if (!row.feedItemId) continue;
+    if (!countMap.has(row.feedItemId)) {
+      countMap.set(row.feedItemId, { fistbump: 0, flame: 0, star: 0 });
+    }
+    countMap.get(row.feedItemId)![row.type] = row._count.type;
+  }
+
+  const myReactionsMap = new Map<string, string[]>();
+  for (const row of myKudos) {
+    if (!row.feedItemId) continue;
+    if (!myReactionsMap.has(row.feedItemId)) {
+      myReactionsMap.set(row.feedItemId, []);
+    }
+    myReactionsMap.get(row.feedItemId)!.push(row.type);
+  }
+
+  const itemsWithKudos = finalItems.map((item) => ({
+    ...item,
+    kudos: {
+      fistbump: countMap.get(item.id)?.fistbump ?? 0,
+      flame: countMap.get(item.id)?.flame ?? 0,
+      star: countMap.get(item.id)?.star ?? 0,
+      myReactions: myReactionsMap.get(item.id) ?? [],
+    },
+  }));
+
   return NextResponse.json({
-    items: filtered.slice(0, 20),
+    items: itemsWithKudos,
     hasFollows: true,
   });
 }

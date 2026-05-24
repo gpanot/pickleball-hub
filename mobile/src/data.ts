@@ -117,6 +117,8 @@ export type FeedItem = {
   duprOld?: number
   duprNew?: number
   venueNameDupr?: string
+
+  kudos?: { fistbump: number; flame: number; star: number; myReactions: string[] }
 }
 
 export type CoPlayerSuggestion = {

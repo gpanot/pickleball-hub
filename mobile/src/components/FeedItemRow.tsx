@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native'
 import { FeedItem } from '../data'
 import { PlayerAvatar } from './PlayerAvatar'
@@ -54,11 +54,20 @@ export function FeedItemRow({
   const auth = useAuthStore()
 
   const [kudos, setKudos] = useState({
-    fistbump: (item as any).kudos?.fistbump ?? 0,
-    flame: (item as any).kudos?.flame ?? 0,
-    star: (item as any).kudos?.star ?? 0,
-    myReactions: ((item as any).kudos?.myReactions ?? []) as string[]
+    fistbump: item.kudos?.fistbump ?? 0,
+    flame: item.kudos?.flame ?? 0,
+    star: item.kudos?.star ?? 0,
+    myReactions: item.kudos?.myReactions ?? [] as string[]
   })
+
+  useEffect(() => {
+    setKudos({
+      fistbump: item.kudos?.fistbump ?? 0,
+      flame: item.kudos?.flame ?? 0,
+      star: item.kudos?.star ?? 0,
+      myReactions: item.kudos?.myReactions ?? [],
+    })
+  }, [item.kudos?.fistbump, item.kudos?.flame, item.kudos?.star])
 
   const handleKudos = async (type: 'fistbump' | 'flame' | 'star') => {
     const isActive = kudos.myReactions.includes(type)
