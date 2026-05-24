@@ -1,22 +1,37 @@
 import * as Notifications from 'expo-notifications'
 import * as Device from 'expo-device'
+import Constants from 'expo-constants'
 import { Platform } from 'react-native'
+
+const IS_EXPO_GO = Constants.appOwnership === 'expo'
+const MAX_TOKEN_RETRIES = 5
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
     shouldPlaySound: true,
     shouldSetBadge: true,
+    shouldShowBanner: true,
+    shouldShowList: true,
   }),
 })
 
 /**
  * Registers for push notifications and returns the native FCM/APNs device token.
- * We use getDevicePushTokenAsync (not getExpoPushTokenAsync) because the backend
- * sends notifications directly via Firebase Admin SDK, which requires native tokens.
+ * Uses getDevicePushTokenAsync (not getExpoPushTokenAsync) because the backend
+ * sends via Firebase Admin SDK which requires native FCM tokens.
+ * Includes retry logic for transient FCM SERVICE_NOT_AVAILABLE errors.
  */
 export async function registerForPushNotifications(): Promise<string | null> {
-  if (!Device.isDevice) return null
+  if (IS_EXPO_GO) {
+    console.warn('[push] Expo Go does not support FCM. Use a dev client or standalone build.')
+    return null
+  }
+
+  if (!Device.isDevice) {
+    console.warn('[push] Push notifications require a physical device.')
+    return null
+  }
 
   const { status: existingStatus } = await Notifications.getPermissionsAsync()
   let finalStatus = existingStatus
@@ -26,25 +41,43 @@ export async function registerForPushNotifications(): Promise<string | null> {
     finalStatus = status
   }
 
-  if (finalStatus !== 'granted') return null
+  if (finalStatus !== 'granted') {
+    console.warn('[push] Notification permission denied.')
+    return null
+  }
 
   if (Platform.OS === 'android') {
     await Notifications.setNotificationChannelAsync('default', {
       name: 'default',
-      importance: Notifications.AndroidImportance.MAX,
+      importance: Notifications.AndroidImportance.HIGH,
+      sound: 'default',
       vibrationPattern: [0, 250, 250, 250],
       lightColor: '#f5a623',
     })
   }
 
-  try {
-    const deviceToken = await Notifications.getDevicePushTokenAsync()
-    console.log('[push] native device token obtained:', deviceToken.type, deviceToken.data?.toString().slice(0, 20) + '...')
-    return deviceToken.data as string
-  } catch (err) {
-    console.warn('[push] failed to get device push token:', err)
-    return null
+  for (let attempt = 1; attempt <= MAX_TOKEN_RETRIES; attempt++) {
+    try {
+      const deviceToken = await Notifications.getDevicePushTokenAsync()
+      const tokenStr = deviceToken.data as string
+      console.log('[push] native device token obtained:', deviceToken.type, tokenStr.slice(0, 20) + '...')
+      return tokenStr
+    } catch (err: any) {
+      const isTransient =
+        err?.message?.includes('SERVICE_NOT_AVAILABLE') ||
+        err?.message?.includes('NETWORK_ERROR')
+
+      if (isTransient && attempt < MAX_TOKEN_RETRIES) {
+        console.warn(`[push] transient error (attempt ${attempt}/${MAX_TOKEN_RETRIES}), retrying...`, err.message)
+        await new Promise((r) => setTimeout(r, 1000 * attempt))
+        continue
+      }
+      console.error('[push] failed to get device push token:', err)
+      return null
+    }
   }
+
+  return null
 }
 
 export function useNotificationListeners(

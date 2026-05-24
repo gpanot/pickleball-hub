@@ -1,6 +1,13 @@
 import { getMessaging } from "@/lib/firebase-admin";
 import { prisma } from "@/lib/db";
 
+/**
+ * Send a push notification via Firebase Admin SDK.
+ *
+ * Uses data-only messages (no top-level `notification` key) so that
+ * Expo's ExpoFirebaseMessagingService handles presentation on Android.
+ * Including a `notification` key would bypass the Expo JS layer entirely.
+ */
 export async function sendPushNotification({
   token,
   title,
@@ -23,22 +30,27 @@ export async function sendPushNotification({
   try {
     const messageId = await getMessaging().send({
       token,
-      notification: { title, body },
-      data,
-      android: {
-        notification: {
-          color: "#f5a623",
-          priority: "high",
-          channelId: "default",
-        },
+      // Data-only message — all values must be strings.
+      // Expo's ExpoFirebaseMessagingService reads title/body/channelId/sound
+      // from data and presents the notification through the JS layer.
+      data: {
+        title,
+        message: body,
+        body,
+        channelId: "default",
+        sound: "default",
+        ...data,
       },
+      android: { priority: "high" },
       apns: {
         payload: {
           aps: {
             sound: "default",
             badge: 1,
+            "content-available": 1,
           },
         },
+        headers: { "apns-priority": "10" },
       },
     });
     console.log("Push notification sent, messageId:", messageId);
@@ -46,7 +58,10 @@ export async function sendPushNotification({
   } catch (err: unknown) {
     const firebaseErr = err as { code?: string; message?: string };
     console.error("Push notification failed:", firebaseErr.code, firebaseErr.message);
-    if (firebaseErr.code === "messaging/registration-token-not-registered") {
+    if (
+      firebaseErr.code === "messaging/registration-token-not-registered" ||
+      firebaseErr.code === "messaging/invalid-registration-token"
+    ) {
       await prisma.playerProfile.updateMany({
         where: { pushToken: token },
         data: { pushToken: null },

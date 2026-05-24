@@ -7,6 +7,7 @@ import {
   Alert,
   StyleSheet,
   ScrollView,
+  ActivityIndicator,
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import {
@@ -17,11 +18,14 @@ import {
   Trash2,
   Link2,
   BellRing,
+  RefreshCw,
+  Bug,
 } from 'lucide-react-native'
 import { T } from '../theme'
 import { useAuthStore } from '../stores/authStore'
 import { useUiStore } from '../stores/uiStore'
 import { useSessionStore } from '../stores/sessionStore'
+import { registerForPushNotifications } from '../services/notifications'
 
 export function ProfileSheet({
   onClose,
@@ -113,36 +117,129 @@ export function ProfileSheet({
       : '–'
 
   const [pnsStatus, setPnsStatus] = useState<'idle' | 'sending' | 'ok' | 'no_token' | 'error'>('idle')
+  const [pnsDebug, setPnsDebug] = useState<string[]>([])
+  const [tokenInfo, setTokenInfo] = useState<{
+    registered: boolean
+    tokenPrefix: string | null
+    updatedAt: string | null
+    localToken: string | null
+  } | null>(null)
+  const [tokenLoading, setTokenLoading] = useState(false)
+  const [reregistering, setReregistering] = useState(false)
+
+  const addDebug = (msg: string) => {
+    const ts = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    setPnsDebug((prev) => [`[${ts}] ${msg}`, ...prev].slice(0, 20))
+  }
+
+  // Load token status from backend on mount
+  useEffect(() => {
+    if (!jwt) return
+    setTokenLoading(true)
+    authedFetch('/api/notifications/test')
+      .then((r) => r.json())
+      .then((data) => {
+        setTokenInfo({
+          registered: data.registered ?? false,
+          tokenPrefix: data.tokenPrefix ?? null,
+          updatedAt: data.updatedAt ?? null,
+          localToken: null,
+        })
+      })
+      .catch(() => {})
+      .finally(() => setTokenLoading(false))
+  }, [jwt, authedFetch])
+
+  const handleReregisterToken = async () => {
+    setReregistering(true)
+    addDebug('Starting token re-registration...')
+    try {
+      const token = await registerForPushNotifications()
+      if (!token) {
+        addDebug('No token returned — permission denied or not a physical device')
+        setReregistering(false)
+        return
+      }
+      addDebug(`Got native token: ${token.slice(0, 25)}...`)
+      addDebug(`Token length: ${token.length}, starts with ExponentPushToken: ${token.startsWith('ExponentPushToken')}`)
+
+      const res = await authedFetch('/api/players/push-token', {
+        method: 'POST',
+        body: JSON.stringify({ token }),
+      })
+      const resData = await res.json()
+      addDebug(`Upload response: ${res.status} ${JSON.stringify(resData)}`)
+
+      // Refresh status
+      const statusRes = await authedFetch('/api/notifications/test')
+      const statusData = await statusRes.json()
+      setTokenInfo({
+        registered: statusData.registered ?? false,
+        tokenPrefix: statusData.tokenPrefix ?? null,
+        updatedAt: statusData.updatedAt ?? null,
+        localToken: token.slice(0, 30),
+      })
+      addDebug(`Backend now shows: registered=${statusData.registered}, prefix=${statusData.tokenPrefix}`)
+    } catch (err: any) {
+      addDebug(`Re-register failed: ${err?.message ?? err}`)
+    }
+    setReregistering(false)
+  }
 
   const handleTestPns = async () => {
     setPnsStatus('sending')
-    try {
-      let res = await authedFetch('/api/notifications/test', { method: 'POST' })
-      let data = await res.json()
+    addDebug('--- Test push notification ---')
 
-      // If no token on backend, try re-registering now
-      if (!res.ok && data.registered === false) {
-        const { registerForPushNotifications } = await import('../services/notifications')
+    // Step 1: Check backend status first
+    try {
+      const statusRes = await authedFetch('/api/notifications/test')
+      const statusData = await statusRes.json()
+      addDebug(`Backend status: registered=${statusData.registered}, token=${statusData.tokenPrefix ?? 'none'}, updated=${statusData.updatedAt ?? 'never'}`)
+
+      if (!statusData.registered) {
+        addDebug('No token on backend. Attempting auto-register...')
         const token = await registerForPushNotifications()
         if (token) {
-          await authedFetch('/api/players/push-token', {
+          addDebug(`Got token: ${token.slice(0, 25)}... (len=${token.length})`)
+          const uploadRes = await authedFetch('/api/players/push-token', {
             method: 'POST',
             body: JSON.stringify({ token }),
           })
-          res = await authedFetch('/api/notifications/test', { method: 'POST' })
-          data = await res.json()
+          addDebug(`Token upload: ${uploadRes.status}`)
+        } else {
+          addDebug('Failed to get token from device')
+          setPnsStatus('no_token')
+          return
         }
       }
+    } catch (err: any) {
+      addDebug(`Status check failed: ${err?.message ?? err}`)
+    }
+
+    // Step 2: Send test notification
+    try {
+      addDebug('Sending POST /api/notifications/test...')
+      const res = await authedFetch('/api/notifications/test', { method: 'POST' })
+      const data = await res.json()
+      addDebug(`Response: ${res.status} ${JSON.stringify(data)}`)
 
       if (!res.ok) {
-        setPnsStatus(data.registered === false ? 'no_token' : 'error')
+        if (data.registered === false) {
+          addDebug('Backend says: no token registered')
+          setPnsStatus('no_token')
+        } else {
+          addDebug(`FCM error: code=${data.code ?? '?'}, tokenPrefix=${data.tokenPrefix ?? '?'}`)
+          setPnsStatus('error')
+        }
       } else {
+        addDebug('Push sent successfully!')
         setPnsStatus('ok')
       }
-    } catch {
+    } catch (err: any) {
+      addDebug(`Send failed: ${err?.message ?? err}`)
       setPnsStatus('error')
     }
-    setTimeout(() => setPnsStatus('idle'), 4000)
+    setTimeout(() => setPnsStatus('idle'), 6000)
   }
 
   const handleSignOut = () => {
@@ -343,24 +440,109 @@ export function ProfileSheet({
             {notificationsOn ? 'On' : 'Off'}
           </Text>
         </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.settingsRow}
-          onPress={handleTestPns}
-          disabled={pnsStatus === 'sending'}
-        >
-          <BellRing size={20} color={
-            pnsStatus === 'ok' ? '#22c55e'
-            : pnsStatus === 'no_token' || pnsStatus === 'error' ? '#e24b4a'
-            : '#555'
-          } strokeWidth={2} />
-          <Text style={styles.settingsLabel}>
-            {pnsStatus === 'sending' ? 'Sending…'
-              : pnsStatus === 'ok' ? 'Notification sent ✓'
-              : pnsStatus === 'no_token' ? 'No token registered'
-              : pnsStatus === 'error' ? 'Send failed'
-              : 'Test push notification'}
-          </Text>
-        </TouchableOpacity>
+
+        {/* Push notification debug panel */}
+        <View style={styles.pnsDebugPanel}>
+          <View style={styles.pnsDebugHeader}>
+            <Bug size={16} color="#666" strokeWidth={2} />
+            <Text style={styles.pnsDebugTitle}>Push Notifications</Text>
+          </View>
+
+          {/* Token status */}
+          <View style={styles.pnsTokenStatus}>
+            {tokenLoading ? (
+              <ActivityIndicator size="small" color="#555" />
+            ) : tokenInfo ? (
+              <>
+                <View style={styles.pnsTokenRow}>
+                  <View style={[styles.pnsStatusDot, tokenInfo.registered ? styles.pnsStatusDotOk : styles.pnsStatusDotErr]} />
+                  <Text style={styles.pnsTokenLabel}>
+                    {tokenInfo.registered ? 'Token registered' : 'No token on server'}
+                  </Text>
+                </View>
+                {tokenInfo.tokenPrefix && (
+                  <Text style={styles.pnsTokenMono}>
+                    {tokenInfo.tokenPrefix}...
+                  </Text>
+                )}
+                {tokenInfo.updatedAt && (
+                  <Text style={styles.pnsTokenMeta}>
+                    Updated: {new Date(tokenInfo.updatedAt).toLocaleString()}
+                  </Text>
+                )}
+                {tokenInfo.localToken && (
+                  <Text style={styles.pnsTokenMeta}>
+                    Local: {tokenInfo.localToken}...
+                  </Text>
+                )}
+              </>
+            ) : (
+              <Text style={styles.pnsTokenMeta}>Could not load status</Text>
+            )}
+          </View>
+
+          {/* Action buttons */}
+          <View style={styles.pnsButtonRow}>
+            <TouchableOpacity
+              style={[styles.pnsBtn, styles.pnsBtnSecondary]}
+              onPress={handleReregisterToken}
+              disabled={reregistering}
+            >
+              <RefreshCw size={14} color="#f5a623" strokeWidth={2} />
+              <Text style={styles.pnsBtnTextSecondary}>
+                {reregistering ? 'Registering…' : 'Re-register token'}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.pnsBtn, styles.pnsBtnPrimary,
+                pnsStatus === 'ok' && styles.pnsBtnSuccess,
+                (pnsStatus === 'error' || pnsStatus === 'no_token') && styles.pnsBtnError,
+              ]}
+              onPress={handleTestPns}
+              disabled={pnsStatus === 'sending'}
+            >
+              <BellRing size={14} color={
+                pnsStatus === 'ok' ? '#fff'
+                : pnsStatus === 'no_token' || pnsStatus === 'error' ? '#fff'
+                : '#000'
+              } strokeWidth={2} />
+              <Text style={[styles.pnsBtnTextPrimary,
+                (pnsStatus === 'ok' || pnsStatus === 'error' || pnsStatus === 'no_token') && { color: '#fff' },
+              ]}>
+                {pnsStatus === 'sending' ? 'Sending…'
+                  : pnsStatus === 'ok' ? 'Sent ✓'
+                  : pnsStatus === 'no_token' ? 'No token'
+                  : pnsStatus === 'error' ? 'Failed'
+                  : 'Test push'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Debug log */}
+          {pnsDebug.length > 0 && (
+            <View style={styles.pnsLogBox}>
+              <View style={styles.pnsLogHeader}>
+                <Text style={styles.pnsLogTitle}>Debug log</Text>
+                <TouchableOpacity onPress={() => setPnsDebug([])}>
+                  <Text style={styles.pnsLogClear}>Clear</Text>
+                </TouchableOpacity>
+              </View>
+              {pnsDebug.map((line, i) => (
+                <Text key={i} style={[
+                  styles.pnsLogLine,
+                  line.includes('failed') || line.includes('Failed') || line.includes('error') || line.includes('Error')
+                    ? styles.pnsLogLineError
+                    : line.includes('success') || line.includes('Sent') || line.includes('✓')
+                      ? styles.pnsLogLineOk
+                      : undefined,
+                ]}>
+                  {line}
+                </Text>
+              ))}
+            </View>
+          )}
+        </View>
+
         <TouchableOpacity style={styles.settingsRow} onPress={handleSignOut}>
           <LogOut size={20} color="#555" strokeWidth={2} />
           <Text style={styles.settingsLabel}>Sign out</Text>
@@ -633,5 +815,135 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: '#444',
     lineHeight: 14,
+  },
+  pnsDebugPanel: {
+    backgroundColor: '#111',
+    borderRadius: 12,
+    borderWidth: 0.5,
+    borderColor: '#1e1e1e',
+    marginVertical: 12,
+    padding: 14,
+    gap: 12,
+  },
+  pnsDebugHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  pnsDebugTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#999',
+  },
+  pnsTokenStatus: {
+    gap: 4,
+  },
+  pnsTokenRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  pnsStatusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  pnsStatusDotOk: {
+    backgroundColor: '#22c55e',
+  },
+  pnsStatusDotErr: {
+    backgroundColor: '#e24b4a',
+  },
+  pnsTokenLabel: {
+    fontSize: 13,
+    color: '#ccc',
+    fontWeight: '500',
+  },
+  pnsTokenMono: {
+    fontSize: 11,
+    color: '#666',
+    fontFamily: 'monospace',
+    marginLeft: 16,
+  },
+  pnsTokenMeta: {
+    fontSize: 11,
+    color: '#555',
+    marginLeft: 16,
+  },
+  pnsButtonRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  pnsBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  pnsBtnSecondary: {
+    backgroundColor: '#1a1a1a',
+    borderWidth: 0.5,
+    borderColor: '#333',
+  },
+  pnsBtnPrimary: {
+    backgroundColor: '#f5a623',
+  },
+  pnsBtnSuccess: {
+    backgroundColor: '#22c55e',
+  },
+  pnsBtnError: {
+    backgroundColor: '#e24b4a',
+  },
+  pnsBtnTextSecondary: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#f5a623',
+  },
+  pnsBtnTextPrimary: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#000',
+  },
+  pnsLogBox: {
+    backgroundColor: '#0a0a0a',
+    borderRadius: 8,
+    borderWidth: 0.5,
+    borderColor: '#1a1a1a',
+    padding: 10,
+    gap: 2,
+    maxHeight: 200,
+  },
+  pnsLogHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  pnsLogTitle: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#555',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  pnsLogClear: {
+    fontSize: 10,
+    color: '#f5a623',
+    fontWeight: '600',
+  },
+  pnsLogLine: {
+    fontSize: 10,
+    color: '#666',
+    fontFamily: 'monospace',
+    lineHeight: 15,
+  },
+  pnsLogLineError: {
+    color: '#e24b4a',
+  },
+  pnsLogLineOk: {
+    color: '#22c55e',
   },
 })

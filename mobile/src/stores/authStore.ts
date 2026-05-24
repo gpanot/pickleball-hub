@@ -137,7 +137,7 @@ export const useAuthStore = create<AuthState>()(
             imageUrl: data.imageUrl,
             reclubUserId: data.reclubUserId,
             duprRating: data.duprRating ?? get().duprRating,
-            hasCompletedOnboarding: data.hasCompletedOnboarding,
+            hasCompletedOnboarding: data.hasCompletedOnboarding ?? get().hasCompletedOnboarding,
           })
           return true
         } catch (e) {
