@@ -44,6 +44,9 @@ import { useUiStore } from '../stores/uiStore'
 import type { SwipeDateFilter } from '../stores/uiStore'
 import { FriendsListModal } from '../components/FriendsListModal'
 import type { FriendListItem } from '../components/FriendListRow'
+import { FriendGoingCard } from '../components/FriendGoingCard'
+import type { FriendGoingItem } from '../components/FriendGoingCard'
+import { PlayerProfileSheet } from '../components/PlayerProfileSheet'
 
 /* eslint-disable @typescript-eslint/no-var-requires */
 const CARD_BG_IMAGES = [
@@ -369,6 +372,33 @@ export function SwipeScreen() {
 
   const [playTab, setPlayTab] = useState<'discover' | 'shortlist'>('discover')
   const [expandedSession, setExpandedSession] = useState<Session | null>(null)
+  const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null)
+  const [goingData, setGoingData] = useState<{ friendsGoing: FriendGoingItem[] } | null>(null)
+  const [goingLoading, setGoingLoading] = useState(false)
+  const [goingFilter, setGoingFilter] = useState<'today' | 'tomorrow' | 'all'>('today')
+
+  const auth = useAuthStore.getState()
+
+  const loadGoing = useCallback(async () => {
+    setGoingLoading(true)
+    try {
+      const res = await auth.authedFetch(
+        `/api/feed/friends-going?filter=${goingFilter}`
+      )
+      if (res.ok) {
+        const data = await res.json()
+        setGoingData(data)
+      }
+    } finally {
+      setGoingLoading(false)
+    }
+  }, [auth, goingFilter])
+
+  useEffect(() => {
+    if (playTab === 'shortlist') {
+      loadGoing()
+    }
+  }, [playTab, goingFilter])
 
   const savedSessions = useSessionStore((s) => s.getSavedSessions)()
   const shortlistItems = useMemo(() => savedSessions, [savedSessions])
@@ -530,7 +560,7 @@ export function SwipeScreen() {
         >
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
             <Text style={[s.tabText, playTab === 'shortlist' && s.tabTextActive]}>
-              Shortlist
+              Going
             </Text>
             {shortlistCount > 0 && (
               <View style={s.tabBadge}>
@@ -826,79 +856,135 @@ export function SwipeScreen() {
         </>
       )}
 
-      {/* ── Shortlist tab ─────────────────────────────────────── */}
+      {/* ── Going tab ─────────────────────────────────────────── */}
       {playTab === 'shortlist' && (
-        <ScrollView showsVerticalScrollIndicator={false}>
-          {shortlistItems.length === 0 ? (
-            <View style={s.emptyShortlist}>
-              <Bookmark size={44} color="#1e1e1e" />
-              <Text style={s.emptyShortlistText}>
-                Save sessions while swiping to compare them here
-              </Text>
-              <TouchableOpacity
-                style={s.emptyShortlistBtn}
-                onPress={() => setPlayTab('discover')}
-              >
-                <Text style={s.emptyShortlistBtnText}>Start swiping</Text>
-              </TouchableOpacity>
-            </View>
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 32 }}>
+          {/* Filter pills */}
+          <View style={s.goingFilterRow}>
+            {(['today', 'tomorrow', 'all'] as const).map((key) => {
+              const on = goingFilter === key
+              const label = key === 'today' ? 'Today' : key === 'tomorrow' ? 'Tomorrow' : 'All'
+              return (
+                <TouchableOpacity
+                  key={key}
+                  onPress={() => setGoingFilter(key)}
+                  style={[s.goingFilterPill, on && s.goingFilterPillActive]}
+                >
+                  <Text style={[s.goingFilterText, on && s.goingFilterTextActive]}>
+                    {label}
+                  </Text>
+                </TouchableOpacity>
+              )
+            })}
+          </View>
+
+          {goingLoading ? (
+            <ActivityIndicator color={T.amber} style={{ marginTop: 40 }} />
           ) : (
             <>
-              <Text style={s.shortlistHeader}>Pick one to join</Text>
-              {shortlistItems.map((item, index) => (
-                <TouchableOpacity
-                  key={`${item.id}-${index}`}
-                  style={[s.shortlistRow, index === 0 && s.shortlistRowBest]}
-                  activeOpacity={0.8}
-                  onPress={() => setExpandedSession(item)}
-                >
-                  <View style={s.shortlistInfo}>
-                    <Text style={s.shortlistName} numberOfLines={1}>
-                      {item.name}
+              {/* Friends going section */}
+              {goingData && goingData.friendsGoing.length > 0 ? (
+                <>
+                  <View style={s.goingSectionHeader}>
+                    <Text style={s.goingSectionLabel}>
+                      {goingFilter === 'today' ? 'Friends going today'
+                        : goingFilter === 'tomorrow' ? 'Friends going tomorrow'
+                        : 'Friends going'}
                     </Text>
-                    <Text style={s.shortlistMeta}>
-                      {formatTime(item.startTime)} · {formatDistance(item.distanceKm)} · {item.spotsLeft} left
+                    <Text style={s.goingSectionCount}>
+                      {goingData.friendsGoing.length} session{goingData.friendsGoing.length !== 1 ? 's' : ''}
                     </Text>
-                    {index === 0 && (
-                      <Text style={s.shortlistBestLabel}>Best match</Text>
-                    )}
-                    {item.friendCount > 0 && (
-                      <View style={s.shortlistFriendsRow}>
-                        {item.friends.slice(0, 3).map((f, i) => (
-                          <View
-                            key={`sl-friend-${f.userId}-${i}`}
-                            style={[
-                              s.shortlistFriendAvatar,
-                              i > 0 && { marginLeft: -6 },
-                              { borderColor: RING_COLORS[i % RING_COLORS.length], zIndex: 3 - i },
-                            ]}
-                          >
-                            <PlayerAvatar
-                              userId={f.userId}
-                              displayName={f.displayName}
-                              imageUrl={f.imageUrl}
-                              size={22}
-                            />
-                          </View>
-                        ))}
-                        <Text style={s.shortlistFriendsLabel}>
-                          {item.friendCount} {item.friendCount === 1 ? 'friend' : 'friends'}
+                  </View>
+
+                  {goingData.friendsGoing.map((item, index) => (
+                    <FriendGoingCard
+                      key={item.sessionId}
+                      item={item}
+                      isTop={index === 0}
+                      onPlayerPress={(userId) => setSelectedPlayerId(userId)}
+                    />
+                  ))}
+                </>
+              ) : (
+                <View style={s.emptyFriends}>
+                  <Text style={s.emptyFriendsIcon}>👥</Text>
+                  <Text style={s.emptyFriendsTitle}>
+                    {goingFilter === 'today'
+                      ? 'No friends going today yet'
+                      : goingFilter === 'tomorrow'
+                        ? 'No friends going tomorrow yet'
+                        : 'No friends going'}
+                  </Text>
+                  <Text style={s.emptyFriendsSub}>
+                    Follow players in Circle to see where they play
+                  </Text>
+                </View>
+              )}
+
+              {/* Saved sessions section */}
+              {shortlistItems.length > 0 && (
+                <>
+                  <View style={s.savedDivider} />
+                  <View style={s.goingSectionHeader}>
+                    <Text style={s.goingSectionLabel}>Your saved sessions</Text>
+                    <Text style={s.goingSectionCount}>
+                      {shortlistItems.length} saved
+                    </Text>
+                  </View>
+                  {shortlistItems.map((item, index) => (
+                    <TouchableOpacity
+                      key={`saved-${item.id}-${index}`}
+                      style={[
+                        s.savedRow,
+                        index === shortlistItems.length - 1 && { borderBottomWidth: 0 },
+                      ]}
+                      activeOpacity={0.8}
+                      onPress={() => setExpandedSession(item)}
+                    >
+                      <View style={s.savedThumb}>
+                        <Text style={s.savedThumbPct} numberOfLines={1}>
+                          {item.matchScore > 0 ? `${item.matchScore}%` : 'New'}
                         </Text>
                       </View>
-                    )}
-                  </View>
-                  <TouchableOpacity
-                    style={s.shortlistJoin}
-                    onPress={() => Linking.openURL(item.eventUrl)}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  >
-                    <Text style={s.shortlistJoinText}>Join on{'\n'}Reclub</Text>
+                      <View style={s.savedInfo}>
+                        <Text style={s.savedName} numberOfLines={1}>{item.name}</Text>
+                        <Text style={s.savedMeta}>
+                          {formatTime(item.startTime)} · {item.spotsLeft} spots left
+                        </Text>
+                        {item.club?.name && (
+                          <Text style={s.savedVenue} numberOfLines={1}>{item.club.name}</Text>
+                        )}
+                      </View>
+                      <TouchableOpacity
+                        style={s.savedJoinBtn}
+                        onPress={() => item.eventUrl && Linking.openURL(item.eventUrl)}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <Text style={s.savedJoinText}>Join on{'\n'}Reclub</Text>
+                      </TouchableOpacity>
+                    </TouchableOpacity>
+                  ))}
+                  <TouchableOpacity style={s.keepSwiping} onPress={() => setPlayTab('discover')}>
+                    <Text style={s.keepSwipingText}>Keep swiping for more →</Text>
                   </TouchableOpacity>
-                </TouchableOpacity>
-              ))}
-              <TouchableOpacity style={s.keepSwiping} onPress={() => setPlayTab('discover')}>
-                <Text style={s.keepSwipingText}>Keep swiping for more →</Text>
-              </TouchableOpacity>
+                </>
+              )}
+
+              {/* Both empty */}
+              {goingData && goingData.friendsGoing.length === 0 && shortlistItems.length === 0 && (
+                <View style={s.emptyShortlist}>
+                  <Bookmark size={44} color="#1e1e1e" />
+                  <Text style={s.emptyShortlistText}>
+                    Swipe sessions in Discover to save them here
+                  </Text>
+                  <TouchableOpacity
+                    style={s.emptyShortlistBtn}
+                    onPress={() => setPlayTab('discover')}
+                  >
+                    <Text style={s.emptyShortlistBtnText}>Start swiping</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
             </>
           )}
         </ScrollView>
@@ -953,6 +1039,11 @@ export function SwipeScreen() {
         title={friendsModal.title}
         friends={friendsModal.friends}
         overflowNote={friendsModal.overflowNote}
+      />
+
+      <PlayerProfileSheet
+        userId={selectedPlayerId}
+        onClose={() => setSelectedPlayerId(null)}
       />
     </View>
   )
@@ -1118,5 +1209,140 @@ const s = StyleSheet.create({
   expandedSheet: {
     borderRadius: 24,
     overflow: 'hidden',
+  },
+  // ── Going tab styles ──────────────────────────────────────────
+  goingFilterRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingBottom: 10,
+    alignItems: 'center',
+  },
+  goingFilterPill: {
+    paddingHorizontal: 14,
+    paddingVertical: 5,
+    borderRadius: 20,
+    backgroundColor: T.input,
+    borderWidth: 1,
+    borderColor: T.border,
+  },
+  goingFilterPillActive: {
+    backgroundColor: T.amber,
+    borderColor: T.amber,
+  },
+  goingFilterText: {
+    fontSize: 12,
+    fontWeight: '400',
+    color: T.muted,
+  },
+  goingFilterTextActive: {
+    color: '#000',
+    fontWeight: '600',
+  },
+  goingSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 8,
+  },
+  goingSectionLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#666',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+  },
+  goingSectionCount: {
+    fontSize: 11,
+    color: '#444',
+  },
+  emptyFriends: {
+    alignItems: 'center',
+    paddingVertical: 48,
+    paddingHorizontal: 28,
+    gap: 8,
+  },
+  emptyFriendsIcon: {
+    fontSize: 36,
+    marginBottom: 4,
+  },
+  emptyFriendsTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#aaa',
+    textAlign: 'center',
+  },
+  emptyFriendsSub: {
+    fontSize: 12,
+    color: '#444',
+    textAlign: 'center',
+    lineHeight: 17,
+    marginTop: 2,
+  },
+  savedDivider: {
+    height: 1,
+    backgroundColor: '#161616',
+    marginHorizontal: 16,
+    marginTop: 6,
+    marginBottom: 2,
+  },
+  savedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#111',
+    gap: 12,
+  },
+  savedThumb: {
+    width: 44,
+    height: 44,
+    borderRadius: 10,
+    backgroundColor: '#1a1a1a',
+    borderWidth: 1,
+    borderColor: '#2a2a2a',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  savedThumbPct: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: T.amber,
+  },
+  savedInfo: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  savedName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#eee',
+  },
+  savedMeta: {
+    fontSize: 11,
+    color: '#555',
+  },
+  savedVenue: {
+    fontSize: 10,
+    color: '#3a3a3a',
+  },
+  savedJoinBtn: {
+    backgroundColor: '#f5a623',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    alignItems: 'center',
+    flexShrink: 0,
+  },
+  savedJoinText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#1a0a00',
+    textAlign: 'center',
   },
 })
