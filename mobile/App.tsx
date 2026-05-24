@@ -6,10 +6,10 @@ import { StatusBar } from 'expo-status-bar'
 import Constants from 'expo-constants'
 import { NavBar, type TabId } from './src/components/NavBar'
 import { SwipeScreen } from './src/screens/SwipeScreen'
-import { ShortlistScreen } from './src/screens/ShortlistScreen'
 import { CircleScreen } from './src/screens/CircleScreen'
 import { OnboardingScreen } from './src/screens/OnboardingScreen'
 import { PeopleYouMayKnowScreen } from './src/screens/PeopleYouMayKnowScreen'
+import { ProfileSheet } from './src/components/ProfileSheet'
 import { SignUpModalProvider } from './src/contexts/SignUpModalContext'
 import { ProfileMenuProvider } from './src/contexts/ProfileMenuContext'
 import { ToastOverlay } from './src/components/Toast'
@@ -18,21 +18,22 @@ import { useSessionStore } from './src/stores/sessionStore'
 import { useUiStore } from './src/stores/uiStore'
 import { useAvatarCacheStore } from './src/stores/avatarCacheStore'
 import { registerForPushNotifications, useNotificationListeners } from './src/services/notifications'
+import { SplashScreen } from './src/screens/SplashScreen'
 import { debugLog } from './src/lib/debug'
 
-type FlowScreen = 'main' | 'onboarding' | 'people'
+type FlowScreen = 'main' | 'onboarding' | 'people' | 'profile'
 
 export default function App() {
+  const [showSplash, setShowSplash] = useState(true)
   const [activeTab, setActiveTab] = useState<TabId>('swipe')
   const [flowScreen, setFlowScreen] = useState<FlowScreen>('main')
   const [onboardingInitialStep, setOnboardingInitialStep] = useState(0)
-  const savedCount = useSessionStore((s) => s.savedIds.size)
 
   const jwt = useAuthStore((s) => s.jwt)
   const pushTokenRegistered = useRef(false)
 
   useEffect(() => {
-    debugLog('App', '=== TheHub Boot Diagnostics ===')
+    debugLog('App', '=== SQUADD Boot Diagnostics ===')
     debugLog('App', `Platform: ${Platform.OS} ${Platform.Version}`)
     debugLog('App', `__DEV__: ${__DEV__}`)
     debugLog('App', `API Base: ${resolveApiBase()}`)
@@ -71,7 +72,6 @@ export default function App() {
       },
       (response) => {
         const data = response.notification.request.content.data as Record<string, string> | undefined
-        if (data?.screen === 'Shortlist') setActiveTab('shortlist')
         if (data?.screen === 'Circle') setActiveTab('circle')
       }
     )
@@ -103,6 +103,7 @@ export default function App() {
 
   const handleOnboardingComplete = () => {
     const { reclubUserId } = useAuthStore.getState()
+    useSessionStore.getState().fetchSessions(null, null)
     if (reclubUserId) {
       setFlowScreen('people')
     } else {
@@ -112,8 +113,13 @@ export default function App() {
   }
 
   const handlePeopleComplete = () => {
+    useSessionStore.getState().fetchSessions(null, null)
     setFlowScreen('main')
     setActiveTab('circle')
+  }
+
+  if (showSplash) {
+    return <SplashScreen onFinish={() => setShowSplash(false)} />
   }
 
   if (flowScreen === 'onboarding') {
@@ -142,17 +148,19 @@ export default function App() {
     )
   }
 
-  const renderScreen = () => {
-    switch (activeTab) {
-      case 'swipe':
-        return <SwipeScreen onNavigateToShortlist={() => setActiveTab('shortlist')} />
-      case 'circle':
-        return <CircleScreen />
-      case 'shortlist':
-        return <ShortlistScreen onNavigateToSwipe={() => setActiveTab('swipe')} />
-      default:
-        return null
-    }
+  if (flowScreen === 'profile') {
+    return (
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <SafeAreaProvider>
+          <StatusBar style="light" />
+          <ProfileSheet
+            onClose={() => setFlowScreen('main')}
+            onLinkReclub={startLinkReclub}
+            onRedoOnboarding={startRedoOnboarding}
+          />
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
+    )
   }
 
   return (
@@ -161,15 +169,19 @@ export default function App() {
         <StatusBar style="light" />
         <SignUpModalProvider onSignedIn={handleSignedIn}>
           <ProfileMenuProvider
-            onLinkReclub={startLinkReclub}
-            onRedoOnboarding={startRedoOnboarding}
+            onOpenProfile={() => setFlowScreen('profile')}
           >
             <View style={{ flex: 1 }}>
-              {renderScreen()}
+              {/* All screens stay mounted — hidden via display:'none' to prevent reloads */}
+              <View style={{ flex: 1, display: activeTab === 'circle' ? 'flex' : 'none' }}>
+                <CircleScreen />
+              </View>
+              <View style={{ flex: 1, display: activeTab === 'swipe' ? 'flex' : 'none' }}>
+                <SwipeScreen />
+              </View>
               <NavBar
                 active={activeTab}
                 onChange={setActiveTab}
-                badges={{ shortlist: savedCount }}
               />
               <ToastOverlay />
             </View>

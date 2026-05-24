@@ -5,19 +5,29 @@ import { debugLog, debugError } from '../lib/debug'
 import type { Session } from '../data'
 
 const SAVED_IDS_KEY = 'saved-session-ids'
+const PAGE_SIZE = 10
+// Trigger prefetch when this many cards remain in the current batch
+const PREFETCH_THRESHOLD = 5
 
 interface SessionState {
   sessions: Session[]
   savedIds: Set<number>
   loading: boolean
+  prefetching: boolean
+  hasMore: boolean
+  nextOffset: number
+  totalCount: number | null
   error: string | null
   lastFetchedAt: number | null
+  _lastLat: number | null
+  _lastLng: number | null
 
   currentIdx: number
   swipeHistory: number[]
 
   fetchSessions: (lat?: number | null, lng?: number | null) => Promise<void>
   fetchIfNeeded: (lat?: number | null, lng?: number | null) => Promise<void>
+  prefetchNextBatch: () => Promise<void>
   saveSession: (id: number) => void
   unsaveSession: (id: number) => void
   getSavedSessions: () => Session[]
@@ -29,22 +39,19 @@ interface SessionState {
   resetDeck: () => void
 }
 
-function vnNowMinutes(): number {
-  const vn = new Date(Date.now() + 7 * 60 * 60 * 1000)
-  return vn.getUTCHours() * 60 + vn.getUTCMinutes()
-}
-
-function timeToMinutes(t: string): number {
-  const [h, m] = t.split(':').map(Number)
-  return h * 60 + (m || 0)
-}
 
 export const useSessionStore = create<SessionState>()((set, get) => ({
   sessions: [],
   savedIds: new Set(),
   loading: false,
+  prefetching: false,
+  hasMore: false,
+  nextOffset: 0,
+  totalCount: null,
   error: null,
   lastFetchedAt: null,
+  _lastLat: null,
+  _lastLng: null,
 
   currentIdx: 0,
   swipeHistory: [],
@@ -58,8 +65,9 @@ export const useSessionStore = create<SessionState>()((set, get) => ({
         params.set('lat', lat.toString())
         params.set('lng', lng.toString())
       }
-      const qs = params.toString()
-      const path = `/api/sessions/swipe-deck${qs ? `?${qs}` : ''}`
+      params.set('limit', PAGE_SIZE.toString())
+      params.set('offset', '0')
+      const path = `/api/sessions/swipe-deck?${params.toString()}`
       debugLog('sessions', `fetchSessions → ${path}`)
       const res = await authedFetch(path)
       if (!res.ok) {
@@ -69,12 +77,9 @@ export const useSessionStore = create<SessionState>()((set, get) => ({
       }
       const data = await res.json()
       const all: Session[] = data.sessions ?? []
-      debugLog('sessions', `API returned ${all.length} sessions`)
-      const nowMin = vnNowMinutes()
-      const sessions = all.filter(
-        (s) => s.spotsLeft > 0 && timeToMinutes(s.startTime) >= nowMin,
-      )
-      debugLog('sessions', `After time/spots filter: ${sessions.length} sessions (nowMin=${nowMin})`)
+      debugLog('sessions', `API returned ${all.length} sessions (hasMore=${data.hasMore})`)
+      const sessions = all.filter((s) => s.spotsLeft > 0)
+      debugLog('sessions', `After spots filter: ${sessions.length} sessions`)
 
       const sessionIdSet = new Set(sessions.map((s) => s.id))
       const { savedIds: prevSaved } = get()
@@ -83,7 +88,19 @@ export const useSessionStore = create<SessionState>()((set, get) => ({
         AsyncStorage.setItem(SAVED_IDS_KEY, JSON.stringify([...pruned]))
       }
 
-      set({ sessions, savedIds: pruned, loading: false, lastFetchedAt: Date.now(), currentIdx: 0, swipeHistory: [] })
+      set({
+        sessions,
+        savedIds: pruned,
+        loading: false,
+        lastFetchedAt: Date.now(),
+        currentIdx: 0,
+        swipeHistory: [],
+        hasMore: data.hasMore ?? false,
+        nextOffset: PAGE_SIZE,
+        totalCount: data.total ?? null,
+        _lastLat: lat ?? null,
+        _lastLng: lng ?? null,
+      })
     } catch (err) {
       debugError('sessions', 'fetchSessions FAILED', err)
       set({
@@ -98,6 +115,44 @@ export const useSessionStore = create<SessionState>()((set, get) => ({
     if (loading) return
     if (lastFetchedAt !== null) return
     await get().fetchSessions(lat, lng)
+  },
+
+  prefetchNextBatch: async () => {
+    const { hasMore, prefetching, loading, nextOffset, _lastLat, _lastLng } = get()
+    if (!hasMore || prefetching || loading) return
+    set({ prefetching: true })
+    try {
+      const { authedFetch } = useAuthStore.getState()
+      const params = new URLSearchParams()
+      if (_lastLat != null && _lastLng != null) {
+        params.set('lat', _lastLat.toString())
+        params.set('lng', _lastLng.toString())
+      }
+      params.set('limit', PAGE_SIZE.toString())
+      params.set('offset', nextOffset.toString())
+      const path = `/api/sessions/swipe-deck?${params.toString()}`
+      debugLog('sessions', `prefetchNextBatch → ${path}`)
+      const res = await authedFetch(path)
+      if (!res.ok) {
+        debugError('sessions', `prefetch API error ${res.status}`)
+        return
+      }
+      const data = await res.json()
+      const incoming: Session[] = data.sessions ?? []
+      const filtered = incoming.filter((s) => s.spotsLeft > 0)
+      debugLog('sessions', `Prefetched ${filtered.length} more sessions`)
+
+      set((state) => ({
+        sessions: [...state.sessions, ...filtered],
+        hasMore: data.hasMore ?? false,
+        nextOffset: nextOffset + PAGE_SIZE,
+        totalCount: data.total ?? state.totalCount,
+        prefetching: false,
+      }))
+    } catch (err) {
+      debugError('sessions', 'prefetchNextBatch FAILED', err)
+      set({ prefetching: false })
+    }
   },
 
   loadSavedIds: async () => {
@@ -143,6 +198,11 @@ export const useSessionStore = create<SessionState>()((set, get) => ({
       swipeHistory: [...state.swipeHistory, state.currentIdx],
       currentIdx: state.currentIdx + 1,
     }))
+    // Prefetch next batch when PREFETCH_THRESHOLD cards remain
+    const { currentIdx: nextIdx, sessions: s } = get()
+    if (s.length - nextIdx <= PREFETCH_THRESHOLD) {
+      get().prefetchNextBatch()
+    }
   },
 
   advanceSkip: () => {
@@ -150,6 +210,11 @@ export const useSessionStore = create<SessionState>()((set, get) => ({
       swipeHistory: [...state.swipeHistory, state.currentIdx],
       currentIdx: state.currentIdx + 1,
     }))
+    // Prefetch next batch when PREFETCH_THRESHOLD cards remain
+    const { currentIdx: nextIdx, sessions: s } = get()
+    if (s.length - nextIdx <= PREFETCH_THRESHOLD) {
+      get().prefetchNextBatch()
+    }
   },
 
   undo: () => {

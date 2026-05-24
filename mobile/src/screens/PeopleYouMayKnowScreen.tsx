@@ -3,9 +3,7 @@ import {
   View,
   Text,
   TouchableOpacity,
-  FlatList,
   StyleSheet,
-  ActivityIndicator,
   ScrollView,
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -35,6 +33,55 @@ type LastSession = {
   }[]
 }
 
+/* ── Skeleton block ──────────────────────────────────────────── */
+function SkeletonRow() {
+  return (
+    <View style={skeletonStyles.row}>
+      <View style={skeletonStyles.avatar} />
+      <View style={{ flex: 1, gap: 6 }}>
+        <View style={skeletonStyles.lineWide} />
+        <View style={skeletonStyles.lineNarrow} />
+      </View>
+      <View style={skeletonStyles.btn} />
+    </View>
+  )
+}
+
+const skeletonStyles = StyleSheet.create({
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 12,
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#1e1e1e',
+  },
+  avatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#1e1e1e',
+  },
+  lineWide: {
+    height: 13,
+    borderRadius: 6,
+    backgroundColor: '#1e1e1e',
+    width: '60%',
+  },
+  lineNarrow: {
+    height: 11,
+    borderRadius: 6,
+    backgroundColor: '#181818',
+    width: '40%',
+  },
+  btn: {
+    width: 72,
+    height: 34,
+    borderRadius: 8,
+    backgroundColor: '#1e1e1e',
+  },
+})
+
 export function PeopleYouMayKnowScreen({
   onComplete,
   embedded = false,
@@ -44,7 +91,9 @@ export function PeopleYouMayKnowScreen({
 }) {
   const insets = useSafeAreaInsets()
   const { authedFetch, reclubUserId, ensureServerAuth } = useAuthStore()
-  const [loading, setLoading] = useState(true)
+  // Split loading: coPlayers and sessions load independently
+  const [coPlayersLoading, setCoPlayersLoading] = useState(true)
+  const [sessionsLoading, setSessionsLoading] = useState(true)
   const [error, setError] = useState(false)
   const [authReady, setAuthReady] = useState(false)
   const [lastSessions, setLastSessions] = useState<LastSession[]>([])
@@ -57,38 +106,37 @@ export function PeopleYouMayKnowScreen({
       if (res.ok) {
         const list = (await res.json()) as { userId: string }[]
         setFollowedIds(new Set(list.map((f) => f.userId)))
-        if (__DEV__) {
-          console.log('[PeopleYouMayKnow] existing follows', list.length)
-        }
-      } else if (__DEV__) {
-        const body = await res.text()
-        console.warn('[PeopleYouMayKnow] GET /api/follows', res.status, body)
       }
-    } catch (e) {
-      if (__DEV__) console.warn('[PeopleYouMayKnow] loadExistingFollows', e)
+    } catch {
+      // non-fatal
     }
   }, [authedFetch])
 
   const loadData = useCallback(async () => {
     if (!reclubUserId) {
-      setLoading(false)
+      setCoPlayersLoading(false)
+      setSessionsLoading(false)
       return
     }
     setError(false)
-    setLoading(true)
     try {
       const res = await authedFetch(`/api/players/${reclubUserId}/co-players`)
       if (res.ok) {
         const data = await res.json()
-        setLastSessions(data.lastSessions ?? [])
+        // Show coPlayers first as soon as they arrive
         setCoPlayers(data.coPlayers ?? [])
+        setCoPlayersLoading(false)
+        setLastSessions(data.lastSessions ?? [])
+        setSessionsLoading(false)
       } else {
         setError(true)
+        setCoPlayersLoading(false)
+        setSessionsLoading(false)
       }
     } catch {
       setError(true)
-    } finally {
-      setLoading(false)
+      setCoPlayersLoading(false)
+      setSessionsLoading(false)
     }
   }, [authedFetch, reclubUserId])
 
@@ -98,20 +146,16 @@ export function PeopleYouMayKnowScreen({
       const ok = await ensureServerAuth()
       if (cancelled) return
       setAuthReady(ok)
-      if (__DEV__) {
-        console.log(
-          '[PeopleYouMayKnow] authReady',
-          ok,
-          'jwt',
-          useAuthStore.getState().jwt?.slice(0, 20)
-        )
-      }
       if (!reclubUserId) {
-        setLoading(false)
+        setCoPlayersLoading(false)
+        setSessionsLoading(false)
         return
       }
-      if (ok) await loadExistingFollows()
-      await loadData()
+      // Run follows fetch and data fetch in parallel
+      await Promise.all([
+        ok ? loadExistingFollows() : Promise.resolve(),
+        loadData(),
+      ])
     })()
     return () => {
       cancelled = true
@@ -154,50 +198,7 @@ export function PeopleYouMayKnowScreen({
 
   const topPad = embedded ? 0 : insets.top + 12
 
-  if (loading) {
-    return (
-      <View style={[styles.container, { paddingTop: embedded ? 20 : insets.top + 40 }]}>
-        <ActivityIndicator size="large" color={T.amber} />
-      </View>
-    )
-  }
-
-  if (error) {
-    return (
-      <View style={[styles.container, { paddingTop: embedded ? 20 : insets.top + 40, alignItems: 'center', justifyContent: 'center' }]}>
-        <AlertCircle size={40} color="#666" strokeWidth={1.5} />
-        <Text style={{ fontSize: 16, fontWeight: '600', color: '#fff', marginTop: 16 }}>
-          Couldn't load suggestions
-        </Text>
-        <Text style={{ fontSize: 13, color: '#888', marginTop: 6, textAlign: 'center' }}>
-          Check your connection and try again
-        </Text>
-        <TouchableOpacity
-          onPress={loadData}
-          style={{
-            marginTop: 20,
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 8,
-            backgroundColor: T.amber,
-            borderRadius: 12,
-            paddingVertical: 12,
-            paddingHorizontal: 24,
-          }}
-        >
-          <RefreshCw size={16} color="#0B0B0C" strokeWidth={2} />
-          <Text style={{ fontSize: 15, fontWeight: '700', color: '#0B0B0C' }}>Retry</Text>
-        </TouchableOpacity>
-        {!embedded && (
-          <TouchableOpacity style={[styles.skipBtn, { marginTop: 16 }]} onPress={onComplete}>
-            <Text style={styles.skipLabel}>Skip</Text>
-          </TouchableOpacity>
-        )}
-      </View>
-    )
-  }
-
-  if (!reclubUserId) {
+  if (!reclubUserId && !coPlayersLoading) {
     return (
       <View style={[styles.container, { paddingTop: embedded ? 20 : insets.top + 40, alignItems: 'center' }]}>
         <Text style={styles.heading}>No Reclub profile linked</Text>
@@ -214,20 +215,52 @@ export function PeopleYouMayKnowScreen({
   return (
     <View style={[styles.container, { paddingTop: topPad, paddingHorizontal: embedded ? 0 : 20 }]}>
       <ScrollView showsVerticalScrollIndicator={false}>
-        {(coPlayers.length > 0 || lastSessions.length > 0) && (
-          <Text style={styles.purposeText}>
-            Follow players you've played with. You'll see their games in your
-            feed, join the same sessions, and get alerts when they book a court.
-          </Text>
-        )}
+        {/* Purpose text — always shown immediately */}
+        <Text style={styles.purposeText}>
+          Follow players you've played with. You'll see their games in your
+          feed, join the same sessions, and get alerts when they book a court.
+        </Text>
 
-        {coPlayers.length > 0 && (
-          <View style={{ marginBottom: 24 }}>
-            <Text style={styles.heading}>People you may know</Text>
-            <Text style={styles.subheading}>
-              Tap Follow on anyone you want to keep track of
+        {/* People you may know — shown first, with skeleton while loading */}
+        <View style={{ marginBottom: 24 }}>
+          <Text style={styles.heading}>People you may know</Text>
+          <Text style={styles.subheading}>
+            Tap Follow on anyone you want to keep track of
+          </Text>
+          {coPlayersLoading ? (
+            <>
+              <SkeletonRow />
+              <SkeletonRow />
+              <SkeletonRow />
+            </>
+          ) : error ? (
+            <View style={{ alignItems: 'center', paddingVertical: 20, gap: 10 }}>
+              <AlertCircle size={32} color="#666" strokeWidth={1.5} />
+              <Text style={{ fontSize: 13, color: '#888', textAlign: 'center' }}>
+                Couldn't load suggestions
+              </Text>
+              <TouchableOpacity
+                onPress={loadData}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 6,
+                  backgroundColor: T.amber,
+                  borderRadius: 10,
+                  paddingVertical: 10,
+                  paddingHorizontal: 20,
+                }}
+              >
+                <RefreshCw size={14} color="#0B0B0C" strokeWidth={2} />
+                <Text style={{ fontSize: 14, fontWeight: '700', color: '#0B0B0C' }}>Retry</Text>
+              </TouchableOpacity>
+            </View>
+          ) : coPlayers.length === 0 ? (
+            <Text style={{ fontSize: 13, color: '#555', marginTop: 8 }}>
+              No suggestions yet — play more sessions on Reclub to discover people.
             </Text>
-            {coPlayers.map((p) => {
+          ) : (
+            coPlayers.map((p) => {
               const isFollowed = followedIds.has(p.userId)
               return (
                 <View key={p.userId} style={styles.coPlayerRow}>
@@ -265,17 +298,27 @@ export function PeopleYouMayKnowScreen({
                   </TouchableOpacity>
                 </View>
               )
-            })}
-          </View>
-        )}
+            })
+          )}
+        </View>
 
-        {lastSessions.length > 0 && (
-          <View style={{ marginBottom: 24 }}>
-            <Text style={styles.heading}>Your recent sessions</Text>
-            <Text style={styles.subheading}>
-              Players from games you've already joined
+        {/* Your recent sessions — shown below, with its own skeleton */}
+        <View style={{ marginBottom: 24 }}>
+          <Text style={styles.heading}>Your recent sessions</Text>
+          <Text style={styles.subheading}>
+            Players from games you've already joined
+          </Text>
+          {sessionsLoading ? (
+            <View style={{ paddingTop: 8 }}>
+              <View style={[skeletonStyles.lineWide, { marginBottom: 10, height: 56, borderRadius: 12, width: '100%', backgroundColor: '#1a1a1a' }]} />
+              <View style={[skeletonStyles.lineWide, { height: 56, borderRadius: 12, width: '100%', backgroundColor: '#1a1a1a' }]} />
+            </View>
+          ) : lastSessions.length === 0 ? (
+            <Text style={{ fontSize: 13, color: '#555', marginTop: 8 }}>
+              No recent sessions found on Reclub.
             </Text>
-            {lastSessions.map((session) => (
+          ) : (
+            lastSessions.map((session) => (
               <View key={session.sessionId} style={styles.sessionCard}>
                 <Text style={styles.sessionName}>{session.name}</Text>
                 <Text style={styles.sessionMeta}>
@@ -320,9 +363,9 @@ export function PeopleYouMayKnowScreen({
                   })}
                 </ScrollView>
               </View>
-            ))}
-          </View>
-        )}
+            ))
+          )}
+        </View>
       </ScrollView>
 
       {!embedded && (

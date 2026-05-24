@@ -3,9 +3,7 @@ import React, {
   useCallback,
   useContext,
   useMemo,
-  useState,
 } from 'react'
-import { ProfileSheet } from '../components/ProfileSheet'
 
 type ProfileMenuContextValue = {
   openProfileSheet: () => void
@@ -15,29 +13,18 @@ const ProfileMenuContext = createContext<ProfileMenuContextValue | null>(null)
 
 export function ProfileMenuProvider({
   children,
-  onLinkReclub,
-  onRedoOnboarding,
+  onOpenProfile,
 }: {
   children: React.ReactNode
-  onLinkReclub?: () => void
-  onRedoOnboarding?: () => void
+  onOpenProfile: () => void
 }) {
-  const [visible, setVisible] = useState(false)
-
-  const openProfileSheet = useCallback(() => setVisible(true), [])
-  const closeProfileSheet = useCallback(() => setVisible(false), [])
+  const openProfileSheet = useCallback(() => onOpenProfile(), [onOpenProfile])
 
   const value = useMemo(() => ({ openProfileSheet }), [openProfileSheet])
 
   return (
     <ProfileMenuContext.Provider value={value}>
       {children}
-      <ProfileSheet
-        visible={visible}
-        onClose={closeProfileSheet}
-        onLinkReclub={onLinkReclub}
-        onRedoOnboarding={onRedoOnboarding}
-      />
     </ProfileMenuContext.Provider>
   )
 }

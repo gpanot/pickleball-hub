@@ -2,16 +2,14 @@ import React, { useCallback, useEffect, useState } from 'react'
 import {
   View,
   Text,
-  Modal,
-  Pressable,
   TouchableOpacity,
   Image,
   Alert,
   StyleSheet,
-  PanResponder,
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import {
+  ChevronLeft,
   RotateCcw,
   Bell,
   LogOut,
@@ -24,12 +22,10 @@ import { useUiStore } from '../stores/uiStore'
 import { useSessionStore } from '../stores/sessionStore'
 
 export function ProfileSheet({
-  visible,
   onClose,
   onLinkReclub,
   onRedoOnboarding,
 }: {
-  visible: boolean
   onClose: () => void
   onLinkReclub?: () => void
   onRedoOnboarding?: () => void
@@ -52,6 +48,22 @@ export function ProfileSheet({
   const sessionsCount = useSessionStore((s) => s.currentIdx)
 
   const [followingCount, setFollowingCount] = useState(0)
+  const [kudos, setKudos] = useState({ fistbump: 0, flame: 0, star: 0 })
+
+  const [streakData, setStreakData] = useState<{
+    currentStreak: number
+    weeklyPlayed: boolean[]
+    circleSessionsThisWeek: number
+    mySessionsThisWeek: number
+    streakStartDate: string | null
+  }>({
+    currentStreak: 0,
+    weeklyPlayed: [],
+    circleSessionsThisWeek: 0,
+    mySessionsThisWeek: 0,
+    streakStartDate: null,
+  })
+  const [streakDataLoaded, setStreakDataLoaded] = useState(false)
 
   const loadFollowing = useCallback(async () => {
     if (!jwt) return
@@ -68,10 +80,29 @@ export function ProfileSheet({
   }, [authedFetch, jwt, ensureServerAuth])
 
   useEffect(() => {
-    if (visible && jwt) {
+    if (jwt) {
       loadFollowing()
+      if (reclubUserId) {
+        authedFetch(`/api/kudos?toPlayerId=${reclubUserId}`)
+          .then(r => r.ok ? r.json() : null)
+          .then(data => {
+            if (data) setKudos({ fistbump: data.fistbump ?? 0, flame: data.flame ?? 0, star: data.star ?? 0 })
+          })
+          .catch(() => {})
+      }
     }
-  }, [visible, jwt, loadFollowing])
+  }, [jwt, loadFollowing, reclubUserId, authedFetch])
+
+  useEffect(() => {
+    if (!jwt) return
+    authedFetch('/api/players/streak')
+      .then((r) => r.json())
+      .then((data) => {
+        setStreakData(data)
+        setStreakDataLoaded(true)
+      })
+      .catch(() => setStreakDataLoaded(true))
+  }, [jwt, authedFetch])
 
   const initial = (displayName ?? '?')[0]?.toUpperCase() ?? '?'
   const duprDisplay =
@@ -102,172 +133,226 @@ export function ProfileSheet({
           text: 'Delete everything',
           style: 'destructive',
           onPress: async () => {
-            onClose()
-            await deleteAccount()
+            try {
+              await deleteAccount()
+              onClose()
+            } catch {
+              Alert.alert(
+                'Could not delete',
+                'Something went wrong. Please try again.',
+              )
+            }
           },
         },
       ],
     )
   }
 
-  const panResponder = PanResponder.create({
-    onMoveShouldSetPanResponder: (_, g) => g.dy > 8,
-    onPanResponderRelease: (_, g) => {
-      if (g.dy > 40 || g.vy > 0.5) onClose()
-    },
-  })
-
   const linkedLabel = reclubUserId
     ? `Reclub ID: ${reclubUserId} · Linked`
     : 'Reclub ID: — · Not linked'
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="slide"
-      onRequestClose={onClose}
-    >
-      <Pressable style={styles.backdrop} onPress={onClose}>
-        <Pressable
-          style={[styles.sheet, { paddingBottom: insets.bottom + 20 }]}
-          onPress={(e) => e.stopPropagation()}
+    <View style={[styles.container, { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 20 }]}>
+      <TouchableOpacity
+        onPress={onClose}
+        style={styles.backBtn}
+      >
+        <ChevronLeft size={20} color="#999" strokeWidth={2} />
+        <Text style={styles.backLabel}>Back</Text>
+      </TouchableOpacity>
+
+      <View style={styles.headerRow}>
+        <View style={styles.headerAvatarWrap}>
+          {imageUrl ? (
+            <Image source={{ uri: imageUrl }} style={styles.headerAvatar} />
+          ) : (
+            <View style={[styles.headerAvatar, styles.avatarFallback]}>
+              <Text style={styles.headerInitial}>{initial}</Text>
+            </View>
+          )}
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.headerName}>
+            {displayName ?? 'Player'}
+          </Text>
+          <Text style={styles.headerMeta}>{linkedLabel}</Text>
+        </View>
+      </View>
+
+      <View style={styles.statsRow}>
+        <View style={styles.statCol}>
+          <Text style={styles.statValue}>{duprDisplay}</Text>
+          <Text style={styles.statLabel}>DUPR</Text>
+        </View>
+        <View style={styles.statDivider} />
+        <View style={styles.statCol}>
+          <Text style={styles.statValue}>{followingCount}</Text>
+          <Text style={styles.statLabel}>Following</Text>
+        </View>
+        <View style={styles.statDivider} />
+        <View style={styles.statCol}>
+          <Text style={styles.statValue}>{sessionsCount}</Text>
+          <Text style={styles.statLabel}>Sessions</Text>
+        </View>
+      </View>
+
+      <View style={styles.kudosRow}>
+        {([
+          { type: 'fistbump', emoji: '🤜', label: 'Fist bump', count: kudos.fistbump },
+          { type: 'flame', emoji: '🔥', label: 'On fire', count: kudos.flame },
+          { type: 'star', emoji: '⭐', label: 'Star', count: kudos.star },
+        ]).map(k => (
+          <View key={k.type} style={styles.kudosBtn}>
+            <Text style={styles.kudosEmoji}>{k.emoji}</Text>
+            <Text style={styles.kudosCount}>{k.count > 0 ? k.count : ''}</Text>
+            <Text style={styles.kudosLabel}>{k.label}</Text>
+          </View>
+        ))}
+      </View>
+
+      {streakDataLoaded && (
+        <View style={styles.streakCard}>
+          <View style={styles.streakTopRow}>
+            <View>
+              <Text style={styles.streakNum}>
+                {streakData.currentStreak > 0 ? `🔥 ${streakData.currentStreak}` : '–'}
+              </Text>
+              <Text style={styles.streakLabel}>
+                {streakData.currentStreak > 0 ? 'week streak' : 'No streak yet'}
+              </Text>
+            </View>
+            <View style={styles.streakMeta}>
+              <Text style={styles.streakMetaText}>
+                {streakData.currentStreak > 0 && streakData.streakStartDate
+                  ? `Playing every week since ${new Date(streakData.streakStartDate).toLocaleDateString('en-US', { month: 'long' })}`
+                  : 'Join a session to start your streak'}
+              </Text>
+              <View style={styles.weeksRow}>
+                {(streakData.weeklyPlayed.length > 0
+                  ? streakData.weeklyPlayed
+                  : [false, false, false, false, false, false]
+                ).map((played, i) => (
+                  <View key={i} style={[styles.weekDot, played && styles.weekDotPlayed]}>
+                    <Text style={[styles.weekDotText, played && styles.weekDotTextPlayed]}>
+                      W{i + 1}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          </View>
+          {streakData.circleSessionsThisWeek > 0 && (
+            <View style={styles.compareBlock}>
+              <Text style={styles.compareText}>
+                Your circle played{' '}
+                <Text style={styles.compareHighlight}>{streakData.circleSessionsThisWeek} sessions</Text>
+                {' '}this week · you played{' '}
+                <Text style={styles.compareHighlight}>{streakData.mySessionsThisWeek}</Text>
+              </Text>
+              <View style={styles.barBg}>
+                <View style={[styles.barFill, {
+                  width: `${Math.min(
+                    streakData.circleSessionsThisWeek > 0
+                      ? (streakData.mySessionsThisWeek / streakData.circleSessionsThisWeek) * 100
+                      : 0,
+                    100
+                  )}%`
+                }]} />
+              </View>
+            </View>
+          )}
+        </View>
+      )}
+
+      <View style={styles.settingsBlock}>
+        {onRedoOnboarding && (
+          <TouchableOpacity
+            style={styles.settingsRow}
+            onPress={() => {
+              onClose()
+              onRedoOnboarding()
+            }}
+          >
+            <RotateCcw size={20} color="#555" strokeWidth={2} />
+            <Text style={styles.settingsLabel}>Redo setup</Text>
+          </TouchableOpacity>
+        )}
+        {!reclubUserId && onLinkReclub && (
+          <TouchableOpacity
+            style={styles.settingsRow}
+            onPress={() => {
+              onClose()
+              onLinkReclub()
+            }}
+          >
+            <Link2 size={20} color={T.amber} strokeWidth={2} />
+            <Text style={[styles.settingsLabel, { color: T.amber }]}>
+              Link your Reclub name
+            </Text>
+          </TouchableOpacity>
+        )}
+        <TouchableOpacity
+          style={styles.settingsRow}
+          onPress={() => setNotificationsEnabled(!notificationsOn)}
         >
-          <View {...panResponder.panHandlers}>
-            <View style={styles.handle} />
-          </View>
-
-          <View style={styles.headerRow}>
-            <View style={styles.headerAvatarWrap}>
-              {imageUrl ? (
-                <Image source={{ uri: imageUrl }} style={styles.headerAvatar} />
-              ) : (
-                <View style={[styles.headerAvatar, styles.avatarFallback]}>
-                  <Text style={styles.headerInitial}>{initial}</Text>
-                </View>
-              )}
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.headerName}>
-                {displayName ?? 'Player'}
-              </Text>
-              <Text style={styles.headerMeta}>{linkedLabel}</Text>
-            </View>
-          </View>
-
-          <View style={styles.statsRow}>
-            <View style={styles.statCol}>
-              <Text style={styles.statValue}>{duprDisplay}</Text>
-              <Text style={styles.statLabel}>DUPR</Text>
-            </View>
-            <View style={styles.statDivider} />
-            <View style={styles.statCol}>
-              <Text style={styles.statValue}>{followingCount}</Text>
-              <Text style={styles.statLabel}>Following</Text>
-            </View>
-            <View style={styles.statDivider} />
-            <View style={styles.statCol}>
-              <Text style={styles.statValue}>{sessionsCount}</Text>
-              <Text style={styles.statLabel}>Sessions</Text>
-            </View>
-          </View>
-
-          <View style={styles.settingsBlock}>
-            {onRedoOnboarding && (
-              <TouchableOpacity
-                style={styles.settingsRow}
-                onPress={() => {
-                  onClose()
-                  onRedoOnboarding()
-                }}
-              >
-                <RotateCcw size={16} color="#555" strokeWidth={2} />
-                <Text style={styles.settingsLabel}>Redo setup</Text>
-              </TouchableOpacity>
-            )}
-            {!reclubUserId && onLinkReclub && (
-              <TouchableOpacity
-                style={styles.settingsRow}
-                onPress={() => {
-                  onClose()
-                  onLinkReclub()
-                }}
-              >
-                <Link2 size={16} color={T.amber} strokeWidth={2} />
-                <Text style={[styles.settingsLabel, { color: T.amber }]}>
-                  Link your Reclub name
-                </Text>
-              </TouchableOpacity>
-            )}
-            <TouchableOpacity
-              style={styles.settingsRow}
-              onPress={() => setNotificationsEnabled(!notificationsOn)}
-            >
-              <Bell size={16} color="#555" strokeWidth={2} />
-              <Text style={styles.settingsLabel}>Notifications</Text>
-              <Text style={styles.settingsRight}>
-                {notificationsOn ? 'On' : 'Off'}
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.settingsRow} onPress={handleSignOut}>
-              <LogOut size={16} color="#555" strokeWidth={2} />
-              <Text style={styles.settingsLabel}>Sign out</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.settingsRow}
-              onPress={handleDeleteData}
-            >
-              <Trash2 size={16} color="#e24b4a" strokeWidth={2} />
-              <Text style={[styles.settingsLabel, { color: '#e24b4a' }]}>
-                Delete my data
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </Pressable>
-      </Pressable>
-    </Modal>
+          <Bell size={20} color="#555" strokeWidth={2} />
+          <Text style={styles.settingsLabel}>Notifications</Text>
+          <Text style={styles.settingsRight}>
+            {notificationsOn ? 'On' : 'Off'}
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.settingsRow} onPress={handleSignOut}>
+          <LogOut size={20} color="#555" strokeWidth={2} />
+          <Text style={styles.settingsLabel}>Sign out</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.settingsRow}
+          onPress={handleDeleteData}
+        >
+          <Trash2 size={20} color="#e24b4a" strokeWidth={2} />
+          <Text style={[styles.settingsLabel, { color: '#e24b4a' }]}>
+            Delete my data
+          </Text>
+        </TouchableOpacity>
+      </View>
+    </View>
   )
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
+  container: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    justifyContent: 'flex-end',
-  },
-  sheet: {
     backgroundColor: '#0a0a0a',
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    paddingHorizontal: 16,
-    borderTopWidth: 0.5,
-    borderColor: '#1e1e1e',
+    paddingHorizontal: 24,
   },
-  handle: {
-    width: 28,
-    height: 3,
-    borderRadius: 2,
-    backgroundColor: '#2a2a2a',
-    alignSelf: 'center',
-    marginTop: 8,
-    marginBottom: 12,
+  backBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 8,
+    marginBottom: 16,
+  },
+  backLabel: {
+    fontSize: 14,
+    color: '#999',
   },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    marginBottom: 16,
+    gap: 16,
+    marginBottom: 24,
   },
   headerAvatarWrap: {
-    borderRadius: 24,
+    borderRadius: 36,
     borderWidth: 2,
     borderColor: '#f5a623',
     overflow: 'hidden',
   },
   headerAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 72,
+    height: 72,
+    borderRadius: 36,
   },
   avatarFallback: {
     backgroundColor: '#1a1a1a',
@@ -275,44 +360,80 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   headerInitial: {
-    fontSize: 18,
-    fontWeight: '600',
+    fontSize: 28,
+    fontWeight: '700',
     color: '#ccc',
   },
   headerName: {
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 20,
+    fontWeight: '700',
     color: '#fff',
   },
   headerMeta: {
-    fontSize: 10,
+    fontSize: 13,
     color: '#555',
-    marginTop: 2,
+    marginTop: 4,
   },
   statsRow: {
     flexDirection: 'row',
-    marginBottom: 16,
-    borderRadius: 8,
+    marginBottom: 24,
+    backgroundColor: '#111',
+    borderRadius: 14,
     overflow: 'hidden',
+    borderWidth: 0.5,
+    borderColor: '#1e1e1e',
   },
   statCol: {
     flex: 1,
     alignItems: 'center',
-    paddingVertical: 10,
+    paddingVertical: 18,
   },
   statDivider: {
     width: 0.5,
     backgroundColor: '#1e1e1e',
   },
   statValue: {
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 22,
+    fontWeight: '700',
     color: '#f5a623',
   },
   statLabel: {
-    fontSize: 8,
+    fontSize: 12,
     color: '#555',
-    marginTop: 2,
+    marginTop: 4,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  kudosRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginHorizontal: 14,
+    marginBottom: 12,
+  },
+  kudosBtn: {
+    flex: 1,
+    backgroundColor: '#1a1a1a',
+    borderWidth: 0.5,
+    borderColor: '#2a2a2a',
+    borderRadius: 12,
+    paddingVertical: 10,
+    alignItems: 'center',
+    gap: 3,
+  },
+  kudosEmoji: {
+    fontSize: 20,
+  },
+  kudosCount: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#f5a623',
+    minHeight: 16,
+  },
+  kudosLabel: {
+    fontSize: 9,
+    color: '#444',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
   },
   settingsBlock: {
     borderTopWidth: 0.5,
@@ -321,19 +442,109 @@ const styles = StyleSheet.create({
   settingsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    paddingVertical: 9,
-    paddingHorizontal: 12,
+    gap: 14,
+    paddingVertical: 16,
+    paddingHorizontal: 4,
     borderBottomWidth: 0.5,
     borderBottomColor: '#1a1a1a',
   },
   settingsLabel: {
     flex: 1,
-    fontSize: 12,
+    fontSize: 16,
     color: '#ccc',
   },
   settingsRight: {
-    fontSize: 11,
+    fontSize: 15,
+    fontWeight: '600',
     color: '#f5a623',
+  },
+  streakCard: {
+    marginHorizontal: 14,
+    marginBottom: 12,
+    backgroundColor: '#1f1400',
+    borderWidth: 0.5,
+    borderColor: '#f5a623',
+    borderRadius: 16,
+    padding: 14,
+  },
+  streakTopRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    marginBottom: 10,
+  },
+  streakNum: {
+    fontSize: 30,
+    fontWeight: '700',
+    color: '#f5a623',
+    lineHeight: 34,
+  },
+  streakLabel: {
+    fontSize: 11,
+    color: '#888',
+    marginTop: 3,
+  },
+  streakMeta: {
+    flex: 1,
+  },
+  streakMetaText: {
+    fontSize: 10,
+    color: '#555',
+    marginBottom: 8,
+    lineHeight: 14,
+  },
+  weeksRow: {
+    flexDirection: 'row',
+    gap: 4,
+  },
+  weekDot: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: '#141414',
+    borderWidth: 0.5,
+    borderColor: '#2a2a2a',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  weekDotPlayed: {
+    backgroundColor: '#f5a623',
+    borderColor: '#f5a623',
+  },
+  weekDotText: {
+    fontSize: 8,
+    color: '#444',
+    fontWeight: '500',
+  },
+  weekDotTextPlayed: {
+    color: '#1a0a00',
+    fontWeight: '700',
+  },
+  compareBlock: {
+    backgroundColor: '#1a1a1a',
+    borderWidth: 0.5,
+    borderColor: '#2a2a2a',
+    borderRadius: 10,
+    padding: 10,
+  },
+  compareText: {
+    fontSize: 11,
+    color: '#888',
+    lineHeight: 16,
+    marginBottom: 7,
+  },
+  compareHighlight: {
+    color: '#f5a623',
+    fontWeight: '500',
+  },
+  barBg: {
+    height: 4,
+    backgroundColor: '#111',
+    borderRadius: 2,
+  },
+  barFill: {
+    height: 4,
+    backgroundColor: '#f5a623',
+    borderRadius: 2,
   },
 })

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react'
+import React, { useEffect, useRef, useState, useCallback } from 'react'
 import {
   View,
   Text,
@@ -8,17 +8,19 @@ import {
   StyleSheet,
   ActivityIndicator,
   ScrollView,
+  RefreshControl,
   Linking,
 } from 'react-native'
-import { Rss, Users, User, Search, ArrowLeft, Sparkles, X } from 'lucide-react-native'
+import { Rss, Users, Search, ArrowLeft, Sparkles, X } from 'lucide-react-native'
 import { TopBar } from '../components/CardBody'
 import { T } from '../theme'
 import { useAuthStore } from '../stores/authStore'
-import { useSignUpModal } from '../contexts/SignUpModalContext'
+import { SignInPrompt } from '../components/SignInPrompt'
 import { PlayerSearch } from '../components/PlayerSearch'
 import { PlayerAvatar } from '../components/PlayerAvatar'
 import { FriendListRow } from '../components/FriendListRow'
 import { FeedItemRow } from '../components/FeedItemRow'
+import { PlayerProfileSheet } from '../components/PlayerProfileSheet'
 import { useToast } from '../components/Toast'
 import { PeopleYouMayKnowScreen } from './PeopleYouMayKnowScreen'
 import type { FeedItem, CoPlayerSuggestion } from '../data'
@@ -35,9 +37,12 @@ type FollowedPlayer = {
 
 export function CircleScreen() {
   const [subTab, setSubTab] = useState<CircleSubTab>('feed')
-  const { openSignUp } = useSignUpModal()
   const [friends, setFriends] = useState<FollowedPlayer[]>([])
   const [loadingFriends, setLoadingFriends] = useState(false)
+  const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null)
+
+  const feedLoadedRef = useRef(false)
+  const friendsLoadedRef = useRef(false)
   const [showSearch, setShowSearch] = useState(false)
   const [showSuggested, setShowSuggested] = useState(false)
 
@@ -47,8 +52,10 @@ export function CircleScreen() {
   // ── Feed state ──────────────────────────────────────────────────────────────
   const [feedItems, setFeedItems] = useState<FeedItem[]>([])
   const [feedLoading, setFeedLoading] = useState(false)
+  const [feedRefreshing, setFeedRefreshing] = useState(false)
   const [hasFollows, setHasFollows] = useState(true)
   const [suggestions, setSuggestions] = useState<CoPlayerSuggestion[]>([])
+  const [followedSuggestionIds, setFollowedSuggestionIds] = useState<Set<string>>(new Set())
   const [dismissedSuggestions, setDismissedSuggestions] = useState<Set<string>>(
     new Set()
   )
@@ -92,14 +99,23 @@ export function CircleScreen() {
   }, [authedFetch, reclubUserId])
 
   useEffect(() => {
-    if (jwt && subTab === 'feed') {
+    if (jwt && subTab === 'feed' && !feedLoadedRef.current) {
+      feedLoadedRef.current = true
       loadFeed()
       loadSuggestions()
     }
   }, [jwt, subTab, loadFeed, loadSuggestions])
 
+  const handleFeedRefresh = useCallback(async () => {
+    setFeedRefreshing(true)
+    await loadFeed()
+    setFeedRefreshing(false)
+  }, [loadFeed])
+
   const handleFollowFromFeed = useCallback(
     async (userId: string) => {
+      // Optimistic update — show "Following" immediately, no feed reload
+      setFollowedSuggestionIds((prev) => new Set(prev).add(userId))
       try {
         const res = await authedFetch('/api/follows', {
           method: 'POST',
@@ -107,12 +123,20 @@ export function CircleScreen() {
         })
         if (!res.ok) throw new Error('Follow failed')
         toast('Followed!', 'success')
-        loadFeed()
+        // Silently refresh friends list in the background
+        friendsLoadedRef.current = false
+        loadFriends()
       } catch {
+        // Roll back
+        setFollowedSuggestionIds((prev) => {
+          const next = new Set(prev)
+          next.delete(userId)
+          return next
+        })
         toast('Failed to follow. Try again.', 'error')
       }
     },
-    [authedFetch, toast, loadFeed]
+    [authedFetch, toast, loadFriends]
   )
 
   // ── Friends state ───────────────────────────────────────────────────────────
@@ -141,7 +165,8 @@ export function CircleScreen() {
   }, [authedFetch, jwt, ensureServerAuth])
 
   useEffect(() => {
-    if (jwt && subTab === 'players') {
+    if (jwt && subTab === 'players' && !friendsLoadedRef.current) {
+      friendsLoadedRef.current = true
       loadFriends()
     }
   }, [jwt, subTab, loadFriends])
@@ -157,6 +182,7 @@ export function CircleScreen() {
         })
         if (!res.ok) throw new Error('Unfollow failed')
         toast(`Unfollowed ${player?.displayName ?? 'player'}`, 'info')
+        feedLoadedRef.current = false
       } catch {
         loadFriends()
         toast('Failed to unfollow. Try again.', 'error')
@@ -298,8 +324,20 @@ export function CircleScreen() {
         </View>
       </View>
 
-      {subTab === 'feed' && (
-        <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
+      {subTab === 'feed' && !jwt && <SignInPrompt />}
+
+      {subTab === 'feed' && jwt && (
+        <ScrollView
+          style={{ flex: 1 }}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={feedRefreshing}
+              onRefresh={handleFeedRefresh}
+              tintColor={T.amber}
+            />
+          }
+        >
           {/* Suggestions carousel */}
           {suggestions.filter((s) => !dismissedSuggestions.has(s.userId))
             .length > 0 && (
@@ -319,41 +357,49 @@ export function CircleScreen() {
               >
                 {suggestions
                   .filter((s) => !dismissedSuggestions.has(s.userId))
-                  .map((s) => (
-                    <View key={s.userId} style={styles.suggestionCard}>
-                      <TouchableOpacity
-                        style={styles.dismissBtn}
-                        onPress={() =>
-                          setDismissedSuggestions(
-                            (prev) => new Set([...prev, s.userId])
-                          )
-                        }
-                      >
-                        <X size={10} color="#2a2a2a" />
-                      </TouchableOpacity>
-                      <PlayerAvatar
-                        userId={s.userId}
-                        imageUrl={s.imageUrl}
-                        size={42}
-                        style={styles.suggestionAvatar}
-                      />
-                      <Text style={styles.suggestionDupr}>
-                        {s.duprDoubles?.toFixed(2) ?? '–'}
-                      </Text>
-                      <Text style={styles.suggestionName} numberOfLines={1}>
-                        {s.displayName ?? 'Player'}
-                      </Text>
-                      <Text style={styles.suggestionCtx} numberOfLines={2}>
-                        {s.coSessionCount}× sessions together
-                      </Text>
-                      <TouchableOpacity
-                        style={styles.feedFollowBtn}
-                        onPress={() => handleFollowFromFeed(s.userId)}
-                      >
-                        <Text style={styles.feedFollowBtnText}>Follow</Text>
-                      </TouchableOpacity>
-                    </View>
-                  ))}
+                  .map((s) => {
+                    const isFollowed = followedSuggestionIds.has(s.userId)
+                    return (
+                      <View key={s.userId} style={styles.suggestionCard}>
+                        <TouchableOpacity
+                          style={styles.dismissBtn}
+                          onPress={() =>
+                            setDismissedSuggestions(
+                              (prev) => new Set([...prev, s.userId])
+                            )
+                          }
+                        >
+                          <X size={10} color="#2a2a2a" />
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={() => setSelectedPlayerId(s.userId)}>
+                          <PlayerAvatar
+                            userId={s.userId}
+                            imageUrl={s.imageUrl}
+                            size={42}
+                            style={styles.suggestionAvatar}
+                          />
+                        </TouchableOpacity>
+                        <Text style={styles.suggestionDupr}>
+                          {s.duprDoubles?.toFixed(2) ?? '–'}
+                        </Text>
+                        <Text style={styles.suggestionName} numberOfLines={1}>
+                          {s.displayName ?? 'Player'}
+                        </Text>
+                        <Text style={styles.suggestionCtx} numberOfLines={2}>
+                          {s.coSessionCount}× sessions together
+                        </Text>
+                        <TouchableOpacity
+                          style={[styles.feedFollowBtn, isFollowed && styles.feedFollowedBtn]}
+                          onPress={() => !isFollowed && handleFollowFromFeed(s.userId)}
+                          disabled={isFollowed}
+                        >
+                          <Text style={[styles.feedFollowBtnText, isFollowed && styles.feedFollowedBtnText]}>
+                            {isFollowed ? 'Following' : 'Follow'}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    )
+                  })}
               </ScrollView>
             </View>
           )}
@@ -388,60 +434,13 @@ export function CircleScreen() {
                 key={item.id}
                 item={item}
                 onJoinToo={(eventUrl) => Linking.openURL(eventUrl)}
+                onAvatarPress={(uid) => setSelectedPlayerId(uid)}
               />
             ))}
         </ScrollView>
       )}
 
-      {subTab === 'players' && !jwt && (
-        <View
-          style={{
-            flex: 1,
-            alignItems: 'center',
-            justifyContent: 'center',
-            paddingHorizontal: 40,
-          }}
-        >
-          <User size={48} color="#444" strokeWidth={1.5} />
-          <Text
-            style={{
-              fontSize: 18,
-              fontWeight: '600',
-              color: '#fff',
-              marginTop: 16,
-            }}
-          >
-            Not signed in
-          </Text>
-          <Text
-            style={{
-              fontSize: 14,
-              color: '#888',
-              marginTop: 6,
-              textAlign: 'center',
-            }}
-          >
-            Sign in to see your friends, follow players, and track your sessions
-          </Text>
-          <TouchableOpacity
-            onPress={openSignUp}
-            style={{
-              marginTop: 24,
-              backgroundColor: T.amber,
-              borderRadius: 12,
-              paddingVertical: 14,
-              paddingHorizontal: 40,
-            }}
-            activeOpacity={0.8}
-            accessibilityLabel="Sign in with Google"
-            accessibilityRole="button"
-          >
-            <Text style={{ fontSize: 16, fontWeight: '700', color: '#000' }}>
-              Sign in with Google
-            </Text>
-          </TouchableOpacity>
-        </View>
-      )}
+      {subTab === 'players' && !jwt && <SignInPrompt />}
 
       {subTab === 'players' && jwt && (
         <View style={{ flex: 1, paddingHorizontal: 20 }}>
@@ -537,6 +536,7 @@ export function CircleScreen() {
                     <FriendListRow
                       item={item}
                       onUnfollow={() => handleUnfollow(item.userId)}
+                      onAvatarPress={() => setSelectedPlayerId(item.userId)}
                     />
                   )}
                   contentContainerStyle={{ paddingBottom: 20 }}
@@ -546,6 +546,11 @@ export function CircleScreen() {
           )}
         </View>
       )}
+
+      <PlayerProfileSheet
+        userId={selectedPlayerId}
+        onClose={() => setSelectedPlayerId(null)}
+      />
     </View>
   )
 }
@@ -647,7 +652,13 @@ const styles = StyleSheet.create({
     width: '100%',
     alignItems: 'center',
   },
+  feedFollowedBtn: {
+    backgroundColor: 'rgba(34,197,94,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(34,197,94,0.3)',
+  },
   feedFollowBtnText: { fontSize: 11, fontWeight: '500', color: '#1a0a00' },
+  feedFollowedBtnText: { fontSize: 11, fontWeight: '600', color: '#22c55e' },
   feedDivider: { height: 0.5, backgroundColor: '#111', marginBottom: 6 },
   emptyState: {
     alignItems: 'center',

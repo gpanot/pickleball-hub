@@ -127,23 +127,21 @@ export function TopBar({
             {supertitle}
           </Text>
         ) : null}
-        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
-          <Text
-            style={{
-              fontSize: supertitle ? 16 : 22,
-              fontWeight: '600',
-              color: '#fff',
-            }}
-          >
-            {title}
-          </Text>
-          {counter ? (
-            <Text style={{ fontSize: 15, fontWeight: '700', color: T.amber }}>
-              {counter}
-            </Text>
-          ) : null}
-        </View>
+        <Text
+          style={{
+            fontSize: supertitle ? 16 : 22,
+            fontWeight: '600',
+            color: '#fff',
+          }}
+        >
+          {title}
+        </Text>
       </View>
+      {counter ? (
+        <Text style={{ fontSize: 15, fontWeight: '700', color: T.amber, marginRight: showAvatar ? 8 : 0 }}>
+          {counter}
+        </Text>
+      ) : null}
       {showAvatar ? <ProfileAvatar /> : null}
     </View>
   )
@@ -543,9 +541,6 @@ export function CardBody({
                     }}
                   />
                 ))}
-                <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.25)', marginLeft: 4 }}>
-                  Follow players to see them here
-                </Text>
               </View>
             )}
           </TouchableOpacity>

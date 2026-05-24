@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef, forwardRef, useImperativeHandle } from 'react'
 import {
   View,
   Text,
@@ -21,19 +21,15 @@ export type SearchResult = {
   duprDoubles: number | null
 }
 
+export type PlayerSearchRef = {
+  focus: () => void
+}
+
 /**
  * mode="select" — pick one player (used in onboarding)
  * mode="follow" — follow multiple players (used in Friends tab)
  */
-export function PlayerSearch({
-  mode = 'select',
-  selectedPlayer,
-  onSelectPlayer,
-  onFollow,
-  onUnfollow,
-  initialFollowedIds,
-  autoFocus = false,
-}: {
+export const PlayerSearch = forwardRef<PlayerSearchRef, {
   mode?: 'select' | 'follow'
   selectedPlayer?: SearchResult | null
   onSelectPlayer?: (player: SearchResult | null) => void
@@ -41,7 +37,20 @@ export function PlayerSearch({
   onUnfollow?: (userId: string) => Promise<void>
   initialFollowedIds?: string[]
   autoFocus?: boolean
-}) {
+}>(function PlayerSearch({
+  mode = 'select',
+  selectedPlayer,
+  onSelectPlayer,
+  onFollow,
+  onUnfollow,
+  initialFollowedIds,
+  autoFocus = false,
+}, ref) {
+  const inputRef = useRef<TextInput>(null)
+
+  useImperativeHandle(ref, () => ({
+    focus: () => inputRef.current?.focus(),
+  }))
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<SearchResult[]>([])
   const [searching, setSearching] = useState(false)
@@ -53,7 +62,16 @@ export function PlayerSearch({
 
   useEffect(() => {
     if (initialFollowedIds) {
-      setFollowedIds(new Set(initialFollowedIds))
+      // Merge: add any newly followed IDs from parent but never remove
+      // optimistically-set local follows — prevents the Added→Follow flicker
+      setFollowedIds((prev) => {
+        const incoming = new Set(initialFollowedIds)
+        if ([...prev].every((id) => incoming.has(id)) && prev.size === incoming.size) {
+          return prev
+        }
+        const merged = new Set([...prev, ...incoming])
+        return merged
+      })
     }
   }, [initialFollowedIds])
 
@@ -192,12 +210,15 @@ export function PlayerSearch({
       <View style={styles.searchBox}>
         <Search size={16} color="#666" strokeWidth={2} />
         <TextInput
+          ref={inputRef}
           style={styles.searchInput}
           value={query}
           onChangeText={setQuery}
           placeholder="Search by name..."
           placeholderTextColor="#555"
           autoFocus={autoFocus}
+          returnKeyType="search"
+          blurOnSubmit={false}
         />
         {searching && <ActivityIndicator size="small" color={T.amber} />}
       </View>
@@ -217,7 +238,7 @@ export function PlayerSearch({
       />
     </View>
   )
-}
+})
 
 const styles = StyleSheet.create({
   searchBox: {

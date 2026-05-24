@@ -38,6 +38,9 @@ export async function GET(req: NextRequest) {
 
   const jwt = await signMobileJwt({ sub: user.id, profileId: profile.id });
 
+  const prefs = (profile.preferences as Record<string, unknown>) ?? {};
+  const duprRating = typeof prefs.dupr === 'number' ? prefs.dupr : null;
+
   return NextResponse.json({
     jwt,
     userId: user.id,
@@ -47,9 +50,8 @@ export async function GET(req: NextRequest) {
     reclubUserId: profile.reclubUserId
       ? profile.reclubUserId.toString()
       : null,
-    hasCompletedOnboarding:
-      Object.keys((profile.preferences as Record<string, unknown>) ?? {})
-        .length > 0,
+    hasCompletedOnboarding: profile.onboardingCompleted,
+    duprRating,
   });
 }
 
@@ -135,6 +137,9 @@ export async function POST(req: NextRequest) {
       profileId: profile.id,
     });
 
+    const prefs = (profile.preferences as Record<string, unknown>) ?? {};
+    const duprRating = typeof prefs.dupr === 'number' ? prefs.dupr : null;
+
     return NextResponse.json({
       jwt,
       userId: user.id,
@@ -144,9 +149,8 @@ export async function POST(req: NextRequest) {
       reclubUserId: profile.reclubUserId
         ? profile.reclubUserId.toString()
         : null,
-      hasCompletedOnboarding: Object.keys(
-        (profile.preferences as Record<string, unknown>) ?? {}
-      ).length > 0,
+      hasCompletedOnboarding: profile.onboardingCompleted,
+      duprRating,
     });
   } catch (err) {
     console.error("[POST /api/auth/mobile-token]", err);

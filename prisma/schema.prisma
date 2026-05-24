@@ -183,17 +183,18 @@ model SessionRoster {
 /// Anonymous or Zalo-identified player profile for personalised recommendations.
 /// After Google login, userId is linked to the NextAuth User record.
 model PlayerProfile {
-  id                  String    @id @default(uuid())
-  userId              String?   @unique @map("user_id")
-  zaloId              String?   @unique @map("zalo_id")
-  reclubUserId        BigInt?   @unique @map("reclub_user_id")
-  displayName         String?   @map("display_name")
-  preferences         Json      @default("{}")
-  pushToken           String?   @map("push_token")
-  pushTokenUpdatedAt  DateTime? @map("push_token_updated_at")
-  lastActiveAt        DateTime? @map("last_active_at")
-  createdAt           DateTime  @default(now()) @map("created_at")
-  lastSeen            DateTime  @updatedAt @map("last_seen")
+  id                    String    @id @default(uuid())
+  userId                String?   @unique @map("user_id")
+  zaloId                String?   @unique @map("zalo_id")
+  reclubUserId          BigInt?   @unique @map("reclub_user_id")
+  displayName           String?   @map("display_name")
+  preferences           Json      @default("{}")
+  onboardingCompleted   Boolean   @default(false) @map("onboarding_completed")
+  pushToken             String?   @map("push_token")
+  pushTokenUpdatedAt    DateTime? @map("push_token_updated_at")
+  lastActiveAt          DateTime? @map("last_active_at")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  lastSeen              DateTime  @updatedAt @map("last_seen")
 
   user         User?    @relation(fields: [userId], references: [id])
   reclubPlayer Player?  @relation(fields: [reclubUserId], references: [userId])
@@ -365,6 +366,20 @@ model NotificationSent {
 
   @@index([recipientId, type, sentAt])
   @@map("notifications_sent")
+}
+
+model Kudos {
+  id           Int      @id @default(autoincrement())
+  fromPlayerId String   @map("from_player_id")
+  toPlayerId   BigInt   @map("to_player_id")
+  type         String
+  feedItemId   String?  @map("feed_item_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@unique([fromPlayerId, toPlayerId, type, feedItemId])
+  @@index([toPlayerId, type])
+  @@index([fromPlayerId, createdAt])
+  @@map("kudos")
 }
 
 /// Aggregated DUPR participation for a session row (keyed by sessions.id).

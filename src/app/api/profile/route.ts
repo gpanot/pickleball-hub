@@ -13,6 +13,10 @@ export async function POST(req: NextRequest) {
     const reclubId =
       reclubUserId != null ? BigInt(reclubUserId) : undefined;
 
+    // Mark onboarding complete whenever this endpoint is called with preferences
+    // (the onboarding flow always sends preferences, even if the user skips steps).
+    const markOnboardingComplete = preferences != null;
+
     const profile = await prisma.playerProfile.upsert({
       where: { id: profileId },
       create: {
@@ -21,12 +25,14 @@ export async function POST(req: NextRequest) {
         displayName: displayName ?? null,
         preferences: preferences ?? {},
         reclubUserId: reclubId ?? null,
+        onboardingCompleted: markOnboardingComplete,
       },
       update: {
         zaloId: zaloId ?? undefined,
         displayName: displayName ?? undefined,
         preferences: preferences ?? undefined,
         ...(reclubId !== undefined ? { reclubUserId: reclubId } : {}),
+        ...(markOnboardingComplete ? { onboardingCompleted: true } : {}),
       },
     });
 

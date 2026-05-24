@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import {
   View,
   Text,
@@ -20,7 +20,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { ChevronLeft, ChevronDown } from 'lucide-react-native'
 import { T } from '../theme'
 import { useAuthStore } from '../stores/authStore'
-import { PlayerSearch, type SearchResult } from '../components/PlayerSearch'
+import { PlayerSearch, type SearchResult, type PlayerSearchRef } from '../components/PlayerSearch'
 
 const TOTAL_STEPS = 3
 
@@ -48,6 +48,7 @@ export function OnboardingScreen({
   const [otherExpanded, setOtherExpanded] = useState(false)
   const [selectedPlayer, setSelectedPlayer] = useState<SearchResult | null>(null)
   const [finishing, setFinishing] = useState(false)
+  const playerSearchRef = useRef<PlayerSearchRef>(null)
 
   const { authedFetch, setOnboardingComplete, setReclubUserId, setDuprRating, profileId } =
     useAuthStore()
@@ -95,6 +96,8 @@ export function OnboardingScreen({
         }),
       })
 
+      // Only overwrite the stored Reclub ID if the user actively selected one.
+      // If they skipped step 3, preserve whatever was already linked on their account.
       if (selectedPlayer) {
         setReclubUserId(selectedPlayer.userId)
       }
@@ -154,6 +157,14 @@ export function OnboardingScreen({
     },
   ]
 
+  // Focus the search input after the step-2 transition settles
+  useEffect(() => {
+    if (step === 2) {
+      const timer = setTimeout(() => playerSearchRef.current?.focus(), 350)
+      return () => clearTimeout(timer)
+    }
+  }, [step])
+
   // Animate the expand/collapse of "Other times"
   const expandHeight = useSharedValue(0)
   useEffect(() => {
@@ -170,8 +181,8 @@ export function OnboardingScreen({
   return (
     <KeyboardAvoidingView
       style={[styles.container, { paddingTop: insets.top + 12 }]}
-      behavior="padding"
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 24}
+      behavior={Platform.OS === 'ios' ? 'height' : 'padding'}
+      keyboardVerticalOffset={0}
     >
       {/* Progress bar */}
       <View style={styles.progressRow}>
@@ -314,10 +325,10 @@ export function OnboardingScreen({
           </Text>
 
           <PlayerSearch
+            ref={playerSearchRef}
             mode="select"
             selectedPlayer={selectedPlayer}
             onSelectPlayer={setSelectedPlayer}
-            autoFocus
           />
 
           <TouchableOpacity

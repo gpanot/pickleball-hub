@@ -22,18 +22,22 @@ function DuprPill({ value }: { value: number }) {
 export function FriendListRow({
   item,
   onUnfollow,
+  onAvatarPress,
 }: {
   item: FriendListItem
   onUnfollow?: () => void
+  onAvatarPress?: () => void
 }) {
   return (
     <View style={styles.row}>
-      <PlayerAvatar
-        userId={item.userId}
-        displayName={item.displayName}
-        imageUrl={item.imageUrl}
-        size={46}
-      />
+      <TouchableOpacity onPress={onAvatarPress} disabled={!onAvatarPress}>
+        <PlayerAvatar
+          userId={item.userId}
+          displayName={item.displayName}
+          imageUrl={item.imageUrl}
+          size={46}
+        />
+      </TouchableOpacity>
       <View style={styles.info}>
         <Text style={styles.name}>{item.displayName ?? 'Unknown'}</Text>
         {item.duprDoubles != null && (

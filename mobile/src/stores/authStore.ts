@@ -99,6 +99,7 @@ export const useAuthStore = create<AuthState>()(
             displayName: data.displayName,
             imageUrl: data.imageUrl,
             reclubUserId: data.reclubUserId ?? get().reclubUserId,
+            duprRating: data.duprRating ?? get().duprRating,
             hasCompletedOnboarding:
               data.hasCompletedOnboarding ?? get().hasCompletedOnboarding,
           })
@@ -135,6 +136,7 @@ export const useAuthStore = create<AuthState>()(
             displayName: data.displayName,
             imageUrl: data.imageUrl,
             reclubUserId: data.reclubUserId,
+            duprRating: data.duprRating ?? get().duprRating,
             hasCompletedOnboarding: data.hasCompletedOnboarding,
           })
           return true
@@ -160,13 +162,12 @@ export const useAuthStore = create<AuthState>()(
       deleteAccount: async () => {
         const { jwt } = get()
         if (jwt) {
-          try {
-            await fetch(`${resolveApiBase()}/api/profile/delete`, {
-              method: 'DELETE',
-              headers: { Authorization: `Bearer ${jwt}` },
-            })
-          } catch {
-            // best-effort
+          const res = await fetch(`${resolveApiBase()}/api/profile/delete`, {
+            method: 'DELETE',
+            headers: { Authorization: `Bearer ${jwt}` },
+          })
+          if (!res.ok) {
+            throw new Error(`Delete failed: ${res.status}`)
           }
         }
         get().signOut()

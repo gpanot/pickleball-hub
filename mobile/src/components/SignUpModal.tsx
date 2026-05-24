@@ -11,10 +11,24 @@ import {
 } from 'react-native'
 import Svg, { Path } from 'react-native-svg'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import Constants from 'expo-constants'
 import { T } from '../theme'
 import { useAuthStore, resolveApiBase } from '../stores/authStore'
 import { fetchWithTimeout } from '../lib/fetchWithTimeout'
 import { debugLog, debugError, debugWarn } from '../lib/debug'
+
+const isExpoGo = Constants.appOwnership === 'expo'
+
+let GoogleSignin: any = null
+let isErrorWithCode: any = () => false
+let statusCodes: any = {}
+
+if (!isExpoGo) {
+  const mod = require('@react-native-google-signin/google-signin')
+  GoogleSignin = mod.GoogleSignin
+  isErrorWithCode = mod.isErrorWithCode
+  statusCodes = mod.statusCodes
+}
 
 function GoogleLogo({ size = 20 }: { size?: number }) {
   return (
@@ -27,7 +41,14 @@ function GoogleLogo({ size = 20 }: { size?: number }) {
   )
 }
 
-const GOOGLE_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID || '140906288105-0do1cdl3ldk2ceblnu56f6oguh3u5odb.apps.googleusercontent.com'
+const WEB_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID || '140906288105-0do1cdl3ldk2ceblnu56f6oguh3u5odb.apps.googleusercontent.com'
+
+if (GoogleSignin) {
+  GoogleSignin.configure({
+    webClientId: WEB_CLIENT_ID,
+    offlineAccess: false,
+  })
+}
 
 /** Root-level overlay (not RN Modal) — avoids Android layout glitches inside Expo Go. */
 export function SignUpModalOverlay({
@@ -84,40 +105,18 @@ export function SignUpModalOverlay({
   }
 
   const handleRealSignIn = async () => {
-    debugLog('signIn', `Google sign-in starting (Platform=${Platform.OS}, __DEV__=${__DEV__})`)
-    debugLog('signIn', `Google clientId=${GOOGLE_CLIENT_ID}`)
-
-    const AuthSession = await import('expo-auth-session')
-    const WebBrowser = await import('expo-web-browser')
-    WebBrowser.maybeCompleteAuthSession()
-
-    const redirectUri = AuthSession.makeRedirectUri({
-      scheme: 'com.thehub.app',
-    })
-    debugLog('signIn', `redirectUri=${redirectUri}`)
-
-    const discovery = {
-      authorizationEndpoint: 'https://accounts.google.com/o/oauth2/v2/auth',
-    }
-    const nonce = Math.random().toString(36).slice(2)
+    debugLog('signIn', `Google native sign-in starting (Platform=${Platform.OS})`)
+    debugLog('signIn', `webClientId=${WEB_CLIENT_ID}`)
 
     setLoading(true)
     try {
-      const request = new AuthSession.AuthRequest({
-        clientId: GOOGLE_CLIENT_ID,
-        redirectUri,
-        scopes: ['openid', 'profile', 'email'],
-        responseType: AuthSession.ResponseType.IdToken,
-        extraParams: { nonce },
-      })
+      await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true })
+      const response = await GoogleSignin.signIn()
+      debugLog('signIn', `GoogleSignin result type=${response.type}`)
 
-      debugLog('signIn', 'Prompting AuthRequest...')
-      const result = await request.promptAsync(discovery)
-      debugLog('signIn', `AuthRequest result type=${result.type}`)
-
-      if (result.type === 'success' && result.params?.id_token) {
-        debugLog('signIn', 'Got id_token, calling signIn...')
-        const ok = await signIn(result.params.id_token)
+      if (response.type === 'success' && response.data?.idToken) {
+        debugLog('signIn', 'Got idToken, calling server signIn...')
+        const ok = await signIn(response.data.idToken)
         if (ok) {
           debugLog('signIn', 'signIn OK')
           const state = useAuthStore.getState()
@@ -127,10 +126,17 @@ export function SignUpModalOverlay({
         debugWarn('signIn', 'signIn returned false (server rejected token)')
         Alert.alert('Sign-in failed', 'Could not verify your Google account. Please try again.')
       } else {
-        debugWarn('signIn', `Auth result not success: type=${result.type}`, result)
+        debugWarn('signIn', `Sign-in cancelled or no idToken`, response)
       }
     } catch (e) {
-      debugError('signIn', 'Google sign-in error', e)
+      if (isErrorWithCode(e)) {
+        debugError('signIn', `Google error code=${e.code}`, e)
+        if (e.code === statusCodes.SIGN_IN_CANCELLED) {
+          return
+        }
+      } else {
+        debugError('signIn', 'Google sign-in error', e)
+      }
       Alert.alert('Sign-in failed', 'Something went wrong. Please check your connection and try again.')
     } finally {
       setLoading(false)
@@ -138,7 +144,7 @@ export function SignUpModalOverlay({
   }
 
   const handlePress = () => {
-    if (__DEV__) {
+    if (__DEV__ || isExpoGo || !GoogleSignin) {
       handleDevSignIn()
     } else {
       handleRealSignIn()
@@ -168,7 +174,7 @@ export function SignUpModalOverlay({
           disabled={loading}
           onPress={handlePress}
           activeOpacity={0.8}
-          accessibilityLabel={GOOGLE_CLIENT_ID ? 'Sign in with Google' : 'Dev Sign-in'}
+          accessibilityLabel={__DEV__ ? 'Dev Sign-in' : 'Sign in with Google'}
           accessibilityRole="button"
         >
           {loading ? (
@@ -177,7 +183,7 @@ export function SignUpModalOverlay({
             <>
               <GoogleLogo size={20} />
               <Text style={styles.googleLabel}>
-                {GOOGLE_CLIENT_ID ? 'Sign in with Google' : 'Dev Sign-in'}
+                {__DEV__ ? 'Dev Sign-in' : 'Sign in with Google'}
               </Text>
             </>
           )}

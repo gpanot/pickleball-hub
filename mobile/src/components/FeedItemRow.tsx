@@ -1,8 +1,9 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native'
 import { FeedItem } from '../data'
 import { PlayerAvatar } from './PlayerAvatar'
 import { T } from '../theme'
+import { useAuthStore } from '../stores/authStore'
 
 function formatRelativeTime(iso: string): string {
   const diff = Math.abs(Date.now() - new Date(iso).getTime())
@@ -21,19 +22,16 @@ function formatSessionTime(iso: string): string {
   const mins = d.getMinutes()
   const ampm = hours >= 12 ? 'PM' : 'AM'
   const h12 = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours
-  const isToday = new Date().toDateString() === d.toDateString()
   const isTomorrow =
     new Date(Date.now() + 86400000).toDateString() === d.toDateString()
-  const dayLabel = isToday
-    ? 'tonight'
-    : isTomorrow
-      ? 'tomorrow'
-      : d.toLocaleDateString()
+  const isToday = new Date().toDateString() === d.toDateString()
   const timeStr =
     mins === 0
       ? `${h12} ${ampm}`
       : `${h12}:${String(mins).padStart(2, '0')} ${ampm}`
-  return `${dayLabel} at ${timeStr}`
+  if (isToday) return `starting at ${timeStr}`
+  if (isTomorrow) return `tomorrow at ${timeStr}`
+  return `${d.toLocaleDateString()} at ${timeStr}`
 }
 
 function truncateSessionName(raw: string | undefined): string {
@@ -44,24 +42,58 @@ function truncateSessionName(raw: string | undefined): string {
 export function FeedItemRow({
   item,
   onJoinToo,
+  onAvatarPress,
 }: {
   item: FeedItem
   onJoinToo: (eventUrl: string) => void
+  onAvatarPress?: (userId: string) => void
 }) {
   const name = item.player.displayName ?? 'Player'
   const dupr = item.player.duprDoubles?.toFixed(2) ?? '–'
   const sessionLabel = truncateSessionName(item.sessionName)
+  const auth = useAuthStore()
+
+  const [kudos, setKudos] = useState({
+    fistbump: (item as any).kudos?.fistbump ?? 0,
+    flame: (item as any).kudos?.flame ?? 0,
+    star: (item as any).kudos?.star ?? 0,
+    myReactions: ((item as any).kudos?.myReactions ?? []) as string[]
+  })
+
+  const handleKudos = async (type: 'fistbump' | 'flame' | 'star') => {
+    const isActive = kudos.myReactions.includes(type)
+    setKudos(prev => ({
+      ...prev,
+      [type]: isActive ? prev[type] - 1 : prev[type] + 1,
+      myReactions: isActive
+        ? prev.myReactions.filter(r => r !== type)
+        : [...prev.myReactions, type]
+    }))
+    try {
+      await auth.authedFetch('/api/kudos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          toPlayerId: item.player.userId,
+          type,
+          feedItemId: item.id
+        })
+      })
+    } catch {}
+  }
 
   return (
     <View style={s.row}>
-      <View style={s.avatarCol}>
-        <PlayerAvatar
-          userId={item.player.userId}
-          imageUrl={item.player.imageUrl}
-          size={44}
-        />
-        <Text style={s.dupr}>{dupr}</Text>
-      </View>
+      <TouchableOpacity onPress={() => onAvatarPress?.(item.player.userId)}>
+        <View style={s.avatarCol}>
+          <PlayerAvatar
+            userId={item.player.userId}
+            imageUrl={item.player.imageUrl}
+            size={44}
+          />
+          <Text style={s.dupr}>{dupr}</Text>
+        </View>
+      </TouchableOpacity>
 
       <View style={s.body}>
         <View style={s.nameRow}>
@@ -123,6 +155,27 @@ export function FeedItemRow({
             ? ` · ${item.venueName}`
             : ''}
         </Text>
+
+        <View style={s.kudosRow}>
+          {(['fistbump', 'flame', 'star'] as const).map(type => {
+            const isActive = kudos.myReactions.includes(type)
+            const count = kudos[type]
+            const emoji = type === 'fistbump' ? '🤜' : type === 'flame' ? '🔥' : '⭐'
+            return (
+              <TouchableOpacity
+                key={type}
+                style={[s.kudosBtn, isActive && s.kudosBtnActive]}
+                onPress={() => handleKudos(type)}>
+                <Text style={s.kudosEmoji}>{emoji}</Text>
+                {count > 0 && (
+                  <Text style={[s.kudosCount, isActive && s.kudosCountActive]}>
+                    {count}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            )
+          })}
+        </View>
       </View>
     </View>
   )
@@ -178,4 +231,34 @@ const s = StyleSheet.create({
   duprOld: { color: '#888' },
   duprArrow: { color: T.amber },
   duprNew: { color: T.amber, fontWeight: '500' },
+  kudosRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginTop: 7,
+  },
+  kudosBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: '#1a1a1a',
+    borderWidth: 0.5,
+    borderColor: '#2a2a2a',
+    borderRadius: 14,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  kudosBtnActive: {
+    borderColor: '#f5a623',
+    backgroundColor: '#1f1400',
+  },
+  kudosEmoji: {
+    fontSize: 13,
+  },
+  kudosCount: {
+    fontSize: 11,
+    color: '#666',
+  },
+  kudosCountActive: {
+    color: '#f5a623',
+  },
 })

@@ -1,21 +1,25 @@
 {
   "expo": {
-    "name": "TheHub",
+    "name": "SQUADD",
     "slug": "the-hub",
     "version": "1.0.0",
     "orientation": "portrait",
+    "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
     "splash": {
-      "resizeMode": "contain",
+      "image": "./assets/splash.png",
+      "resizeMode": "cover",
       "backgroundColor": "#0a0a0a"
     },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.thehub.app"
     },
+    "newArchEnabled": true,
     "android": {
       "package": "com.thehub.app",
       "adaptiveIcon": {
+        "foregroundImage": "./assets/icon.png",
         "backgroundColor": "#0a0a0a"
       },
       "googleServicesFile": "./google-services.json"
@@ -25,10 +29,11 @@
       "expo-asset",
       "expo-font",
       "expo-secure-store",
+      "@react-native-google-signin/google-signin",
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Allow TheHub to show distances to sessions near you."
+          "locationWhenInUsePermission": "Allow SQUADD to show distances to sessions near you."
         }
       ],
       [

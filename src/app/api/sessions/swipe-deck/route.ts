@@ -7,7 +7,7 @@ import {
   isFillingFast,
   reclubAvatarUrl,
 } from "@/lib/utils";
-import { CACHE_CONTROL_SESSIONS } from "@/lib/http-cache-headers";
+import { CACHE_CONTROL_PRIVATE } from "@/lib/http-cache-headers";
 import { getMobileUser } from "@/lib/mobile-auth";
 
 const ROSTER_CAP = 10;
@@ -28,6 +28,11 @@ export async function GET(req: NextRequest) {
     const userLat = Number.isFinite(lat) ? lat : null;
     const userLng = Number.isFinite(lng) ? lng : null;
 
+    const limitParam = searchParams.get("limit");
+    const offsetParam = searchParams.get("offset");
+    const limit = limitParam ? Math.min(parseInt(limitParam, 10), 50) : null;
+    const offset = offsetParam ? parseInt(offsetParam, 10) : 0;
+
     // Resolve followed player IDs for the authenticated mobile user
     const mobileUser = await getMobileUser(req);
     let followedPlayerIds: Set<string> = new Set();
@@ -39,34 +44,38 @@ export async function GET(req: NextRequest) {
       followedPlayerIds = new Set(follows.map((f) => f.followeeId.toString()));
     }
 
-    const sessions = await prisma.session.findMany({
-      where: { scrapedDate: date, status: "active" },
-      include: {
-        club: { select: { name: true, slug: true } },
-        venue: { select: { name: true, latitude: true, longitude: true } },
-        duprStat: true,
-        snapshots: { orderBy: { scrapedAt: "desc" }, take: 2 },
-        rosters: {
-          where: { isConfirmed: true },
-          include: {
-            player: {
-              select: {
-                userId: true,
-                displayName: true,
-                imageUrl: true,
-                duprDoubles: true,
+    const [totalCount, sessions] = await Promise.all([
+      prisma.session.count({ where: { scrapedDate: date, status: "active" } }),
+      prisma.session.findMany({
+        where: { scrapedDate: date, status: "active" },
+        include: {
+          club: { select: { name: true, slug: true } },
+          venue: { select: { name: true, latitude: true, longitude: true } },
+          duprStat: true,
+          snapshots: { orderBy: { scrapedAt: "desc" }, take: 2 },
+          rosters: {
+            where: { isConfirmed: true },
+            include: {
+              player: {
+                select: {
+                  userId: true,
+                  displayName: true,
+                  imageUrl: true,
+                  duprDoubles: true,
+                },
               },
             },
           },
         },
-      },
-      orderBy: { startTime: "asc" },
-    });
+        orderBy: { startTime: "asc" },
+        ...(limit !== null ? { skip: offset, take: limit } : {}),
+      }),
+    ]);
 
     if (sessions.length === 0) {
       return NextResponse.json(
-        { sessions: [], count: 0 },
-        { headers: { "Cache-Control": CACHE_CONTROL_SESSIONS } },
+        { sessions: [], count: 0, total: totalCount, offset, hasMore: false },
+        { headers: { "Cache-Control": CACHE_CONTROL_PRIVATE } },
       );
     }
 
@@ -248,9 +257,11 @@ export async function GET(req: NextRequest) {
       };
     });
 
+    const hasMore = limit !== null ? offset + sessions.length < totalCount : false;
+
     return NextResponse.json(
-      { sessions: mapped, count: mapped.length },
-      { headers: { "Cache-Control": CACHE_CONTROL_SESSIONS } },
+      { sessions: mapped, count: mapped.length, total: totalCount, offset, hasMore },
+      { headers: { "Cache-Control": CACHE_CONTROL_PRIVATE } },
     );
   } catch (err) {
     console.error("[GET /api/sessions/swipe-deck]", err);

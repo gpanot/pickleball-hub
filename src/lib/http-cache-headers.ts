@@ -13,3 +13,10 @@ export const CACHE_CONTROL_PUBLIC_LISTINGS =
  */
 export const CACHE_CONTROL_SESSIONS =
   "public, max-age=60, s-maxage=300, stale-while-revalidate=7200";
+
+/**
+ * Personalized endpoints that include per-user data (e.g. friends in session rosters).
+ * Must NOT be cached by the CDN — every request must reach the origin so the
+ * Authorization header is evaluated and friend data is resolved per user.
+ */
+export const CACHE_CONTROL_PRIVATE = "private, no-store";
