@@ -1,6 +1,5 @@
 import * as Notifications from 'expo-notifications'
 import * as Device from 'expo-device'
-import Constants from 'expo-constants'
 import { Platform } from 'react-native'
 
 Notifications.setNotificationHandler({
@@ -11,6 +10,11 @@ Notifications.setNotificationHandler({
   }),
 })
 
+/**
+ * Registers for push notifications and returns the native FCM/APNs device token.
+ * We use getDevicePushTokenAsync (not getExpoPushTokenAsync) because the backend
+ * sends notifications directly via Firebase Admin SDK, which requires native tokens.
+ */
 export async function registerForPushNotifications(): Promise<string | null> {
   if (!Device.isDevice) return null
 
@@ -33,11 +37,14 @@ export async function registerForPushNotifications(): Promise<string | null> {
     })
   }
 
-  const token = await Notifications.getExpoPushTokenAsync({
-    projectId: Constants.expoConfig?.extra?.eas?.projectId,
-  })
-
-  return token.data
+  try {
+    const deviceToken = await Notifications.getDevicePushTokenAsync()
+    console.log('[push] native device token obtained:', deviceToken.type, deviceToken.data?.toString().slice(0, 20) + '...')
+    return deviceToken.data as string
+  } catch (err) {
+    console.warn('[push] failed to get device push token:', err)
+    return null
+  }
 }
 
 export function useNotificationListeners(

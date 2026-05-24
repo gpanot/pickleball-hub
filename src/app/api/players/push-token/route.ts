@@ -13,6 +13,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "token required" }, { status: 400 });
   }
 
+  if (token.startsWith("ExponentPushToken")) {
+    console.warn(
+      "[push-token] Received Expo format token instead of native FCM token for profile",
+      user.profileId,
+      "— token prefix:", token.slice(0, 30)
+    );
+  }
+
+  console.log(
+    "[push-token] Saving token for profile", user.profileId,
+    "— type:", token.startsWith("ExponentPushToken") ? "expo" : "native",
+    "prefix:", token.slice(0, 20)
+  );
+
   await prisma.playerProfile.update({
     where: { id: user.profileId },
     data: {

@@ -36,6 +36,19 @@ type FollowedPlayer = {
   followedAt: string
 }
 
+const SUGGESTION_SKELETON_COUNT = 4
+
+function SuggestionCardSkeleton() {
+  return (
+    <View style={styles.suggestionSkeletonCard}>
+      <View style={styles.suggestionSkeletonAvatar} />
+      <View style={styles.suggestionSkeletonName} />
+      <View style={styles.suggestionSkeletonSessions} />
+      <View style={styles.suggestionSkeletonBtn} />
+    </View>
+  )
+}
+
 export function CircleScreen() {
   const [subTab, setSubTab] = useState<CircleSubTab>('feed')
   const [friends, setFriends] = useState<FollowedPlayer[]>([])
@@ -57,6 +70,7 @@ export function CircleScreen() {
   const [feedRefreshing, setFeedRefreshing] = useState(false)
   const [hasFollows, setHasFollows] = useState(true)
   const [suggestions, setSuggestions] = useState<CoPlayerSuggestion[]>([])
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false)
   const [followedSuggestionIds, setFollowedSuggestionIds] = useState<Set<string>>(new Set())
   const [presence, setPresence] = useState<{
     liveVenues: any[]
@@ -86,6 +100,7 @@ export function CircleScreen() {
 
   const loadSuggestions = useCallback(async () => {
     if (!reclubUserId) return
+    setSuggestionsLoading(true)
     try {
       const res = await authedFetch(
         `/api/players/${reclubUserId}/co-players`
@@ -101,6 +116,8 @@ export function CircleScreen() {
       }
     } catch (e) {
       if (__DEV__) console.warn('[Feed] loadSuggestions', e)
+    } finally {
+      setSuggestionsLoading(false)
     }
   }, [authedFetch, reclubUserId])
 
@@ -129,7 +146,9 @@ export function CircleScreen() {
   }, [jwt, subTab, loadPresence])
 
   useEffect(() => {
-    if (jwt && subTab === 'players' && reclubUserId && !suggestionsLoadedRef.current) {
+    if (jwt && subTab === 'players' && !suggestionsLoadedRef.current) {
+      setSuggestionsLoading(true)
+      if (!reclubUserId) return
       suggestionsLoadedRef.current = true
       loadSuggestions()
     }
@@ -502,15 +521,31 @@ export function CircleScreen() {
                 <Text style={styles.findFriendsText}>Find friends</Text>
               </TouchableOpacity>
 
-              {suggestions.filter((s) => !dismissedSuggestions.has(s.userId))
-                .length > 0 && (
+              {(suggestionsLoading ||
+                suggestions.filter((s) => !dismissedSuggestions.has(s.userId))
+                  .length > 0) && (
                 <View style={styles.suggestionsSection}>
                   <View style={styles.sectionHeaderRow}>
                     <Text style={styles.sectionLabel}>CROSSED PATHS WITH</Text>
-                    <TouchableOpacity onPress={() => setShowSuggested(true)}>
-                      <Text style={styles.sectionLink}>See all</Text>
-                    </TouchableOpacity>
+                    {!suggestionsLoading && (
+                      <TouchableOpacity onPress={() => setShowSuggested(true)}>
+                        <Text style={styles.sectionLink}>See all</Text>
+                      </TouchableOpacity>
+                    )}
                   </View>
+                  {suggestionsLoading ? (
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={styles.carouselContent}
+                    >
+                      {Array.from({ length: SUGGESTION_SKELETON_COUNT }).map(
+                        (_, i) => (
+                          <SuggestionCardSkeleton key={i} />
+                        )
+                      )}
+                    </ScrollView>
+                  ) : (
                   <ScrollView
                     horizontal
                     showsHorizontalScrollIndicator={false}
@@ -576,6 +611,7 @@ export function CircleScreen() {
                         )
                       })}
                   </ScrollView>
+                  )}
                 </View>
               )}
 
@@ -701,6 +737,44 @@ const styles = StyleSheet.create({
   },
   sectionLink: { fontSize: 11, color: '#555' },
   carouselContent: { paddingHorizontal: 12, gap: 10 },
+  suggestionSkeletonCard: {
+    minWidth: 108,
+    backgroundColor: '#141414',
+    borderWidth: 0.5,
+    borderColor: '#252525',
+    borderRadius: 10,
+    paddingTop: 8,
+    paddingBottom: 8,
+    paddingHorizontal: 10,
+    alignItems: 'center',
+  },
+  suggestionSkeletonAvatar: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: '#1e1e1e',
+  },
+  suggestionSkeletonName: {
+    width: 64,
+    height: 13,
+    borderRadius: 6,
+    backgroundColor: '#1e1e1e',
+    marginTop: 5,
+    marginBottom: 4,
+  },
+  suggestionSkeletonSessions: {
+    width: 80,
+    height: 13,
+    borderRadius: 6,
+    backgroundColor: '#1a1a1a',
+    marginBottom: 6,
+  },
+  suggestionSkeletonBtn: {
+    width: '100%',
+    height: 26,
+    borderRadius: 6,
+    backgroundColor: '#1e1e1e',
+  },
   suggestionCard: {
     minWidth: 108,
     backgroundColor: '#141414',

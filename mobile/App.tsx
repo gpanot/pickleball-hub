@@ -49,17 +49,26 @@ export default function App() {
   }, [])
 
   // Register push token after authentication
+  // Re-registers on every app launch (FCM tokens can rotate)
   useEffect(() => {
     if (!jwt || pushTokenRegistered.current) return
-    pushTokenRegistered.current = true
 
     registerForPushNotifications().then((token) => {
       if (token) {
+        pushTokenRegistered.current = true
+        console.log('[push] uploading token to backend...')
         const { authedFetch } = useAuthStore.getState()
         authedFetch('/api/players/push-token', {
           method: 'POST',
           body: JSON.stringify({ token }),
-        }).catch((err) => console.warn('[push] token upload failed', err))
+        })
+          .then((res) => console.log('[push] token upload response:', res.status))
+          .catch((err) => {
+            pushTokenRegistered.current = false
+            console.warn('[push] token upload failed', err)
+          })
+      } else {
+        console.warn('[push] no token returned — permission denied or not a physical device')
       }
     })
   }, [jwt])

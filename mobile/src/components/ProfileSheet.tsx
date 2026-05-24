@@ -6,6 +6,7 @@ import {
   Image,
   Alert,
   StyleSheet,
+  ScrollView,
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import {
@@ -116,8 +117,23 @@ export function ProfileSheet({
   const handleTestPns = async () => {
     setPnsStatus('sending')
     try {
-      const res = await authedFetch('/api/notifications/test', { method: 'POST' })
-      const data = await res.json()
+      let res = await authedFetch('/api/notifications/test', { method: 'POST' })
+      let data = await res.json()
+
+      // If no token on backend, try re-registering now
+      if (!res.ok && data.registered === false) {
+        const { registerForPushNotifications } = await import('../services/notifications')
+        const token = await registerForPushNotifications()
+        if (token) {
+          await authedFetch('/api/players/push-token', {
+            method: 'POST',
+            body: JSON.stringify({ token }),
+          })
+          res = await authedFetch('/api/notifications/test', { method: 'POST' })
+          data = await res.json()
+        }
+      }
+
       if (!res.ok) {
         setPnsStatus(data.registered === false ? 'no_token' : 'error')
       } else {
@@ -181,6 +197,7 @@ export function ProfileSheet({
         <Text style={styles.backLabel}>Back</Text>
       </TouchableOpacity>
 
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
       <View style={styles.headerRow}>
         <View style={styles.headerAvatarWrap}>
           {imageUrl ? (
@@ -358,6 +375,7 @@ export function ProfileSheet({
           </Text>
         </TouchableOpacity>
       </View>
+      </ScrollView>
     </View>
   )
 }
@@ -367,6 +385,9 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#0a0a0a',
     paddingHorizontal: 24,
+  },
+  scrollContent: {
+    paddingBottom: 40,
   },
   backBtn: {
     flexDirection: 'row',

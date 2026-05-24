@@ -26,12 +26,24 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  await sendPushNotification({
+  const result = await sendPushNotification({
     token: profile.pushToken,
     title: "Test notification",
     body: `Hey ${profile.displayName ?? "there"}! Push notifications are working.`,
     data: { type: "test", screen: "Circle" },
   });
+
+  if (!result.success) {
+    return NextResponse.json(
+      {
+        error: "Push send failed",
+        code: result.error,
+        tokenPrefix: profile.pushToken.slice(0, 20),
+        registered: true,
+      },
+      { status: 502 }
+    );
+  }
 
   return NextResponse.json({ ok: true, registered: true });
 }

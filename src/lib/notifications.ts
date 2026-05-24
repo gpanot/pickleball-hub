@@ -11,9 +11,17 @@ export async function sendPushNotification({
   title: string;
   body: string;
   data?: Record<string, string>;
-}) {
+}): Promise<{ success: boolean; error?: string }> {
+  if (token.startsWith("ExponentPushToken")) {
+    console.error(
+      "Push notification failed: received Expo push token instead of native FCM token.",
+      "Token prefix:", token.slice(0, 30)
+    );
+    return { success: false, error: "expo_token_format" };
+  }
+
   try {
-    await getMessaging().send({
+    const messageId = await getMessaging().send({
       token,
       notification: { title, body },
       data,
@@ -33,14 +41,17 @@ export async function sendPushNotification({
         },
       },
     });
+    console.log("Push notification sent, messageId:", messageId);
+    return { success: true };
   } catch (err: unknown) {
-    const firebaseErr = err as { code?: string };
-    console.error("Push notification failed:", err);
+    const firebaseErr = err as { code?: string; message?: string };
+    console.error("Push notification failed:", firebaseErr.code, firebaseErr.message);
     if (firebaseErr.code === "messaging/registration-token-not-registered") {
       await prisma.playerProfile.updateMany({
         where: { pushToken: token },
         data: { pushToken: null },
       });
     }
+    return { success: false, error: firebaseErr.code ?? "unknown" };
   }
 }
