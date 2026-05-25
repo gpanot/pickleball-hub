@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect } from "react";
 import { useI18n } from "@/lib/i18n";
 import { mouseflowTag } from "@/lib/analytics";
+import posthog from "posthog-js";
 
 export interface FilterState {
   timeSlot: string;
@@ -153,6 +154,9 @@ export function SessionFilters({
 
   const update = useCallback(
     (key: keyof FilterState, value: string) => {
+      if (key === "sortBy" && value !== filters.sortBy) {
+        posthog.capture("session_sort_changed", { sort_by: value, previous_sort: filters.sortBy });
+      }
       onChange({ ...filters, [key]: value });
     },
     [filters, onChange],

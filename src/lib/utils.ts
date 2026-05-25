@@ -15,6 +15,14 @@ export function vnCalendarDateString(offsetDays = 0): string {
   return vn.toISOString().split("T")[0];
 }
 
+/** Current time-of-day in Vietnam (UTC+7) as "HH:MM" — used to filter out past sessions. */
+export function vnCurrentTimeString(): string {
+  const vn = new Date(Date.now() + 7 * 60 * 60 * 1000);
+  const hh = String(vn.getUTCHours()).padStart(2, "0");
+  const mm = String(vn.getUTCMinutes()).padStart(2, "0");
+  return `${hh}:${mm}`;
+}
+
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import {
   vnCalendarDateString,
+  vnCurrentTimeString,
   haversineKm,
   deriveVibeTag,
   isFillingFast,
@@ -22,9 +23,14 @@ const REGULARS_CAP = 5;
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = req.nextUrl;
-    const date = searchParams.get("date") ?? vnCalendarDateString(0);
+    const today = vnCalendarDateString(0);
+    const date = searchParams.get("date") ?? today;
     const lat = parseFloat(searchParams.get("lat") ?? "");
     const lng = parseFloat(searchParams.get("lng") ?? "");
+
+    // For today, hide sessions that have already started (or ended).
+    // Tomorrow and beyond: show everything.
+    const minTime = date === today ? vnCurrentTimeString() : undefined;
     const userLat = Number.isFinite(lat) ? lat : null;
     const userLng = Number.isFinite(lng) ? lng : null;
 
@@ -44,33 +50,104 @@ export async function GET(req: NextRequest) {
       followedPlayerIds = new Set(follows.map((f) => f.followeeId.toString()));
     }
 
-    const [totalCount, sessions] = await Promise.all([
-      prisma.session.count({ where: { scrapedDate: date, status: "active" } }),
-      prisma.session.findMany({
-        where: { scrapedDate: date, status: "active" },
+    const sessionWhere = {
+      scrapedDate: date,
+      status: "active",
+      ...(minTime ? { startTime: { gte: minTime } } : {}),
+    };
+
+    // Build a full friend-presence map for the whole day — not limited to the current page.
+    // This ensures friend sessions are visible regardless of their position in the paginated deck.
+    const FRIENDS_AVATAR_CAP = 4;
+    const friendsBySessionId = new Map<number, { userId: string; displayName: string; imageUrl: string }[]>();
+    if (followedPlayerIds.size > 0) {
+      const friendRosterRows = await prisma.sessionRoster.findMany({
+        where: {
+          userId: { in: [...followedPlayerIds].map(BigInt) },
+          isConfirmed: true,
+          session: sessionWhere,
+        },
+        select: {
+          sessionId: true,
+          userId: true,
+          player: { select: { userId: true, displayName: true, imageUrl: true } },
+        },
+      });
+      for (const r of friendRosterRows) {
+        const uid = r.player?.userId ?? r.userId;
+        const entry = {
+          userId: uid.toString(),
+          displayName: r.player?.displayName ?? "Player",
+          imageUrl: r.player?.imageUrl ?? reclubAvatarUrl(uid),
+        };
+        const list = friendsBySessionId.get(r.sessionId);
+        if (list) {
+          // Deduplicate by userId
+          if (!list.some((f) => f.userId === entry.userId)) list.push(entry);
+        } else {
+          friendsBySessionId.set(r.sessionId, [entry]);
+        }
+      }
+    }
+
+    const friendSessionIds = [...friendsBySessionId.keys()];
+
+    console.log(`[swipe-deck] date=${date} minTime=${minTime ?? "none"} offset=${offset} limit=${limit} friendSessions=${friendSessionIds.length}`);
+
+    const sessionInclude = {
+      club: { select: { name: true, slug: true } },
+      venue: { select: { name: true, latitude: true, longitude: true } },
+      duprStat: true,
+      snapshots: { orderBy: { scrapedAt: "desc" } as const, take: 2 },
+      rosters: {
+        where: { isConfirmed: true },
         include: {
-          club: { select: { name: true, slug: true } },
-          venue: { select: { name: true, latitude: true, longitude: true } },
-          duprStat: true,
-          snapshots: { orderBy: { scrapedAt: "desc" }, take: 2 },
-          rosters: {
-            where: { isConfirmed: true },
-            include: {
-              player: {
-                select: {
-                  userId: true,
-                  displayName: true,
-                  imageUrl: true,
-                  duprDoubles: true,
-                },
-              },
+          player: {
+            select: {
+              userId: true,
+              displayName: true,
+              imageUrl: true,
+              duprDoubles: true,
             },
           },
         },
+      },
+    } as const;
+
+    // On the first page, always prepend friend sessions regardless of their startTime rank.
+    // For subsequent pages, exclude friend sessions from the normal paging so they don't repeat.
+    const isFirstPage = offset === 0;
+    const normalWhere =
+      friendSessionIds.length > 0
+        ? { ...sessionWhere, id: { notIn: friendSessionIds } }
+        : sessionWhere;
+    const normalSkip = isFirstPage ? 0 : offset - friendSessionIds.length;
+    const normalTake =
+      limit !== null
+        ? isFirstPage
+          ? Math.max(0, limit - friendSessionIds.length)
+          : limit
+        : null;
+
+    const [totalCount, friendSessions, normalSessions] = await Promise.all([
+      prisma.session.count({ where: sessionWhere }),
+      isFirstPage && friendSessionIds.length > 0
+        ? prisma.session.findMany({
+            where: { id: { in: friendSessionIds } },
+            include: sessionInclude,
+            orderBy: { startTime: "asc" },
+          })
+        : Promise.resolve([]),
+      prisma.session.findMany({
+        where: normalWhere,
+        include: sessionInclude,
         orderBy: { startTime: "asc" },
-        ...(limit !== null ? { skip: offset, take: limit } : {}),
+        ...(normalTake !== null ? { skip: Math.max(0, normalSkip), take: normalTake } : {}),
       }),
     ]);
+
+    // Friend sessions first, then normal sessions (no duplicates)
+    const sessions = [...friendSessions, ...normalSessions];
 
     if (sessions.length === 0) {
       return NextResponse.json(
@@ -231,23 +308,10 @@ export async function GET(req: NextRequest) {
         regulars,
 
         ...(() => {
-          const FRIENDS_AVATAR_CAP = 4;
-          const friendsInRoster = followedPlayerIds.size > 0
-            ? s.rosters
-                .filter((r) => followedPlayerIds.has(r.userId.toString()))
-                .map((r) => {
-                  const uid = r.player?.userId ?? r.userId;
-                  return {
-                    userId: uid.toString(),
-                    displayName: r.player?.displayName ?? "Player",
-                    imageUrl:
-                      r.player?.imageUrl ?? reclubAvatarUrl(uid),
-                  };
-                })
-            : [];
-          const friendCount = friendsInRoster.length;
+          const friendsInSession = friendsBySessionId.get(s.id) ?? [];
+          const friendCount = friendsInSession.length;
           return {
-            friends: friendsInRoster.slice(0, FRIENDS_AVATAR_CAP),
+            friends: friendsInSession.slice(0, FRIENDS_AVATAR_CAP),
             friendCount,
             friendsOverflow: Math.max(0, friendCount - FRIENDS_AVATAR_CAP),
           };
@@ -258,6 +322,12 @@ export async function GET(req: NextRequest) {
     });
 
     const hasMore = limit !== null ? offset + sessions.length < totalCount : false;
+
+    const friendSessionsLogged = mapped.filter((s) => s.friendCount > 0);
+    console.log(`[swipe-deck] total=${totalCount} returned=${mapped.length} withFriends=${friendSessionsLogged.length}`);
+    friendSessionsLogged.forEach((s) => {
+      console.log(`  → [FRIENDS] "${s.name}" startTime=${s.startTime} friendCount=${s.friendCount} friends=${s.friends.map((f) => f.displayName).join(", ")}`);
+    });
 
     return NextResponse.json(
       { sessions: mapped, count: mapped.length, total: totalCount, offset, hasMore },

@@ -22,6 +22,7 @@ import Animated, {
   runOnJS,
 } from 'react-native-reanimated'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
+import ReanimatedSwipeable from 'react-native-gesture-handler/ReanimatedSwipeable'
 import { X, RotateCcw, Heart, RefreshCw, AlertCircle, Inbox, CheckCircle2, Users, Bookmark } from 'lucide-react-native'
 import * as Location from 'expo-location'
 import * as Haptics from 'expo-haptics'
@@ -47,6 +48,7 @@ import type { FriendListItem } from '../components/FriendListRow'
 import { FriendGoingCard } from '../components/FriendGoingCard'
 import type { FriendGoingItem } from '../components/FriendGoingCard'
 import { PlayerProfileSheet } from '../components/PlayerProfileSheet'
+import { debugLog } from '../lib/debug'
 
 /* eslint-disable @typescript-eslint/no-var-requires */
 const CARD_BG_IMAGES = [
@@ -347,7 +349,9 @@ function vnDateString(offsetDays: number): string {
 export function SwipeScreen() {
   const { openSignUp } = useSignUpModal()
   const signedIn = useAuthStore((s) => s.isSignedIn)()
-  const deck = useSessionStore((s) => s.sessions)
+  const allSessions = useSessionStore((s) => s.sessions)
+  const savedIds = useSessionStore((s) => s.savedIds)
+  const deck = useMemo(() => allSessions.filter((s) => !savedIds.has(s.id)), [allSessions, savedIds])
   const loading = useSessionStore((s) => s.loading)
   const error = useSessionStore((s) => s.error)
   const { fetchSessions, fetchIfNeeded, loadSavedIds, saveSession, unsaveSession, resetDeck, prefetchNextBatch } =
@@ -376,6 +380,7 @@ export function SwipeScreen() {
   const [goingData, setGoingData] = useState<{ friendsGoing: FriendGoingItem[] } | null>(null)
   const [goingLoading, setGoingLoading] = useState(false)
   const [goingFilter, setGoingFilter] = useState<'today' | 'tomorrow' | 'all'>('today')
+  const [removedSavedIds, setRemovedSavedIds] = useState<Set<number>>(new Set())
 
   const auth = useAuthStore.getState()
 
@@ -388,6 +393,16 @@ export function SwipeScreen() {
       if (res.ok) {
         const data = await res.json()
         setGoingData(data)
+        debugLog('Going', `filter=${goingFilter} friendsGoing=${data.friendsGoing?.length ?? 0}`)
+        if (data.friendsGoing?.length > 0) {
+          data.friendsGoing.forEach((s: FriendGoingItem) => {
+            debugLog('Going', `  → "${s.name}" startTime=${s.startTime} friendCount=${s.friendCount} friends=${s.friends.map((f) => f.displayName).join(', ')}`)
+          })
+        } else {
+          debugLog('Going', '  → no friend sessions returned')
+        }
+      } else {
+        debugLog('Going', `fetch failed status=${res.status}`)
       }
     } finally {
       setGoingLoading(false)
@@ -401,7 +416,10 @@ export function SwipeScreen() {
   }, [playTab, goingFilter])
 
   const savedSessions = useSessionStore((s) => s.getSavedSessions)()
-  const shortlistItems = useMemo(() => savedSessions, [savedSessions])
+  const shortlistItems = useMemo(
+    () => savedSessions.filter((s) => !removedSavedIds.has(s.id)),
+    [savedSessions, removedSavedIds],
+  )
   const shortlistCount = shortlistItems.length
 
   const openSessionFriends = useCallback((session: Session) => {
@@ -422,10 +440,13 @@ export function SwipeScreen() {
   }, [signedIn])
 
   const displayDeck = useMemo(() => {
+    const withFriends = deck.filter((s) => s.friendCount > 0)
+    debugLog('Discover', `deck=${deck.length} withFriends=${withFriends.length} sort=${sort} dateFilter=${dateFilter}`)
+    withFriends.forEach((s) => {
+      debugLog('Discover', `  → [FRIEND] "${s.name}" startTime=${s.startTime} friendCount=${s.friendCount} friends=${s.friends.map((f) => f.displayName).join(', ')}`)
+    })
     if (sort === 'friends') {
-      return [...deck]
-        .filter((s) => s.friendCount > 0)
-        .sort((a, b) => b.friendCount - a.friendCount)
+      return withFriends.sort((a, b) => b.friendCount - a.friendCount)
     }
     return deck
   }, [deck, sort])
@@ -539,7 +560,7 @@ export function SwipeScreen() {
         title="Where to play?"
         counter={
           playTab === 'discover' && total > 0
-            ? `${viewIdx + (viewIdx < total ? 1 : 0)}/${totalCount ?? total}`
+            ? `${viewIdx + (viewIdx < total ? 1 : 0)}/${sort === 'friends' ? total : (totalCount ?? total)}`
             : undefined
         }
       />
@@ -574,6 +595,71 @@ export function SwipeScreen() {
       {/* ── Discover tab ─────────────────────────────────────── */}
       {playTab === 'discover' && (
         <>
+          {/* Filter pills — always visible, never hidden during loading */}
+          <View
+            style={{
+              flexDirection: 'row',
+              gap: 8,
+              paddingHorizontal: 16,
+              paddingBottom: 10,
+              alignItems: 'center',
+            }}
+          >
+            {(['match', 'friends'] as const).map((key) => {
+              const on = sort === key
+              const label = key === 'match' ? 'Best match' : 'Friends'
+              return (
+                <TouchableOpacity
+                  key={key}
+                  onPress={() => setSwipeSort(key)}
+                  style={{
+                    paddingHorizontal: 14,
+                    paddingVertical: 5,
+                    borderRadius: 20,
+                    backgroundColor: on ? T.amber : T.input,
+                    borderWidth: 1,
+                    borderColor: on ? T.amber : T.border,
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: 12,
+                      fontWeight: on ? '600' : '400',
+                      color: on ? '#000' : T.muted,
+                    }}
+                  >
+                    {label}
+                  </Text>
+                </TouchableOpacity>
+              )
+            })}
+
+            {/* Divider */}
+            <View style={{ width: 1, height: 16, backgroundColor: T.border, marginHorizontal: 2 }} />
+
+            {(['today', 'tomorrow'] as const).map((key: SwipeDateFilter) => {
+              const on = dateFilter === key
+              const label = key === 'today' ? 'Today' : 'Tomorrow'
+              return (
+                <TouchableOpacity
+                  key={key}
+                  onPress={() => setDateFilter(key)}
+                  style={{ paddingVertical: 5, paddingHorizontal: 2 }}
+                >
+                  <Text
+                    style={{
+                      fontSize: 12,
+                      fontWeight: on ? '600' : '400',
+                      color: on ? '#fff' : T.muted,
+                    }}
+                  >
+                    {label}
+                  </Text>
+                </TouchableOpacity>
+              )
+            })}
+          </View>
+
           {loading && total === 0 && !error ? (
             <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
               <ActivityIndicator size="large" color={T.amber} />
@@ -638,70 +724,6 @@ export function SwipeScreen() {
                 <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={T.amber} />
               }
             >
-              {/* Filter pills — all in one row */}
-              <View
-                style={{
-                  flexDirection: 'row',
-                  gap: 8,
-                  paddingBottom: 10,
-                  alignItems: 'center',
-                }}
-              >
-                {(['match', 'friends'] as const).map((key) => {
-                  const on = sort === key
-                  const label = key === 'match' ? 'Best match' : 'Friends'
-                  return (
-                    <TouchableOpacity
-                      key={key}
-                      onPress={() => setSwipeSort(key)}
-                      style={{
-                        paddingHorizontal: 14,
-                        paddingVertical: 5,
-                        borderRadius: 20,
-                        backgroundColor: on ? T.amber : T.input,
-                        borderWidth: 1,
-                        borderColor: on ? T.amber : T.border,
-                      }}
-                    >
-                      <Text
-                        style={{
-                          fontSize: 12,
-                          fontWeight: on ? '600' : '400',
-                          color: on ? '#000' : T.muted,
-                        }}
-                      >
-                        {label}
-                      </Text>
-                    </TouchableOpacity>
-                  )
-                })}
-
-                {/* Divider */}
-                <View style={{ width: 1, height: 16, backgroundColor: T.border, marginHorizontal: 2 }} />
-
-                {(['today', 'tomorrow'] as const).map((key: SwipeDateFilter) => {
-                  const on = dateFilter === key
-                  const label = key === 'today' ? 'Today' : 'Tomorrow'
-                  return (
-                    <TouchableOpacity
-                      key={key}
-                      onPress={() => setDateFilter(key)}
-                      style={{ paddingVertical: 5, paddingHorizontal: 2 }}
-                    >
-                      <Text
-                        style={{
-                          fontSize: 12,
-                          fontWeight: on ? '600' : '400',
-                          color: on ? '#fff' : T.muted,
-                        }}
-                      >
-                        {label}
-                      </Text>
-                    </TouchableOpacity>
-                  )
-                })}
-              </View>
-
               {friendsFilterEmpty && signedIn ? (
                 <View style={{ alignItems: 'center', paddingVertical: 48, paddingHorizontal: 24 }}>
                   <Users size={40} color="#444" strokeWidth={1.5} style={{ marginBottom: 12 }} />
@@ -858,7 +880,20 @@ export function SwipeScreen() {
 
       {/* ── Going tab ─────────────────────────────────────────── */}
       {playTab === 'shortlist' && (
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 32 }}>
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ paddingBottom: 32 }}
+          refreshControl={
+            <RefreshControl
+              refreshing={goingLoading}
+              onRefresh={() => {
+                setRemovedSavedIds(new Set())
+                loadGoing()
+              }}
+              tintColor={T.amber}
+            />
+          }
+        >
           {/* Filter pills */}
           <View style={s.goingFilterRow}>
             {(['today', 'tomorrow', 'all'] as const).map((key) => {
@@ -932,37 +967,54 @@ export function SwipeScreen() {
                     </Text>
                   </View>
                   {shortlistItems.map((item, index) => (
-                    <TouchableOpacity
+                    <ReanimatedSwipeable
                       key={`saved-${item.id}-${index}`}
-                      style={[
-                        s.savedRow,
-                        index === shortlistItems.length - 1 && { borderBottomWidth: 0 },
-                      ]}
-                      activeOpacity={0.8}
-                      onPress={() => setExpandedSession(item)}
+                      friction={2}
+                      leftThreshold={60}
+                      renderLeftActions={() => (
+                        <View style={s.savedSwipeDelete}>
+                          <Text style={s.savedSwipeDeleteText}>Remove</Text>
+                        </View>
+                      )}
+                      onSwipeableOpen={(direction) => {
+                        if (direction === 'left') {
+                          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+                          setRemovedSavedIds((prev) => new Set([...prev, item.id]))
+                          unsaveSession(item.id)
+                        }
+                      }}
                     >
-                      <View style={s.savedThumb}>
-                        <Text style={s.savedThumbPct} numberOfLines={1}>
-                          {item.matchScore > 0 ? `${item.matchScore}%` : 'New'}
-                        </Text>
-                      </View>
-                      <View style={s.savedInfo}>
-                        <Text style={s.savedName} numberOfLines={1}>{item.name}</Text>
-                        <Text style={s.savedMeta}>
-                          {formatTime(item.startTime)} · {item.spotsLeft} spots left
-                        </Text>
-                        {item.club?.name && (
-                          <Text style={s.savedVenue} numberOfLines={1}>{item.club.name}</Text>
-                        )}
-                      </View>
                       <TouchableOpacity
-                        style={s.savedJoinBtn}
-                        onPress={() => item.eventUrl && Linking.openURL(item.eventUrl)}
-                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        style={[
+                          s.savedRow,
+                          index === shortlistItems.length - 1 && { borderBottomWidth: 0 },
+                        ]}
+                        activeOpacity={0.8}
+                        onPress={() => setExpandedSession(item)}
                       >
-                        <Text style={s.savedJoinText}>Join on{'\n'}Reclub</Text>
+                        <View style={s.savedThumb}>
+                          <Text style={s.savedThumbPct} numberOfLines={1}>
+                            {item.matchScore > 0 ? `${item.matchScore}%` : 'New'}
+                          </Text>
+                        </View>
+                        <View style={s.savedInfo}>
+                          <Text style={s.savedName} numberOfLines={1}>{item.name}</Text>
+                          <Text style={s.savedMeta}>
+                            {formatTime(item.startTime)} · {item.spotsLeft} spots left
+                          </Text>
+                          {item.club?.name && (
+                            <Text style={s.savedVenue} numberOfLines={1}>{item.club.name}</Text>
+                          )}
+                        </View>
+                        <TouchableOpacity
+                          style={s.savedJoinBtn}
+                          onPress={() => item.eventUrl && Linking.openURL(item.eventUrl)}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <Text style={s.savedJoinText}>Join on{'\n'}Reclub</Text>
+                        </TouchableOpacity>
                       </TouchableOpacity>
-                    </TouchableOpacity>
+                    </ReanimatedSwipeable>
                   ))}
                   <TouchableOpacity style={s.keepSwiping} onPress={() => setPlayTab('discover')}>
                     <Text style={s.keepSwipingText}>Keep swiping for more →</Text>
@@ -1295,6 +1347,7 @@ const s = StyleSheet.create({
     paddingVertical: 12,
     borderBottomWidth: 0.5,
     borderBottomColor: '#111',
+    backgroundColor: '#000',
     gap: 12,
   },
   savedThumb: {
@@ -1344,5 +1397,17 @@ const s = StyleSheet.create({
     fontWeight: '700',
     color: '#1a0a00',
     textAlign: 'center',
+  },
+  savedSwipeDelete: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#ef4444',
+    width: 80,
+    marginVertical: 1,
+  },
+  savedSwipeDeleteText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '700',
   },
 })

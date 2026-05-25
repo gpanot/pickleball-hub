@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react'
 import { View, Text, TouchableOpacity, StyleSheet, Image, Animated, Linking } from 'react-native'
 import { T } from '../theme'
+import { formatTime } from '../data'
 
 interface LiveVenue {
   venueName: string
@@ -19,21 +20,29 @@ interface LiveVenue {
   nextSessionTime: string | null
 }
 
-function formatTime(iso: string): string {
-  const d = new Date(iso)
-  const h = d.getHours()
-  const m = d.getMinutes()
-  const ampm = h >= 12 ? 'PM' : 'AM'
-  const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h
-  return `${h12}${m > 0 ? `:${String(m).padStart(2, '0')}` : ''} ${ampm}`
+function parseClockTime(clock: string): { hours: number; minutes: number } {
+  const [hStr, mStr] = clock.split(':')
+  return { hours: parseInt(hStr, 10), minutes: parseInt(mStr ?? '0', 10) }
 }
 
-function minutesUntil(iso: string): number {
-  return Math.floor((new Date(iso).getTime() - Date.now()) / 60000)
+function minutesUntil(endClock: string): number {
+  const { hours, minutes } = parseClockTime(endClock)
+  const end = new Date()
+  end.setHours(hours, minutes, 0, 0)
+  return Math.floor((end.getTime() - Date.now()) / 60000)
 }
 
 function sessionDurationHours(start: string, end: string): number {
-  return Math.round((new Date(end).getTime() - new Date(start).getTime()) / 3600000)
+  const s = parseClockTime(start)
+  const e = parseClockTime(end)
+  const startMins = s.hours * 60 + s.minutes
+  const endMins = e.hours * 60 + e.minutes
+  const diff = endMins >= startMins ? endMins - startMins : endMins + 24 * 60 - startMins
+  return Math.max(1, Math.round(diff / 60))
+}
+
+function truncateVenueName(name: string, maxLen = 28): string {
+  return name.length > maxLen ? name.slice(0, maxLen) + '…' : name
 }
 
 interface Props {
@@ -90,8 +99,10 @@ export function PresenceCard({ venue, onPlayerPress }: Props) {
   return (
     <View style={s.card}>
       <View style={s.header}>
-        <View>
-          <Text style={s.venueName}>{venue.venueName}</Text>
+        <View style={s.headerLeft}>
+          <Text style={s.venueName} numberOfLines={1} ellipsizeMode="tail">
+            {truncateVenueName(venue.venueName)}
+          </Text>
           <Text style={s.sessionTime}>
             {formatTime(venue.startTime)} · {durationH}h session
           </Text>
@@ -104,40 +115,36 @@ export function PresenceCard({ venue, onPlayerPress }: Props) {
 
       <View style={s.body}>
         <View style={s.playersRow}>
-          {venue.players.slice(0, 3).map((p, i) => (
-            <TouchableOpacity
-              key={p.userId}
-              style={[s.playerAvWrap, { zIndex: 4 - i }]}
-              onPress={() => onPlayerPress(p.userId)}>
-              {p.imageUrl ? (
-                <Image
-                  source={{ uri: p.imageUrl }}
-                  style={s.playerAv}
-                  resizeMode="cover" />
-              ) : (
-                <View style={[s.playerAv, s.playerAvFallback]}>
-                  <Text style={s.playerAvInitial}>
-                    {(p.displayName ?? '?')[0].toUpperCase()}
-                  </Text>
-                </View>
-              )}
-            </TouchableOpacity>
-          ))}
-          {venue.totalRoster > 3 && (
-            <View style={[s.playerAvWrap, s.playerMore]}>
-              <Text style={s.playerMoreText}>+{venue.totalRoster - 3}</Text>
-            </View>
-          )}
-          <Text style={s.circleInfo}>
-            <Text style={s.circleNames}>{circleNames}</Text>
-            {extraCircle}
-          </Text>
-        </View>
-
-        <View style={s.footer}>
-          <Text style={s.footerLeft}>
-            {formatTime(venue.startTime)} · {durationH}h session
-          </Text>
+          <View style={s.playersRowMain}>
+            {venue.players.slice(0, 3).map((p, i) => (
+              <TouchableOpacity
+                key={p.userId}
+                style={[s.playerAvWrap, { zIndex: 4 - i }]}
+                onPress={() => onPlayerPress(p.userId)}>
+                {p.imageUrl ? (
+                  <Image
+                    source={{ uri: p.imageUrl }}
+                    style={s.playerAv}
+                    resizeMode="cover" />
+                ) : (
+                  <View style={[s.playerAv, s.playerAvFallback]}>
+                    <Text style={s.playerAvInitial}>
+                      {(p.displayName ?? '?')[0].toUpperCase()}
+                    </Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            ))}
+            {venue.totalRoster > 3 && (
+              <View style={[s.playerAvWrap, s.playerMore]}>
+                <Text style={s.playerMoreText}>+{venue.totalRoster - 3}</Text>
+              </View>
+            )}
+            <Text style={s.circleInfo} numberOfLines={2} ellipsizeMode="tail">
+              <Text style={s.circleNames}>{circleNames}</Text>
+              {extraCircle}
+            </Text>
+          </View>
           {footerRight()}
         </View>
       </View>
@@ -162,6 +169,12 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: 8,
+  },
+  headerLeft: {
+    flex: 1,
+    minWidth: 0,
+    paddingRight: 4,
   },
   venueName: {
     fontSize: 13,
@@ -177,6 +190,7 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
+    flexShrink: 0,
   },
   liveDot: {
     width: 6,
@@ -191,12 +205,19 @@ const s = StyleSheet.create({
     letterSpacing: 0.6,
   },
   body: {
-    padding: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
   },
   playersRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
+    gap: 8,
+  },
+  playersRowMain: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    minWidth: 0,
   },
   playerAvWrap: {
     marginRight: -6,
@@ -232,22 +253,13 @@ const s = StyleSheet.create({
   circleInfo: {
     fontSize: 10,
     color: '#555',
-    marginLeft: 12,
+    marginLeft: 10,
     flex: 1,
-    flexWrap: 'wrap',
+    minWidth: 0,
   },
   circleNames: {
     color: '#5DCAA5',
     fontWeight: '500',
-  },
-  footer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  footerLeft: {
-    fontSize: 10,
-    color: '#2a2a2a',
   },
   endsAt: {
     fontSize: 10,
@@ -258,6 +270,8 @@ const s = StyleSheet.create({
     borderRadius: 6,
     paddingHorizontal: 7,
     paddingVertical: 3,
+    flexShrink: 0,
+    alignSelf: 'center',
   },
   endingSoonText: {
     fontSize: 10,
@@ -269,6 +283,8 @@ const s = StyleSheet.create({
     borderRadius: 6,
     paddingHorizontal: 10,
     paddingVertical: 4,
+    flexShrink: 0,
+    alignSelf: 'center',
   },
   checkClubText: {
     fontSize: 10,

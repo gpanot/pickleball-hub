@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react'
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native'
+import React, { useState, useEffect, useRef } from 'react'
+import { View, Text, TouchableOpacity, StyleSheet, Animated } from 'react-native'
 import { FeedItem } from '../data'
 import { PlayerAvatar } from './PlayerAvatar'
 import { T } from '../theme'
@@ -36,7 +36,7 @@ function formatSessionTime(iso: string): string {
 
 function truncateSessionName(raw: string | undefined): string {
   const name = raw ?? ''
-  return name.length > 40 ? name.slice(0, 40) + '…' : name
+  return name.length > 24 ? name.slice(0, 24) + '…' : name
 }
 
 interface Props {
@@ -56,6 +56,19 @@ export function FeedItemRow({
   const dupr = item.player.duprDoubles?.toFixed(2) ?? '–'
   const sessionLabel = truncateSessionName(item.sessionName)
   const auth = useAuthStore()
+  const dotOpacity = useRef(new Animated.Value(1)).current
+
+  useEffect(() => {
+    if (!isLive) return
+    const anim = Animated.loop(
+      Animated.sequence([
+        Animated.timing(dotOpacity, { toValue: 0, duration: 600, useNativeDriver: true }),
+        Animated.timing(dotOpacity, { toValue: 1, duration: 600, useNativeDriver: true }),
+      ])
+    )
+    anim.start()
+    return () => anim.stop()
+  }, [isLive, dotOpacity])
 
   const [kudos, setKudos] = useState({
     fistbump: item.kudos?.fistbump ?? 0,
@@ -110,13 +123,17 @@ export function FeedItemRow({
 
       <View style={s.body}>
         <View style={s.nameRow}>
-          <Text style={s.name}>{name}</Text>
-          {item.isFollowing && (
-            <Text style={s.followingLabel}> · following</Text>
-          )}
+          <View style={s.nameRowLeft}>
+            <Text style={s.name} numberOfLines={1}>
+              {name}
+            </Text>
+            {item.isFollowing && (
+              <Text style={s.followingLabel}> · following</Text>
+            )}
+          </View>
           {isLive && (
             <View style={s.liveBadge}>
-              <View style={s.liveBadgeDot} />
+              <Animated.View style={[s.liveBadgeDot, { opacity: dotOpacity }]} />
               <Text style={s.liveBadgeText}>On court</Text>
             </View>
           )}
@@ -166,34 +183,35 @@ export function FeedItemRow({
           </Text>
         )}
 
-        <Text style={s.timestamp}>
-          {item.type === 'played'
-            ? `Last seen ${formatRelativeTime(item.timestamp)}`
-            : formatRelativeTime(item.timestamp)}
-          {item.type === 'played' && item.venueName
-            ? ` · ${item.venueName}`
-            : ''}
-        </Text>
-
-        <View style={s.kudosRow}>
-          {(['fistbump', 'flame', 'star'] as const).map(type => {
-            const isActive = kudos.myReactions.includes(type)
-            const count = kudos[type]
-            const emoji = type === 'fistbump' ? '🤜' : type === 'flame' ? '🔥' : '⭐'
-            return (
-              <TouchableOpacity
-                key={type}
-                style={[s.kudosBtn, isActive && s.kudosBtnActive]}
-                onPress={() => handleKudos(type)}>
-                <Text style={s.kudosEmoji}>{emoji}</Text>
-                {count > 0 && (
-                  <Text style={[s.kudosCount, isActive && s.kudosCountActive]}>
-                    {count}
-                  </Text>
-                )}
-              </TouchableOpacity>
-            )
-          })}
+        <View style={s.footerRow}>
+          <View style={s.kudosRow}>
+            {(['fistbump', 'flame', 'star'] as const).map(type => {
+              const isActive = kudos.myReactions.includes(type)
+              const count = kudos[type]
+              const emoji = type === 'fistbump' ? '🤜' : type === 'flame' ? '🔥' : '⭐'
+              return (
+                <TouchableOpacity
+                  key={type}
+                  style={[s.kudosBtn, isActive && s.kudosBtnActive]}
+                  onPress={() => handleKudos(type)}>
+                  <Text style={s.kudosEmoji}>{emoji}</Text>
+                  {count > 0 && (
+                    <Text style={[s.kudosCount, isActive && s.kudosCountActive]}>
+                      {count}
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              )
+            })}
+          </View>
+          <Text style={s.timestamp} numberOfLines={1} ellipsizeMode="tail">
+            {item.type === 'played'
+              ? `Last seen ${formatRelativeTime(item.timestamp)}`
+              : formatRelativeTime(item.timestamp)}
+            {item.type === 'played' && item.venueName
+              ? ` · ${item.venueName}`
+              : ''}
+          </Text>
         </View>
       </View>
     </View>
@@ -216,9 +234,17 @@ const s = StyleSheet.create({
   nameRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  nameRowLeft: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    minWidth: 0,
     flexWrap: 'wrap',
   },
-  name: { fontSize: 14, fontWeight: '600', color: '#ddd' },
+  name: { fontSize: 14, fontWeight: '600', color: '#ddd', flexShrink: 1 },
   followingLabel: { fontSize: 11, color: '#333' },
   action: { fontSize: 13, color: '#555', marginTop: 2, lineHeight: 18 },
   highlight: { color: '#aaa', fontWeight: '500', fontSize: 13 },
@@ -246,14 +272,29 @@ const s = StyleSheet.create({
     paddingVertical: 5,
   },
   joinBtnText: { fontSize: 12, fontWeight: '600', color: '#1a0a00' },
-  timestamp: { fontSize: 11, color: '#333', marginTop: 6 },
+  footerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    marginTop: 8,
+  },
+  timestamp: {
+    fontSize: 11,
+    color: '#333',
+    textAlign: 'right',
+    flexShrink: 0,
+    maxWidth: '42%',
+  },
   duprOld: { color: '#888' },
   duprArrow: { color: T.amber },
   duprNew: { color: T.amber, fontWeight: '500' },
   kudosRow: {
     flexDirection: 'row',
     gap: 6,
-    marginTop: 7,
+    flex: 1,
+    flexWrap: 'wrap',
+    minWidth: 0,
   },
   kudosBtn: {
     flexDirection: 'row',
@@ -290,7 +331,7 @@ const s = StyleSheet.create({
     borderRadius: 6,
     paddingHorizontal: 5,
     paddingVertical: 2,
-    marginLeft: 6,
+    flexShrink: 0,
   },
   liveBadgeDot: {
     width: 4,

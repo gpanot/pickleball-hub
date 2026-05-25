@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { PlayerPreferences } from "@/store/profileStore";
 import { useI18n } from "@/lib/i18n";
+import posthog from "posthog-js";
 
 type Step1Answer = PlayerPreferences["timeSlots"];
 type Step2Answer = PlayerPreferences["level"];
@@ -146,11 +147,17 @@ export function OnboardingQnA({ onComplete }: OnboardingQnAProps) {
   };
 
   const handleStep3Select = (value: string) => {
-    onComplete({
+    const prefs = {
       timeSlots: answers.timeSlots ?? "weekday_evenings",
       level: answers.level ?? "casual",
       travelTime: value as Step3Answer,
+    };
+    posthog.capture("onboarding_completed", {
+      time_slots: prefs.timeSlots,
+      level: prefs.level,
+      travel_time: prefs.travelTime,
     });
+    onComplete(prefs);
   };
 
   const handleBack = () => {

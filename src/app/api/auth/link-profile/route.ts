@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
+import { getPostHogClient } from "@/lib/posthog-server";
 
 /**
  * POST /api/auth/link-profile
@@ -21,10 +22,22 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "profileId required" }, { status: 400 });
   }
 
-  await prisma.playerProfile.updateMany({
+  const result = await prisma.playerProfile.updateMany({
     where: { id: profileId, userId: null },
     data: { userId: session.user.id },
   });
+
+  if (result.count > 0) {
+    const posthog = getPostHogClient();
+    posthog.capture({
+      distinctId: session.user.id,
+      event: "profile_linked",
+      properties: {
+        profile_id: profileId,
+        user_email: session.user.email ?? undefined,
+      },
+    });
+  }
 
   return NextResponse.json({ ok: true });
 }

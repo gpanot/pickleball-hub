@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import { useI18n } from "@/lib/i18n";
+import posthog from "posthog-js";
 
 interface ZaloPromptProps {
   onSave: (zaloId: string, displayName: string) => Promise<void>;
@@ -20,6 +21,9 @@ export function ZaloPrompt({ onSave, onDismiss }: ZaloPromptProps) {
     setSaving(true);
     try {
       await onSave(zaloId.trim(), name.trim());
+      posthog.capture("zalo_profile_saved", {
+        has_display_name: name.trim().length > 0,
+      });
     } finally {
       setSaving(false);
     }

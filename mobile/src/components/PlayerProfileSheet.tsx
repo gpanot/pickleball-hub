@@ -1,13 +1,61 @@
-import React, { useEffect, useState, useCallback } from 'react'
+import React, { useEffect, useState, useCallback, useRef } from 'react'
 import {
   View, Text, ScrollView, TouchableOpacity,
-  StyleSheet, Modal, Pressable, Dimensions, Image
+  StyleSheet, Modal, Pressable, Dimensions, Image, Linking, Alert
 } from 'react-native'
-import { X, Users } from 'lucide-react-native'
+import * as Location from 'expo-location'
+import { X, MapPin } from 'lucide-react-native'
 import { useAuthStore } from '../stores/authStore'
 import { T } from '../theme'
+import { formatDistance } from '../data'
+
+const HCMC_LAT = 10.78
+const HCMC_LNG = 106.69
 
 const { height: H } = Dimensions.get('window')
+const SHEET_HEIGHT = H * 0.88
+
+function SkeletonBox({
+  width,
+  height,
+  borderRadius = 8,
+  style,
+}: {
+  width: number | `${number}%`
+  height: number
+  borderRadius?: number
+  style?: object
+}) {
+  return (
+    <View
+      style={[
+        {
+          width,
+          height,
+          borderRadius,
+          backgroundColor: '#1a1a1a',
+        },
+        style,
+      ]}
+    />
+  )
+}
+
+function ProfileSkeleton() {
+  return (
+    <View style={s.skeletonWrap}>
+      <SkeletonBox width={156} height={156} borderRadius={78} style={{ alignSelf: 'center' }} />
+      <SkeletonBox width={140} height={18} borderRadius={6} style={{ alignSelf: 'center', marginTop: 12 }} />
+      <SkeletonBox width={56} height={11} borderRadius={4} style={{ alignSelf: 'center', marginTop: 8 }} />
+      <SkeletonBox width="100%" height={52} borderRadius={12} style={{ marginTop: 18 }} />
+      <SkeletonBox width="100%" height={52} borderRadius={12} style={{ marginTop: 10 }} />
+      <SkeletonBox width={200} height={12} borderRadius={4} style={{ marginTop: 18 }} />
+      <SkeletonBox width={80} height={9} borderRadius={4} style={{ marginTop: 6 }} />
+      <SkeletonBox width="100%" height={72} borderRadius={10} style={{ marginTop: 10 }} />
+      <SkeletonBox width="100%" height={72} borderRadius={10} style={{ marginTop: 8 }} />
+    </View>
+  )
+}
 
 interface ReclubKudo {
   type: string
@@ -24,7 +72,22 @@ interface PlayerProfile {
   followingCount: number
   sessionCount: number
   isFollowing: boolean
-  recentVenues: Array<{ name: string; count: number; lastSeen: string }>
+  regularPlay: Array<{
+    clubName: string
+    venueName: string | null
+    venueAddress: string | null
+    placeLabel: string
+    latitude: number | null
+    longitude: number | null
+    distanceKm: number | null
+    visitCount: number
+    sessions: Array<{
+      timeLabel: string
+      sessionName: string
+      count: number
+      eventUrl: string
+    }>
+  }>
   reclubKudos: ReclubKudo[]
   myKudos: { fistbump: number; flame: number; star: number; myReactions: string[] }
 }
@@ -40,22 +103,32 @@ export function PlayerProfileSheet({ userId, onClose }: Props) {
   const [loading, setLoading] = useState(false)
 
   const [error, setError] = useState(false)
+  const locationRef = useRef({ lat: HCMC_LAT, lng: HCMC_LNG })
 
-  useEffect(() => {
-    if (userId) {
-      setError(false)
-      loadProfile(userId)
-    } else {
-      setProfile(null)
-      setError(false)
-    }
-  }, [userId])
+  const resolveLocation = useCallback(async () => {
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync()
+      if (status !== 'granted') return
+      const loc = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      })
+      locationRef.current = {
+        lat: loc.coords.latitude,
+        lng: loc.coords.longitude,
+      }
+    } catch {}
+  }, [])
 
   const loadProfile = useCallback(async (uid: string) => {
     setLoading(true)
     setError(false)
     try {
-      const res = await authedFetch(`/api/players/${uid}/profile`)
+      const { lat, lng } = locationRef.current
+      const qs = new URLSearchParams({
+        lat: String(lat),
+        lng: String(lng),
+      })
+      const res = await authedFetch(`/api/players/${uid}/profile?${qs}`)
       if (!res.ok) {
         setError(true)
         return
@@ -65,7 +138,10 @@ export function PlayerProfileSheet({ userId, onClose }: Props) {
         setError(true)
         return
       }
-      setProfile(data)
+      setProfile({
+        ...data,
+        regularPlay: data.regularPlay ?? [],
+      })
     } catch {
       setError(true)
     } finally {
@@ -73,8 +149,49 @@ export function PlayerProfileSheet({ userId, onClose }: Props) {
     }
   }, [authedFetch])
 
+  useEffect(() => {
+    if (userId) {
+      setProfile(null)
+      setError(false)
+      setLoading(true)
+      void (async () => {
+        await resolveLocation()
+        await loadProfile(userId)
+      })()
+    } else {
+      setProfile(null)
+      setError(false)
+      setLoading(false)
+    }
+  }, [userId, loadProfile, resolveLocation])
+
   const handleClose = () => {
     onClose()
+  }
+
+  const promptOpenInMaps = (venue: PlayerProfile['regularPlay'][number]) => {
+    Alert.alert(
+      'Open in Google Maps?',
+      undefined,
+      [
+        { text: 'CANCEL', style: 'cancel' },
+        {
+          text: 'YES',
+          onPress: () => {
+            const query =
+              venue.latitude != null && venue.longitude != null
+                ? `${venue.latitude},${venue.longitude}`
+                : encodeURIComponent(
+                    venue.venueAddress ??
+                      `${venue.placeLabel}${venue.clubName ? `, ${venue.clubName}` : ''}`
+                  )
+            Linking.openURL(
+              `https://www.google.com/maps/search/?api=1&query=${query}`
+            )
+          },
+        },
+      ]
+    )
   }
 
   if (!userId) return null
@@ -83,36 +200,41 @@ export function PlayerProfileSheet({ userId, onClose }: Props) {
     <Modal
       visible={!!userId}
       transparent
-      animationType="slide"
+      animationType="none"
       onRequestClose={handleClose}>
-      <Pressable style={s.backdrop} onPress={handleClose}>
-        <Pressable style={s.sheet} onPress={(e) => e.stopPropagation()}>
+      <View style={s.backdrop}>
+        <Pressable style={s.backdropTap} onPress={handleClose} />
+        <View style={s.sheet}>
 
           <View style={s.handle} />
 
-          <TouchableOpacity style={s.closeBtn} onPress={handleClose}>
-            <X size={18} color="#555" />
+          <TouchableOpacity
+            style={s.closeBtn}
+            onPress={handleClose}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            accessibilityRole="button"
+            accessibilityLabel="Close profile">
+            <X size={18} color="#999" />
           </TouchableOpacity>
 
-          {loading ? (
-            <View style={s.loadingState}>
-              <Text style={s.loadingText}>Loading...</Text>
-            </View>
-          ) : error ? (
-            <View style={s.loadingState}>
-              <Text style={s.loadingText}>Could not load profile</Text>
-              <TouchableOpacity
-                style={s.retryBtn}
-                onPress={() => userId && loadProfile(userId)}>
-                <Text style={s.retryText}>Retry</Text>
-              </TouchableOpacity>
-            </View>
-          ) : !profile ? (
-            <View style={s.loadingState}>
-              <Text style={s.loadingText}>Loading...</Text>
-            </View>
-          ) : (
-            <ScrollView showsVerticalScrollIndicator={false}>
+          <ScrollView
+            style={s.scroll}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={s.scrollContent}>
+
+            {loading || (!profile && !error) ? (
+              <ProfileSkeleton />
+            ) : error ? (
+              <View style={s.errorState}>
+                <Text style={s.loadingText}>Could not load profile</Text>
+                <TouchableOpacity
+                  style={s.retryBtn}
+                  onPress={() => userId && loadProfile(userId)}>
+                  <Text style={s.retryText}>Retry</Text>
+                </TouchableOpacity>
+              </View>
+            ) : profile ? (
+              <>
 
               <View style={s.header}>
                 <View style={s.avatarWrap}>
@@ -129,14 +251,12 @@ export function PlayerProfileSheet({ userId, onClose }: Props) {
                     </View>
                   )}
                 </View>
-                <View style={s.headerInfo}>
-                  <Text style={s.displayName}>
-                    {profile.displayName ?? 'Player'}
-                  </Text>
-                  {profile.reclubId && (
-                    <Text style={s.reclubId}>Reclub ID: {profile.reclubId}</Text>
-                  )}
-                </View>
+                <Text style={s.displayName}>
+                  {profile.displayName ?? 'Player'}
+                </Text>
+                {profile.reclubId != null && (
+                  <Text style={s.reclubId}>{profile.reclubId}</Text>
+                )}
               </View>
 
               <View style={s.statsRow}>
@@ -188,28 +308,76 @@ export function PlayerProfileSheet({ userId, onClose }: Props) {
                 </View>
               )}
 
-              {profile.recentVenues.length > 0 && (
+              {(profile.regularPlay?.length ?? 0) > 0 && (
                 <View style={s.section}>
-                  <Text style={s.sectionLabel}>Recent activity</Text>
-                  {profile.recentVenues.map((v, i) => (
-                    <View key={i} style={[s.venueRow, i === profile.recentVenues.length - 1 && { borderBottomWidth: 0 }]}>
-                      <View style={s.venueIcon}>
-                        <Users size={14} color={T.amber} />
+                  <Text style={s.sectionLabel}>
+                    Where {(profile.displayName ?? 'they').split(' ')[0]} plays regularly?
+                  </Text>
+                  <Text style={s.sectionSub}>Last 90 days</Text>
+                  {profile.regularPlay.map((venue, vi) => {
+                    const distanceLabel = formatDistance(venue.distanceKm)
+                    const metaParts = [
+                      venue.venueName ? venue.clubName : null,
+                      venue.venueAddress,
+                    ].filter(Boolean)
+                    return (
+                    <View
+                      key={`${venue.placeLabel}-${vi}`}
+                      style={[
+                        s.venueBlock,
+                        vi === profile.regularPlay.length - 1 && s.venueBlockLast,
+                      ]}>
+                      <View style={s.venueHeader}>
+                        <View style={s.venueIcon}>
+                          <MapPin size={13} color={T.amber} />
+                        </View>
+                        <View style={s.venueHeaderText}>
+                          <TouchableOpacity
+                            style={s.venueTitleRow}
+                            activeOpacity={0.7}
+                            onPress={() => promptOpenInMaps(venue)}>
+                            <Text style={s.venueName} numberOfLines={1}>
+                              {venue.placeLabel}
+                            </Text>
+                            {distanceLabel !== '' && (
+                              <Text style={s.venueDistance}>{distanceLabel}</Text>
+                            )}
+                          </TouchableOpacity>
+                          {metaParts.length > 0 && (
+                            <Text style={s.venueMeta} numberOfLines={1}>
+                              {metaParts.join(' · ')}
+                            </Text>
+                          )}
+                        </View>
+                        <Text style={s.venueCount}>{venue.visitCount}×</Text>
                       </View>
-                      <View style={s.venueInfo}>
-                        <Text style={s.venueName}>{v.name}</Text>
-                        <Text style={s.venueMeta}>{v.count} sessions · last seen {v.lastSeen}</Text>
-                      </View>
+                      {venue.sessions.map((slot, si) => (
+                        <TouchableOpacity
+                          key={`${slot.timeLabel}-${si}`}
+                          style={s.slotRow}
+                          activeOpacity={0.7}
+                          onPress={() => slot.eventUrl && Linking.openURL(slot.eventUrl)}>
+                          <View style={s.slotMain}>
+                            <Text style={s.slotTime}>{slot.timeLabel}</Text>
+                            <Text style={s.slotName} numberOfLines={1}>
+                              {slot.sessionName}
+                            </Text>
+                          </View>
+                          <Text style={s.slotCount}>{slot.count}×</Text>
+                        </TouchableOpacity>
+                      ))}
                     </View>
-                  ))}
+                    )
+                  })}
                 </View>
               )}
 
               <View style={{ height: 32 }} />
-            </ScrollView>
-          )}
-        </Pressable>
-      </Pressable>
+              </>
+            ) : null}
+          </ScrollView>
+        </View>
+      </View>
     </Modal>
   )
 }
@@ -218,15 +386,19 @@ const s = StyleSheet.create({
   backdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'flex-end',
+  },
+  backdropTap: {
+    flex: 1,
   },
   sheet: {
     backgroundColor: '#111',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    maxHeight: H * 0.92,
-    minHeight: H * 0.75,
+    height: SHEET_HEIGHT,
     paddingTop: 8,
+  },
+  scroll: {
+    flex: 1,
   },
   handle: {
     width: 32, height: 3,
@@ -237,19 +409,32 @@ const s = StyleSheet.create({
   },
   closeBtn: {
     position: 'absolute',
-    top: 16, right: 16,
-    width: 30, height: 30,
-    borderRadius: 15,
+    top: 16,
+    right: 16,
+    zIndex: 20,
+    elevation: 20,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: '#1a1a1a',
     borderWidth: 0.5,
     borderColor: '#2a2a2a',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  loadingState: {
-    height: 200,
+  scrollContent: {
+    paddingTop: 40,
+    paddingBottom: 32,
+  },
+  skeletonWrap: {
+    paddingHorizontal: 16,
+    paddingBottom: 24,
+  },
+  errorState: {
+    minHeight: 280,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: 16,
   },
   loadingText: {
     fontSize: 13,
@@ -270,19 +455,17 @@ const s = StyleSheet.create({
     fontWeight: '500',
   },
   header: {
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    padding: 16,
-    paddingTop: 4,
+    paddingHorizontal: 16,
+    paddingBottom: 16,
   },
   avatarWrap: {
-    flexShrink: 0,
+    marginBottom: 10,
   },
   avatar: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    width: 156,
+    height: 156,
+    borderRadius: 78,
     borderWidth: 2,
     borderColor: T.amber,
   },
@@ -292,23 +475,21 @@ const s = StyleSheet.create({
     justifyContent: 'center',
   },
   avatarInitial: {
-    fontSize: 20,
+    fontSize: 48,
     fontWeight: '600',
     color: T.amber,
   },
-  headerInfo: {
-    flex: 1,
-    minWidth: 0,
-  },
   displayName: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: '600',
     color: '#fff',
+    textAlign: 'center',
   },
   reclubId: {
-    fontSize: 10,
+    fontSize: 11,
     color: '#555',
-    marginTop: 2,
+    marginTop: 4,
+    textAlign: 'center',
   },
   statsRow: {
     flexDirection: 'row',
@@ -373,11 +554,17 @@ const s = StyleSheet.create({
     marginBottom: 14,
   },
   sectionLabel: {
-    fontSize: 10,
+    fontSize: 11,
+    color: '#ccc',
+    fontWeight: '500',
+    marginBottom: 2,
+  },
+  sectionSub: {
+    fontSize: 9,
     color: '#444',
     textTransform: 'uppercase',
-    letterSpacing: 0.8,
-    marginBottom: 8,
+    letterSpacing: 0.6,
+    marginBottom: 10,
   },
   reclubKudosRow: {
     flexDirection: 'row',
@@ -404,35 +591,96 @@ const s = StyleSheet.create({
     color: '#555',
     marginTop: 1,
   },
-  venueRow: {
+  venueBlock: {
+    backgroundColor: '#141414',
+    borderWidth: 0.5,
+    borderColor: '#1e1e1e',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingTop: 8,
+    paddingBottom: 4,
+    marginBottom: 8,
+  },
+  venueBlockLast: {
+    marginBottom: 0,
+  },
+  venueHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingVertical: 8,
-    borderBottomWidth: 0.5,
-    borderBottomColor: '#111',
+    alignItems: 'flex-start',
+    gap: 8,
+    marginBottom: 4,
+  },
+  venueHeaderText: {
+    flex: 1,
+    minWidth: 0,
   },
   venueIcon: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     backgroundColor: '#1a1a1a',
     borderWidth: 0.5,
     borderColor: '#2a2a2a',
     alignItems: 'center',
     justifyContent: 'center',
+    flexShrink: 0,
   },
-  venueInfo: {
-    flex: 1,
+  venueTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    minWidth: 0,
   },
   venueName: {
+    flex: 1,
     fontSize: 12,
-    fontWeight: '500',
+    fontWeight: '600',
     color: '#ddd',
+    minWidth: 0,
+  },
+  venueDistance: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: T.amber,
+    flexShrink: 0,
   },
   venueMeta: {
     fontSize: 10,
     color: '#555',
+    marginTop: 2,
+  },
+  venueCount: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: T.amber,
+    flexShrink: 0,
+  },
+  slotRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 6,
+    paddingLeft: 32,
+    borderTopWidth: 0.5,
+    borderTopColor: '#1a1a1a',
+  },
+  slotMain: {
+    flex: 1,
+    minWidth: 0,
+  },
+  slotTime: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#5DCAA5',
+  },
+  slotName: {
+    fontSize: 10,
+    color: '#666',
     marginTop: 1,
+  },
+  slotCount: {
+    fontSize: 10,
+    color: '#444',
+    flexShrink: 0,
   },
 })

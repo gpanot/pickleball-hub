@@ -10,6 +10,7 @@ import { HCM_MEDIAN_COST_FALLBACK } from "@/lib/scoring";
 import { readPublicApiCache, writePublicApiCache } from "@/lib/public-api-cache";
 import type { ClubDuprDistribution } from "@/lib/queries";
 import { useI18n } from "@/lib/i18n";
+import posthog from "posthog-js";
 
 const MapView = dynamic(() => import("@/components/MapView").then((m) => m.MapView), {
   ssr: false,
@@ -185,6 +186,7 @@ export default function ClubProfilePage({ params }: { params: Promise<{ slug: st
           href={`https://reclub.co/clubs/@${club.slug}`}
           target="_blank"
           rel="noopener noreferrer"
+          onClick={() => posthog.capture("club_viewed_on_reclub", { club_name: club.name, club_slug: club.slug })}
           className="text-sm font-medium bg-primary text-white px-4 py-2.5 rounded-lg hover:bg-primary-dark transition min-h-[44px] text-center w-full sm:w-auto shrink-0"
         >
           {t("clubViewOnReclub")}

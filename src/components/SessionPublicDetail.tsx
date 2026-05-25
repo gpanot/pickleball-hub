@@ -5,6 +5,7 @@ import { FillRateBar } from "@/components/FillRateBar";
 import { SessionDetailBackButton } from "@/components/SessionDetailBackButton";
 import { SessionScoreAndDuprBadges, SessionScoreBreakdownPanel } from "@/components/SessionScoreBadge";
 import { mouseflowTag } from "@/lib/analytics";
+import posthog from "posthog-js";
 import { useI18n } from "@/lib/i18n";
 import { buildSessionShareText } from "@/lib/share-session-text";
 import type { PublicSessionByReference } from "@/lib/queries";
@@ -64,6 +65,13 @@ export function SessionPublicDetail({
   );
 
   const handleShare = useCallback(async () => {
+    posthog.capture("session_detail_shared", {
+      session_name: session.name,
+      club_name: session.club.name,
+      reference_code: session.referenceCode,
+      fee_amount: session.feeAmount,
+    });
+
     if (typeof navigator !== "undefined" && navigator.share) {
       try {
         await navigator.share({ text: shareText });
@@ -77,7 +85,7 @@ export function SessionPublicDetail({
       setShareToast(true);
       window.setTimeout(() => setShareToast(false), 2500);
     }
-  }, [shareText]);
+  }, [shareText, session]);
 
   return (
     <div className="mx-auto w-full max-w-lg px-4 py-6 sm:py-8">
@@ -125,7 +133,17 @@ export function SessionPublicDetail({
           href={reclubMeetUrl(session.referenceCode)}
           target="_blank"
           rel="noopener noreferrer"
-          onClick={() => mouseflowTag("converted:reclub_click")}
+          onClick={() => {
+            mouseflowTag("converted:reclub_click");
+            posthog.capture("session_detail_booking_clicked", {
+              session_name: session.name,
+              club_name: session.club.name,
+              reference_code: session.referenceCode,
+              fee_amount: session.feeAmount,
+              fill_rate: session.maxPlayers > 0 ? session.joined / session.maxPlayers : 0,
+              source: "detail_page",
+            });
+          }}
           className="box-border flex min-h-[48px] w-full items-center justify-center rounded-lg bg-primary px-4 py-3 text-center text-sm font-medium text-white transition hover:bg-primary-dark"
         >
           {t("bookOnReclubCta")}

@@ -18,6 +18,7 @@ import {
 } from "@/lib/utils";
 import { useI18n } from "@/lib/i18n";
 import { mouseflowTag } from "@/lib/analytics";
+import posthog from "posthog-js";
 import { Share2 } from "lucide-react";
 import { computeSessionScore, HCM_MEDIAN_COST_FALLBACK } from "@/lib/scoring";
 import type { GetSessionsListItem } from "@/lib/queries";
@@ -233,8 +234,21 @@ export function HomeClient({
     window.setTimeout(() => setShareClipboardToast(false), 2500);
   }, []);
 
+  const handleSessionCardClick = useCallback((session: HomeSession) => {
+    posthog.capture("session_card_clicked", {
+      session_name: session.name,
+      club_name: session.club.name,
+      reference_code: session.referenceCode,
+      fee_amount: session.feeAmount,
+      fill_rate: session.maxPlayers > 0 ? session.joined / session.maxPlayers : 0,
+      day_tab: dayTab,
+    });
+    setBookPreviewSession(session);
+  }, [dayTab]);
+
   const handleSharePill = useCallback(async () => {
     mouseflowTag("share:floating_pill");
+    posthog.capture("app_shared", { method: "share" in navigator ? "native_share" : "clipboard" });
     const shareData = {
       title: "HCM Pickleball Hub",
       text: "Tìm buổi chơi pickleball ở HCM dễ dàng hơn",
@@ -775,7 +789,7 @@ export function HomeClient({
                 session={s}
                 userLocation={userLocation}
                 hcmMedianCostPerHour={hcmMedianCostPerHour}
-                onCardClick={() => setBookPreviewSession(s)}
+                onCardClick={() => handleSessionCardClick(s)}
               />
             ))}
           </div>
@@ -785,7 +799,7 @@ export function HomeClient({
             visibleCount={visibleCount}
             userLocation={userLocation}
             hcmMedianCostPerHour={hcmMedianCostPerHour}
-            onCardClick={setBookPreviewSession}
+            onCardClick={handleSessionCardClick}
           />
         )}
 

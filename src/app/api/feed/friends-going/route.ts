@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { getMobileUser } from '@/lib/mobile-auth'
-import { reclubAvatarUrl, vnCalendarDateString } from '@/lib/utils'
+import { reclubAvatarUrl, vnCalendarDateString, vnCurrentTimeString } from '@/lib/utils'
 import { CACHE_CONTROL_PRIVATE } from '@/lib/http-cache-headers'
 
 /**
@@ -24,9 +24,12 @@ export async function GET(req: NextRequest) {
   const today = vnCalendarDateString(0)
   const tomorrow = vnCalendarDateString(1)
 
+  // For today only, hide sessions that have already started — same logic as swipe-deck.
+  const minTime = filter === 'today' ? vnCurrentTimeString() : undefined
+
   const scrapedDateFilter =
     filter === 'today'
-      ? { scrapedDate: today }
+      ? { scrapedDate: today, ...(minTime ? { startTime: { gte: minTime } } : {}) }
       : filter === 'tomorrow'
         ? { scrapedDate: tomorrow }
         : { scrapedDate: { gte: today } }
@@ -38,7 +41,10 @@ export async function GET(req: NextRequest) {
   })
   const followeeIds = follows.map((f) => f.followeeId)
 
+  console.log(`[friends-going] filter=${filter} today=${today} minTime=${minTime ?? 'none'} followeeCount=${followeeIds.length}`)
+
   if (followeeIds.length === 0) {
+    console.log(`[friends-going] no followees → returning empty`)
     return NextResponse.json(
       { friendsGoing: [] },
       { headers: { 'Cache-Control': CACHE_CONTROL_PRIVATE } },
@@ -50,6 +56,7 @@ export async function GET(req: NextRequest) {
   const rosterRows = await prisma.sessionRoster.findMany({
     where: {
       userId: { in: followeeIds },
+      isConfirmed: true,
       session: { ...scrapedDateFilter, status: 'active' },
     },
     select: {
@@ -79,6 +86,8 @@ export async function GET(req: NextRequest) {
     },
     orderBy: { session: { startTime: 'asc' } },
   })
+
+  console.log(`[friends-going] rosterRows=${rosterRows.length} scrapedDateFilter=${JSON.stringify(scrapedDateFilter)}`)
 
   // Group by session
   const sessionMap = new Map<
@@ -135,6 +144,11 @@ export async function GET(req: NextRequest) {
         totalRoster: session._count.rosters,
       }
     })
+
+  console.log(`[friends-going] result: ${friendsGoing.length} sessions`)
+  friendsGoing.forEach((s) => {
+    console.log(`  → "${s.name}" startTime=${s.startTime} scrapedDate=${s.scrapedDate} friendCount=${s.friendCount} friends=${s.friends.map((f) => f.displayName).join(', ')}`)
+  })
 
   return NextResponse.json(
     { friendsGoing },

@@ -48,6 +48,21 @@ export default function App() {
     void useAvatarCacheStore.getState().hydrate()
   }, [])
 
+  // Re-fetch the swipe deck once authenticated so friend data is included.
+  // On first boot the deck is fetched before the JWT is ready (jwt=none),
+  // meaning swipe-deck can't resolve followedPlayerIds → friendCount=0 everywhere.
+  const didRefetchForAuth = useRef(false)
+  useEffect(() => {
+    if (!jwt || didRefetchForAuth.current) return
+    didRefetchForAuth.current = true
+    debugLog('App', 'Auth ready — re-fetching deck with credentials for friend data')
+    useSessionStore.getState().fetchSessions(
+      useSessionStore.getState()._lastLat,
+      useSessionStore.getState()._lastLng,
+      useSessionStore.getState()._lastDate,
+    )
+  }, [jwt])
+
   // Register push token after authentication
   // Re-registers on every app launch (FCM tokens can rotate)
   useEffect(() => {

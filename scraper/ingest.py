@@ -720,25 +720,26 @@ def ingest_day(day, club_map):
         conn.commit()
         print(f"\n  SUCCESS: Ingested {len(pickleball_meets)} sessions for {TODAY_STR}")
 
-        # Roster + DUPR: Vietnam calendar "today" only, separate DB work per session
-        # (does not use the committed ingest connection).
+        # Roster + DUPR: scrape rosters for today AND tomorrow so friend data
+        # is available in advance (Going tab, Discover Friends filter).
         day_key = day.strftime("%Y-%m-%d")
         today_key = NOW.strftime("%Y-%m-%d")
-        print(f"\n  Roster check — day={day_key}, today={today_key}, sessions={len(pickleball_meets)}")
-        if day_key == today_key and pickleball_meets:
-            print("\n  Scraping rosters (today only)...")
+        tomorrow_key = (NOW + timedelta(days=1)).strftime("%Y-%m-%d")
+        print(f"\n  Roster check — day={day_key}, today={today_key}, tomorrow={tomorrow_key}, sessions={len(pickleball_meets)}")
+        if day_key in (today_key, tomorrow_key) and pickleball_meets:
+            print(f"\n  Scraping rosters for {day_key}...")
             try:
                 run_roster_pass_for_day(
                     DATABASE_URL,
-                    TODAY_STR,
+                    day_key,
                     list(pickleball_meets.keys()),
                 )
             except Exception as e:
                 import traceback
                 print(f"  [ingest] Roster pass error (non-fatal): {type(e).__name__}: {e}")
                 print(traceback.format_exc())
-        elif day_key != today_key:
-            print(f"  Skipping roster pass for {day_key} (not today={today_key})")
+        else:
+            print(f"  Skipping roster pass for {day_key} (not today/tomorrow)")
 
         return len(pickleball_meets)
 

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { isAdminAuthenticated } from "@/lib/admin-auth";
 import Anthropic from "@anthropic-ai/sdk";
 import { prisma } from "@/lib/db";
+import { getPostHogClient } from "@/lib/posthog-server";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -264,12 +265,14 @@ Return ONLY valid JSON:
 {"competitive_tonight":"...","club_spotlight":"...","heatmap_weekly":""}
 No markdown, no preamble.`;
 
+  const llmStartMs = Date.now();
   const response = await client.messages.create({
     model: settings.llmModel,
     max_tokens: settings.maxTokens,
     temperature: settings.temperature,
     messages: [{ role: "user", content: prompt }],
   });
+  const llmLatency = (Date.now() - llmStartMs) / 1000;
 
   // Log usage (best-effort — don't let a DB error block the response)
   try {
@@ -289,6 +292,27 @@ No markdown, no preamble.`;
     });
   } catch (logErr) {
     console.error("[generate] usage log failed (non-fatal):", logErr);
+  }
+
+  // Capture $ai_generation event for PostHog LLM analytics
+  try {
+    const posthog = getPostHogClient();
+    posthog.capture({
+      distinctId: "admin",
+      event: "$ai_generation",
+      properties: {
+        $ai_trace_id: `generate-${Date.now()}`,
+        $ai_span_name: "content_generation",
+        $ai_model: settings.llmModel,
+        $ai_provider: "anthropic",
+        $ai_input_tokens: response.usage.input_tokens,
+        $ai_output_tokens: response.usage.output_tokens,
+        $ai_total_cost_usd: calcCost(settings.llmModel, response.usage.input_tokens, response.usage.output_tokens),
+        $ai_latency: llmLatency,
+      },
+    });
+  } catch {
+    // non-fatal
   }
 
   const rawText = (response.content[0] as { type: string; text: string }).text.trim();

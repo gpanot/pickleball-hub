@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { prisma } from "@/lib/db";
 import { deepseekClient } from "@/lib/deepseek";
+import { getPostHogClient } from "@/lib/posthog-server";
 import {
   buildHeatmapContext,
   buildContextString,
@@ -218,13 +219,36 @@ export async function sendAiMessage({
   });
 
   const systemPrompt = buildSystemPrompt(context);
+  const llmStartMs = Date.now();
   const result =
     provider === "deepseek"
       ? await callDeepSeek(model, systemPrompt, allMessages)
       : await callAnthropic(model, systemPrompt, allMessages);
+  const llmLatency = (Date.now() - llmStartMs) / 1000;
 
   const { content: assistantText, inputTokens, outputTokens } = result;
   const estimatedCostUsd = estimateCost(model, inputTokens, outputTokens);
+
+  // Capture $ai_generation event for PostHog LLM analytics
+  try {
+    const posthog = getPostHogClient();
+    posthog.capture({
+      distinctId: sessionId,
+      event: "$ai_generation",
+      properties: {
+        $ai_trace_id: sessionId,
+        $ai_span_name: "pickle_pete_admin_chat",
+        $ai_model: model,
+        $ai_provider: provider === "deepseek" ? "deepseek" : "anthropic",
+        $ai_input_tokens: inputTokens,
+        $ai_output_tokens: outputTokens,
+        $ai_total_cost_usd: estimatedCostUsd,
+        $ai_latency: llmLatency,
+      },
+    });
+  } catch {
+    // non-fatal
+  }
 
   // Cost threshold warning
   if (estimatedCostUsd > aiSettings.maxCostPerMessageUsd) {

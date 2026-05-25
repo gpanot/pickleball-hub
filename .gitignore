@@ -47,3 +47,4 @@ __pycache__/
 # mobile (Expo)
 mobile/node_modules/
 mobile/.expo/
+.env.local

@@ -1,7 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { getMobileUser } from '@/lib/mobile-auth'
-import { reclubAvatarUrl } from '@/lib/utils'
+import { reclubAvatarUrl, haversineKm } from '@/lib/utils'
+
+function formatClock(clock: string): string {
+  const [hStr, mStr] = clock.split(':')
+  const h = parseInt(hStr, 10)
+  const m = mStr ?? '00'
+  const ampm = h >= 12 ? 'PM' : 'AM'
+  const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h
+  return m === '00' ? `${h12} ${ampm}` : `${h12}:${m} ${ampm}`
+}
+
+function formatTimeSlot(start: string, end: string): string {
+  return `${formatClock(start)}–${formatClock(end)}`
+}
+
+function truncateName(name: string, max = 32): string {
+  return name.length > max ? `${name.slice(0, max)}…` : name
+}
 
 export async function GET(
   req: NextRequest,
@@ -13,9 +30,16 @@ export async function GET(
   const { id } = await params
   const targetId = BigInt(id)
 
-  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
+  const lat = parseFloat(req.nextUrl.searchParams.get('lat') ?? '')
+  const lng = parseFloat(req.nextUrl.searchParams.get('lng') ?? '')
+  const userLat = Number.isFinite(lat) ? lat : null
+  const userLng = Number.isFinite(lng) ? lng : null
 
-  const [player, isFollowing, recentRosters, playerProfile, kudosCounts, myKudos] = await Promise.all([
+  const ninetyDaysAgo = new Date()
+  ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90)
+  const cutoffStr = ninetyDaysAgo.toISOString().slice(0, 10)
+
+  const [player, isFollowing, playRosters, playerProfile, kudosCounts, myKudos] = await Promise.all([
     prisma.player.findUnique({
       where: { userId: targetId },
       select: {
@@ -32,18 +56,31 @@ export async function GET(
     prisma.sessionRoster.findMany({
       where: {
         userId: targetId,
-        session: { startTime: { gte: thirtyDaysAgo } }
+        session: { scrapedDate: { gte: cutoffStr } },
       },
       select: {
         session: {
           select: {
+            name: true,
             startTime: true,
-            club: { select: { name: true } }
-          }
-        }
+            endTime: true,
+            eventUrl: true,
+            scrapedDate: true,
+            club: { select: { id: true, name: true } },
+            venue: {
+              select: {
+                id: true,
+                name: true,
+                address: true,
+                latitude: true,
+                longitude: true,
+              },
+            },
+          },
+        },
       },
-      orderBy: { session: { startTime: 'desc' } },
-      take: 20
+      orderBy: { session: { scrapedDate: 'desc' } },
+      take: 200,
     }),
     prisma.playerProfile.findUnique({
       where: { reclubUserId: targetId },
@@ -62,25 +99,102 @@ export async function GET(
 
   if (!player) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  const venueMap = new Map<string, { count: number; lastSeen: string }>()
-  for (const r of recentRosters) {
-    const name = r.session.club.name
-    const existing = venueMap.get(name)
+  type SlotAgg = {
+    timeLabel: string
+    sessionName: string
+    count: number
+    eventUrl: string
+    lastScraped: string
+  }
+  type VenueAgg = {
+    clubName: string
+    venueName: string | null
+    venueAddress: string | null
+    latitude: number | null
+    longitude: number | null
+    visitCount: number
+    slots: Map<string, SlotAgg>
+  }
+
+  const venueMap = new Map<string, VenueAgg>()
+  for (const r of playRosters) {
+    const sess = r.session
+    const placeKey = sess.venue
+      ? `venue-${sess.venue.id}`
+      : `club-${sess.club.id}`
+    const slotKey = `${sess.startTime}|${sess.endTime}|${sess.name}`
+
+    if (!venueMap.has(placeKey)) {
+      venueMap.set(placeKey, {
+        clubName: sess.club.name,
+        venueName: sess.venue?.name ?? null,
+        venueAddress: sess.venue?.address
+          ? truncateName(sess.venue.address, 48)
+          : null,
+        latitude: sess.venue?.latitude ?? null,
+        longitude: sess.venue?.longitude ?? null,
+        visitCount: 0,
+        slots: new Map(),
+      })
+    }
+    const venue = venueMap.get(placeKey)!
+    venue.visitCount++
+
+    const existing = venue.slots.get(slotKey)
     if (existing) {
       existing.count++
+      if (sess.scrapedDate > existing.lastScraped) {
+        existing.lastScraped = sess.scrapedDate
+        existing.eventUrl = sess.eventUrl
+      }
     } else {
-      venueMap.set(name, { count: 1, lastSeen: r.session.startTime })
+      venue.slots.set(slotKey, {
+        timeLabel: formatTimeSlot(sess.startTime, sess.endTime),
+        sessionName: truncateName(sess.name),
+        count: 1,
+        eventUrl: sess.eventUrl,
+        lastScraped: sess.scrapedDate,
+      })
     }
   }
 
-  const recentVenues = Array.from(venueMap.entries())
-    .sort((a, b) => b[1].count - a[1].count)
-    .slice(0, 4)
-    .map(([name, v]) => ({
-      name,
-      count: v.count,
-      lastSeen: formatRelative(v.lastSeen)
-    }))
+  const regularPlay = Array.from(venueMap.values())
+    .sort((a, b) => b.visitCount - a.visitCount)
+    .slice(0, 6)
+    .map((v) => {
+      let distanceKm: number | null = null
+      if (
+        userLat !== null &&
+        userLng !== null &&
+        v.latitude != null &&
+        v.longitude != null
+      ) {
+        distanceKm =
+          Math.round(
+            haversineKm(userLat, userLng, v.latitude, v.longitude) * 10
+          ) / 10
+      }
+      const placeLabel = v.venueName ?? v.clubName
+      return {
+        clubName: truncateName(v.clubName, 36),
+        venueName: v.venueName ? truncateName(v.venueName, 40) : null,
+        venueAddress: v.venueAddress,
+        placeLabel: truncateName(placeLabel, 40),
+        latitude: v.latitude,
+        longitude: v.longitude,
+        distanceKm,
+        visitCount: v.visitCount,
+        sessions: Array.from(v.slots.values())
+          .sort((a, b) => b.count - a.count)
+          .slice(0, 4)
+          .map((slot) => ({
+            timeLabel: slot.timeLabel,
+            sessionName: slot.sessionName,
+            count: slot.count,
+            eventUrl: slot.eventUrl,
+          })),
+      }
+    })
 
   const kudosResult: Record<string, number> = { fistbump: 0, flame: 0, star: 0 }
   for (const k of kudosCounts) {
@@ -98,7 +212,7 @@ export async function GET(
     followingCount: playerProfile?._count.following ?? 0,
     sessionCount: player._count.rosters,
     isFollowing: !!isFollowing,
-    recentVenues,
+    regularPlay,
     reclubKudos: [],
     myKudos: {
       ...kudosResult,
@@ -107,13 +221,3 @@ export async function GET(
   })
 }
 
-function formatRelative(dateStr: string): string {
-  const date = new Date(dateStr)
-  const diff = Date.now() - date.getTime()
-  const days = Math.floor(diff / 86400000)
-  if (days === 0) return 'today'
-  if (days === 1) return 'yesterday'
-  if (days < 7) return `${days} days ago`
-  if (days < 30) return `${Math.floor(days / 7)}w ago`
-  return `${Math.floor(days / 30)}mo ago`
-}

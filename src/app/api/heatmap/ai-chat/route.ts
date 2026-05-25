@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { deepseekClient } from "@/lib/deepseek";
 import { buildHeatmapContext, loadAiChatSettings } from "@/lib/ai-assistant/context";
 import { buildSystemPrompt, type ChatMessage } from "@/lib/ai-assistant/chat";
+import { getPostHogClient } from "@/lib/posthog-server";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -199,6 +200,7 @@ export async function POST(request: NextRequest) {
   let assistantText = "";
   let inputTokens = 0;
   let outputTokens = 0;
+  const llmStartMs = Date.now();
 
   try {
     if (provider === "deepseek") {
@@ -233,7 +235,29 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const llmLatency = (Date.now() - llmStartMs) / 1000;
   const estimatedCostUsd = estimateCost(settings.model, inputTokens, outputTokens);
+
+  // Capture $ai_generation event for PostHog LLM analytics
+  try {
+    const posthog = getPostHogClient();
+    posthog.capture({
+      distinctId: sessionId,
+      event: "$ai_generation",
+      properties: {
+        $ai_trace_id: sessionId,
+        $ai_span_name: "pickle_pete_chat",
+        $ai_model: settings.model,
+        $ai_provider: provider === "deepseek" ? "deepseek" : "anthropic",
+        $ai_input_tokens: inputTokens,
+        $ai_output_tokens: outputTokens,
+        $ai_total_cost_usd: estimatedCostUsd,
+        $ai_latency: llmLatency,
+      },
+    });
+  } catch (e) {
+    console.error("[heatmap/ai-chat] PostHog capture failed (non-fatal):", errMsg(e));
+  }
 
   // Strip AI tags from the raw response
   const { cleanResponse, profileUpdate, suggestions } = parseAiResponse(assistantText);

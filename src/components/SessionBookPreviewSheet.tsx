@@ -7,6 +7,7 @@ import { SessionScoreAndDuprBadges, SessionScoreBreakdownPanel } from "@/compone
 import { useI18n } from "@/lib/i18n";
 import { buildSessionShareText } from "@/lib/share-session-text";
 import { mouseflowTag } from "@/lib/analytics";
+import posthog from "posthog-js";
 import {
   formatVND,
   formatDistanceKm,
@@ -142,6 +143,13 @@ export function SessionBookPreviewSheet({
       t,
     );
 
+    posthog.capture("session_shared", {
+      session_name: session.name,
+      club_name: session.club.name,
+      reference_code: session.referenceCode,
+      fee_amount: session.feeAmount,
+    });
+
     if (typeof navigator !== "undefined" && navigator.share) {
       try {
         await navigator.share({ text: shareText });
@@ -159,6 +167,14 @@ export function SessionBookPreviewSheet({
   const onContinue = useCallback(() => {
     if (!session) return;
     mouseflowTag("converted:reclub_click");
+    posthog.capture("session_booking_clicked", {
+      session_name: session.name,
+      club_name: session.club.name,
+      reference_code: session.referenceCode,
+      fee_amount: session.feeAmount,
+      fill_rate: session.maxPlayers > 0 ? session.joined / session.maxPlayers : 0,
+      source: "preview_sheet",
+    });
     window.open(reclubMeetUrl(session.referenceCode), "_blank", "noopener,noreferrer");
     onClose();
   }, [session, onClose]);

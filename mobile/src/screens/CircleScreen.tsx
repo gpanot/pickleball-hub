@@ -313,11 +313,7 @@ export function CircleScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: '#0a0a0a' }}>
-      <TopBar
-        supertitle="Your community"
-        title="Circle"
-        showAvatar
-      />
+      <TopBar title="YOUR CIRCLE" showAvatar />
 
       <View style={{ paddingHorizontal: 16, marginBottom: 16 }}>
         <View
