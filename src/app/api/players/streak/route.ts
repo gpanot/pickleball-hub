@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getMobileUser } from "@/lib/mobile-auth";
 
-// In-memory streak cache — keyed by profileId.
-// Cache TTL: 60 minutes. Bypass with ?refresh=1.
-const STREAK_CACHE_TTL_MS = 60 * 60 * 1000
+// Streak is recomputed at most once per day.
+// Stored in player_profiles.streak_data (JSON) + streak_computed_at (timestamp).
+// ?refresh=1 forces a recompute regardless of age.
+const STREAK_TTL_MS = 24 * 60 * 60 * 1000 // 24 hours
 
 interface StreakResult {
   currentStreak: number
@@ -13,8 +14,6 @@ interface StreakResult {
   mySessionsThisWeek: number
   streakStartDate: string | null
 }
-
-const streakCache = new Map<string, { data: StreakResult; cachedAt: number }>()
 
 export async function GET(req: NextRequest) {
   const user = await getMobileUser(req);
@@ -31,13 +30,25 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  // Serve cached result if still fresh (unless caller forces refresh)
   const forceRefresh = req.nextUrl.searchParams.get('refresh') === '1'
-  const cached = streakCache.get(user.profileId)
-  if (!forceRefresh && cached && Date.now() - cached.cachedAt < STREAK_CACHE_TTL_MS) {
-    return NextResponse.json({ ...cached.data, cached: true })
+
+  // Read existing cached streak from DB
+  if (!forceRefresh) {
+    const profile = await prisma.playerProfile.findUnique({
+      where: { id: user.profileId },
+      select: { streakData: true, streakComputedAt: true },
+    })
+
+    if (
+      profile?.streakData &&
+      profile.streakComputedAt &&
+      Date.now() - profile.streakComputedAt.getTime() < STREAK_TTL_MS
+    ) {
+      return NextResponse.json({ ...(profile.streakData as StreakResult), cached: true })
+    }
   }
 
+  // --- Compute streak ---
   const now = new Date();
   const weeksToCheck = 12;
 
@@ -85,9 +96,7 @@ export async function GET(req: NextRequest) {
       missedWeeks = 0;
     } else {
       missedWeeks++;
-      if (i === 0) {
-        continue;
-      }
+      if (i === 0) continue;
       if (missedWeeks > MAX_MISSED) break;
     }
   }
@@ -130,8 +139,11 @@ export async function GET(req: NextRequest) {
         : null,
   }
 
-  // Store in cache
-  streakCache.set(user.profileId, { data: result, cachedAt: Date.now() })
+  // Persist to DB (fire-and-forget — don't block the response)
+  prisma.playerProfile.update({
+    where: { id: user.profileId },
+    data: { streakData: result, streakComputedAt: now },
+  }).catch((e) => console.error("[streak] failed to persist:", e))
 
   return NextResponse.json(result);
 }

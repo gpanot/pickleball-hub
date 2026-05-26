@@ -193,6 +193,8 @@ model PlayerProfile {
   pushToken             String?   @map("push_token")
   pushTokenUpdatedAt    DateTime? @map("push_token_updated_at")
   lastActiveAt          DateTime? @map("last_active_at")
+  streakData            Json?     @map("streak_data")
+  streakComputedAt      DateTime? @map("streak_computed_at")
   createdAt             DateTime  @default(now()) @map("created_at")
   lastSeen              DateTime  @updatedAt @map("last_seen")
 
