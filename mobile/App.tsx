@@ -76,20 +76,22 @@ export default function App() {
   useEffect(() => {
     if (!jwt || pushTokenRegistered.current) return
 
-    registerForPushNotifications().then((token) => {
+    registerForPushNotifications().then(async (token) => {
       if (token) {
         pushTokenRegistered.current = true
-        console.log('[push] uploading token to backend...')
+        console.log('[push] token obtained, uploading to backend. Prefix:', token.slice(0, 30))
         const { authedFetch } = useAuthStore.getState()
-        authedFetch('/api/players/push-token', {
-          method: 'POST',
-          body: JSON.stringify({ token }),
-        })
-          .then((res) => console.log('[push] token upload response:', res.status))
-          .catch((err) => {
-            pushTokenRegistered.current = false
-            console.warn('[push] token upload failed', err)
+        try {
+          const res = await authedFetch('/api/players/push-token', {
+            method: 'POST',
+            body: JSON.stringify({ token }),
           })
+          const body = await res.text()
+          console.log('[push] token upload response:', res.status, '| body:', body)
+        } catch (err) {
+          pushTokenRegistered.current = false
+          console.warn('[push] token upload failed', err)
+        }
       } else {
         console.warn('[push] no token returned — permission denied or not a physical device')
       }

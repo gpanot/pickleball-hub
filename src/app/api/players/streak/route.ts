@@ -2,6 +2,20 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getMobileUser } from "@/lib/mobile-auth";
 
+// In-memory streak cache — keyed by profileId.
+// Cache TTL: 60 minutes. Bypass with ?refresh=1.
+const STREAK_CACHE_TTL_MS = 60 * 60 * 1000
+
+interface StreakResult {
+  currentStreak: number
+  weeklyPlayed: boolean[]
+  circleSessionsThisWeek: number
+  mySessionsThisWeek: number
+  streakStartDate: string | null
+}
+
+const streakCache = new Map<string, { data: StreakResult; cachedAt: number }>()
+
 export async function GET(req: NextRequest) {
   const user = await getMobileUser(req);
   if (!user)
@@ -15,6 +29,13 @@ export async function GET(req: NextRequest) {
       mySessionsThisWeek: 0,
       streakStartDate: null,
     });
+  }
+
+  // Serve cached result if still fresh (unless caller forces refresh)
+  const forceRefresh = req.nextUrl.searchParams.get('refresh') === '1'
+  const cached = streakCache.get(user.profileId)
+  if (!forceRefresh && cached && Date.now() - cached.cachedAt < STREAK_CACHE_TTL_MS) {
+    return NextResponse.json({ ...cached.data, cached: true })
   }
 
   const now = new Date();
@@ -98,14 +119,19 @@ export async function GET(req: NextRequest) {
     },
   });
 
-  return NextResponse.json({
+  const result: StreakResult = {
     currentStreak: streak,
     weeklyPlayed: weeklyPlayed.reverse(),
     circleSessionsThisWeek,
     mySessionsThisWeek,
     streakStartDate:
       streak > 0
-        ? (sessions[sessions.length - 1]?.scrapedAt ?? null)
+        ? (sessions[sessions.length - 1]?.scrapedAt?.toISOString() ?? null)
         : null,
-  });
+  }
+
+  // Store in cache
+  streakCache.set(user.profileId, { data: result, cachedAt: Date.now() })
+
+  return NextResponse.json(result);
 }

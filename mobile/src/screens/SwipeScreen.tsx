@@ -10,7 +10,6 @@ import {
   Dimensions,
   ActivityIndicator,
   Linking,
-  Modal,
   Pressable,
 } from 'react-native'
 import Animated, {
@@ -1081,50 +1080,46 @@ export function SwipeScreen() {
         </ScrollView>
       )}
 
-      {/* Expanded shortlist card modal */}
-      <Modal
-        visible={!!expandedSession}
-        transparent
-        animationType="fade"
-        statusBarTranslucent
-        onRequestClose={() => setExpandedSession(null)}
-      >
-        <Pressable style={s.expandedBackdrop} onPress={() => setExpandedSession(null)}>
-          <Pressable style={s.expandedSheet} onPress={(e) => e.stopPropagation()}>
-            {expandedSession && (
-              <View style={{ width: '100%', height: Math.min(CARD_HEIGHT, H * 0.72) }}>
-                <CardBody
-                  s={expandedSession}
-                  renderCta={
-                    <TouchableOpacity
-                      onPress={() => {
-                        Linking.openURL(expandedSession.eventUrl)
-                        setExpandedSession(null)
-                      }}
-                      style={{
-                        backgroundColor: T.amber,
-                        borderRadius: 14,
-                        paddingVertical: 11,
-                        alignItems: 'center',
-                      }}
-                    >
-                      <Text style={{ fontSize: 14, fontWeight: '600', color: '#1a0a00' }}>
-                        Join on Reclub · {expandedSession.spotsLeft} spots left
-                      </Text>
-                      <Text style={{ fontSize: 11, color: 'rgba(0,0,0,0.5)', marginTop: 2 }}>
-                        {expandedSession.joined} / {expandedSession.maxPlayers} filled
-                      </Text>
-                    </TouchableOpacity>
-                  }
-                  isSignedIn={signedIn}
-                  onFriendsPress={() => openSessionFriends(expandedSession)}
-                  onTopDuprPress={() => openTopDupr(expandedSession)}
-                />
-              </View>
-            )}
-          </Pressable>
-        </Pressable>
-      </Modal>
+      {/* Expanded shortlist card — root-level overlay (same pattern as SignUpModal) */}
+      {expandedSession && (
+        <View style={s.expandedHost} pointerEvents="box-none">
+          <Pressable
+            style={s.expandedBackdrop}
+            onPress={() => setExpandedSession(null)}
+          />
+          <View style={s.expandedCard} pointerEvents="auto">
+            <View style={{ width: '100%', height: Math.min(CARD_HEIGHT, H * 0.72) }}>
+              <CardBody
+                s={expandedSession}
+                renderCta={
+                  <TouchableOpacity
+                    onPress={() => {
+                      Linking.openURL(expandedSession.eventUrl)
+                      setExpandedSession(null)
+                    }}
+                    style={{
+                      backgroundColor: T.amber,
+                      borderRadius: 14,
+                      paddingVertical: 11,
+                      alignItems: 'center',
+                    }}
+                  >
+                    <Text style={{ fontSize: 14, fontWeight: '600', color: '#1a0a00' }}>
+                      Join on Reclub · {expandedSession.spotsLeft} spots left
+                    </Text>
+                    <Text style={{ fontSize: 11, color: 'rgba(0,0,0,0.5)', marginTop: 2 }}>
+                      {expandedSession.joined} / {expandedSession.maxPlayers} filled
+                    </Text>
+                  </TouchableOpacity>
+                }
+                isSignedIn={signedIn}
+                onFriendsPress={() => openSessionFriends(expandedSession)}
+                onTopDuprPress={() => openTopDupr(expandedSession)}
+              />
+            </View>
+          </View>
+        </View>
+      )}
 
       <FriendsListModal
         visible={friendsModal.visible}
@@ -1293,15 +1288,21 @@ const s = StyleSheet.create({
     fontSize: 11,
     color: '#2a2a2a',
   },
-  expandedBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.85)',
+  expandedHost: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 9999,
+    elevation: 9999,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 12,
   },
-  expandedSheet: {
+  expandedBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.85)',
+  },
+  expandedCard: {
     width: '100%',
+    maxWidth: 420,
     borderRadius: 24,
     overflow: 'hidden',
   },

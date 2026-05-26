@@ -1,0 +1,49 @@
+---
+description: Screens must not reload data when navigating back to them
+globs:
+  - mobile/src/screens/**/*.tsx
+  - mobile/src/components/**/*.tsx
+alwaysApply: true
+---
+
+# No-Reload-On-Back
+
+Screens and sheets must **not** re-fetch or reset their state every time they become visible.
+
+## Rules
+
+1. **Guard data fetches with a loaded ref.** Use a `useRef<boolean>(false)` (e.g. `loadedRef`) to ensure a fetch only fires once per mount. Re-fetch only when:
+   - The user explicitly pulls to refresh (`RefreshControl` / `onRefresh`).
+   - A key prop changes (e.g. `userId` in a profile sheet).
+   - The store is explicitly invalidated by a write action.
+
+2. **Do not use `useFocusEffect` or screen-focus listeners to reload data** unless the data is time-critical (e.g. live presence). If you need to update stale data, use pull-to-refresh instead.
+
+3. **PlayerProfileSheet**: data is keyed by `userId`. Re-fetch only when `userId` changes — never on every open. If the sheet is closed and reopened for the same `userId`, serve the cached `profile` state already in memory.
+
+4. **CircleScreen feed / friends / streak**: load once on mount (or once after authentication). Expose a pull-to-refresh handler for manual refresh. Never re-trigger `loadFeed()` / `loadStreak()` on tab focus.
+
+5. **SwipeScreen (Discover / Going tabs)**: the session deck and going data are loaded once. Going tab data refreshes only on `RefreshControl` pull.
+
+6. **Streak data** is expensive to compute — never re-fetch it on back-navigation. Cache the result in component state (or a Zustand slice) and only refetch on explicit user pull-to-refresh or after a session is saved.
+
+## Pattern to follow
+
+```tsx
+const loadedRef = useRef(false)
+
+useEffect(() => {
+  if (loadedRef.current) return   // already loaded — skip
+  loadedRef.current = true
+  fetchData()
+}, [])
+
+// Expose pull-to-refresh for manual refresh
+const onRefresh = useCallback(async () => {
+  setRefreshing(true)
+  loadedRef.current = false       // allow a single re-fetch
+  await fetchData()
+  loadedRef.current = true
+  setRefreshing(false)
+}, [fetchData])
+```

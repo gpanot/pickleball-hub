@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import {
   View,
   Text,
@@ -23,6 +23,7 @@ import { T } from '../theme'
 import { useAuthStore } from '../stores/authStore'
 import { useUiStore } from '../stores/uiStore'
 import { useSessionStore } from '../stores/sessionStore'
+import { getPushDiagnostics, registerForPushNotifications } from '../services/notifications'
 
 export function ProfileSheet({
   onClose,
@@ -54,6 +55,7 @@ export function ProfileSheet({
 
   const [followingCount, setFollowingCount] = useState(0)
   const [kudos, setKudos] = useState({ fistbump: 0, flame: 0, star: 0 })
+  const streakLoadedRef = useRef(false)
 
   const [streakData, setStreakData] = useState<{
     currentStreak: number
@@ -98,7 +100,8 @@ export function ProfileSheet({
   }, [jwt, loadFollowing, reclubUserId, authedFetch])
 
   useEffect(() => {
-    if (!jwt) return
+    if (!jwt || streakLoadedRef.current) return
+    streakLoadedRef.current = true
     authedFetch('/api/players/streak')
       .then((r) => r.json())
       .then((data) => {
@@ -355,15 +358,70 @@ export function ProfileSheet({
           style={styles.settingsRow}
           onPress={async () => {
             try {
-              const res = await authedFetch('/api/notifications/test', { method: 'POST' })
-              const data = await res.json()
-              if (data.ok) {
-                Alert.alert('PNS Test', 'Notification sent! Check your device.')
+              // Step 1: client-side diagnostics
+              console.log('[push-debug] Starting PNS diagnostics...')
+              const diag = await getPushDiagnostics()
+              console.log('[push-debug] Diagnostics:', JSON.stringify(diag))
+
+              const diagMsg = [
+                `Platform: ${diag.platform}`,
+                `isDevice: ${diag.isDevice}`,
+                `isExpoGo: ${diag.isExpoGo}`,
+                `Permission: ${diag.permissionStatus}`,
+                diag.tokenPrefix ? `Token: ${diag.tokenPrefix}...` : 'Token: none',
+                diag.error ? `Error: ${diag.error}` : null,
+              ].filter(Boolean).join('\n')
+
+              // Step 2: if no local token, try registering now
+              if (!diag.tokenPrefix && diag.permissionStatus === 'granted' && !diag.isExpoGo) {
+                console.log('[push-debug] No token yet — attempting registration...')
+                const token = await registerForPushNotifications()
+                if (token) {
+                  console.log('[push-debug] Got token, uploading:', token.slice(0, 20))
+                  await authedFetch('/api/players/push-token', {
+                    method: 'POST',
+                    body: JSON.stringify({ token }),
+                  })
+                }
+              }
+
+              // Step 3: server status check
+              console.log('[push-debug] Fetching server registration status...')
+              const statusRes = await authedFetch('/api/notifications/test')
+              const statusData = await statusRes.json()
+              console.log('[push-debug] Server status:', JSON.stringify(statusData))
+
+              const serverMsg = statusData.registered
+                ? `DB token: ${statusData.tokenPrefix}...\nUpdated: ${statusData.updatedAt ?? 'unknown'}`
+                : 'No token in DB'
+
+              // Step 4: fire the test notification
+              if (statusData.registered) {
+                console.log('[push-debug] Sending test notification...')
+                const res = await authedFetch('/api/notifications/test', { method: 'POST' })
+                const data = await res.json()
+                console.log('[push-debug] Send result:', JSON.stringify(data))
+
+                if (data.ok) {
+                  Alert.alert(
+                    'PNS Debug ✓',
+                    `Notification sent!\n\n— Client —\n${diagMsg}\n\n— Server —\n${serverMsg}`,
+                  )
+                } else {
+                  Alert.alert(
+                    'PNS Send Failed',
+                    `Code: ${data.code ?? 'unknown'}\nMsg: ${data.message ?? data.error}\n\n— Client —\n${diagMsg}\n\n— Server —\n${serverMsg}`,
+                  )
+                }
               } else {
-                Alert.alert('PNS Test Failed', data.error ?? JSON.stringify(data))
+                Alert.alert(
+                  'PNS Not Registered',
+                  `No push token in DB.\n\n— Client —\n${diagMsg}\n\nMake sure you have a physical device and notifications permission is granted.`,
+                )
               }
             } catch (e: any) {
-              Alert.alert('PNS Error', e.message)
+              console.error('[push-debug] Unexpected error:', e)
+              Alert.alert('PNS Error', e.message ?? String(e))
             }
           }}
         >

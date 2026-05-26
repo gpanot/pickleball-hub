@@ -38,9 +38,9 @@ export async function GET(
   const userLat = Number.isFinite(lat) ? lat : null
   const userLng = Number.isFinite(lng) ? lng : null
 
-  const ninetyDaysAgo = new Date()
-  ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90)
-  const cutoffStr = ninetyDaysAgo.toISOString().slice(0, 10)
+  const thirtyDaysAgo = new Date()
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+  const cutoffStr = thirtyDaysAgo.toISOString().slice(0, 10)
 
   // Always run fast queries in parallel
   const fastQueries = Promise.all([

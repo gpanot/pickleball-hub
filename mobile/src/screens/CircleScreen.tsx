@@ -82,7 +82,7 @@ export function CircleScreen() {
     new Set()
   )
   const [showAvatarTip, setShowAvatarTip] = useState(false)
-  const [newFollowBanner, setNewFollowBanner] = useState<string | null>(null)
+  const [newFollowBanner, setNewFollowBanner] = useState<{ name: string; imageUrl?: string | null } | null>(null)
 
   useEffect(() => {
     if (feedItems.length > 0 && !showAvatarTip) {
@@ -96,13 +96,6 @@ export function CircleScreen() {
     setShowAvatarTip(false)
     await AsyncStorage.setItem('hasSeenAvatarTip', 'true')
   }, [])
-
-  useEffect(() => {
-    if (newFollowBanner) {
-      const t = setTimeout(() => setNewFollowBanner(null), 4000)
-      return () => clearTimeout(t)
-    }
-  }, [newFollowBanner])
 
   const loadFeed = useCallback(async () => {
     if (!jwt) return
@@ -195,7 +188,7 @@ export function CircleScreen() {
         })
         if (!res.ok) throw new Error('Follow failed')
         const followed = suggestions.find((s) => s.userId === userId)
-        setNewFollowBanner(followed?.displayName ?? 'this player')
+        setNewFollowBanner({ name: followed?.displayName ?? 'this player', imageUrl: followed?.imageUrl })
         toast('Followed!', 'success')
         friendsLoadedRef.current = false
         loadFriends()
@@ -466,24 +459,27 @@ export function CircleScreen() {
             </View>
           )}
 
-          {/* Follow banner */}
+          {/* Follow banner — permanent until dismissed */}
           {newFollowBanner && (
-            <TouchableOpacity
-              style={styles.followBanner}
-              onPress={() => setNewFollowBanner(null)}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.followBannerIcon}>👥</Text>
+            <View style={styles.followBanner}>
+              <PlayerAvatar
+                userId={undefined}
+                imageUrl={newFollowBanner.imageUrl}
+                size={36}
+              />
               <View style={styles.followBannerText}>
-                <Text style={styles.followBannerTitle}>
-                  Now following {newFollowBanner}
-                </Text>
-                <Text style={styles.followBannerSub}>
-                  You'll see their activity in your feed
+                <Text style={styles.followBannerTitle} numberOfLines={1}>
+                  You are now following{'\n'}
+                  <Text style={styles.followBannerName}>{newFollowBanner.name}</Text>
                 </Text>
               </View>
-              <Text style={styles.followBannerDismiss}>×</Text>
-            </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setNewFollowBanner(null)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <X size={16} color="#555" strokeWidth={2} />
+              </TouchableOpacity>
+            </View>
           )}
 
           {/* Feed items */}
@@ -975,35 +971,27 @@ const styles = StyleSheet.create({
   followBanner: {
     marginHorizontal: 12,
     marginBottom: 10,
-    backgroundColor: '#1f1400',
+    backgroundColor: '#111',
     borderWidth: 0.5,
-    borderColor: '#f5a623',
+    borderColor: '#2a2a2a',
     borderRadius: 12,
-    padding: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-  },
-  followBannerIcon: {
-    fontSize: 18,
-    flexShrink: 0,
+    gap: 10,
   },
   followBannerText: {
     flex: 1,
   },
   followBannerTitle: {
     fontSize: 12,
-    fontWeight: '500',
-    color: '#f5a623',
+    color: '#888',
+    lineHeight: 17,
   },
-  followBannerSub: {
-    fontSize: 10,
-    color: '#555',
-    marginTop: 1,
-  },
-  followBannerDismiss: {
-    fontSize: 16,
-    color: '#444',
-    flexShrink: 0,
+  followBannerName: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#fff',
   },
 })
