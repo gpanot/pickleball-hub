@@ -14,10 +14,7 @@ When running `prisma db push` or `prisma migrate deploy` after modifying `prisma
 
 **ALWAYS push to BOTH databases — local AND production.**
 
-The production DATABASE_URL is:
-```
-postgresql://postgres:REDACTED_ROTATE_THIS_CREDENTIAL@shinkansen.proxy.rlwy.net:12844/railway
-```
+The production DATABASE_URL is stored in your `.env.production` or Railway environment variables — never hardcode it here.
 
 ## Required Commands (in order)
 
@@ -26,7 +23,8 @@ postgresql://postgres:REDACTED_ROTATE_THIS_CREDENTIAL@shinkansen.proxy.rlwy.net:
 npx prisma db push --skip-generate
 
 # 2. Push to production (NEVER forget this)
-DATABASE_URL="postgresql://postgres:REDACTED_ROTATE_THIS_CREDENTIAL@shinkansen.proxy.rlwy.net:12844/railway" npx prisma db push --skip-generate
+# Load DATABASE_URL from .env.production or your password manager — do NOT hardcode it here
+DATABASE_URL="<from .env.production or Railway dashboard>" npx prisma db push --skip-generate
 
 # 3. Regenerate client
 npx prisma generate
