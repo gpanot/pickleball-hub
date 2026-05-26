@@ -44,7 +44,7 @@ export async function GET(req: NextRequest) {
       profile.streakComputedAt &&
       Date.now() - profile.streakComputedAt.getTime() < STREAK_TTL_MS
     ) {
-      return NextResponse.json({ ...(profile.streakData as StreakResult), cached: true })
+      return NextResponse.json({ ...(profile.streakData as unknown as StreakResult), cached: true })
     }
   }
 
@@ -142,7 +142,7 @@ export async function GET(req: NextRequest) {
   // Persist to DB (fire-and-forget — don't block the response)
   prisma.playerProfile.update({
     where: { id: user.profileId },
-    data: { streakData: result, streakComputedAt: now },
+    data: { streakData: result as unknown as import('@prisma/client').Prisma.InputJsonValue, streakComputedAt: now },
   }).catch((e) => console.error("[streak] failed to persist:", e))
 
   return NextResponse.json(result);
