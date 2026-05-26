@@ -92,78 +92,89 @@ interface PlayerProfile {
   myKudos: { fistbump: number; flame: number; star: number; myReactions: string[] }
 }
 
+export type PlayerProfileStub = {
+  userId: string
+  displayName: string | null
+  imageUrl: string | null
+  duprDoubles: number | null
+}
+
 interface Props {
   userId: string | null
   onClose: () => void
+  stub?: PlayerProfileStub | null
 }
 
-export function PlayerProfileSheet({ userId, onClose }: Props) {
+export function PlayerProfileSheet({ userId, onClose, stub }: Props) {
   const { authedFetch } = useAuthStore()
   const [profile, setProfile] = useState<PlayerProfile | null>(null)
-  const [loading, setLoading] = useState(false)
-
+  const [venuesLoading, setVenuesLoading] = useState(false)
   const [error, setError] = useState(false)
   const locationRef = useRef({ lat: HCMC_LAT, lng: HCMC_LNG })
+  const locationReadyRef = useRef(false)
 
+  // Start resolving location in background immediately — doesn't block anything
   const resolveLocation = useCallback(async () => {
+    if (locationReadyRef.current) return
     try {
       const { status } = await Location.requestForegroundPermissionsAsync()
       if (status !== 'granted') return
       const loc = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.Balanced,
       })
-      locationRef.current = {
-        lat: loc.coords.latitude,
-        lng: loc.coords.longitude,
-      }
+      locationRef.current = { lat: loc.coords.latitude, lng: loc.coords.longitude }
+      locationReadyRef.current = true
     } catch {}
   }, [])
 
-  const loadProfile = useCallback(async (uid: string) => {
-    setLoading(true)
+  // Phase 1: fast query — player basics, follow status, kudos (no venue scan)
+  const loadFast = useCallback(async (uid: string) => {
     setError(false)
     try {
-      const { lat, lng } = locationRef.current
-      const qs = new URLSearchParams({
-        lat: String(lat),
-        lng: String(lng),
-      })
-      const res = await authedFetch(`/api/players/${uid}/profile?${qs}`)
-      if (!res.ok) {
-        setError(true)
-        return
-      }
+      const res = await authedFetch(`/api/players/${uid}/profile?quick=1`)
+      if (!res.ok) { setError(true); return }
       const data = await res.json()
-      if (!data.userId) {
-        setError(true)
-        return
-      }
-      setProfile({
-        ...data,
-        regularPlay: data.regularPlay ?? [],
-      })
+      if (!data.userId) { setError(true); return }
+      setProfile({ ...data, regularPlay: [] })
     } catch {
       setError(true)
+    }
+  }, [authedFetch])
+
+  // Phase 2: lazy venue scan — fires after fast data renders
+  const loadVenues = useCallback(async (uid: string) => {
+    setVenuesLoading(true)
+    try {
+      const { lat, lng } = locationRef.current
+      const qs = new URLSearchParams({ lat: String(lat), lng: String(lng) })
+      const res = await authedFetch(`/api/players/${uid}/profile?${qs}`)
+      if (!res.ok) return
+      const data = await res.json()
+      setProfile((prev) =>
+        prev ? { ...prev, regularPlay: data.regularPlay ?? [] } : prev
+      )
+    } catch {
+      // venues failing silently is acceptable
     } finally {
-      setLoading(false)
+      setVenuesLoading(false)
     }
   }, [authedFetch])
 
   useEffect(() => {
-    if (userId) {
+    if (!userId) {
       setProfile(null)
       setError(false)
-      setLoading(true)
-      void (async () => {
-        await resolveLocation()
-        await loadProfile(userId)
-      })()
-    } else {
-      setProfile(null)
-      setError(false)
-      setLoading(false)
+      setVenuesLoading(false)
+      return
     }
-  }, [userId, loadProfile, resolveLocation])
+    setProfile(null)
+    setError(false)
+    setVenuesLoading(false)
+
+    // Fire location + fast profile in parallel, then venues after fast resolves
+    void resolveLocation()
+    void loadFast(userId).then(() => loadVenues(userId))
+  }, [userId, loadFast, loadVenues, resolveLocation])
 
   const handleClose = () => {
     onClose()
@@ -222,14 +233,39 @@ export function PlayerProfileSheet({ userId, onClose }: Props) {
             showsVerticalScrollIndicator={false}
             contentContainerStyle={s.scrollContent}>
 
-            {loading || (!profile && !error) ? (
+            {/* Show stub header instantly while fast data loads */}
+            {!profile && !error && stub ? (
+              <>
+                <View style={s.header}>
+                  <View style={s.avatarWrap}>
+                    {stub.imageUrl ? (
+                      <Image source={{ uri: stub.imageUrl }} style={s.avatar} resizeMode="cover" />
+                    ) : (
+                      <View style={[s.avatar, s.avatarFallback]}>
+                        <Text style={s.avatarInitial}>
+                          {(stub.displayName ?? '?')[0].toUpperCase()}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text style={s.displayName}>{stub.displayName ?? 'Player'}</Text>
+                </View>
+                <View style={s.skeletonWrap}>
+                  <SkeletonBox width="100%" height={52} borderRadius={12} style={{ marginTop: 0 }} />
+                  <SkeletonBox width="100%" height={52} borderRadius={12} style={{ marginTop: 10 }} />
+                  <SkeletonBox width={160} height={11} borderRadius={4} style={{ marginTop: 20 }} />
+                  <SkeletonBox width="100%" height={72} borderRadius={10} style={{ marginTop: 8 }} />
+                  <SkeletonBox width="100%" height={72} borderRadius={10} style={{ marginTop: 8 }} />
+                </View>
+              </>
+            ) : !profile && !error ? (
               <ProfileSkeleton />
             ) : error ? (
               <View style={s.errorState}>
                 <Text style={s.loadingText}>Could not load profile</Text>
                 <TouchableOpacity
                   style={s.retryBtn}
-                  onPress={() => userId && loadProfile(userId)}>
+                  onPress={() => userId && loadFast(userId).then(() => loadVenues(userId))}>
                   <Text style={s.retryText}>Retry</Text>
                 </TouchableOpacity>
               </View>
@@ -308,12 +344,23 @@ export function PlayerProfileSheet({ userId, onClose }: Props) {
                 </View>
               )}
 
+              <View style={s.section}>
+                <Text style={s.sectionLabel}>
+                  Where {(profile.displayName ?? 'they').split(' ')[0]} plays regularly?
+                </Text>
+                <Text style={s.sectionSub}>Last 90 days</Text>
+                {venuesLoading ? (
+                  <>
+                    <SkeletonBox width="100%" height={72} borderRadius={10} />
+                    <SkeletonBox width="100%" height={72} borderRadius={10} style={{ marginTop: 8 }} />
+                  </>
+                ) : (profile.regularPlay?.length ?? 0) === 0 ? (
+                  <Text style={s.venuesEmpty}>No sessions found in the last 90 days</Text>
+                ) : null}
+              </View>
+
               {(profile.regularPlay?.length ?? 0) > 0 && (
                 <View style={s.section}>
-                  <Text style={s.sectionLabel}>
-                    Where {(profile.displayName ?? 'they').split(' ')[0]} plays regularly?
-                  </Text>
-                  <Text style={s.sectionSub}>Last 90 days</Text>
                   {profile.regularPlay.map((venue, vi) => {
                     const distanceLabel = formatDistance(venue.distanceKm)
                     const metaParts = [
@@ -682,5 +729,11 @@ const s = StyleSheet.create({
     fontSize: 10,
     color: '#444',
     flexShrink: 0,
+  },
+  venuesEmpty: {
+    fontSize: 12,
+    color: '#333',
+    fontStyle: 'italic',
+    paddingVertical: 8,
   },
 })

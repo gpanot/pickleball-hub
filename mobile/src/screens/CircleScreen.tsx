@@ -55,6 +55,7 @@ export function CircleScreen() {
   const [friends, setFriends] = useState<FollowedPlayer[]>([])
   const [loadingFriends, setLoadingFriends] = useState(false)
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null)
+  const [selectedPlayerStub, setSelectedPlayerStub] = useState<import('../components/PlayerProfileSheet').PlayerProfileStub | null>(null)
 
   const feedLoadedRef = useRef(false)
   const friendsLoadedRef = useRef(false)
@@ -497,6 +498,7 @@ export function CircleScreen() {
                 onJoinToo={(eventUrl) => Linking.openURL(eventUrl)}
                 onAvatarPress={(uid) => {
                   if (index === 0 && showAvatarTip) dismissAvatarTip()
+                  setSelectedPlayerStub(item.player)
                   setSelectedPlayerId(uid)
                 }}
                 isLive={livePlayerIds.has(item.player.userId)}
@@ -711,7 +713,8 @@ export function CircleScreen() {
 
       <PlayerProfileSheet
         userId={selectedPlayerId}
-        onClose={() => setSelectedPlayerId(null)}
+        stub={selectedPlayerStub}
+        onClose={() => { setSelectedPlayerId(null); setSelectedPlayerStub(null) }}
       />
     </View>
   )

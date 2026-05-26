@@ -30,6 +30,9 @@ export async function GET(
   const { id } = await params
   const targetId = BigInt(id)
 
+  // ?quick=1 returns only fast fields (no sessionRoster scan)
+  const quick = req.nextUrl.searchParams.get('quick') === '1'
+
   const lat = parseFloat(req.nextUrl.searchParams.get('lat') ?? '')
   const lng = parseFloat(req.nextUrl.searchParams.get('lng') ?? '')
   const userLat = Number.isFinite(lat) ? lat : null
@@ -39,7 +42,8 @@ export async function GET(
   ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90)
   const cutoffStr = ninetyDaysAgo.toISOString().slice(0, 10)
 
-  const [player, isFollowing, playRosters, playerProfile, kudosCounts, myKudos] = await Promise.all([
+  // Always run fast queries in parallel
+  const fastQueries = Promise.all([
     prisma.player.findUnique({
       where: { userId: targetId },
       select: {
@@ -53,35 +57,6 @@ export async function GET(
     prisma.follow.findFirst({
       where: { followerId: user.profileId, followeeId: targetId }
     }),
-    prisma.sessionRoster.findMany({
-      where: {
-        userId: targetId,
-        session: { scrapedDate: { gte: cutoffStr } },
-      },
-      select: {
-        session: {
-          select: {
-            name: true,
-            startTime: true,
-            endTime: true,
-            eventUrl: true,
-            scrapedDate: true,
-            club: { select: { id: true, name: true } },
-            venue: {
-              select: {
-                id: true,
-                name: true,
-                address: true,
-                latitude: true,
-                longitude: true,
-              },
-            },
-          },
-        },
-      },
-      orderBy: { session: { scrapedDate: 'desc' } },
-      take: 200,
-    }),
     prisma.playerProfile.findUnique({
       where: { reclubUserId: targetId },
       select: { _count: { select: { following: true } } }
@@ -90,12 +65,66 @@ export async function GET(
       by: ['type'],
       where: { toPlayerId: targetId },
       _count: { type: true }
-    }).catch(() => []),
+    }).catch(() => [] as Array<{ type: string; _count: { type: number } }>),
     prisma.kudos.findMany({
       where: { fromPlayerId: user.profileId, toPlayerId: targetId },
       select: { type: true }
-    }).catch(() => []),
+    }).catch(() => [] as Array<{ type: string }>),
   ])
+
+  // Heavy query — only run when not in quick mode
+  const venueQuery = quick
+    ? Promise.resolve([] as typeof playRosters)
+    : prisma.sessionRoster.findMany({
+        where: {
+          userId: targetId,
+          session: { scrapedDate: { gte: cutoffStr } },
+        },
+        select: {
+          session: {
+            select: {
+              name: true,
+              startTime: true,
+              endTime: true,
+              eventUrl: true,
+              scrapedDate: true,
+              club: { select: { id: true, name: true } },
+              venue: {
+                select: {
+                  id: true,
+                  name: true,
+                  address: true,
+                  latitude: true,
+                  longitude: true,
+                },
+              },
+            },
+          },
+        },
+        orderBy: { session: { scrapedDate: 'desc' } },
+        take: 200,
+      })
+
+  type PlayRoster = {
+    session: {
+      name: string
+      startTime: string
+      endTime: string
+      eventUrl: string
+      scrapedDate: string
+      club: { id: number; name: string }
+      venue: { id: number; name: string; address: string | null; latitude: number | null; longitude: number | null } | null
+    }
+  }
+  // eslint-disable-next-line prefer-const
+  let playRosters: PlayRoster[] = []
+
+  const [[player, isFollowing, playerProfile, kudosCounts, myKudos], rostersResult] =
+    await Promise.all([fastQueries, venueQuery])
+
+  if (!quick) {
+    playRosters = rostersResult as PlayRoster[]
+  }
 
   if (!player) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
@@ -212,7 +241,7 @@ export async function GET(
     followingCount: playerProfile?._count.following ?? 0,
     sessionCount: player._count.rosters,
     isFollowing: !!isFollowing,
-    regularPlay,
+    regularPlay: quick ? null : regularPlay,
     reclubKudos: [],
     myKudos: {
       ...kudosResult,
