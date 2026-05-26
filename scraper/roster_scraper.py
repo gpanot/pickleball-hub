@@ -286,8 +286,35 @@ def scrape_session_roster(
     if not participants:
         participants = extract_participants_structured(raw, reference_code)
     if not participants:
-        print(f"[roster] No confirmed participants for {reference_code}")
-        return None
+        print(f"[roster] No confirmed participants for {reference_code} — writing empty stats row")
+        # Write a zero-participant stats row so the swipe-deck duprRange fallback
+        # can use session.skillLevelMin/Max rather than showing nothing.
+        url = _strip_db_url(database_url)
+        try:
+            conn = psycopg2.connect(url)
+            cur = conn.cursor()
+            cur.execute(
+                """
+                INSERT INTO session_dupr_stats (
+                    session_id, scraped_date,
+                    total_confirmed, players_with_dupr,
+                    dupr_participation_pct, avg_dupr_singles, avg_dupr_doubles, updated_at
+                ) VALUES (%s, %s, 0, 0, 0, NULL, NULL, NOW())
+                ON CONFLICT (session_id) DO UPDATE SET
+                    scraped_date = EXCLUDED.scraped_date,
+                    total_confirmed = 0,
+                    players_with_dupr = 0,
+                    dupr_participation_pct = 0,
+                    updated_at = NOW()
+                """,
+                (session_id, scraped_date_str),
+            )
+            conn.commit()
+            cur.close()
+            conn.close()
+        except Exception as e:
+            print(f"[roster] WARN: could not write empty stats for {reference_code}: {e}")
+        return {"dupr_participation_pct": 0, "total": 0, "with_dupr": 0, "returning_player_pct": None}
 
     print(f"[roster] {len(participants)} confirmed participants for {reference_code}")
 

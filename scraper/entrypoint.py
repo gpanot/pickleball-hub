@@ -27,7 +27,10 @@ import urllib.request
 from datetime import datetime, timezone, timedelta
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
+import psycopg2
+
 from dupr_refresh import run_dupr_refresh
+from roster_scraper import run_roster_pass_for_day
 
 VN_TZ = timezone(timedelta(hours=7))
 SCRAPER_SECRET = os.environ.get("SCRAPER_SECRET", "")
@@ -60,6 +63,44 @@ def _try_refresh_tokens():
 
 _running_lock = threading.Lock()
 _is_running = False
+
+
+def _run_tomorrow_roster_refresh(db_url: str) -> None:
+    """
+    Evening pass: re-scrape rosters for all of tomorrow's sessions that are
+    already in the DB. By 9 PM more players have signed up, so this captures
+    real roster + DUPR data for the Discovery tab's 'tomorrow' cards.
+    Runs without ROSTER_MAX_SESSIONS cap (unsets it temporarily).
+    """
+    tomorrow = (datetime.now(VN_TZ) + timedelta(days=1)).strftime("%Y-%m-%d")
+    url = db_url.split("?")[0] if "?" in db_url else db_url
+    try:
+        conn = psycopg2.connect(url)
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT reference_code FROM sessions WHERE scraped_date = %s AND status = 'active'",
+            (tomorrow,),
+        )
+        refs = [row[0] for row in cur.fetchall()]
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print(f"  [tomorrow_roster] DB query failed: {e}", flush=True)
+        return
+
+    if not refs:
+        print(f"  [tomorrow_roster] No active sessions for {tomorrow}", flush=True)
+        return
+
+    print(f"  [tomorrow_roster] Re-scraping {len(refs)} sessions for {tomorrow}...", flush=True)
+    old_cap = os.environ.pop("ROSTER_MAX_SESSIONS", None)
+    try:
+        run_roster_pass_for_day(db_url, tomorrow, refs)
+    except Exception as e:
+        print(f"  [tomorrow_roster] ERROR: {e}", flush=True)
+    finally:
+        if old_cap is not None:
+            os.environ["ROSTER_MAX_SESSIONS"] = old_cap
 
 
 def run_cmd(cmd: list[str]) -> int:
@@ -123,6 +164,17 @@ def run_scrape() -> dict:
 
         if ingest_rc == 0:
             trigger_vercel_revalidation()
+
+        # Evening run (9 PM VN): do a dedicated tomorrow roster refresh after
+        # ingest, so the Discovery tab's tomorrow cards have real DUPR + roster
+        # data (more players have signed up by evening).
+        if hour == 21:
+            db_url = os.environ.get("DATABASE_URL", "")
+            if db_url:
+                print("\n=== STEP 2b: Evening tomorrow-roster refresh ===", flush=True)
+                _run_tomorrow_roster_refresh(db_url)
+            else:
+                print("  [tomorrow_roster] DATABASE_URL not set, skipping", flush=True)
 
         # DUPR refresh runs once per week (Sunday VN time = isoweekday 7).
         # Piggybacks on the 23:00 UTC cron slot (06:00 Monday VN) which is quiet.
