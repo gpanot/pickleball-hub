@@ -246,6 +246,7 @@ export function CardBody({
   lockedFriendsSlot,
   onSignIn,
   onFriendsPress,
+  onTopDuprPress,
 }: {
   s: Session
   renderCta: React.ReactNode
@@ -257,6 +258,8 @@ export function CardBody({
   onSignIn?: () => void
   /** Signed-in: tap avatars or "X friends joining" to open friends list. */
   onFriendsPress?: () => void
+  /** Tap top DUPR avatars — if signed out, prompts login; if signed in, shows modal. */
+  onTopDuprPress?: () => void
 }) {
   const displayFriends = s.friends.slice(0, 4)
   const price = formatPriceDuration(s.feeAmount, s.durationMin)
@@ -269,7 +272,10 @@ export function CardBody({
   const duprLabel = safeDupr
     ? `Mostly ${safeDupr.min.toFixed(1)}–${safeDupr.max.toFixed(1)}`
     : null
-  const displayRegulars = s.regulars.slice(0, 3)
+  const topDuprPlayers = s.roster
+    .filter((p) => p.duprDoubles != null && p.duprDoubles > 0)
+    .sort((a, b) => (b.duprDoubles ?? 0) - (a.duprDoubles ?? 0))
+    .slice(0, 3)
   const vibeLabel = VIBE_LABELS[s.vibeTag] ?? 'Social'
   const friendsOverflow =
     s.friendsOverflow > 0
@@ -323,11 +329,7 @@ export function CardBody({
           paddingBottom: 18,
         }}
       >
-        {!matchDialBelowTopRow && (
-          <View style={{ position: 'absolute', top: 10, right: 10, zIndex: 20 }}>
-            <MatchDial pct={s.matchScore} />
-          </View>
-        )}
+        {/* Match dial removed — keeping space clean */}
 
         {/* Row 1: Time pill + FILLING FAST */}
         <View
@@ -337,7 +339,7 @@ export function CardBody({
             gap: 6,
             paddingTop: 10,
             paddingBottom: matchDialBelowTopRow ? 0 : 6,
-            paddingRight: matchDialBelowTopRow ? 0 : 72,
+            paddingRight: 0,
             flexWrap: matchDialBelowTopRow ? 'wrap' : 'nowrap',
           }}
         >
@@ -384,52 +386,41 @@ export function CardBody({
           )}
         </View>
 
-        {matchDialBelowTopRow && (
-          <View
-            style={{
-              flexDirection: 'row',
-              justifyContent: 'flex-end',
-              paddingTop: 8,
-              paddingBottom: 6,
-            }}
-          >
-            <MatchDial pct={s.matchScore} />
-          </View>
-        )}
+        {/* Match dial below row removed */}
 
         <View style={{ flex: 1 }} />
 
-        {/* Club name */}
+        {/* Session name (subtitle) */}
+        <Text
+          numberOfLines={2}
+          style={{
+            fontSize: 11,
+            fontWeight: '600',
+            color: 'rgba(255,255,255,0.45)',
+            textTransform: 'uppercase',
+            letterSpacing: 0.8,
+            marginBottom: 4,
+          }}
+        >
+          {s.name}
+        </Text>
+
+        {/* Club name (primary) */}
         {s.club?.name && (
           <Text
-            numberOfLines={1}
+            numberOfLines={2}
             style={{
-              fontSize: 11,
-              fontWeight: '600',
-              color: 'rgba(255,255,255,0.45)',
-              textTransform: 'uppercase',
-              letterSpacing: 0.8,
-              marginBottom: 4,
+              fontSize: 28,
+              fontWeight: '800',
+              color: '#fff',
+              lineHeight: 32,
+              marginBottom: 6,
+              maxWidth: '75%',
             }}
           >
             {s.club.name}
           </Text>
         )}
-
-        {/* Session name */}
-        <Text
-          numberOfLines={3}
-          style={{
-            fontSize: 28,
-            fontWeight: '800',
-            color: '#fff',
-            lineHeight: 32,
-            marginBottom: 6,
-            maxWidth: '75%',
-          }}
-        >
-          {s.name}
-        </Text>
 
         {/* Price + distance */}
         <View
@@ -586,7 +577,7 @@ export function CardBody({
           </Text>
         </View>
 
-        {/* Vibe panel + regulars */}
+        {/* Vibe panel + Top 3 DUPR */}
         <View
           style={{
             flexDirection: 'row',
@@ -618,12 +609,16 @@ export function CardBody({
               {vibeLabel}
             </Text>
           </View>
-          {displayRegulars.length > 0 ? (
-            <View style={{ alignItems: 'center', gap: 4 }}>
+          {topDuprPlayers.length > 0 ? (
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={isSignedIn ? onTopDuprPress : onSignIn}
+              style={{ alignItems: 'center', gap: 4 }}
+            >
               <View style={{ flexDirection: 'row' }}>
-                {displayRegulars.map((p, i) => (
+                {topDuprPlayers.map((p, i) => (
                   <View
-                    key={`reg-${p.displayName}-${i}`}
+                    key={`dupr-${p.displayName}-${i}`}
                     style={{
                       width: 33,
                       height: 33,
@@ -631,18 +626,22 @@ export function CardBody({
                       overflow: 'hidden',
                       marginLeft: i > 0 ? -8 : 0,
                       borderWidth: 1,
-                      borderColor: 'rgba(255,255,255,0.2)',
+                      borderColor: 'rgba(127,119,221,0.5)',
                       zIndex: 3 - i,
                     }}
                   >
-                    <ImageAvatar url={p.imageUrl} name={p.displayName} size={33} />
+                    {isSignedIn ? (
+                      <ImageAvatar url={p.imageUrl} name={p.displayName} size={33} />
+                    ) : (
+                      <View style={{ width: 33, height: 33, backgroundColor: '#2a2a3a' }} />
+                    )}
                   </View>
                 ))}
               </View>
-              <Text style={{ fontSize: 11, color: '#666' }}>
-                Your regulars are here
+              <Text style={{ fontSize: 11, fontWeight: '700', color: T.amber }}>
+                {isSignedIn ? 'Top 3 DUPR' : 'See Top 3 DUPR joining'}
               </Text>
-            </View>
+            </TouchableOpacity>
           ) : s.roster.length === 0 ? (
             <Text style={{ fontSize: 11, color: '#555' }}>
               No roster yet

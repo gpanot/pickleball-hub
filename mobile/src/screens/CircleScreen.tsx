@@ -11,6 +11,7 @@ import {
   RefreshControl,
   Linking,
 } from 'react-native'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import { Rss, Users, Search, ArrowLeft, Sparkles, X } from 'lucide-react-native'
 import { TopBar } from '../components/CardBody'
 import { T } from '../theme'
@@ -79,6 +80,28 @@ export function CircleScreen() {
   const [dismissedSuggestions, setDismissedSuggestions] = useState<Set<string>>(
     new Set()
   )
+  const [showAvatarTip, setShowAvatarTip] = useState(false)
+  const [newFollowBanner, setNewFollowBanner] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (feedItems.length > 0 && !showAvatarTip) {
+      AsyncStorage.getItem('hasSeenAvatarTip').then((val) => {
+        if (!val) setShowAvatarTip(true)
+      })
+    }
+  }, [feedItems.length])
+
+  const dismissAvatarTip = useCallback(async () => {
+    setShowAvatarTip(false)
+    await AsyncStorage.setItem('hasSeenAvatarTip', 'true')
+  }, [])
+
+  useEffect(() => {
+    if (newFollowBanner) {
+      const t = setTimeout(() => setNewFollowBanner(null), 4000)
+      return () => clearTimeout(t)
+    }
+  }, [newFollowBanner])
 
   const loadFeed = useCallback(async () => {
     if (!jwt) return
@@ -170,8 +193,9 @@ export function CircleScreen() {
           body: JSON.stringify({ followeeId: userId }),
         })
         if (!res.ok) throw new Error('Follow failed')
+        const followed = suggestions.find((s) => s.userId === userId)
+        setNewFollowBanner(followed?.displayName ?? 'this player')
         toast('Followed!', 'success')
-        // Silently refresh friends list in the background
         friendsLoadedRef.current = false
         loadFriends()
       } catch {
@@ -441,18 +465,43 @@ export function CircleScreen() {
             </View>
           )}
 
+          {/* Follow banner */}
+          {newFollowBanner && (
+            <TouchableOpacity
+              style={styles.followBanner}
+              onPress={() => setNewFollowBanner(null)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.followBannerIcon}>👥</Text>
+              <View style={styles.followBannerText}>
+                <Text style={styles.followBannerTitle}>
+                  Now following {newFollowBanner}
+                </Text>
+                <Text style={styles.followBannerSub}>
+                  You'll see their activity in your feed
+                </Text>
+              </View>
+              <Text style={styles.followBannerDismiss}>×</Text>
+            </TouchableOpacity>
+          )}
+
           {/* Feed items */}
           {!feedLoading && (() => {
             const livePlayerIds = new Set(
               presence?.liveVenues.flatMap((v: any) => v.players.map((p: any) => p.userId)) ?? []
             )
-            return feedItems.map((item) => (
+            return feedItems.map((item, index) => (
               <FeedItemRow
                 key={item.id}
                 item={item}
                 onJoinToo={(eventUrl) => Linking.openURL(eventUrl)}
-                onAvatarPress={(uid) => setSelectedPlayerId(uid)}
+                onAvatarPress={(uid) => {
+                  if (index === 0 && showAvatarTip) dismissAvatarTip()
+                  setSelectedPlayerId(uid)
+                }}
                 isLive={livePlayerIds.has(item.player.userId)}
+                showAvatarTip={index === 0 && showAvatarTip}
+                onDismissTip={dismissAvatarTip}
               />
             ))
           })()}
@@ -919,5 +968,39 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: '#2a2a2a',
     marginTop: 1,
+  },
+  followBanner: {
+    marginHorizontal: 12,
+    marginBottom: 10,
+    backgroundColor: '#1f1400',
+    borderWidth: 0.5,
+    borderColor: '#f5a623',
+    borderRadius: 12,
+    padding: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  followBannerIcon: {
+    fontSize: 18,
+    flexShrink: 0,
+  },
+  followBannerText: {
+    flex: 1,
+  },
+  followBannerTitle: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#f5a623',
+  },
+  followBannerSub: {
+    fontSize: 10,
+    color: '#555',
+    marginTop: 1,
+  },
+  followBannerDismiss: {
+    fontSize: 16,
+    color: '#444',
+    flexShrink: 0,
   },
 })

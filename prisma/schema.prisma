@@ -201,8 +201,23 @@ model PlayerProfile {
   following    Follow[] @relation("following")
   notificationsReceived NotificationSent[] @relation("recipient")
   notificationsSent     NotificationSent[] @relation("sender")
+  gear         PlayerGear?
 
   @@map("player_profiles")
+}
+
+model PlayerGear {
+  id         String    @id @default(cuid())
+  profileId  String    @unique @map("profile_id")
+  cap        String?
+  shirt      String?
+  paddle     String?
+  shoes      String?
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  profile    PlayerProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@map("player_gear")
 }
 
 /// Social graph: an app user (PlayerProfile) follows a Reclub player.

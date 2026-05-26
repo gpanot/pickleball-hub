@@ -44,6 +44,8 @@ interface Props {
   onJoinToo: (eventUrl: string) => void
   onAvatarPress?: (userId: string) => void
   isLive?: boolean
+  showAvatarTip?: boolean
+  onDismissTip?: () => void
 }
 
 export function FeedItemRow({
@@ -51,6 +53,8 @@ export function FeedItemRow({
   onJoinToo,
   onAvatarPress,
   isLive,
+  showAvatarTip,
+  onDismissTip,
 }: Props) {
   const name = item.player.displayName ?? 'Player'
   const dupr = item.player.duprDoubles?.toFixed(2) ?? '–'
@@ -69,6 +73,20 @@ export function FeedItemRow({
     anim.start()
     return () => anim.stop()
   }, [isLive, dotOpacity])
+
+  const pulseAnim = useRef(new Animated.Value(1)).current
+  useEffect(() => {
+    if (showAvatarTip) {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, { toValue: 1.35, duration: 900, useNativeDriver: true }),
+          Animated.timing(pulseAnim, { toValue: 1, duration: 900, useNativeDriver: true }),
+        ])
+      ).start()
+    } else {
+      pulseAnim.setValue(1)
+    }
+  }, [showAvatarTip])
 
   const [kudos, setKudos] = useState({
     fistbump: item.kudos?.fistbump ?? 0,
@@ -110,16 +128,47 @@ export function FeedItemRow({
 
   return (
     <View style={s.row}>
-      <TouchableOpacity onPress={() => onAvatarPress?.(item.player.userId)}>
-        <View style={s.avatarCol}>
-          <PlayerAvatar
-            userId={item.player.userId}
-            imageUrl={item.player.imageUrl}
-            size={44}
-          />
-          <Text style={s.dupr}>{dupr}</Text>
-        </View>
-      </TouchableOpacity>
+      <View style={{ position: 'relative', flexShrink: 0, zIndex: showAvatarTip ? 99 : 0 }}>
+        <TouchableOpacity
+          onPress={() => onAvatarPress?.(item.player.userId)}
+          activeOpacity={0.8}
+        >
+          <View style={s.avatarCol}>
+            {showAvatarTip && (
+              <Animated.View
+                style={[
+                  s.pulseRing,
+                  {
+                    transform: [{ scale: pulseAnim }],
+                    opacity: pulseAnim.interpolate({
+                      inputRange: [1, 1.35],
+                      outputRange: [0.6, 0],
+                    }),
+                  },
+                ]}
+                pointerEvents="none"
+              />
+            )}
+            <PlayerAvatar
+              userId={item.player.userId}
+              imageUrl={item.player.imageUrl}
+              size={44}
+              style={showAvatarTip ? s.avatarHighlight : undefined}
+            />
+            <Text style={s.dupr}>{dupr}</Text>
+          </View>
+        </TouchableOpacity>
+
+        {showAvatarTip && (
+          <TouchableOpacity style={s.tipWrap} onPress={onDismissTip} activeOpacity={0.9}>
+            <View style={s.tipArrow} />
+            <View style={s.tipBubble}>
+              <Text style={s.tipText}>Tap to see their profile</Text>
+              <Text style={s.tipDismiss}>tap anywhere to dismiss</Text>
+            </View>
+          </TouchableOpacity>
+        )}
+      </View>
 
       <View style={s.body}>
         <View style={s.nameRow}>
@@ -227,6 +276,7 @@ const s = StyleSheet.create({
     borderBottomWidth: 0.5,
     borderBottomColor: '#0f0f0f',
     alignItems: 'flex-start',
+    overflow: 'visible',
   },
   avatarCol: { alignItems: 'center', gap: 2, width: 46 },
   dupr: { fontSize: 11, fontWeight: '500', color: T.amber },
@@ -343,5 +393,64 @@ const s = StyleSheet.create({
     fontSize: 8,
     color: '#5DCAA5',
     fontWeight: '500',
+  },
+  avatarHighlight: {
+    borderWidth: 2,
+    borderColor: '#f5a623',
+    borderRadius: 22,
+  },
+  pulseRing: {
+    position: 'absolute',
+    top: -4,
+    left: -4,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    borderWidth: 2,
+    borderColor: '#f5a623',
+    zIndex: 1,
+  },
+  tipWrap: {
+    position: 'absolute',
+    top: 58,
+    left: -6,
+    zIndex: 99,
+    alignItems: 'flex-start',
+    width: 160,
+  },
+  tipArrow: {
+    width: 0,
+    height: 0,
+    borderLeftWidth: 6,
+    borderRightWidth: 6,
+    borderBottomWidth: 7,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    borderBottomColor: '#f5a623',
+    marginLeft: 16,
+  },
+  tipBubble: {
+    backgroundColor: '#f5a623',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    width: 160,
+    shadowColor: '#f5a623',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  tipText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#1a0a00',
+    textAlign: 'center',
+  },
+  tipDismiss: {
+    fontSize: 9,
+    color: 'rgba(26,10,0,0.45)',
+    textAlign: 'center',
+    marginTop: 3,
   },
 })

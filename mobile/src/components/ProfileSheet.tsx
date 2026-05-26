@@ -8,6 +8,7 @@ import {
   StyleSheet,
   ScrollView,
 } from 'react-native'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import {
   ChevronLeft,
@@ -16,6 +17,7 @@ import {
   LogOut,
   Trash2,
   Link2,
+  Shirt,
 } from 'lucide-react-native'
 import { T } from '../theme'
 import { useAuthStore } from '../stores/authStore'
@@ -26,10 +28,12 @@ export function ProfileSheet({
   onClose,
   onLinkReclub,
   onRedoOnboarding,
+  onOpenGear,
 }: {
   onClose: () => void
   onLinkReclub?: () => void
   onRedoOnboarding?: () => void
+  onOpenGear?: () => void
 }) {
   const insets = useSafeAreaInsets()
   const {
@@ -275,6 +279,18 @@ export function ProfileSheet({
         </View>
 
       <View style={styles.settingsBlock}>
+        {onOpenGear && (
+          <TouchableOpacity
+            style={styles.settingsRow}
+            onPress={() => {
+              onClose()
+              onOpenGear()
+            }}
+          >
+            <Shirt size={20} color="#555" strokeWidth={2} />
+            <Text style={styles.settingsLabel}>My Gear</Text>
+          </TouchableOpacity>
+        )}
         {onRedoOnboarding && (
           <TouchableOpacity
             style={styles.settingsRow}
@@ -324,6 +340,35 @@ export function ProfileSheet({
           <Text style={[styles.settingsLabel, { color: '#e24b4a' }]}>
             Delete my data
           </Text>
+        </TouchableOpacity>
+
+        {__DEV__ && (
+          <TouchableOpacity
+            style={styles.settingsRow}
+            onPress={() => AsyncStorage.removeItem('hasSeenAvatarTip')}
+          >
+            <Text style={styles.settingsLabel}>Reset avatar tip (dev)</Text>
+          </TouchableOpacity>
+        )}
+
+        <TouchableOpacity
+          style={styles.settingsRow}
+          onPress={async () => {
+            try {
+              const res = await authedFetch('/api/notifications/test', { method: 'POST' })
+              const data = await res.json()
+              if (data.ok) {
+                Alert.alert('PNS Test', 'Notification sent! Check your device.')
+              } else {
+                Alert.alert('PNS Test Failed', data.error ?? JSON.stringify(data))
+              }
+            } catch (e: any) {
+              Alert.alert('PNS Error', e.message)
+            }
+          }}
+        >
+          <Bell size={20} color="#555" strokeWidth={2} />
+          <Text style={styles.settingsLabel}>Test Push Notification</Text>
         </TouchableOpacity>
       </View>
       </ScrollView>

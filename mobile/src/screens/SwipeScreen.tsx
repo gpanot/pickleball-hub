@@ -56,7 +56,7 @@ const CARD_BG_IMAGES = [
   require('../../assets/images/card-bg-2.jpg'),
 ]
 
-const { width: W } = Dimensions.get('window')
+const { width: W, height: H } = Dimensions.get('window')
 
 /* ── SwipeCard (with Shortlist CTA) ─────────────────────────── */
 function SwipeCard({
@@ -66,6 +66,7 @@ function SwipeCard({
   lockedFriendsSlot,
   onSignIn,
   onFriendsPress,
+  onTopDuprPress,
 }: {
   s: Session
   onSkip: () => void
@@ -74,7 +75,9 @@ function SwipeCard({
   lockedFriendsSlot?: React.ReactNode
   onSignIn?: () => void
   onFriendsPress?: () => void
+  onTopDuprPress?: () => void
 }) {
+  const fillPct = s.maxPlayers > 0 ? Math.min(1, s.joined / s.maxPlayers) : 0
   const cta = (
     <TouchableOpacity
       onPress={onSave}
@@ -84,7 +87,7 @@ function SwipeCard({
         backgroundColor: T.amber,
         borderRadius: 14,
         paddingVertical: 11,
-        alignItems: 'center',
+        paddingHorizontal: 16,
         shadowColor: T.amber,
         shadowOffset: { width: 0, height: 0 },
         shadowOpacity: 0.2,
@@ -92,12 +95,25 @@ function SwipeCard({
         elevation: 6,
       }}
     >
-      <Text style={{ fontSize: 14, fontWeight: '600', color: '#1a0a00' }}>
+      <Text style={{ fontSize: 14, fontWeight: '600', color: '#1a0a00', textAlign: 'center' }}>
         Shortlist · {s.spotsLeft} spots left
       </Text>
-      <Text style={{ fontSize: 11, color: 'rgba(0,0,0,0.5)', marginTop: 2 }}>
-        {s.joined} / {s.maxPlayers} filled
-      </Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', alignSelf: 'center', marginTop: 6, gap: 6, maxWidth: 180 }}>
+        <View style={{ flex: 1, height: 5, borderRadius: 3, backgroundColor: 'rgba(0,0,0,0.15)' }}>
+          <View
+            style={{
+              width: `${Math.round(fillPct * 100)}%`,
+              height: 5,
+              borderRadius: 3,
+              backgroundColor: fillPct >= 0.85 ? '#c0392b' : '#1a0a00',
+              opacity: fillPct >= 0.85 ? 1 : 0.6,
+            }}
+          />
+        </View>
+        <Text style={{ fontSize: 10, fontWeight: '600', color: 'rgba(0,0,0,0.5)' }}>
+          {s.joined}/{s.maxPlayers}
+        </Text>
+      </View>
     </TouchableOpacity>
   )
 
@@ -110,6 +126,7 @@ function SwipeCard({
         lockedFriendsSlot={lockedFriendsSlot}
         onSignIn={onSignIn}
         onFriendsPress={onFriendsPress}
+        onTopDuprPress={onTopDuprPress}
       />
     </View>
   )
@@ -171,6 +188,7 @@ function AnimatedSwipeCard({
   lockedFriendsSlot,
   onSignIn,
   onFriendsPress,
+  onTopDuprPress,
 }: {
   s: Session
   onSkip: () => void
@@ -179,6 +197,7 @@ function AnimatedSwipeCard({
   lockedFriendsSlot?: React.ReactNode
   onSignIn?: () => void
   onFriendsPress?: () => void
+  onTopDuprPress?: () => void
 }) {
   const translateX = useSharedValue(0)
   const rotate = useSharedValue(0)
@@ -232,6 +251,7 @@ function AnimatedSwipeCard({
           lockedFriendsSlot={lockedFriendsSlot}
           onSignIn={onSignIn}
           onFriendsPress={onFriendsPress}
+          onTopDuprPress={onTopDuprPress}
         />
       </Animated.View>
     </GestureDetector>
@@ -436,6 +456,24 @@ export function SwipeScreen() {
         session.friendsOverflow > 0
           ? `+${session.friendsOverflow} more on this session`
           : undefined,
+    })
+  }, [signedIn])
+
+  const openTopDupr = useCallback((session: Session) => {
+    if (!signedIn) return
+    const topPlayers = session.roster
+      .filter((p) => p.duprDoubles != null && p.duprDoubles > 0)
+      .sort((a, b) => (b.duprDoubles ?? 0) - (a.duprDoubles ?? 0))
+      .slice(0, 3)
+    setFriendsModal({
+      visible: true,
+      title: 'Top 3 DUPR joining',
+      friends: topPlayers.map((p, i) => ({
+        userId: `dupr-${i}`,
+        displayName: p.displayName,
+        imageUrl: p.imageUrl,
+        duprDoubles: p.duprDoubles,
+      })),
     })
   }, [signedIn])
 
@@ -774,6 +812,7 @@ export function SwipeScreen() {
                       lockedFriendsSlot={lockedFriends}
                       onSignIn={openSignUp}
                       onFriendsPress={() => openSessionFriends(current)}
+                      onTopDuprPress={() => openTopDupr(current)}
                     />
 
                     {/* Action buttons */}
@@ -989,10 +1028,10 @@ export function SwipeScreen() {
                           s.savedRow,
                           index === shortlistItems.length - 1 && { borderBottomWidth: 0 },
                         ]}
-                        activeOpacity={0.8}
-                        onPress={() => setExpandedSession(item)}
-                      >
-                        <View style={s.savedThumb}>
+                      activeOpacity={0.8}
+                      onPress={() => setExpandedSession(item)}
+                    >
+                      <View style={s.savedThumb}>
                           <Text style={s.savedThumbPct} numberOfLines={1}>
                             {item.matchScore > 0 ? `${item.matchScore}%` : 'New'}
                           </Text>
@@ -1046,13 +1085,14 @@ export function SwipeScreen() {
       <Modal
         visible={!!expandedSession}
         transparent
-        animationType="slide"
+        animationType="fade"
+        statusBarTranslucent
         onRequestClose={() => setExpandedSession(null)}
       >
         <Pressable style={s.expandedBackdrop} onPress={() => setExpandedSession(null)}>
           <Pressable style={s.expandedSheet} onPress={(e) => e.stopPropagation()}>
             {expandedSession && (
-              <View style={{ width: '100%', height: CARD_HEIGHT }}>
+              <View style={{ width: '100%', height: Math.min(CARD_HEIGHT, H * 0.72) }}>
                 <CardBody
                   s={expandedSession}
                   renderCta={
@@ -1078,6 +1118,7 @@ export function SwipeScreen() {
                   }
                   isSignedIn={signedIn}
                   onFriendsPress={() => openSessionFriends(expandedSession)}
+                  onTopDuprPress={() => openTopDupr(expandedSession)}
                 />
               </View>
             )}
@@ -1254,11 +1295,13 @@ const s = StyleSheet.create({
   },
   expandedBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.7)',
+    backgroundColor: 'rgba(0,0,0,0.85)',
     justifyContent: 'center',
+    alignItems: 'center',
     paddingHorizontal: 12,
   },
   expandedSheet: {
+    width: '100%',
     borderRadius: 24,
     overflow: 'hidden',
   },

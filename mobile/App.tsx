@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { View, Platform } from 'react-native'
+import { View, Platform, StyleSheet } from 'react-native'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { StatusBar } from 'expo-status-bar'
@@ -10,6 +10,9 @@ import { CircleScreen } from './src/screens/CircleScreen'
 import { OnboardingScreen } from './src/screens/OnboardingScreen'
 import { PeopleYouMayKnowScreen } from './src/screens/PeopleYouMayKnowScreen'
 import { ProfileSheet } from './src/components/ProfileSheet'
+import { GearSetupScreen } from './src/components/gear/GearSetupScreen'
+import { useGearProfile } from './src/hooks/useGearProfile'
+import { playerGenderFromStored } from './src/components/gear/gearConstants'
 import { SignUpModalProvider } from './src/contexts/SignUpModalContext'
 import { ProfileMenuProvider } from './src/contexts/ProfileMenuContext'
 import { ToastOverlay } from './src/components/Toast'
@@ -21,7 +24,7 @@ import { registerForPushNotifications, useNotificationListeners } from './src/se
 import { SplashScreen } from './src/screens/SplashScreen'
 import { debugLog } from './src/lib/debug'
 
-type FlowScreen = 'main' | 'onboarding' | 'people' | 'profile'
+type FlowScreen = 'main' | 'onboarding' | 'people' | 'profile' | 'gear'
 
 export default function App() {
   const [showSplash, setShowSplash] = useState(true)
@@ -30,7 +33,12 @@ export default function App() {
   const [onboardingInitialStep, setOnboardingInitialStep] = useState(0)
 
   const jwt = useAuthStore((s) => s.jwt)
+  const authStore = useAuthStore()
+  const profileId = useAuthStore((s) => s.profileId)
   const pushTokenRegistered = useRef(false)
+
+  const { gear, loading: gearLoading, saving: gearSaving, error: gearError, saveGear, savedConfirmation } =
+    useGearProfile(profileId ?? null, authStore.authedFetch)
 
   useEffect(() => {
     debugLog('App', '=== SQUADD Boot Diagnostics ===')
@@ -172,15 +180,19 @@ export default function App() {
     )
   }
 
-  if (flowScreen === 'profile') {
+  if (flowScreen === 'gear') {
     return (
       <GestureHandlerRootView style={{ flex: 1 }}>
         <SafeAreaProvider>
           <StatusBar style="light" />
-          <ProfileSheet
-            onClose={() => setFlowScreen('main')}
-            onLinkReclub={startLinkReclub}
-            onRedoOnboarding={startRedoOnboarding}
+          <GearSetupScreen
+            gender={playerGenderFromStored(null)}
+            initialGear={gear}
+            saving={gearSaving}
+            error={gearError}
+            onSave={saveGear}
+            onBack={() => setFlowScreen('profile')}
+            savedConfirmation={savedConfirmation}
           />
         </SafeAreaProvider>
       </GestureHandlerRootView>
@@ -209,6 +221,16 @@ export default function App() {
               />
               <ToastOverlay />
             </View>
+            {flowScreen === 'profile' && (
+              <View style={StyleSheet.absoluteFillObject}>
+                <ProfileSheet
+                  onClose={() => setFlowScreen('main')}
+                  onLinkReclub={startLinkReclub}
+                  onRedoOnboarding={startRedoOnboarding}
+                  onOpenGear={() => setFlowScreen('gear')}
+                />
+              </View>
+            )}
           </ProfileMenuProvider>
         </SignUpModalProvider>
       </SafeAreaProvider>
