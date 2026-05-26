@@ -4,10 +4,9 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  Image,
   Linking,
 } from 'react-native'
-import { Clock, Users, MapPin, ExternalLink } from 'lucide-react-native'
+import { Clock, Users, ExternalLink } from 'lucide-react-native'
 import { T } from '../theme'
 import { RING_COLORS } from '../data'
 import { PlayerAvatar } from './PlayerAvatar'
@@ -15,6 +14,7 @@ import { PlayerAvatar } from './PlayerAvatar'
 export interface FriendGoingItem {
   sessionId: number
   name: string
+  clubName: string
   venueName: string
   startTime: string
   scrapedDate?: string
@@ -34,8 +34,7 @@ export interface FriendGoingItem {
 
 interface Props {
   item: FriendGoingItem
-  isTop?: boolean
-  onPlayerPress?: (userId: string) => void
+  onFriendsPress?: () => void
 }
 
 /* ── small fill-rate bar ──────────────────────────────────────── */
@@ -64,7 +63,7 @@ const fb = StyleSheet.create({
 })
 
 /* ── FriendGoingCard ──────────────────────────────────────────── */
-export function FriendGoingCard({ item, isTop = false, onPlayerPress }: Props) {
+export function FriendGoingCard({ item, onFriendsPress }: Props) {
   const joined = item.totalSpots - item.spotsLeft
   const fillPct = item.totalSpots > 0 ? Math.round((joined / item.totalSpots) * 100) : 0
   const mc =
@@ -82,16 +81,19 @@ export function FriendGoingCard({ item, isTop = false, onPlayerPress }: Props) {
       : `${item.friends[0]?.displayName ?? 'A friend'} +${item.friendCount - 1} going`
 
   return (
-    <View style={[s.card, isTop && s.cardTop]}>
-      {/* ── Top row: name + match score ── */}
+    <View style={s.card}>
+      {/* ── Top row: club + tag + match score ── */}
       <View style={s.topRow}>
         <View style={s.nameCol}>
-          {isTop && (
+          <View style={s.titleRow}>
+            <Text style={s.clubTitle} numberOfLines={2}>
+              {(item.clubName ?? item.venueName).toUpperCase()}
+            </Text>
             <View style={s.hotPill}>
               <Text style={s.hotPillText}>🔥 Friends going</Text>
             </View>
-          )}
-          <Text style={s.name} numberOfLines={2}>{item.name}</Text>
+          </View>
+          <Text style={s.sessionName} numberOfLines={2}>{item.name}</Text>
         </View>
         {item.matchScore > 0 && (
           <View style={s.scoreBox}>
@@ -101,23 +103,23 @@ export function FriendGoingCard({ item, isTop = false, onPlayerPress }: Props) {
         )}
       </View>
 
-      {/* ── Meta row: time + venue ── */}
+      {/* ── Meta row: time ── */}
       <View style={s.metaRow}>
         <Clock size={11} color={T.amber} strokeWidth={2} />
         <Text style={s.metaText}>{item.startTime}</Text>
-        <Text style={s.metaDot}>·</Text>
-        <MapPin size={11} color="rgba(255,255,255,0.4)" strokeWidth={1.5} />
-        <Text style={s.metaText} numberOfLines={1}>{item.venueName}</Text>
       </View>
 
       {/* ── Friends strip ── */}
-      <View style={s.friendsRow}>
+      <TouchableOpacity
+        style={s.friendsRow}
+        onPress={() => onFriendsPress?.()}
+        activeOpacity={onFriendsPress ? 0.75 : 1}
+        disabled={!onFriendsPress}
+      >
         <View style={s.avatarStack}>
           {item.friends.slice(0, 3).map((f, i) => (
-            <TouchableOpacity
+            <View
               key={`fg-friend-${f.userId}-${i}`}
-              onPress={() => onPlayerPress?.(f.userId)}
-              activeOpacity={onPlayerPress ? 0.75 : 1}
               style={[
                 s.avatarWrap,
                 i > 0 && { marginLeft: -8 },
@@ -133,11 +135,11 @@ export function FriendGoingCard({ item, isTop = false, onPlayerPress }: Props) {
                 imageUrl={f.imageUrl}
                 size={28}
               />
-            </TouchableOpacity>
+            </View>
           ))}
         </View>
         <Text style={s.friendLabel} numberOfLines={1}>{friendLabel}</Text>
-      </View>
+      </TouchableOpacity>
 
       {/* ── Capacity strip ── */}
       <View style={s.capacityRow}>
@@ -166,16 +168,12 @@ const s = StyleSheet.create({
   card: {
     marginHorizontal: 16,
     marginBottom: 10,
-    backgroundColor: '#121212',
+    backgroundColor: '#140f00',
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.07)',
+    borderColor: 'rgba(245,166,35,0.3)',
     padding: 14,
     gap: 10,
-  },
-  cardTop: {
-    borderColor: 'rgba(245,166,35,0.3)',
-    backgroundColor: '#140f00',
   },
   topRow: {
     flexDirection: 'row',
@@ -187,8 +185,13 @@ const s = StyleSheet.create({
     minWidth: 0,
     gap: 4,
   },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   hotPill: {
-    alignSelf: 'flex-start',
+    flexShrink: 0,
     backgroundColor: 'rgba(245,166,35,0.12)',
     borderWidth: 1,
     borderColor: 'rgba(245,166,35,0.2)',
@@ -201,11 +204,20 @@ const s = StyleSheet.create({
     color: T.amber,
     fontWeight: '600',
   },
-  name: {
+  clubTitle: {
+    flex: 1,
+    minWidth: 0,
     fontSize: 15,
     fontWeight: '700',
-    color: '#f0f0f0',
+    color: '#fff',
     lineHeight: 20,
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+  sessionName: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.45)',
+    lineHeight: 16,
   },
   scoreBox: {
     alignItems: 'center',
@@ -230,10 +242,6 @@ const s = StyleSheet.create({
   metaText: {
     fontSize: 12,
     color: 'rgba(255,255,255,0.45)',
-  },
-  metaDot: {
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.2)',
   },
   friendsRow: {
     flexDirection: 'row',

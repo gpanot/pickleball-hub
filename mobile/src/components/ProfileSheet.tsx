@@ -346,12 +346,20 @@ export function ProfileSheet({
         </TouchableOpacity>
 
         {__DEV__ && (
-          <TouchableOpacity
-            style={styles.settingsRow}
-            onPress={() => AsyncStorage.removeItem('hasSeenAvatarTip')}
-          >
-            <Text style={styles.settingsLabel}>Reset avatar tip (dev)</Text>
-          </TouchableOpacity>
+          <>
+            <TouchableOpacity
+              style={styles.settingsRow}
+              onPress={() => AsyncStorage.removeItem('hasSeenGearPrompt')}
+            >
+              <Text style={styles.settingsLabel}>Reset gear prompt (dev)</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.settingsRow}
+              onPress={() => AsyncStorage.removeItem('hasSeenAvatarTip')}
+            >
+              <Text style={styles.settingsLabel}>Reset avatar tip (dev)</Text>
+            </TouchableOpacity>
+          </>
         )}
 
         <TouchableOpacity

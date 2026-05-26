@@ -232,6 +232,55 @@ export async function GET(
     }
   }
 
+  const playerSessions = await prisma.sessionRoster.findMany({
+    where: { userId: targetId },
+    select: { session: { select: { startTime: true, scrapedDate: true } } },
+    orderBy: { session: { startTime: 'desc' } },
+    take: 200,
+  })
+
+  function getWeekKey(date: Date): string {
+    const d = new Date(date)
+    d.setHours(0, 0, 0, 0)
+    d.setDate(d.getDate() + 4 - (d.getDay() || 7))
+    const yearStart = new Date(d.getFullYear(), 0, 1)
+    const weekNum = Math.ceil(
+      ((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7
+    )
+    return `${d.getFullYear()}-${weekNum}`
+  }
+
+  const now = new Date()
+  const weeksWithSessions = new Set(
+    playerSessions.map((s) =>
+      getWeekKey(new Date(`${s.session.scrapedDate}T12:00:00`))
+    )
+  )
+
+  let streak = 0
+  let missedWeeks = 0
+  const weeklyPlayed: boolean[] = []
+
+  for (let i = 0; i < 12; i++) {
+    const checkDate = new Date(now)
+    checkDate.setDate(checkDate.getDate() - i * 7)
+    const weekKey = getWeekKey(checkDate)
+    const played = weeksWithSessions.has(weekKey)
+    if (i < 6) weeklyPlayed.push(played)
+    if (played) {
+      streak++
+      missedWeeks = 0
+    } else {
+      missedWeeks++
+      if (i > 0 && missedWeeks > 1) break
+    }
+  }
+
+  const streakData = {
+    currentStreak: streak,
+    weeklyPlayed: weeklyPlayed.reverse(),
+  }
+
   return NextResponse.json({
     userId: player.userId.toString(),
     displayName: player.displayName,
@@ -246,7 +295,8 @@ export async function GET(
     myKudos: {
       ...kudosResult,
       myReactions: myKudos.map(k => k.type)
-    }
+    },
+    streakData,
   })
 }
 

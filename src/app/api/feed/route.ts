@@ -169,6 +169,80 @@ export async function GET(req: NextRequest) {
     });
   }
 
+  const MILESTONE_WEEKS = [4, 8, 12, 26, 52];
+
+  function getWeekKey(date: Date): string {
+    const d = new Date(date);
+    d.setHours(0, 0, 0, 0);
+    d.setDate(d.getDate() + 4 - (d.getDay() || 7));
+    const yearStart = new Date(d.getFullYear(), 0, 1);
+    const weekNum = Math.ceil(
+      ((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7
+    );
+    return `${d.getFullYear()}-${weekNum}`;
+  }
+
+  const now = new Date();
+
+  for (const followeeId of followeeIds) {
+    const sessions = await prisma.sessionRoster.findMany({
+      where: { userId: followeeId },
+      select: { session: { select: { startTime: true, scrapedDate: true } } },
+      orderBy: { session: { startTime: "desc" } },
+      take: 200,
+    });
+
+    const weeksWithSessions = new Set(
+      sessions.map((s) =>
+        getWeekKey(new Date(`${s.session.scrapedDate}T12:00:00`))
+      )
+    );
+
+    let streak = 0;
+    let missedWeeks = 0;
+    const weeklyPlayed: boolean[] = [];
+
+    for (let i = 0; i < 12; i++) {
+      const checkDate = new Date(now);
+      checkDate.setDate(checkDate.getDate() - i * 7);
+      const played = weeksWithSessions.has(getWeekKey(checkDate));
+      if (i < 6) weeklyPlayed.push(played);
+      if (played) {
+        streak++;
+        missedWeeks = 0;
+      } else {
+        missedWeeks++;
+        if (i > 0 && missedWeeks > 1) break;
+      }
+    }
+
+    const isCurrentWeekPlayed = weeksWithSessions.has(getWeekKey(now));
+
+    if (isCurrentWeekPlayed && MILESTONE_WEEKS.includes(streak)) {
+      const player = await prisma.player.findUnique({
+        where: { userId: followeeId },
+        select: {
+          userId: true,
+          displayName: true,
+          imageUrl: true,
+          duprDoubles: true,
+        },
+      });
+
+      if (player) {
+        items.push({
+          id: `streak_${followeeId}_${streak}`,
+          type: "streak_milestone",
+          player: toPlayerPayload(player),
+          isFollowing: true,
+          timestamp: new Date().toISOString(),
+          streakCount: streak,
+          weeklyPlayed: weeklyPlayed.reverse(),
+        });
+      }
+    }
+  }
+
   // Sort: joining first, then by timestamp desc
   items.sort((a, b) => {
     if (a.type === "joining" && b.type !== "joining") return -1;

@@ -347,17 +347,17 @@ export function CardBody({
             style={{
               flexDirection: 'row',
               alignItems: 'center',
-              gap: 4,
+              gap: 5,
               backgroundColor: 'rgba(246,185,59,0.12)',
               borderWidth: 1,
               borderColor: 'rgba(246,185,59,0.18)',
-              borderRadius: 20,
-              paddingHorizontal: 10,
-              paddingVertical: 4,
+              borderRadius: 26,
+              paddingHorizontal: 13,
+              paddingVertical: 5,
             }}
           >
-            <Clock size={10} color={T.amber} strokeWidth={2} />
-            <Text style={{ fontSize: 10, fontWeight: '600', color: T.amber }}>
+            <Clock size={13} color={T.amber} strokeWidth={2} />
+            <Text style={{ fontSize: 13, fontWeight: '600', color: T.amber }}>
               {timeLabel}
             </Text>
           </View>

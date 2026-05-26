@@ -1,0 +1,51 @@
+---
+description: Always push Prisma schema changes to BOTH local and production databases
+globs:
+  - prisma/schema.prisma
+  - src/**/*.ts
+alwaysApply: true
+---
+
+# Prisma DB Push — Always Target Production
+
+When running `prisma db push` or `prisma migrate deploy` after modifying `prisma/schema.prisma`:
+
+## CRITICAL RULE
+
+**ALWAYS push to BOTH databases — local AND production.**
+
+The production DATABASE_URL is:
+```
+postgresql://postgres:REDACTED_ROTATE_THIS_CREDENTIAL@shinkansen.proxy.rlwy.net:12844/railway
+```
+
+## Required Commands (in order)
+
+```bash
+# 1. Push to local
+npx prisma db push --skip-generate
+
+# 2. Push to production (NEVER forget this)
+DATABASE_URL="postgresql://postgres:REDACTED_ROTATE_THIS_CREDENTIAL@shinkansen.proxy.rlwy.net:12844/railway" npx prisma db push --skip-generate
+
+# 3. Regenerate client
+npx prisma generate
+```
+
+Or use the convenience script:
+```bash
+npm run db:push:all
+```
+
+## Why This Matters
+
+- The Vercel deployment uses the **production** Railway Postgres database
+- If you only push to local, ALL API routes crash with `PrismaClientKnownRequestError`
+- This has broken sign-in, PNS, and other features multiple times
+
+## Never Do This
+
+```bash
+# WRONG — only updates local, production stays out of sync
+npx prisma db push
+```

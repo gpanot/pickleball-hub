@@ -7,12 +7,13 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
+  Dimensions,
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { ChevronLeft, CheckCircle } from 'lucide-react-native'
+import { ChevronLeft, CheckCircle, X } from 'lucide-react-native'
 import { GearBubble, GearDot } from './GearBubble'
 import { GearBrandSheet } from './GearBrandSheet'
-import { GEAR_ZONES, GEAR_AVATAR } from './gearConstants'
+import { GEAR_ZONES, GEAR_AVATAR, playerGenderFromStored } from './gearConstants'
 import { GearProfile, GearZoneConfig, GearZoneKey, PlayerGender } from './gearTypes'
 
 type BubblePosition = {
@@ -49,8 +50,10 @@ const ZONE_POSITIONS: Record<GearZoneKey, BubblePosition> = {
   },
 }
 
+const { width: SCREEN_W } = Dimensions.get('window')
+
 type Props = {
-  gender: PlayerGender
+  gender: PlayerGender | null
   initialGear: GearProfile
   saving: boolean
   error: string | null
@@ -59,10 +62,12 @@ type Props = {
   onSkip?: () => void
   isOnboarding?: boolean
   savedConfirmation?: boolean
+  closeIcon?: 'back' | 'close'
+  embedded?: boolean
 }
 
 export function GearSetupScreen({
-  gender,
+  gender: initialGender,
   initialGear,
   saving,
   error,
@@ -71,14 +76,22 @@ export function GearSetupScreen({
   onSkip,
   isOnboarding = false,
   savedConfirmation = false,
+  closeIcon = 'back',
+  embedded = false,
 }: Props) {
   const insets = useSafeAreaInsets()
   const [gear, setGear] = useState<GearProfile>(initialGear)
   const [activeZone, setActiveZone] = useState<GearZoneConfig | null>(null)
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
+  const [pickedGender, setPickedGender] = useState<PlayerGender | null>(
+    initialGender ?? (initialGear.gender ? playerGenderFromStored(initialGear.gender) : null)
+  )
+  const [showGenderPicker, setShowGenderPicker] = useState(!pickedGender)
 
-  const filledCount = Object.values(gear).filter((v) => v !== null).length
-  const allDone = filledCount === 4
+  const gender: PlayerGender = pickedGender ?? 'man'
+
+  const gearFieldCount = [gear.cap, gear.shirt, gear.paddle, gear.shoes].filter((v) => v !== null).length
+  const allDone = gearFieldCount === 4
 
   useEffect(() => {
     if (savedConfirmation) setHasUnsavedChanges(false)
@@ -93,24 +106,81 @@ export function GearSetupScreen({
 
   const showSave = isOnboarding || !allDone || hasUnsavedChanges || saving
 
+  if (showGenderPicker) {
+    const avatarSize = SCREEN_W * 0.36
+    return (
+      <View style={styles.root}>
+        <View style={[styles.genderTopBar, { paddingTop: embedded ? 12 : insets.top + 8 }]}>
+          <Pressable onPress={onBack} style={styles.backBtn} hitSlop={12}>
+            {closeIcon === 'close' ? (
+              <X size={20} color="#fff" strokeWidth={2.5} />
+            ) : (
+              <ChevronLeft size={22} color="#fff" strokeWidth={2.5} />
+            )}
+          </Pressable>
+        </View>
+        <View style={styles.genderContent}>
+          <Text style={styles.genderTitle}>Choose your avatar</Text>
+          <Text style={styles.genderSub}>This sets your gear screen background</Text>
+          <View style={styles.genderRow}>
+            <TouchableOpacity
+              style={styles.genderOption}
+              activeOpacity={0.8}
+              onPress={() => {
+                setPickedGender('man')
+                setShowGenderPicker(false)
+              }}
+            >
+              <Image
+                source={GEAR_AVATAR.man}
+                style={[styles.genderAvatar, { width: avatarSize, height: avatarSize * 1.4, borderRadius: 20 }]}
+                resizeMode="cover"
+              />
+              <Text style={styles.genderLabel}>Male</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.genderOption}
+              activeOpacity={0.8}
+              onPress={() => {
+                setPickedGender('female')
+                setShowGenderPicker(false)
+              }}
+            >
+              <Image
+                source={GEAR_AVATAR.female}
+                style={[styles.genderAvatar, { width: avatarSize, height: avatarSize * 1.4, borderRadius: 20 }]}
+                resizeMode="cover"
+              />
+              <Text style={styles.genderLabel}>Female</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    )
+  }
+
   return (
     <View style={styles.root}>
       {/* Full-bleed avatar background */}
       <Image source={GEAR_AVATAR[gender]} style={styles.bgImage} resizeMode="cover" />
 
       {/* Dark gradient overlay at top and bottom */}
-      <View style={styles.topGradient} />
-      <View style={styles.bottomGradient} />
+      {!embedded && <View style={styles.topGradient} />}
+      {!embedded && <View style={styles.bottomGradient} />}
 
       {/* Top bar */}
-      <View style={[styles.topBar, { paddingTop: insets.top + 8 }]}>
+      <View style={[styles.topBar, { paddingTop: embedded ? 12 : insets.top + 8 }]}>
         <Pressable onPress={onBack} style={styles.backBtn} hitSlop={12}>
-          <ChevronLeft size={22} color="#fff" strokeWidth={2.5} />
+          {closeIcon === 'close' ? (
+            <X size={20} color="#fff" strokeWidth={2.5} />
+          ) : (
+            <ChevronLeft size={22} color="#fff" strokeWidth={2.5} />
+          )}
         </Pressable>
         <Text style={styles.topBarTitle}>My Gear</Text>
         {showSave ? (
           <TouchableOpacity
-            onPress={() => onSave(gear)}
+            onPress={() => onSave({ ...gear, gender })}
             disabled={!allDone || saving}
             activeOpacity={0.7}
             style={[styles.saveBtn, (!allDone || saving) && styles.saveBtnDisabled]}
@@ -128,7 +198,7 @@ export function GearSetupScreen({
 
       {/* Saved confirmation badge */}
       {savedConfirmation && (
-        <View style={[styles.toast, { top: insets.top + 56 }]}>
+        <View style={[styles.toast, { top: (embedded ? 12 : insets.top + 8) + 48 }]}>
           <CheckCircle size={16} color="#f5a623" strokeWidth={2} />
           <Text style={styles.toastText}>Gear saved!</Text>
         </View>
@@ -184,11 +254,11 @@ export function GearSetupScreen({
       {/* Bottom progress bar + optional skip */}
       <View style={[styles.bottomArea, { paddingBottom: Math.max(insets.bottom, 20) }]}>
         <Text style={styles.progressLabel}>
-          {filledCount === 0
+          {gearFieldCount === 0
             ? 'Tap a zone to set your gear'
-            : filledCount === 4
+            : gearFieldCount === 4
               ? 'All gear set — tap Save!'
-              : `${filledCount} of 4 zones set`}
+              : `${gearFieldCount} of 4 zones set`}
         </Text>
         <View style={styles.progressRow}>
           {GEAR_ZONES.map((z) => (
@@ -314,4 +384,48 @@ const styles = StyleSheet.create({
   errorText: { color: '#E24B4A', fontSize: 13, paddingTop: 8, textAlign: 'center' },
   skipBtn: { alignItems: 'center', paddingTop: 12 },
   skipText: { color: '#888', fontSize: 14 },
+  genderTopBar: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    paddingHorizontal: 16,
+    paddingBottom: 10,
+    zIndex: 10,
+  },
+  genderContent: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  genderTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#fff',
+    marginBottom: 6,
+  },
+  genderSub: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.45)',
+    marginBottom: 32,
+  },
+  genderRow: {
+    flexDirection: 'row',
+    gap: 20,
+  },
+  genderOption: {
+    alignItems: 'center',
+    gap: 10,
+  },
+  genderAvatar: {
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.1)',
+    overflow: 'hidden',
+  },
+  genderLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#fff',
+  },
 })

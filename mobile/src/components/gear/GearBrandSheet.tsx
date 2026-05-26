@@ -105,12 +105,12 @@ export function GearBrandSheet({ zone, currentValue, onConfirm, onClose }: Props
 
   const onOtherTextChange = (text: string) => {
     setOtherText(text)
-    const trimmed = text.trim()
-    if (trimmed.length > 0) {
-      scheduleConfirm(trimmed)
-    } else {
-      clearConfirmTimer()
-    }
+    clearConfirmTimer()
+  }
+
+  const confirmOtherBrand = () => {
+    const trimmed = otherText.trim()
+    if (trimmed.length > 0) onConfirm(trimmed)
   }
 
   return (
@@ -156,7 +156,20 @@ export function GearBrandSheet({ zone, currentValue, onConfirm, onClose }: Props
                     maxLength={20}
                     autoFocus
                     returnKeyType="done"
+                    onSubmitEditing={confirmOtherBrand}
+                    blurOnSubmit={false}
                   />
+                  <TouchableOpacity
+                    style={[
+                      styles.otherDoneBtn,
+                      otherText.trim().length === 0 && styles.otherDoneBtnDisabled,
+                    ]}
+                    onPress={confirmOtherBrand}
+                    disabled={otherText.trim().length === 0}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.otherDoneText}>Done</Text>
+                  </TouchableOpacity>
                 </View>
               )}
             </KeyboardAvoidingView>
@@ -227,8 +240,15 @@ const styles = StyleSheet.create({
   brandName: { fontSize: 14, fontWeight: '500', color: '#ccc' },
   brandNamePicked: { color: '#f5a623' },
   checkmark: { fontSize: 12, color: '#f5a623' },
-  otherRow: { paddingHorizontal: 20, paddingBottom: 20 },
+  otherRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+  },
   otherInput: {
+    flex: 1,
     backgroundColor: '#161616',
     borderWidth: 1,
     borderColor: '#333',
@@ -237,5 +257,19 @@ const styles = StyleSheet.create({
     paddingVertical: 13,
     fontSize: 14,
     color: '#fff',
+  },
+  otherDoneBtn: {
+    backgroundColor: '#f5a623',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 13,
+  },
+  otherDoneBtnDisabled: {
+    opacity: 0.35,
+  },
+  otherDoneText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1a0a00',
   },
 })

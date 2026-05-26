@@ -90,6 +90,10 @@ interface PlayerProfile {
   }>
   reclubKudos: ReclubKudo[]
   myKudos: { fistbump: number; flame: number; star: number; myReactions: string[] }
+  streakData: {
+    currentStreak: number
+    weeklyPlayed: boolean[]
+  } | null
 }
 
 export type PlayerProfileStub = {
@@ -329,6 +333,28 @@ export function PlayerProfileSheet({ userId, onClose, stub }: Props) {
                   <Text style={s.kudosStatLbl}>Stars</Text>
                 </View>
               </View>
+
+              {profile.streakData && profile.streakData.currentStreak > 0 && (
+                <View style={s.streakSection}>
+                  <View style={s.streakTopRow}>
+                    <Text style={s.streakNum}>
+                      🔥 {profile.streakData.currentStreak}
+                    </Text>
+                    <View style={s.streakRight}>
+                      <Text style={s.streakLabel}>week streak</Text>
+                      <Text style={s.streakSub}>Playing consistently</Text>
+                    </View>
+                  </View>
+                  <View style={s.weekDotsRow}>
+                    {(profile.streakData.weeklyPlayed.length > 0
+                      ? [...profile.streakData.weeklyPlayed, ...Array(6).fill(false)].slice(0, 6)
+                      : Array(6).fill(false)
+                    ).map((played, i) => (
+                      <View key={i} style={[s.weekDot, played && s.weekDotOn]} />
+                    ))}
+                  </View>
+                </View>
+              )}
 
               {profile.reclubKudos.length > 0 && (
                 <View style={s.section}>
@@ -595,6 +621,56 @@ const s = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.6,
     marginTop: 2,
+  },
+  streakSection: {
+    marginHorizontal: 16,
+    marginBottom: 14,
+    backgroundColor: '#1f1400',
+    borderWidth: 0.5,
+    borderColor: '#f5a623',
+    borderRadius: 12,
+    padding: 12,
+  },
+  streakTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 8,
+  },
+  streakNum: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#f5a623',
+    lineHeight: 28,
+  },
+  streakRight: {
+    flex: 1,
+  },
+  streakLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  streakSub: {
+    fontSize: 10,
+    color: '#555',
+    marginTop: 1,
+  },
+  weekDotsRow: {
+    flexDirection: 'row',
+    gap: 4,
+  },
+  weekDot: {
+    flex: 1,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: '#141414',
+    borderWidth: 0.5,
+    borderColor: '#1e1e1e',
+  },
+  weekDotOn: {
+    backgroundColor: '#f5a623',
+    borderColor: '#f5a623',
   },
   section: {
     paddingHorizontal: 16,

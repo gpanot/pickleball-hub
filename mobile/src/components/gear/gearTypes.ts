@@ -1,6 +1,7 @@
 export type GearZoneKey = 'cap' | 'shirt' | 'paddle' | 'shoes'
 
 export type GearProfile = {
+  gender: string | null
   cap: string | null
   shirt: string | null
   paddle: string | null

@@ -3,7 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 import { GearProfile } from '../components/gear/gearTypes'
 import { GEAR_CACHE_KEY } from '../components/gear/gearConstants'
 
-const EMPTY_GEAR: GearProfile = { cap: null, shirt: null, paddle: null, shoes: null }
+const EMPTY_GEAR: GearProfile = { gender: null, cap: null, shirt: null, paddle: null, shoes: null }
 
 type AuthedFetch = (path: string, options?: RequestInit) => Promise<Response>
 
@@ -63,6 +63,7 @@ export function useGearProfile(profileId: string | null, authedFetch: AuthedFetc
           body: JSON.stringify(updated),
         })
         if (!res.ok) throw new Error('save failed')
+        await AsyncStorage.setItem('hasSeenGearPrompt', 'true')
         setSavedConfirmation(true)
         setTimeout(() => setSavedConfirmation(false), 2000)
         return true

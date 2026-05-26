@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { getMobileUser } from '@/lib/mobile-auth'
 
-const EMPTY_GEAR = { cap: null, shirt: null, paddle: null, shoes: null }
-const VALID_KEYS = ['cap', 'shirt', 'paddle', 'shoes'] as const
+const EMPTY_GEAR = { gender: null, cap: null, shirt: null, paddle: null, shoes: null }
+const VALID_KEYS = ['gender', 'cap', 'shirt', 'paddle', 'shoes'] as const
 
 export async function GET(
   req: NextRequest,
@@ -20,7 +20,7 @@ export async function GET(
   try {
     const gear = await prisma.playerGear.findUnique({
       where: { profileId: id },
-      select: { cap: true, shirt: true, paddle: true, shoes: true },
+      select: { gender: true, cap: true, shirt: true, paddle: true, shoes: true },
     })
     return NextResponse.json(gear ?? EMPTY_GEAR)
   } catch (err) {
@@ -53,7 +53,7 @@ export async function PUT(
       where: { profileId: id },
       update: data,
       create: { profileId: id, ...data },
-      select: { cap: true, shirt: true, paddle: true, shoes: true },
+      select: { gender: true, cap: true, shirt: true, paddle: true, shoes: true },
     })
     return NextResponse.json(gear)
   } catch (err) {

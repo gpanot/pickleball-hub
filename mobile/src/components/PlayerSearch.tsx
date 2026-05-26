@@ -33,7 +33,7 @@ export const PlayerSearch = forwardRef<PlayerSearchRef, {
   mode?: 'select' | 'follow'
   selectedPlayer?: SearchResult | null
   onSelectPlayer?: (player: SearchResult | null) => void
-  onFollow?: (userId: string) => Promise<void>
+  onFollow?: (userId: string, player: SearchResult) => Promise<void>
   onUnfollow?: (userId: string) => Promise<void>
   initialFollowedIds?: string[]
   autoFocus?: boolean
@@ -103,7 +103,8 @@ export const PlayerSearch = forwardRef<PlayerSearchRef, {
   }, [query])
 
   const handleFollowToggle = useCallback(
-    async (userId: string) => {
+    async (player: SearchResult) => {
+      const { userId } = player
       const isFollowed = followedIds.has(userId)
       if (isFollowed) {
         setFollowedIds((prev) => {
@@ -124,7 +125,7 @@ export const PlayerSearch = forwardRef<PlayerSearchRef, {
       setFollowedIds((prev) => new Set(prev).add(userId))
       if (onFollow) {
         try {
-          await onFollow(userId)
+          await onFollow(userId, player)
         } catch {
           setFollowedIds((prev) => {
             const next = new Set(prev)
@@ -185,7 +186,7 @@ export const PlayerSearch = forwardRef<PlayerSearchRef, {
           </View>
           <TouchableOpacity
             style={[styles.followBtn, isFollowed && styles.followedBtn]}
-            onPress={() => handleFollowToggle(item.userId)}
+            onPress={() => handleFollowToggle(item)}
             accessibilityLabel={isFollowed ? 'Remove friend' : 'Follow player'}
           >
             {isFollowed ? (

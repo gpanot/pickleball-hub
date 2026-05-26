@@ -17,6 +17,7 @@ import { TopBar } from '../components/CardBody'
 import { T } from '../theme'
 import { useAuthStore } from '../stores/authStore'
 import { SignInPrompt } from '../components/SignInPrompt'
+import { GearTeaserCard } from '../components/GearTeaserCard'
 import { PlayerSearch } from '../components/PlayerSearch'
 import { PlayerAvatar } from '../components/PlayerAvatar'
 import { FriendListRow } from '../components/FriendListRow'
@@ -25,7 +26,7 @@ import { PresenceCard } from '../components/PresenceCard'
 import { PlayerProfileSheet } from '../components/PlayerProfileSheet'
 import { useToast } from '../components/Toast'
 import { PeopleYouMayKnowScreen } from './PeopleYouMayKnowScreen'
-import type { FeedItem, CoPlayerSuggestion } from '../data'
+import type { FeedItem, FeedItemType, CoPlayerSuggestion } from '../data'
 
 type CircleSubTab = 'feed' | 'players'
 
@@ -50,7 +51,18 @@ function SuggestionCardSkeleton() {
   )
 }
 
-export function CircleScreen() {
+function formatTime(iso: string): string {
+  if (!iso) return '–'
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return '–'
+  const h = d.getHours()
+  const m = d.getMinutes()
+  const ampm = h >= 12 ? 'PM' : 'AM'
+  const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h
+  return `${h12}${m > 0 ? `:${String(m).padStart(2, '0')}` : ''} ${ampm}`
+}
+
+export function CircleScreen({ onOpenGear, gearSaved }: { onOpenGear?: () => void; gearSaved?: boolean }) {
   const [subTab, setSubTab] = useState<CircleSubTab>('feed')
   const [friends, setFriends] = useState<FollowedPlayer[]>([])
   const [loadingFriends, setLoadingFriends] = useState(false)
@@ -78,11 +90,11 @@ export function CircleScreen() {
     liveVenues: any[]
     totalLive: number
   } | null>(null)
+  const [presenceExpanded, setPresenceExpanded] = useState(false)
   const [dismissedSuggestions, setDismissedSuggestions] = useState<Set<string>>(
     new Set()
   )
   const [showAvatarTip, setShowAvatarTip] = useState(false)
-  const [newFollowBanner, setNewFollowBanner] = useState<{ name: string; imageUrl?: string | null } | null>(null)
 
   useEffect(() => {
     if (feedItems.length > 0 && !showAvatarTip) {
@@ -177,34 +189,6 @@ export function CircleScreen() {
     setFeedRefreshing(false)
   }, [loadFeed])
 
-  const handleFollowFromSuggestion = useCallback(
-    async (userId: string) => {
-      // Optimistic update — show "Following" immediately, no feed reload
-      setFollowedSuggestionIds((prev) => new Set(prev).add(userId))
-      try {
-        const res = await authedFetch('/api/follows', {
-          method: 'POST',
-          body: JSON.stringify({ followeeId: userId }),
-        })
-        if (!res.ok) throw new Error('Follow failed')
-        const followed = suggestions.find((s) => s.userId === userId)
-        setNewFollowBanner({ name: followed?.displayName ?? 'this player', imageUrl: followed?.imageUrl })
-        toast('Followed!', 'success')
-        friendsLoadedRef.current = false
-        loadFriends()
-      } catch {
-        // Roll back
-        setFollowedSuggestionIds((prev) => {
-          const next = new Set(prev)
-          next.delete(userId)
-          return next
-        })
-        toast('Failed to follow. Try again.', 'error')
-      }
-    },
-    [authedFetch, toast, loadFriends]
-  )
-
   // ── Friends state ───────────────────────────────────────────────────────────
 
   const loadFriends = useCallback(async () => {
@@ -229,6 +213,61 @@ export function CircleScreen() {
       setLoadingFriends(false)
     }
   }, [authedFetch, jwt, ensureServerAuth])
+
+  const prependJustFollowedFeedItem = useCallback(
+    (
+      userId: string,
+      displayName: string | null,
+      imageUrl: string | null,
+      duprDoubles: number | null
+    ) => {
+      const newItem: FeedItem = {
+        id: `follow_${userId}_${Date.now()}`,
+        type: 'just_followed' as FeedItemType,
+        player: {
+          userId,
+          displayName,
+          imageUrl,
+          duprDoubles,
+        },
+        isFollowing: true,
+        timestamp: new Date().toISOString(),
+      }
+      setFeedItems((prev) => [newItem, ...prev])
+    },
+    []
+  )
+
+  const handleFollowFromSuggestion = useCallback(
+    async (userId: string) => {
+      setFollowedSuggestionIds((prev) => new Set(prev).add(userId))
+      try {
+        const res = await authedFetch('/api/follows', {
+          method: 'POST',
+          body: JSON.stringify({ followeeId: userId }),
+        })
+        if (!res.ok) throw new Error('Follow failed')
+        const followed = suggestions.find((s) => s.userId === userId)
+        prependJustFollowedFeedItem(
+          userId,
+          followed?.displayName ?? null,
+          followed?.imageUrl ?? null,
+          followed?.duprDoubles ?? null
+        )
+        toast('Followed!', 'success')
+        friendsLoadedRef.current = false
+        loadFriends()
+      } catch {
+        setFollowedSuggestionIds((prev) => {
+          const next = new Set(prev)
+          next.delete(userId)
+          return next
+        })
+        toast('Failed to follow. Try again.', 'error')
+      }
+    },
+    [authedFetch, toast, loadFriends, prependJustFollowedFeedItem, suggestions]
+  )
 
   useEffect(() => {
     if (jwt && subTab === 'players' && !friendsLoadedRef.current) {
@@ -288,13 +327,26 @@ export function CircleScreen() {
   }
 
   const handleFollowFromSearch = useCallback(
-    async (userId: string) => {
+    async (
+      userId: string,
+      player?: {
+        displayName?: string | null
+        imageUrl?: string | null
+        duprDoubles?: number | null
+      }
+    ) => {
       try {
         const res = await authedFetch('/api/follows', {
           method: 'POST',
           body: JSON.stringify({ followeeId: userId }),
         })
         if (!res.ok) throw new Error('Follow failed')
+        prependJustFollowedFeedItem(
+          userId,
+          player?.displayName ?? null,
+          player?.imageUrl ?? null,
+          player?.duprDoubles ?? null
+        )
         toast('Followed!', 'success')
         loadFriends()
       } catch {
@@ -302,7 +354,7 @@ export function CircleScreen() {
         throw new Error('Follow failed')
       }
     },
-    [authedFetch, toast, loadFriends]
+    [authedFetch, toast, loadFriends, prependJustFollowedFeedItem]
   )
 
   const handleUnfollowFromSearch = useCallback(
@@ -400,6 +452,12 @@ export function CircleScreen() {
             />
           }
         >
+          <GearTeaserCard
+            height={216}
+            onPress={() => onOpenGear?.()}
+            gearSaved={gearSaved}
+          />
+
           {/* Feed empty state */}
           {!feedLoading && !hasFollows && (
             <View style={styles.emptyState}>
@@ -422,31 +480,45 @@ export function CircleScreen() {
           )}
 
           {/* Presence section */}
-          {!feedLoading && presence && presence.totalLive > 0 && (
-            <>
-              <View style={styles.liveBanner}>
-                <View style={styles.liveBannerDot} />
-                <View style={styles.liveBannerText}>
-                  <Text style={styles.liveBannerTitle}>
-                    {presence.totalLive} from your circle {presence.totalLive === 1 ? 'is' : 'are'} on court
+          {presence && presence.totalLive > 0 && (
+            <View style={styles.presenceBanner}>
+              <TouchableOpacity
+                style={styles.presenceBannerHeader}
+                onPress={() => setPresenceExpanded((prev) => !prev)}
+                activeOpacity={0.8}>
+                <View style={styles.presenceDot} />
+                <View style={styles.presenceBannerText}>
+                  <Text style={styles.presenceBannerTitle}>
+                    {presence.totalLive} from your circle{' '}
+                    {presence.totalLive === 1 ? 'is' : 'are'} on court
                   </Text>
-                  <Text style={styles.liveBannerSub}>
-                    Right now · across {presence.liveVenues.length} {presence.liveVenues.length === 1 ? 'venue' : 'venues'}
+                  <Text style={styles.presenceBannerSub}>
+                    Right now · across {presence.liveVenues.length}{' '}
+                    {presence.liveVenues.length === 1 ? 'venue' : 'venues'}
                   </Text>
                 </View>
-                <Text style={styles.liveBannerCount}>{presence.totalLive}</Text>
-              </View>
+                <Text style={styles.presenceBannerCount}>{presence.totalLive}</Text>
+                <Text
+                  style={[
+                    styles.presenceChevron,
+                    presenceExpanded && styles.presenceChevronOpen,
+                  ]}>
+                  ▾
+                </Text>
+              </TouchableOpacity>
 
-              {presence.liveVenues.map((venue: any) => (
-                <PresenceCard
-                  key={venue.sessionId}
-                  venue={venue}
-                  onPlayerPress={(userId) => setSelectedPlayerId(userId)}
-                />
-              ))}
-
-              <View style={styles.presenceDivider} />
-            </>
+              {presenceExpanded && (
+                <View style={styles.presenceVenueList}>
+                  {presence.liveVenues.map((venue: any) => (
+                    <PresenceCard
+                      key={venue.sessionId}
+                      venue={venue}
+                      onPlayerPress={(userId) => setSelectedPlayerId(userId)}
+                    />
+                  ))}
+                </View>
+              )}
+            </View>
           )}
 
           {!feedLoading && presence && presence.totalLive === 0 && (
@@ -456,29 +528,6 @@ export function CircleScreen() {
                 <Text style={styles.noOneLiveTitle}>Nobody on court right now</Text>
                 <Text style={styles.noOneLiveSub}>Check back this evening</Text>
               </View>
-            </View>
-          )}
-
-          {/* Follow banner — permanent until dismissed */}
-          {newFollowBanner && (
-            <View style={styles.followBanner}>
-              <PlayerAvatar
-                userId={undefined}
-                imageUrl={newFollowBanner.imageUrl}
-                size={36}
-              />
-              <View style={styles.followBannerText}>
-                <Text style={styles.followBannerTitle} numberOfLines={1}>
-                  You are now following{'\n'}
-                  <Text style={styles.followBannerName}>{newFollowBanner.name}</Text>
-                </Text>
-              </View>
-              <TouchableOpacity
-                onPress={() => setNewFollowBanner(null)}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                <X size={16} color="#555" strokeWidth={2} />
-              </TouchableOpacity>
             </View>
           )}
 
@@ -895,49 +944,60 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   emptyBtnText: { fontSize: 11, fontWeight: '600', color: '#1a0a00' },
-  liveBanner: {
+  presenceBanner: {
     marginHorizontal: 12,
     marginBottom: 10,
     backgroundColor: '#0a1f0a',
     borderWidth: 0.5,
     borderColor: '#1D9E75',
     borderRadius: 12,
-    padding: 10,
+    overflow: 'hidden',
+  },
+  presenceBannerHeader: {
     flexDirection: 'row',
     alignItems: 'center',
+    padding: 10,
     gap: 8,
   },
-  liveBannerDot: {
+  presenceDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
     backgroundColor: '#1D9E75',
     flexShrink: 0,
   },
-  liveBannerText: {
+  presenceBannerText: {
     flex: 1,
   },
-  liveBannerTitle: {
+  presenceBannerTitle: {
     fontSize: 12,
     fontWeight: '500',
     color: '#5DCAA5',
   },
-  liveBannerSub: {
+  presenceBannerSub: {
     fontSize: 10,
     color: '#0F6E56',
     marginTop: 1,
   },
-  liveBannerCount: {
+  presenceBannerCount: {
     fontSize: 20,
     fontWeight: '700',
     color: '#1D9E75',
     flexShrink: 0,
   },
-  presenceDivider: {
-    height: 0.5,
-    backgroundColor: '#111',
-    marginHorizontal: 12,
-    marginBottom: 8,
+  presenceChevron: {
+    fontSize: 14,
+    color: '#1D9E75',
+    flexShrink: 0,
+  },
+  presenceChevronOpen: {
+    transform: [{ rotate: '180deg' }],
+  },
+  presenceVenueList: {
+    borderTopWidth: 0.5,
+    borderTopColor: 'rgba(29,158,117,0.2)',
+    paddingTop: 8,
+    paddingBottom: 4,
   },
   noOneLive: {
     marginHorizontal: 12,
@@ -967,31 +1027,5 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: '#2a2a2a',
     marginTop: 1,
-  },
-  followBanner: {
-    marginHorizontal: 12,
-    marginBottom: 10,
-    backgroundColor: '#111',
-    borderWidth: 0.5,
-    borderColor: '#2a2a2a',
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  followBannerText: {
-    flex: 1,
-  },
-  followBannerTitle: {
-    fontSize: 12,
-    color: '#888',
-    lineHeight: 17,
-  },
-  followBannerName: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#fff',
   },
 })

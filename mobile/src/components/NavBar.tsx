@@ -6,6 +6,15 @@ import { T } from '../theme'
 
 export type TabId = 'swipe' | 'circle'
 
+/** Content height of the bottom tab bar (excluding safe-area padding). */
+export const NAV_BAR_CONTENT_HEIGHT = 46
+
+export function useNavBarHeight() {
+  const insets = useSafeAreaInsets()
+  const bottomPad = Math.max(insets.bottom, Platform.OS === 'android' ? 12 : 0)
+  return NAV_BAR_CONTENT_HEIGHT + bottomPad
+}
+
 export function NavBar({
   active,
   onChange,

@@ -132,6 +132,7 @@ export async function GET(req: NextRequest) {
       return {
         sessionId: session.id,
         name: session.name,
+        clubName: session.club.name,
         venueName: session.venue?.name ?? session.club.name,
         startTime: session.startTime,
         scrapedDate: session.scrapedDate,

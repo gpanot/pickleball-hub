@@ -89,7 +89,12 @@ export const RING_COLORS = ['#7F77DD', '#1D9E75', '#D4537E', '#f5a623']
 
 // ── Feed types ────────────────────────────────────────────────────────────────
 
-export type FeedItemType = 'joining' | 'played' | 'dupr_update'
+export type FeedItemType =
+  | 'joining'
+  | 'played'
+  | 'dupr_update'
+  | 'just_followed'
+  | 'streak_milestone'
 
 export type FeedItem = {
   id: string
@@ -117,6 +122,9 @@ export type FeedItem = {
   duprOld?: number
   duprNew?: number
   venueNameDupr?: string
+
+  streakCount?: number
+  weeklyPlayed?: boolean[]
 
   kudos?: { fistbump: number; flame: number; star: number; myReactions: string[] }
 }

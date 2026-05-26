@@ -211,6 +211,7 @@ model PlayerProfile {
 model PlayerGear {
   id         String    @id @default(cuid())
   profileId  String    @unique @map("profile_id")
+  gender     String?
   cap        String?
   shirt      String?
   paddle     String?

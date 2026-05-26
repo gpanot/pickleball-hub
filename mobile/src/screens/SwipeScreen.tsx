@@ -37,7 +37,7 @@ import { TopBar, CardBody, CARD_HEIGHT } from '../components/CardBody'
 import { LockedFriendsRow } from '../components/LockedFriendsRow'
 import { PlayerAvatar } from '../components/PlayerAvatar'
 import { useSignUpModal } from '../contexts/SignUpModalContext'
-import { SignInPrompt } from '../components/SignInPrompt'
+import { GearTeaserCard } from '../components/GearTeaserCard'
 import { useAuthStore } from '../stores/authStore'
 import { useSessionStore } from '../stores/sessionStore'
 import { useUiStore } from '../stores/uiStore'
@@ -46,7 +46,6 @@ import { FriendsListModal } from '../components/FriendsListModal'
 import type { FriendListItem } from '../components/FriendListRow'
 import { FriendGoingCard } from '../components/FriendGoingCard'
 import type { FriendGoingItem } from '../components/FriendGoingCard'
-import { PlayerProfileSheet } from '../components/PlayerProfileSheet'
 import { debugLog } from '../lib/debug'
 
 /* eslint-disable @typescript-eslint/no-var-requires */
@@ -365,7 +364,7 @@ function vnDateString(offsetDays: number): string {
 }
 
 /* ── SwipeScreen (main export) ───────────────────────────────── */
-export function SwipeScreen() {
+export function SwipeScreen({ onOpenGearSheet, gearSaved }: { onOpenGearSheet?: () => void; gearSaved?: boolean }) {
   const { openSignUp } = useSignUpModal()
   const signedIn = useAuthStore((s) => s.isSignedIn)()
   const allSessions = useSessionStore((s) => s.sessions)
@@ -380,8 +379,6 @@ export function SwipeScreen() {
   const bootedRef = useRef(false)
   const locationRef = useRef<{ lat: number; lng: number }>({ lat: HCMC_LAT, lng: HCMC_LNG })
   const [refreshing, setRefreshing] = useState(false)
-  const sort = useUiStore((s) => s.swipeSort)
-  const setSwipeSort = useUiStore((s) => s.setSwipeSort)
   const dateFilter = useUiStore((s) => s.swipeDateFilter)
   const setDateFilter = useUiStore((s) => s.setSwipeDateFilter)
   const [viewIdx, setViewIdx] = useState(0)
@@ -395,10 +392,9 @@ export function SwipeScreen() {
 
   const [playTab, setPlayTab] = useState<'discover' | 'shortlist'>('discover')
   const [expandedSession, setExpandedSession] = useState<Session | null>(null)
-  const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null)
-  const [goingData, setGoingData] = useState<{ friendsGoing: FriendGoingItem[] } | null>(null)
+  const [friendsGoingToday, setFriendsGoingToday] = useState<FriendGoingItem[]>([])
+  const [friendsGoingTomorrow, setFriendsGoingTomorrow] = useState<FriendGoingItem[]>([])
   const [goingLoading, setGoingLoading] = useState(false)
-  const [goingFilter, setGoingFilter] = useState<'today' | 'tomorrow' | 'all'>('today')
   const [removedSavedIds, setRemovedSavedIds] = useState<Set<number>>(new Set())
 
   const auth = useAuthStore.getState()
@@ -406,33 +402,32 @@ export function SwipeScreen() {
   const loadGoing = useCallback(async () => {
     setGoingLoading(true)
     try {
-      const res = await auth.authedFetch(
-        `/api/feed/friends-going?filter=${goingFilter}`
-      )
-      if (res.ok) {
-        const data = await res.json()
-        setGoingData(data)
-        debugLog('Going', `filter=${goingFilter} friendsGoing=${data.friendsGoing?.length ?? 0}`)
-        if (data.friendsGoing?.length > 0) {
-          data.friendsGoing.forEach((s: FriendGoingItem) => {
-            debugLog('Going', `  → "${s.name}" startTime=${s.startTime} friendCount=${s.friendCount} friends=${s.friends.map((f) => f.displayName).join(', ')}`)
-          })
-        } else {
-          debugLog('Going', '  → no friend sessions returned')
-        }
-      } else {
-        debugLog('Going', `fetch failed status=${res.status}`)
+      const [todayRes, tomorrowRes] = await Promise.all([
+        auth.authedFetch('/api/feed/friends-going?filter=today'),
+        auth.authedFetch('/api/feed/friends-going?filter=tomorrow'),
+      ])
+      if (todayRes.ok) {
+        const data = await todayRes.json()
+        const items: FriendGoingItem[] = data.friendsGoing ?? []
+        setFriendsGoingToday(items)
+        debugLog('Going', `today friendsGoing=${items.length}`)
+      }
+      if (tomorrowRes.ok) {
+        const data = await tomorrowRes.json()
+        const items: FriendGoingItem[] = data.friendsGoing ?? []
+        setFriendsGoingTomorrow(items)
+        debugLog('Going', `tomorrow friendsGoing=${items.length}`)
       }
     } finally {
       setGoingLoading(false)
     }
-  }, [auth, goingFilter])
+  }, [auth])
 
   useEffect(() => {
     if (playTab === 'shortlist') {
       loadGoing()
     }
-  }, [playTab, goingFilter])
+  }, [playTab, loadGoing])
 
   const savedSessions = useSessionStore((s) => s.getSavedSessions)()
   const shortlistItems = useMemo(
@@ -458,6 +453,24 @@ export function SwipeScreen() {
     })
   }, [signedIn])
 
+  const openGoingFriends = useCallback((item: FriendGoingItem) => {
+    if (!signedIn) return
+    setFriendsModal({
+      visible: true,
+      title: `${item.friendCount} ${item.friendCount === 1 ? 'friend' : 'friends'} going`,
+      friends: item.friends.map((f) => ({
+        userId: f.userId,
+        displayName: f.displayName,
+        imageUrl: f.imageUrl,
+        duprDoubles: f.duprDoubles,
+      })),
+      overflowNote:
+        item.friendCount > item.friends.length
+          ? `+${item.friendCount - item.friends.length} more on this session`
+          : undefined,
+    })
+  }, [signedIn])
+
   const openTopDupr = useCallback((session: Session) => {
     if (!signedIn) return
     const topPlayers = session.roster
@@ -477,21 +490,14 @@ export function SwipeScreen() {
   }, [signedIn])
 
   const displayDeck = useMemo(() => {
-    const withFriends = deck.filter((s) => s.friendCount > 0)
-    debugLog('Discover', `deck=${deck.length} withFriends=${withFriends.length} sort=${sort} dateFilter=${dateFilter}`)
+    const withFriends = deck.filter((s) => s.friendCount > 0).sort((a, b) => b.friendCount - a.friendCount)
+    const withoutFriends = deck.filter((s) => s.friendCount === 0)
+    debugLog('Discover', `deck=${deck.length} withFriends=${withFriends.length} dateFilter=${dateFilter}`)
     withFriends.forEach((s) => {
       debugLog('Discover', `  → [FRIEND] "${s.name}" startTime=${s.startTime} friendCount=${s.friendCount} friends=${s.friends.map((f) => f.displayName).join(', ')}`)
     })
-    if (sort === 'friends') {
-      return withFriends.sort((a, b) => b.friendCount - a.friendCount)
-    }
-    return deck
-  }, [deck, sort])
-
-  useEffect(() => {
-    setViewIdx(0)
-    setViewHistory([])
-  }, [sort])
+    return [...withFriends, ...withoutFriends]
+  }, [deck, dateFilter])
 
   useEffect(() => {
     setViewIdx(0)
@@ -535,8 +541,6 @@ export function SwipeScreen() {
   const current = displayDeck[viewIdx]
   const upNext = displayDeck.slice(viewIdx + 1, viewIdx + 4)
   const isDone = viewIdx >= total && total > 0
-  const friendsFilterEmpty =
-    sort === 'friends' && total === 0 && deck.length > 0 && !loading && !error
 
   const triggerPrefetchIfNeeded = (nextIdx: number) => {
     if (hasMore && total - nextIdx <= 5) {
@@ -597,7 +601,7 @@ export function SwipeScreen() {
         title="Where to play?"
         counter={
           playTab === 'discover' && total > 0
-            ? `${viewIdx + (viewIdx < total ? 1 : 0)}/${sort === 'friends' ? total : (totalCount ?? total)}`
+            ? `${viewIdx + (viewIdx < total ? 1 : 0)}/${totalCount ?? total}`
             : undefined
         }
       />
@@ -632,7 +636,7 @@ export function SwipeScreen() {
       {/* ── Discover tab ─────────────────────────────────────── */}
       {playTab === 'discover' && (
         <>
-          {/* Filter pills — always visible, never hidden during loading */}
+          {/* Date filter pills */}
           <View
             style={{
               flexDirection: 'row',
@@ -642,38 +646,6 @@ export function SwipeScreen() {
               alignItems: 'center',
             }}
           >
-            {(['match', 'friends'] as const).map((key) => {
-              const on = sort === key
-              const label = key === 'match' ? 'Best match' : 'Friends'
-              return (
-                <TouchableOpacity
-                  key={key}
-                  onPress={() => setSwipeSort(key)}
-                  style={{
-                    paddingHorizontal: 14,
-                    paddingVertical: 5,
-                    borderRadius: 20,
-                    backgroundColor: on ? T.amber : T.input,
-                    borderWidth: 1,
-                    borderColor: on ? T.amber : T.border,
-                  }}
-                >
-                  <Text
-                    style={{
-                      fontSize: 12,
-                      fontWeight: on ? '600' : '400',
-                      color: on ? '#000' : T.muted,
-                    }}
-                  >
-                    {label}
-                  </Text>
-                </TouchableOpacity>
-              )
-            })}
-
-            {/* Divider */}
-            <View style={{ width: 1, height: 16, backgroundColor: T.border, marginHorizontal: 2 }} />
-
             {(['today', 'tomorrow'] as const).map((key: SwipeDateFilter) => {
               const on = dateFilter === key
               const label = key === 'today' ? 'Today' : 'Tomorrow'
@@ -747,11 +719,6 @@ export function SwipeScreen() {
                 Pull down to refresh, or check back later for new games
               </Text>
             </ScrollView>
-          ) : friendsFilterEmpty && !signedIn ? (
-            <SignInPrompt
-              title="See friends' games"
-              subtitle="Sign in to follow players and filter sessions they join"
-            />
           ) : (
             <ScrollView
               style={{ flex: 1 }}
@@ -761,17 +728,7 @@ export function SwipeScreen() {
                 <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={T.amber} />
               }
             >
-              {friendsFilterEmpty && signedIn ? (
-                <View style={{ alignItems: 'center', paddingVertical: 48, paddingHorizontal: 24 }}>
-                  <Users size={40} color="#444" strokeWidth={1.5} style={{ marginBottom: 12 }} />
-                  <Text style={{ fontSize: 16, fontWeight: '600', color: '#fff', textAlign: 'center' }}>
-                    {`None of your friends are playing ${dateFilter === 'tomorrow' ? 'Tomorrow' : 'Today'}`}
-                  </Text>
-                  <Text style={{ fontSize: 13, color: '#888', marginTop: 8, textAlign: 'center' }}>
-                    Follow players from your sessions, or switch to Best match.
-                  </Text>
-                </View>
-              ) : isDone ? (
+              {isDone ? (
                 <View style={{ alignItems: 'center', paddingVertical: 56 }}>
                   <CheckCircle2 size={48} color="#444" strokeWidth={1.5} style={{ marginBottom: 16 }} />
                   <Text
@@ -932,62 +889,62 @@ export function SwipeScreen() {
             />
           }
         >
-          {/* Filter pills */}
-          <View style={s.goingFilterRow}>
-            {(['today', 'tomorrow', 'all'] as const).map((key) => {
-              const on = goingFilter === key
-              const label = key === 'today' ? 'Today' : key === 'tomorrow' ? 'Tomorrow' : 'All'
-              return (
-                <TouchableOpacity
-                  key={key}
-                  onPress={() => setGoingFilter(key)}
-                  style={[s.goingFilterPill, on && s.goingFilterPillActive]}
-                >
-                  <Text style={[s.goingFilterText, on && s.goingFilterTextActive]}>
-                    {label}
-                  </Text>
-                </TouchableOpacity>
-              )
-            })}
-          </View>
+          <GearTeaserCard
+            height={230}
+            onPress={() => onOpenGearSheet?.()}
+            gearSaved={gearSaved}
+          />
 
           {goingLoading ? (
             <ActivityIndicator color={T.amber} style={{ marginTop: 40 }} />
           ) : (
             <>
-              {/* Friends going section */}
-              {goingData && goingData.friendsGoing.length > 0 ? (
+              {friendsGoingToday.length > 0 && (
                 <>
                   <View style={s.goingSectionHeader}>
                     <Text style={s.goingSectionLabel}>
-                      {goingFilter === 'today' ? 'Friends going today'
-                        : goingFilter === 'tomorrow' ? 'Friends going tomorrow'
-                        : 'Friends going'}
+                      FRIENDS GOING{' '}
+                      <Text style={s.goingSectionDay}>TODAY</Text>
                     </Text>
                     <Text style={s.goingSectionCount}>
-                      {goingData.friendsGoing.length} session{goingData.friendsGoing.length !== 1 ? 's' : ''}
+                      {friendsGoingToday.length} session{friendsGoingToday.length !== 1 ? 's' : ''}
                     </Text>
                   </View>
-
-                  {goingData.friendsGoing.map((item, index) => (
+                  {friendsGoingToday.map((item) => (
                     <FriendGoingCard
                       key={item.sessionId}
                       item={item}
-                      isTop={index === 0}
-                      onPlayerPress={(userId) => setSelectedPlayerId(userId)}
+                      onFriendsPress={() => openGoingFriends(item)}
                     />
                   ))}
                 </>
-              ) : (
+              )}
+
+              {friendsGoingTomorrow.length > 0 && (
+                <>
+                  <View style={s.goingSectionHeader}>
+                    <Text style={s.goingSectionLabel}>
+                      FRIENDS GOING{' '}
+                      <Text style={s.goingSectionDay}>TOMORROW</Text>
+                    </Text>
+                    <Text style={s.goingSectionCount}>
+                      {friendsGoingTomorrow.length} session{friendsGoingTomorrow.length !== 1 ? 's' : ''}
+                    </Text>
+                  </View>
+                  {friendsGoingTomorrow.map((item) => (
+                    <FriendGoingCard
+                      key={item.sessionId}
+                      item={item}
+                      onFriendsPress={() => openGoingFriends(item)}
+                    />
+                  ))}
+                </>
+              )}
+
+              {friendsGoingToday.length === 0 && friendsGoingTomorrow.length === 0 && (
                 <View style={s.emptyFriends}>
                   <Text style={s.emptyFriendsIcon}>👥</Text>
-                  <Text style={s.emptyFriendsTitle}>
-                    {goingFilter === 'today'
-                      ? 'No friends going today yet'
-                      : goingFilter === 'tomorrow'
-                        ? 'No friends going tomorrow yet'
-                        : 'No friends going'}
-                  </Text>
+                  <Text style={s.emptyFriendsTitle}>No friends going today or tomorrow</Text>
                   <Text style={s.emptyFriendsSub}>
                     Follow players in Circle to see where they play
                   </Text>
@@ -1061,7 +1018,7 @@ export function SwipeScreen() {
               )}
 
               {/* Both empty */}
-              {goingData && goingData.friendsGoing.length === 0 && shortlistItems.length === 0 && (
+              {friendsGoingToday.length === 0 && friendsGoingTomorrow.length === 0 && shortlistItems.length === 0 && (
                 <View style={s.emptyShortlist}>
                   <Bookmark size={44} color="#1e1e1e" />
                   <Text style={s.emptyShortlistText}>
@@ -1127,11 +1084,6 @@ export function SwipeScreen() {
         title={friendsModal.title}
         friends={friendsModal.friends}
         overflowNote={friendsModal.overflowNote}
-      />
-
-      <PlayerProfileSheet
-        userId={selectedPlayerId}
-        onClose={() => setSelectedPlayerId(null)}
       />
     </View>
   )
@@ -1307,34 +1259,6 @@ const s = StyleSheet.create({
     overflow: 'hidden',
   },
   // ── Going tab styles ──────────────────────────────────────────
-  goingFilterRow: {
-    flexDirection: 'row',
-    gap: 8,
-    paddingHorizontal: 16,
-    paddingBottom: 10,
-    alignItems: 'center',
-  },
-  goingFilterPill: {
-    paddingHorizontal: 14,
-    paddingVertical: 5,
-    borderRadius: 20,
-    backgroundColor: T.input,
-    borderWidth: 1,
-    borderColor: T.border,
-  },
-  goingFilterPillActive: {
-    backgroundColor: T.amber,
-    borderColor: T.amber,
-  },
-  goingFilterText: {
-    fontSize: 12,
-    fontWeight: '400',
-    color: T.muted,
-  },
-  goingFilterTextActive: {
-    color: '#000',
-    fontWeight: '600',
-  },
   goingSectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1349,6 +1273,9 @@ const s = StyleSheet.create({
     color: '#666',
     textTransform: 'uppercase',
     letterSpacing: 0.8,
+  },
+  goingSectionDay: {
+    color: T.amber,
   },
   goingSectionCount: {
     fontSize: 11,

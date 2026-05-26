@@ -232,6 +232,45 @@ export function FeedItemRow({
           </Text>
         )}
 
+        {item.type === 'just_followed' && (
+          <Text style={s.action}>
+            You are now following{' '}
+            <Text style={s.highlight}>{name}</Text>
+            {' '}· tap their avatar to see their profile
+          </Text>
+        )}
+
+        {item.type === 'streak_milestone' && (
+          <>
+            <Text style={s.action}>
+              hit a{' '}
+              <Text style={[s.highlight, { color: '#f5a623' }]}>
+                🔥 {item.streakCount}-week streak
+              </Text>
+              {' '}· playing every week
+            </Text>
+            <View style={s.streakMiniCard}>
+              <View style={s.streakMiniTop}>
+                <Text style={s.streakMiniNum}>🔥{item.streakCount}</Text>
+                <View>
+                  <Text style={s.streakMiniLabel}>week streak</Text>
+                  <Text style={s.streakMiniSub}>Playing consistently</Text>
+                </View>
+              </View>
+              <View style={s.streakMiniDots}>
+                {(item.weeklyPlayed ?? Array(6).fill(false))
+                  .slice(0, 6)
+                  .map((played, i) => (
+                    <View
+                      key={i}
+                      style={[s.streakMiniDot, played && s.streakMiniDotOn]}
+                    />
+                  ))}
+              </View>
+            </View>
+          </>
+        )}
+
         <View style={s.footerRow}>
           <View style={s.kudosRow}>
             {(['fistbump', 'flame', 'star'] as const).map(type => {
@@ -322,6 +361,52 @@ const s = StyleSheet.create({
     paddingVertical: 5,
   },
   joinBtnText: { fontSize: 12, fontWeight: '600', color: '#1a0a00' },
+  streakMiniCard: {
+    backgroundColor: '#1f1400',
+    borderWidth: 0.5,
+    borderColor: '#f5a623',
+    borderRadius: 10,
+    padding: 9,
+    marginTop: 5,
+  },
+  streakMiniTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 7,
+  },
+  streakMiniNum: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#f5a623',
+    lineHeight: 24,
+  },
+  streakMiniLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  streakMiniSub: {
+    fontSize: 9,
+    color: '#555',
+    marginTop: 1,
+  },
+  streakMiniDots: {
+    flexDirection: 'row',
+    gap: 4,
+  },
+  streakMiniDot: {
+    flex: 1,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#141414',
+    borderWidth: 0.5,
+    borderColor: '#1e1e1e',
+  },
+  streakMiniDotOn: {
+    backgroundColor: '#f5a623',
+    borderColor: '#f5a623',
+  },
   footerRow: {
     flexDirection: 'row',
     alignItems: 'center',

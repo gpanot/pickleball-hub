@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { View, Platform, StyleSheet } from 'react-native'
+import { View, Pressable, Platform, StyleSheet } from 'react-native'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { StatusBar } from 'expo-status-bar'
@@ -13,6 +13,7 @@ import { ProfileSheet } from './src/components/ProfileSheet'
 import { GearSetupScreen } from './src/components/gear/GearSetupScreen'
 import { useGearProfile } from './src/hooks/useGearProfile'
 import { playerGenderFromStored } from './src/components/gear/gearConstants'
+import type { GearProfile } from './src/components/gear/gearTypes'
 import { SignUpModalProvider } from './src/contexts/SignUpModalContext'
 import { ProfileMenuProvider } from './src/contexts/ProfileMenuContext'
 import { ToastOverlay } from './src/components/Toast'
@@ -30,6 +31,8 @@ export default function App() {
   const [showSplash, setShowSplash] = useState(true)
   const [activeTab, setActiveTab] = useState<TabId>('swipe')
   const [flowScreen, setFlowScreen] = useState<FlowScreen>('main')
+  const [gearReturnTo, setGearReturnTo] = useState<FlowScreen>('main')
+  const [gearSheetOpen, setGearSheetOpen] = useState(false)
   const [onboardingInitialStep, setOnboardingInitialStep] = useState(0)
 
   const jwt = useAuthStore((s) => s.jwt)
@@ -39,6 +42,16 @@ export default function App() {
 
   const { gear, loading: gearLoading, saving: gearSaving, error: gearError, saveGear, savedConfirmation } =
     useGearProfile(profileId ?? null, authStore.authedFetch)
+
+  const handleGearSave = async (updated: GearProfile) => {
+    const ok = await saveGear(updated)
+    if (ok) setFlowScreen(gearReturnTo)
+  }
+
+  const handleGearSheetSave = async (updated: GearProfile) => {
+    const ok = await saveGear(updated)
+    if (ok) setGearSheetOpen(false)
+  }
 
   useEffect(() => {
     debugLog('App', '=== SQUADD Boot Diagnostics ===')
@@ -182,25 +195,6 @@ export default function App() {
     )
   }
 
-  if (flowScreen === 'gear') {
-    return (
-      <GestureHandlerRootView style={{ flex: 1 }}>
-        <SafeAreaProvider>
-          <StatusBar style="light" />
-          <GearSetupScreen
-            gender={playerGenderFromStored(null)}
-            initialGear={gear}
-            saving={gearSaving}
-            error={gearError}
-            onSave={saveGear}
-            onBack={() => setFlowScreen('profile')}
-            savedConfirmation={savedConfirmation}
-          />
-        </SafeAreaProvider>
-      </GestureHandlerRootView>
-    )
-  }
-
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
@@ -212,10 +206,16 @@ export default function App() {
             <View style={{ flex: 1 }}>
               {/* All screens stay mounted — hidden via display:'none' to prevent reloads */}
               <View style={{ flex: 1, display: activeTab === 'circle' ? 'flex' : 'none' }}>
-                <CircleScreen />
+                <CircleScreen
+                  onOpenGear={() => {
+                    setGearReturnTo('main')
+                    setFlowScreen('gear')
+                  }}
+                  gearSaved={savedConfirmation}
+                />
               </View>
               <View style={{ flex: 1, display: activeTab === 'swipe' ? 'flex' : 'none' }}>
-                <SwipeScreen />
+                <SwipeScreen onOpenGearSheet={() => setGearSheetOpen(true)} gearSaved={savedConfirmation} />
               </View>
               <NavBar
                 active={activeTab}
@@ -229,13 +229,64 @@ export default function App() {
                   onClose={() => setFlowScreen('main')}
                   onLinkReclub={startLinkReclub}
                   onRedoOnboarding={startRedoOnboarding}
-                  onOpenGear={() => setFlowScreen('gear')}
+                  onOpenGear={() => {
+                    setGearReturnTo('profile')
+                    setFlowScreen('gear')
+                  }}
                 />
               </View>
             )}
           </ProfileMenuProvider>
         </SignUpModalProvider>
+
+        {(flowScreen === 'gear' || gearSheetOpen) && (
+          <View style={styles.gearOverlay} pointerEvents="box-none">
+            <Pressable
+              style={styles.gearBackdrop}
+              onPress={() => {
+                if (gearSheetOpen) setGearSheetOpen(false)
+                else setFlowScreen(gearReturnTo)
+              }}
+            />
+            <View style={styles.gearSheet} pointerEvents="auto">
+              <GearSetupScreen
+                gender={gear.gender ? playerGenderFromStored(gear.gender) : null}
+                initialGear={gear}
+                saving={gearSaving}
+                error={gearError}
+                onSave={gearSheetOpen ? handleGearSheetSave : handleGearSave}
+                onBack={() => {
+                  if (gearSheetOpen) setGearSheetOpen(false)
+                  else setFlowScreen(gearReturnTo)
+                }}
+                savedConfirmation={savedConfirmation}
+                closeIcon="close"
+                embedded
+              />
+            </View>
+          </View>
+        )}
       </SafeAreaProvider>
     </GestureHandlerRootView>
   )
 }
+
+const styles = StyleSheet.create({
+  gearOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 9000,
+    elevation: 9000,
+    justifyContent: 'flex-end',
+  },
+  gearBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+  },
+  gearSheet: {
+    height: '92%',
+    backgroundColor: '#0A0A0A',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    overflow: 'hidden',
+  },
+})
