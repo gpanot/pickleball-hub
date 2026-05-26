@@ -725,7 +725,7 @@ def ingest_day(day, club_map):
         day_key = day.strftime("%Y-%m-%d")
         today_key = NOW.strftime("%Y-%m-%d")
         tomorrow_key = (NOW + timedelta(days=1)).strftime("%Y-%m-%d")
-        print(f"\n  Roster check — day={day_key}, today={today_key}, tomorrow={tomorrow_key}, sessions={len(pickleball_meets)}")
+        print(f"\n  Roster check — day={day_key}, today={today_key}, tomorrow={tomorrow_key}, sessions={len(pickleball_meets)} [v2]")
         if day_key in (today_key, tomorrow_key) and pickleball_meets:
             print(f"\n  Scraping rosters for {day_key}...")
             try:
