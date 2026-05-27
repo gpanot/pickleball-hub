@@ -38,6 +38,7 @@ import { LockedFriendsRow } from '../components/LockedFriendsRow'
 import { PlayerAvatar } from '../components/PlayerAvatar'
 import { useSignUpModal } from '../contexts/SignUpModalContext'
 import { GearTeaserCard } from '../components/GearTeaserCard'
+import { SignInPrompt } from '../components/SignInPrompt'
 import { useAuthStore } from '../stores/authStore'
 import { useSessionStore } from '../stores/sessionStore'
 import { useUiStore } from '../stores/uiStore'
@@ -874,7 +875,9 @@ export function SwipeScreen({ onOpenGearSheet, gearSaved }: { onOpenGearSheet?: 
       )}
 
       {/* ── Going tab ─────────────────────────────────────────── */}
-      {playTab === 'shortlist' && (
+      {playTab === 'shortlist' && !signedIn && <SignInPrompt />}
+
+      {playTab === 'shortlist' && signedIn && (
         <ScrollView
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingBottom: 32 }}
