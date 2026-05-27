@@ -528,19 +528,15 @@ export function CircleScreen({ onOpenGear, gearSaved }: { onOpenGear?: () => voi
             <ActivityIndicator color={T.amber} style={{ marginTop: 40 }} />
           )}
 
-          {/* Presence banners — horizontal scroll, each card ~80% width */}
+          {/* Presence banners — 70/30 side-by-side row, no scrolling */}
           {presence && (presence.totalLive > 0 || (presence.upcomingVenues?.length ?? 0) > 0) && (
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              decelerationRate="fast"
-              snapToInterval={screenWidth * 0.82 + 8}
-              snapToAlignment="start"
-              contentContainerStyle={styles.presenceBannerRail}
-            >
-              {/* On Court card */}
+            <View style={styles.presenceBannerRail}>
+              {/* On Court card — flex 7 when both present, flex 1 alone */}
               {presence.totalLive > 0 && (
-                <View style={[styles.presenceBanner, { width: screenWidth * 0.82 }]}>
+                <View style={[
+                  styles.presenceBanner,
+                  (presence.upcomingVenues?.length ?? 0) > 0 ? { flex: 7 } : { flex: 1 },
+                ]}>
                   <TouchableOpacity
                     style={styles.presenceBannerHeader}
                     onPress={() => setPresenceExpanded((prev) => !prev)}
@@ -548,12 +544,12 @@ export function CircleScreen({ onOpenGear, gearSaved }: { onOpenGear?: () => voi
                   >
                     <View style={styles.presenceDot} />
                     <View style={styles.presenceBannerText}>
-                      <Text style={styles.presenceBannerTitle}>
+                      <Text style={styles.presenceBannerTitle} numberOfLines={1}>
                         {presence.totalLive} from your circle{' '}
                         {presence.totalLive === 1 ? 'is' : 'are'} on court
                       </Text>
-                      <Text style={styles.presenceBannerSub}>
-                        Right now · across {presence.liveVenues.length}{' '}
+                      <Text style={styles.presenceBannerSub} numberOfLines={1}>
+                        Right now · {presence.liveVenues.length}{' '}
                         {presence.liveVenues.length === 1 ? 'venue' : 'venues'}
                       </Text>
                     </View>
@@ -585,17 +581,17 @@ export function CircleScreen({ onOpenGear, gearSaved }: { onOpenGear?: () => voi
                                 {venue.venueName}
                               </Text>
                               <Text style={styles.presenceVenueWho}>
-                                {friendName}{extraFriends} from your circle
+                                {friendName}{extraFriends}
                               </Text>
                             </View>
                             <View style={styles.presenceVenueRight}>
                               {endingSoon ? (
                                 <View style={styles.endingSoonPill}>
-                                  <Text style={styles.endingSoonText}>⚡ {minsLeft}m left</Text>
+                                  <Text style={styles.endingSoonText}>⚡ {minsLeft}m</Text>
                                 </View>
                               ) : (
                                 <Text style={styles.endsAtText}>
-                                  Ends {formatClock(venue.endTime)}
+                                  {formatClock(venue.endTime)}
                                 </Text>
                               )}
                             </View>
@@ -607,13 +603,16 @@ export function CircleScreen({ onOpenGear, gearSaved }: { onOpenGear?: () => voi
                 </View>
               )}
 
-              {/* Playing Soon card */}
+              {/* Playing Soon card — flex 3 when both present, flex 1 alone */}
               {(presence.upcomingVenues?.length ?? 0) > 0 && (() => {
                 const totalSoon = presence.upcomingVenues.reduce(
                   (acc: number, v: any) => acc + (v.circleCount ?? 1), 0
                 )
                 return (
-                  <View style={[styles.soonBanner, { width: screenWidth * 0.82 }]}>
+                  <View style={[
+                    styles.soonBanner,
+                    presence.totalLive > 0 ? { flex: 3 } : { flex: 1 },
+                  ]}>
                     <TouchableOpacity
                       style={styles.soonBannerHeader}
                       onPress={() => setExpandedUpcomingId(expandedUpcomingId === -1 ? null : -1)}
@@ -621,16 +620,13 @@ export function CircleScreen({ onOpenGear, gearSaved }: { onOpenGear?: () => voi
                     >
                       <View style={styles.soonDot} />
                       <View style={styles.presenceBannerText}>
-                        <Text style={styles.soonBannerTitle}>
-                          {totalSoon} from your circle{' '}
-                          {totalSoon === 1 ? 'is' : 'are'} playing soon
+                        <Text style={styles.soonBannerTitle} numberOfLines={1}>
+                          {totalSoon} up next
                         </Text>
-                        <Text style={styles.soonBannerSub}>
-                          Next 4 hours · across {presence.upcomingVenues.length}{' '}
-                          {presence.upcomingVenues.length === 1 ? 'venue' : 'venues'}
+                        <Text style={styles.soonBannerSub} numberOfLines={1}>
+                          Next session
                         </Text>
                       </View>
-                      <Text style={styles.soonBannerCount}>{totalSoon}</Text>
                       <Text style={[styles.soonChevron, expandedUpcomingId === -1 && styles.presenceChevronOpen]}>▾</Text>
                     </TouchableOpacity>
 
@@ -639,8 +635,6 @@ export function CircleScreen({ onOpenGear, gearSaved }: { onOpenGear?: () => voi
                         {presence.upcomingVenues.map((venue: any, index: number) => {
                           const friendName =
                             venue.players?.[0]?.displayName?.split(' ')[0] ?? 'Someone'
-                          const extraFriends =
-                            venue.circleCount > 1 ? ` +${venue.circleCount - 1} more` : ''
                           return (
                             <View
                               key={venue.sessionId}
@@ -653,13 +647,13 @@ export function CircleScreen({ onOpenGear, gearSaved }: { onOpenGear?: () => voi
                                 <Text style={styles.soonVenueName} numberOfLines={1}>
                                   {venue.venueName}
                                 </Text>
-                                <Text style={styles.presenceVenueWho}>
-                                  {friendName}{extraFriends} from your circle
+                                <Text style={[styles.presenceVenueWho, { color: '#a06000' }]}>
+                                  {friendName}
                                 </Text>
                               </View>
                               <View style={styles.presenceVenueRight}>
                                 <Text style={styles.soonStartsAt}>
-                                  Starts {formatClock(venue.startTime)}
+                                  {formatClock(venue.startTime)}
                                 </Text>
                               </View>
                             </View>
@@ -670,7 +664,7 @@ export function CircleScreen({ onOpenGear, gearSaved }: { onOpenGear?: () => voi
                   </View>
                 )
               })()}
-            </ScrollView>
+            </View>
           )}
 
           {!feedLoading && presence && presence.totalLive === 0 && (presence.upcomingVenues?.length ?? 0) === 0 && (
@@ -1120,9 +1114,11 @@ const styles = StyleSheet.create({
     lineHeight: 17,
   },
   presenceBannerRail: {
-    paddingHorizontal: 12,
-    paddingBottom: 10,
-    gap: 8,
+    flexDirection: 'row',
+    marginHorizontal: 12,
+    marginBottom: 10,
+    gap: 6,
+    alignItems: 'flex-start',
   },
   soonBanner: {
     backgroundColor: '#1a1200',
