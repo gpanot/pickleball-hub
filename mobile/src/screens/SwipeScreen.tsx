@@ -880,7 +880,7 @@ export function SwipeScreen({ onOpenGearSheet, gearSaved }: { onOpenGearSheet?: 
           contentContainerStyle={{ paddingBottom: 32 }}
           refreshControl={
             <RefreshControl
-              refreshing={goingLoading}
+              refreshing={false}
               onRefresh={() => {
                 setRemovedSavedIds(new Set())
                 loadGoing()

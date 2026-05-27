@@ -95,6 +95,7 @@ export type FeedItemType =
   | 'dupr_update'
   | 'just_followed'
   | 'streak_milestone'
+  | 'new_follower'
 
 export type FeedItem = {
   id: string

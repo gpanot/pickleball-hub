@@ -52,8 +52,13 @@ export async function GET(req: NextRequest) {
   const now = new Date();
   const weeksToCheck = 12;
 
+  const todayStr = now.toISOString().slice(0, 10);
+
   const sessions = await prisma.sessionRoster.findMany({
-    where: { userId: user.reclubUserId },
+    where: {
+      userId: user.reclubUserId,
+      session: { scrapedDate: { lt: todayStr } },
+    },
     select: { scrapedAt: true, session: { select: { scrapedDate: true } } },
     orderBy: { scrapedAt: "desc" },
     take: 200,

@@ -12,6 +12,14 @@ export async function notifyNewFollower({
   followerProfileId: string;
   followeeReclubUserId: bigint;
 }) {
+  // Look up follower details for the push payload
+  const followerDetails = await prisma.playerProfile.findUnique({
+    where: { id: followerProfileId },
+    select: {
+      reclubUserId: true,
+      player: { select: { userId: true, displayName: true, imageUrl: true } },
+    },
+  });
   // Find all profiles that have this reclubUserId linked — the followee may be an app user
   const targetProfile = await prisma.playerProfile.findFirst({
     where: { reclubUserId: followeeReclubUserId },
@@ -31,15 +39,10 @@ export async function notifyNewFollower({
   if (alreadySentToday >= 1) return;
 
   // Get follower's last venue for context
-  const follower = await prisma.playerProfile.findUnique({
-    where: { id: followerProfileId },
-    select: { reclubUserId: true },
-  });
-
   let venue = "a nearby club";
-  if (follower?.reclubUserId) {
+  if (followerDetails?.reclubUserId) {
     const lastRoster = await prisma.sessionRoster.findFirst({
-      where: { userId: follower.reclubUserId },
+      where: { userId: followerDetails.reclubUserId },
       orderBy: { scrapedAt: "desc" },
       include: { session: { include: { venue: true } } },
     });
@@ -48,11 +51,25 @@ export async function notifyNewFollower({
     }
   }
 
+  const followerName = followerDetails?.player?.displayName ?? null;
+  const followerUserId = followerDetails?.player?.userId
+    ? String(followerDetails.player.userId)
+    : null;
+  const followerImageUrl = followerDetails?.player?.imageUrl ?? null;
+
   await sendPushNotification({
     token: targetProfile.pushToken,
     title: "Someone is following your game",
-    body: `A player who's been at ${venue} is now following you`,
-    data: { type: "pn4", screen: "Circle" },
+    body: followerName
+      ? `${followerName} is now following you`
+      : `A player who's been at ${venue} is now following you`,
+    data: {
+      type: "pn4",
+      screen: "Circle",
+      followerUserId: followerUserId ?? "",
+      followerName: followerName ?? "",
+      followerImageUrl: followerImageUrl ?? "",
+    },
   });
 
   await prisma.notificationSent.create({

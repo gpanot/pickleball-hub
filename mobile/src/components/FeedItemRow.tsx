@@ -240,6 +240,13 @@ export function FeedItemRow({
           </Text>
         )}
 
+        {item.type === 'new_follower' && (
+          <Text style={s.action}>
+            <Text style={s.highlight}>{name}</Text>
+            {' '}is now following you · tap their avatar to see their profile
+          </Text>
+        )}
+
         {item.type === 'streak_milestone' && (
           <>
             <Text style={s.action}>

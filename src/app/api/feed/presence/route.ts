@@ -18,7 +18,19 @@ interface LiveVenue {
   eventUrl: string
   players: LivePlayer[]
   totalRoster: number
+  circleCount: number
   nextSessionTime: string | null
+}
+
+interface UpcomingVenue {
+  venueName: string
+  sessionId: number
+  startTime: string
+  endTime: string
+  eventUrl: string
+  players: LivePlayer[]
+  totalRoster: number
+  circleCount: number
 }
 
 export async function GET(req: NextRequest) {
@@ -73,8 +85,72 @@ export async function GET(req: NextRequest) {
     }
   })
 
+  // Upcoming: sessions starting in the next 4 hours
+  const vnNowMs = Date.now() + 7 * 60 * 60 * 1000
+  const fourHoursLaterMs = vnNowMs + 4 * 60 * 60 * 1000
+  const fourHoursLaterTime = new Date(fourHoursLaterMs).toISOString().slice(11, 16)
+
+  const upcomingRosters = await prisma.sessionRoster.findMany({
+    where: {
+      userId: { in: followeeIds },
+      session: {
+        scrapedDate: todayStr,
+        startTime: { gt: nowTime, lte: fourHoursLaterTime },
+      }
+    },
+    include: {
+      player: {
+        select: {
+          userId: true,
+          displayName: true,
+          imageUrl: true,
+          duprDoubles: true,
+        }
+      },
+      session: {
+        select: {
+          id: true,
+          startTime: true,
+          endTime: true,
+          eventUrl: true,
+          club: { select: { name: true } },
+          _count: { select: { rosters: true } }
+        }
+      }
+    }
+  })
+
+  const upcomingMap = new Map<number, UpcomingVenue>()
+  for (const r of upcomingRosters) {
+    const sessionId = r.session.id
+    if (!upcomingMap.has(sessionId)) {
+      upcomingMap.set(sessionId, {
+        venueName: r.session.club.name,
+        sessionId,
+        startTime: r.session.startTime,
+        endTime: r.session.endTime,
+        eventUrl: r.session.eventUrl,
+        players: [],
+        totalRoster: r.session._count.rosters,
+        circleCount: 0,
+      })
+    }
+    const venue = upcomingMap.get(sessionId)!
+    venue.players.push({
+      userId: String(r.player.userId),
+      displayName: r.player.displayName,
+      imageUrl: r.player.imageUrl ?? reclubAvatarUrl(r.player.userId),
+      duprDoubles: r.player.duprDoubles ? Number(r.player.duprDoubles) : null
+    })
+    venue.circleCount++
+  }
+
+  const upcomingVenues = Array.from(upcomingMap.values())
+    .sort((a, b) => a.startTime.localeCompare(b.startTime))
+    .map(v => ({ ...v, players: v.players.slice(0, 4) }))
+
   if (liveRosters.length === 0) {
-    return NextResponse.json({ liveVenues: [], totalLive: 0 })
+    return NextResponse.json({ liveVenues: [], totalLive: 0, upcomingVenues })
   }
 
   const venueMap = new Map<number, LiveVenue>()
@@ -99,6 +175,7 @@ export async function GET(req: NextRequest) {
         eventUrl: r.session.eventUrl,
         players: [],
         totalRoster: r.session._count.rosters,
+        circleCount: 0,
         nextSessionTime: nextSession?.startTime ?? null
       })
     }
@@ -110,6 +187,7 @@ export async function GET(req: NextRequest) {
       imageUrl: r.player.imageUrl ?? reclubAvatarUrl(r.player.userId),
       duprDoubles: r.player.duprDoubles ? Number(r.player.duprDoubles) : null
     })
+    venue.circleCount++
   }
 
   const liveVenues = Array.from(venueMap.values())
@@ -126,9 +204,10 @@ export async function GET(req: NextRequest) {
       eventUrl: v.eventUrl,
       players: v.players.slice(0, 4),
       totalRoster: v.totalRoster,
-      circleCount: v.players.length,
+      circleCount: v.circleCount,
       nextSessionTime: v.nextSessionTime ?? null
     })),
-    totalLive
+    totalLive,
+    upcomingVenues,
   })
 }

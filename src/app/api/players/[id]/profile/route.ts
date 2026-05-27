@@ -232,8 +232,14 @@ export async function GET(
     }
   }
 
+  const now = new Date()
+  const todayStr = now.toISOString().slice(0, 10)
+
   const playerSessions = await prisma.sessionRoster.findMany({
-    where: { userId: targetId },
+    where: {
+      userId: targetId,
+      session: { scrapedDate: { lt: todayStr } },
+    },
     select: { session: { select: { startTime: true, scrapedDate: true } } },
     orderBy: { session: { startTime: 'desc' } },
     take: 200,
@@ -249,8 +255,6 @@ export async function GET(
     )
     return `${d.getFullYear()}-${weekNum}`
   }
-
-  const now = new Date()
   const weeksWithSessions = new Set(
     playerSessions.map((s) =>
       getWeekKey(new Date(`${s.session.scrapedDate}T12:00:00`))

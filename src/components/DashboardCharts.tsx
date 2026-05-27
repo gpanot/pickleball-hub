@@ -349,4 +349,112 @@ export function MarketPlayersPerDayChart({ data }: MarketPlayersPerDayChartProps
   );
 }
 
+export interface BookingBehaviorDistribution {
+  bucket: string;
+  count: number;
+  pct: number;
+}
+
+export interface BookingBehaviorTrendPoint {
+  date: string;
+  gt48: number;
+  h2448: number;
+  h1224: number;
+  lt12: number;
+  total: number;
+}
+
+const BOOKING_COLORS: Record<string, string> = {
+  ">48h": "#6366f1",
+  "24–48h": "#10b981",
+  "12–24h": "#f59e0b",
+  "<12h": "#ef4444",
+};
+
+/** Donut-style bar chart showing booking lead-time distribution. */
+export function BookingBehaviorChart({
+  distribution,
+}: {
+  distribution: BookingBehaviorDistribution[];
+}) {
+  const total = distribution.reduce((s, d) => s + d.count, 0);
+  if (total === 0) return <p className="text-sm text-muted py-4">No data available.</p>;
+
+  return (
+    <div className="space-y-4">
+      {/* Stacked horizontal bar */}
+      <div className="w-full h-8 rounded-full overflow-hidden flex">
+        {distribution.map((d) => (
+          <div
+            key={d.bucket}
+            style={{
+              width: `${d.pct}%`,
+              backgroundColor: BOOKING_COLORS[d.bucket] ?? "#94a3b8",
+              minWidth: d.pct > 0 ? "2px" : 0,
+            }}
+            title={`${d.bucket}: ${d.pct}%`}
+          />
+        ))}
+      </div>
+
+      {/* Legend + numbers */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {distribution.map((d) => (
+          <div
+            key={d.bucket}
+            className="rounded-lg border border-card-border bg-background p-3 text-center"
+          >
+            <div
+              className="w-3 h-3 rounded-full mx-auto mb-1.5"
+              style={{ backgroundColor: BOOKING_COLORS[d.bucket] ?? "#94a3b8" }}
+            />
+            <div className="text-xs text-muted font-medium">{d.bucket}</div>
+            <div className="text-xl font-bold mt-0.5">{d.pct}%</div>
+            <div className="text-[11px] text-muted">{d.count.toLocaleString()} players</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Bar chart of trend */}
+    </div>
+  );
+}
+
+/** Stacked bar chart of booking lead-time distribution over time. */
+export function BookingBehaviorTrendChart({
+  trend,
+}: {
+  trend: BookingBehaviorTrendPoint[];
+}) {
+  if (trend.length === 0) return null;
+
+  const data = trend.map((d) => ({
+    date: d.date.slice(5),
+    ">48h": d.gt48,
+    "24–48h": d.h2448,
+    "12–24h": d.h1224,
+    "<12h": d.lt12,
+  }));
+
+  return (
+    <RechartsAutoSize height={240} className="w-full min-w-0 mt-4">
+      {({ width, height }) => (
+        <BarChart width={width} height={height} data={data} barSize={6}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+          <XAxis dataKey="date" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
+          <YAxis tick={{ fontSize: 10 }} />
+          <Tooltip
+            formatter={(value, name) => [value, name]}
+            labelFormatter={(l) => `Date: ${l}`}
+          />
+          <Legend wrapperStyle={{ fontSize: 11 }} />
+          {([">48h", "24–48h", "12–24h", "<12h"] as const).map((key) => (
+            <Bar key={key} dataKey={key} stackId="a" fill={BOOKING_COLORS[key]} />
+          ))}
+        </BarChart>
+      )}
+    </RechartsAutoSize>
+  );
+}
+
 export { DAY_LABELS };

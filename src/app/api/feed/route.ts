@@ -131,6 +131,39 @@ export async function GET(req: NextRequest) {
     take: 40,
   });
 
+  // Also include today's sessions that have already ended (endTime <= nowTime in VN)
+  const vnNow = new Date(Date.now() + 7 * 60 * 60 * 1000);
+  const nowTimeVN = vnNow.toISOString().slice(11, 16); // HH:mm
+
+  const todayCompletedRosters = await prisma.sessionRoster.findMany({
+    where: {
+      userId: { in: followeeIds },
+      session: {
+        scrapedDate: todayStr,
+        endTime: { lte: nowTimeVN },
+      },
+    },
+    include: {
+      player: {
+        select: {
+          userId: true,
+          displayName: true,
+          imageUrl: true,
+          duprDoubles: true,
+        },
+      },
+      session: {
+        select: {
+          startTime: true,
+          scrapedDate: true,
+          club: { select: { name: true } },
+        },
+      },
+    },
+    orderBy: { session: { scrapedDate: "desc" } },
+    take: 20,
+  });
+
   // Group by player+club, count sessions, keep most recent date
   const playedMap = new Map<
     string,
@@ -142,7 +175,7 @@ export async function GET(req: NextRequest) {
     }
   >();
 
-  for (const r of recentRosters) {
+  for (const r of [...recentRosters, ...todayCompletedRosters]) {
     const key = `${r.userId}_${r.session.club.name}`;
     const existing = playedMap.get(key);
     if (existing) {
@@ -186,7 +219,10 @@ export async function GET(req: NextRequest) {
 
   for (const followeeId of followeeIds) {
     const sessions = await prisma.sessionRoster.findMany({
-      where: { userId: followeeId },
+      where: {
+        userId: followeeId,
+        session: { scrapedDate: { lt: todayStr } },
+      },
       select: { session: { select: { startTime: true, scrapedDate: true } } },
       orderBy: { session: { startTime: "desc" } },
       take: 200,

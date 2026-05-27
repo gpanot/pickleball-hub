@@ -10,6 +10,7 @@ import {
   ScrollView,
   RefreshControl,
   Linking,
+  useWindowDimensions,
 } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { Rss, Users, Search, ArrowLeft, Sparkles, X } from 'lucide-react-native'
@@ -27,6 +28,8 @@ import { PlayerProfileSheet } from '../components/PlayerProfileSheet'
 import { useToast } from '../components/Toast'
 import { PeopleYouMayKnowScreen } from './PeopleYouMayKnowScreen'
 import type { FeedItem, FeedItemType, CoPlayerSuggestion } from '../data'
+import { useProfileMenu } from '../contexts/ProfileMenuContext'
+import { useUiStore } from '../stores/uiStore'
 
 type CircleSubTab = 'feed' | 'players'
 
@@ -62,6 +65,18 @@ function formatTime(iso: string): string {
   return `${h12}${m > 0 ? `:${String(m).padStart(2, '0')}` : ''} ${ampm}`
 }
 
+// formatClock parses "HH:mm" strings returned by the presence API
+function formatClock(clock: string): string {
+  if (!clock) return '–'
+  const [hStr, mStr] = clock.split(':')
+  const h = parseInt(hStr, 10)
+  const m = parseInt(mStr ?? '0', 10)
+  if (isNaN(h)) return '–'
+  const ampm = h >= 12 ? 'PM' : 'AM'
+  const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h
+  return `${h12}${m > 0 ? `:${String(m).padStart(2, '0')}` : ''} ${ampm}`
+}
+
 export function CircleScreen({ onOpenGear, gearSaved }: { onOpenGear?: () => void; gearSaved?: boolean }) {
   const [subTab, setSubTab] = useState<CircleSubTab>('feed')
   const [friends, setFriends] = useState<FollowedPlayer[]>([])
@@ -77,6 +92,10 @@ export function CircleScreen({ onOpenGear, gearSaved }: { onOpenGear?: () => voi
 
   const { authedFetch, jwt, ensureServerAuth, reclubUserId } = useAuthStore()
   const toast = useToast((s) => s.show)
+  const { openProfileSheet } = useProfileMenu()
+  const { width: screenWidth } = useWindowDimensions()
+  const pendingNewFollower = useUiStore((s) => s.pendingNewFollower)
+  const clearPendingNewFollower = useUiStore((s) => s.setPendingNewFollower)
 
   // ── Feed state ──────────────────────────────────────────────────────────────
   const [feedItems, setFeedItems] = useState<FeedItem[]>([])
@@ -89,8 +108,10 @@ export function CircleScreen({ onOpenGear, gearSaved }: { onOpenGear?: () => voi
   const [presence, setPresence] = useState<{
     liveVenues: any[]
     totalLive: number
+    upcomingVenues: any[]
   } | null>(null)
   const [presenceExpanded, setPresenceExpanded] = useState(false)
+  const [expandedUpcomingId, setExpandedUpcomingId] = useState<number | null>(null)
   const [dismissedSuggestions, setDismissedSuggestions] = useState<Set<string>>(
     new Set()
   )
@@ -103,6 +124,25 @@ export function CircleScreen({ onOpenGear, gearSaved }: { onOpenGear?: () => voi
       })
     }
   }, [feedItems.length])
+
+  // When a pn4 notification is tapped, prepend a new_follower feed item
+  useEffect(() => {
+    if (!pendingNewFollower) return
+    const newItem: FeedItem = {
+      id: `new_follower_${pendingNewFollower.userId}_${Date.now()}`,
+      type: 'new_follower' as FeedItemType,
+      player: {
+        userId: pendingNewFollower.userId,
+        displayName: pendingNewFollower.displayName,
+        imageUrl: pendingNewFollower.imageUrl,
+        duprDoubles: null,
+      },
+      isFollowing: false,
+      timestamp: new Date().toISOString(),
+    }
+    setFeedItems((prev) => [newItem, ...prev])
+    clearPendingNewFollower(null)
+  }, [pendingNewFollower])
 
   const dismissAvatarTip = useCallback(async () => {
     setShowAvatarTip(false)
@@ -458,6 +498,15 @@ export function CircleScreen({ onOpenGear, gearSaved }: { onOpenGear?: () => voi
             gearSaved={gearSaved}
           />
 
+          {/* Link Reclub banner */}
+          {jwt && !reclubUserId && (
+            <TouchableOpacity style={styles.linkReclubBanner} onPress={openProfileSheet}>
+              <Text style={styles.linkReclubText}>
+                Link your Reclub account to follow other players. Tap here.
+              </Text>
+            </TouchableOpacity>
+          )}
+
           {/* Feed empty state */}
           {!feedLoading && !hasFollows && (
             <View style={styles.emptyState}>
@@ -479,49 +528,152 @@ export function CircleScreen({ onOpenGear, gearSaved }: { onOpenGear?: () => voi
             <ActivityIndicator color={T.amber} style={{ marginTop: 40 }} />
           )}
 
-          {/* Presence section */}
-          {presence && presence.totalLive > 0 && (
-            <View style={styles.presenceBanner}>
-              <TouchableOpacity
-                style={styles.presenceBannerHeader}
-                onPress={() => setPresenceExpanded((prev) => !prev)}
-                activeOpacity={0.8}>
-                <View style={styles.presenceDot} />
-                <View style={styles.presenceBannerText}>
-                  <Text style={styles.presenceBannerTitle}>
-                    {presence.totalLive} from your circle{' '}
-                    {presence.totalLive === 1 ? 'is' : 'are'} on court
-                  </Text>
-                  <Text style={styles.presenceBannerSub}>
-                    Right now · across {presence.liveVenues.length}{' '}
-                    {presence.liveVenues.length === 1 ? 'venue' : 'venues'}
-                  </Text>
-                </View>
-                <Text style={styles.presenceBannerCount}>{presence.totalLive}</Text>
-                <Text
-                  style={[
-                    styles.presenceChevron,
-                    presenceExpanded && styles.presenceChevronOpen,
-                  ]}>
-                  ▾
-                </Text>
-              </TouchableOpacity>
+          {/* Presence banners — horizontal scroll, each card ~80% width */}
+          {presence && (presence.totalLive > 0 || (presence.upcomingVenues?.length ?? 0) > 0) && (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              decelerationRate="fast"
+              snapToInterval={screenWidth * 0.82 + 8}
+              snapToAlignment="start"
+              contentContainerStyle={styles.presenceBannerRail}
+            >
+              {/* On Court card */}
+              {presence.totalLive > 0 && (
+                <View style={[styles.presenceBanner, { width: screenWidth * 0.82 }]}>
+                  <TouchableOpacity
+                    style={styles.presenceBannerHeader}
+                    onPress={() => setPresenceExpanded((prev) => !prev)}
+                    activeOpacity={0.8}
+                  >
+                    <View style={styles.presenceDot} />
+                    <View style={styles.presenceBannerText}>
+                      <Text style={styles.presenceBannerTitle}>
+                        {presence.totalLive} from your circle{' '}
+                        {presence.totalLive === 1 ? 'is' : 'are'} on court
+                      </Text>
+                      <Text style={styles.presenceBannerSub}>
+                        Right now · across {presence.liveVenues.length}{' '}
+                        {presence.liveVenues.length === 1 ? 'venue' : 'venues'}
+                      </Text>
+                    </View>
+                    <Text style={styles.presenceBannerCount}>{presence.totalLive}</Text>
+                    <Text style={[styles.presenceChevron, presenceExpanded && styles.presenceChevronOpen]}>▾</Text>
+                  </TouchableOpacity>
 
-              {presenceExpanded && (
-                <View style={styles.presenceVenueList}>
-                  {presence.liveVenues.map((venue: any) => (
-                    <PresenceCard
-                      key={venue.sessionId}
-                      venue={venue}
-                      onPlayerPress={(userId) => setSelectedPlayerId(userId)}
-                    />
-                  ))}
+                  {presenceExpanded && (
+                    <View style={styles.presenceVenueList}>
+                      {presence.liveVenues.map((venue: any, index: number) => {
+                        const minsLeft = Math.floor(
+                          (new Date(venue.endTime).getTime() - Date.now()) / 60000
+                        )
+                        const endingSoon = minsLeft > 0 && minsLeft <= 60
+                        const friendName =
+                          venue.players?.[0]?.displayName?.split(' ')[0] ?? 'Someone'
+                        const extraFriends =
+                          venue.circleCount > 1 ? ` +${venue.circleCount - 1} more` : ''
+                        return (
+                          <View
+                            key={venue.sessionId}
+                            style={[
+                              styles.presenceVenueRow,
+                              index === presence.liveVenues.length - 1 && { borderBottomWidth: 0 },
+                            ]}
+                          >
+                            <View style={styles.presenceVenueLeft}>
+                              <Text style={styles.presenceVenueName} numberOfLines={1}>
+                                {venue.venueName}
+                              </Text>
+                              <Text style={styles.presenceVenueWho}>
+                                {friendName}{extraFriends} from your circle
+                              </Text>
+                            </View>
+                            <View style={styles.presenceVenueRight}>
+                              {endingSoon ? (
+                                <View style={styles.endingSoonPill}>
+                                  <Text style={styles.endingSoonText}>⚡ {minsLeft}m left</Text>
+                                </View>
+                              ) : (
+                                <Text style={styles.endsAtText}>
+                                  Ends {formatClock(venue.endTime)}
+                                </Text>
+                              )}
+                            </View>
+                          </View>
+                        )
+                      })}
+                    </View>
+                  )}
                 </View>
               )}
-            </View>
+
+              {/* Playing Soon card */}
+              {(presence.upcomingVenues?.length ?? 0) > 0 && (() => {
+                const totalSoon = presence.upcomingVenues.reduce(
+                  (acc: number, v: any) => acc + (v.circleCount ?? 1), 0
+                )
+                return (
+                  <View style={[styles.soonBanner, { width: screenWidth * 0.82 }]}>
+                    <TouchableOpacity
+                      style={styles.soonBannerHeader}
+                      onPress={() => setExpandedUpcomingId(expandedUpcomingId === -1 ? null : -1)}
+                      activeOpacity={0.8}
+                    >
+                      <View style={styles.soonDot} />
+                      <View style={styles.presenceBannerText}>
+                        <Text style={styles.soonBannerTitle}>
+                          {totalSoon} from your circle{' '}
+                          {totalSoon === 1 ? 'is' : 'are'} playing soon
+                        </Text>
+                        <Text style={styles.soonBannerSub}>
+                          Next 4 hours · across {presence.upcomingVenues.length}{' '}
+                          {presence.upcomingVenues.length === 1 ? 'venue' : 'venues'}
+                        </Text>
+                      </View>
+                      <Text style={styles.soonBannerCount}>{totalSoon}</Text>
+                      <Text style={[styles.soonChevron, expandedUpcomingId === -1 && styles.presenceChevronOpen]}>▾</Text>
+                    </TouchableOpacity>
+
+                    {expandedUpcomingId === -1 && (
+                      <View style={styles.presenceVenueList}>
+                        {presence.upcomingVenues.map((venue: any, index: number) => {
+                          const friendName =
+                            venue.players?.[0]?.displayName?.split(' ')[0] ?? 'Someone'
+                          const extraFriends =
+                            venue.circleCount > 1 ? ` +${venue.circleCount - 1} more` : ''
+                          return (
+                            <View
+                              key={venue.sessionId}
+                              style={[
+                                styles.presenceVenueRow,
+                                index === presence.upcomingVenues.length - 1 && { borderBottomWidth: 0 },
+                              ]}
+                            >
+                              <View style={styles.presenceVenueLeft}>
+                                <Text style={styles.soonVenueName} numberOfLines={1}>
+                                  {venue.venueName}
+                                </Text>
+                                <Text style={styles.presenceVenueWho}>
+                                  {friendName}{extraFriends} from your circle
+                                </Text>
+                              </View>
+                              <View style={styles.presenceVenueRight}>
+                                <Text style={styles.soonStartsAt}>
+                                  Starts {formatClock(venue.startTime)}
+                                </Text>
+                              </View>
+                            </View>
+                          )
+                        })}
+                      </View>
+                    )}
+                  </View>
+                )
+              })()}
+            </ScrollView>
           )}
 
-          {!feedLoading && presence && presence.totalLive === 0 && (
+          {!feedLoading && presence && presence.totalLive === 0 && (presence.upcomingVenues?.length ?? 0) === 0 && (
             <View style={styles.noOneLive}>
               <View style={styles.noOneLiveDot} />
               <View>
@@ -559,6 +711,15 @@ export function CircleScreen({ onOpenGear, gearSaved }: { onOpenGear?: () => voi
 
       {subTab === 'players' && jwt && (
         <View style={{ flex: 1, paddingHorizontal: 20 }}>
+          {/* Link Reclub banner */}
+          {!reclubUserId && (
+            <TouchableOpacity style={styles.linkReclubBanner} onPress={openProfileSheet}>
+              <Text style={styles.linkReclubText}>
+                Link your Reclub account to follow other players. Tap here.
+              </Text>
+            </TouchableOpacity>
+          )}
+
           {showSuggested ? (
             <View style={{ flex: 1 }}>
               <View style={styles.searchHeaderRow}>
@@ -944,9 +1105,76 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   emptyBtnText: { fontSize: 11, fontWeight: '600', color: '#1a0a00' },
-  presenceBanner: {
+  linkReclubBanner: {
     marginHorizontal: 12,
-    marginBottom: 10,
+    marginBottom: 8,
+    backgroundColor: '#1a1200',
+    borderWidth: 0.5,
+    borderColor: T.amber,
+    borderRadius: 10,
+    padding: 12,
+  },
+  linkReclubText: {
+    fontSize: 12,
+    color: T.amber,
+    lineHeight: 17,
+  },
+  presenceBannerRail: {
+    paddingHorizontal: 12,
+    paddingBottom: 10,
+    gap: 8,
+  },
+  soonBanner: {
+    backgroundColor: '#1a1200',
+    borderWidth: 0.5,
+    borderColor: '#7a5000',
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  soonBannerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 10,
+    gap: 8,
+  },
+  soonDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: T.amber,
+    flexShrink: 0,
+  },
+  soonBannerTitle: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: T.amber,
+  },
+  soonBannerSub: {
+    fontSize: 10,
+    color: '#7a5000',
+    marginTop: 1,
+  },
+  soonBannerCount: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: T.amber,
+    flexShrink: 0,
+  },
+  soonChevron: {
+    fontSize: 14,
+    color: T.amber,
+    flexShrink: 0,
+  },
+  soonVenueName: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: T.amber,
+  },
+  soonStartsAt: {
+    fontSize: 9,
+    color: '#7a5000',
+  },
+  presenceBanner: {
     backgroundColor: '#0a1f0a',
     borderWidth: 0.5,
     borderColor: '#1D9E75',

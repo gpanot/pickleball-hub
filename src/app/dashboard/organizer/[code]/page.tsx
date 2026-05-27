@@ -14,7 +14,11 @@ import {
   MarketMedianCostChart,
   PlayersPerDayChart,
   MarketPlayersPerDayChart,
+  BookingBehaviorChart,
+  BookingBehaviorTrendChart,
   DAY_LABELS,
+  type BookingBehaviorDistribution,
+  type BookingBehaviorTrendPoint,
 } from "@/components/DashboardCharts";
 import { formatVND } from "@/lib/utils";
 import { fetchPublicApiJson, readPublicApiCache } from "@/lib/public-api-cache";
@@ -128,6 +132,33 @@ export default function OrganizerDashboardPage({ params }: { params: Promise<{ c
   const [marketPlayersData, setMarketPlayersData] = useState<{ date: string; players: number }[]>([]);
   const [marketPlayersDays, setMarketPlayersDays] = useState<30 | 60 | 90>(30);
   const [marketPlayersLoading, setMarketPlayersLoading] = useState(false);
+
+  const [rankingStatsTab, setRankingStatsTab] = useState<"players" | "behavior">("players");
+  const [bookingBehavior, setBookingBehavior] = useState<{
+    distribution: BookingBehaviorDistribution[];
+    trend: BookingBehaviorTrendPoint[];
+  } | null>(null);
+  const [bookingBehaviorLoading, setBookingBehaviorLoading] = useState(false);
+  const [bookingBehaviorFetched, setBookingBehaviorFetched] = useState(false);
+
+  useEffect(() => {
+    if (!sessionOk || activeTab !== "ranking" || rankingStatsTab !== "behavior" || bookingBehaviorFetched) return;
+    let cancelled = false;
+    setBookingBehaviorLoading(true);
+    const url = "/api/dashboard/organizer/booking-behavior";
+    const hit = readPublicApiCache<{ distribution: BookingBehaviorDistribution[]; trend: BookingBehaviorTrendPoint[] }>(url);
+    if (hit) {
+      setBookingBehavior(hit);
+      setBookingBehaviorFetched(true);
+      setBookingBehaviorLoading(false);
+      return;
+    }
+    fetchPublicApiJson<{ distribution: BookingBehaviorDistribution[]; trend: BookingBehaviorTrendPoint[] }>(url)
+      .then((d) => { if (!cancelled) { setBookingBehavior(d); setBookingBehaviorFetched(true); } })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setBookingBehaviorLoading(false); });
+    return () => { cancelled = true; };
+  }, [sessionOk, activeTab, rankingStatsTab, bookingBehaviorFetched]);
 
   useEffect(() => {
     if (!sessionOk || !data) return;
@@ -850,30 +881,85 @@ export default function OrganizerDashboardPage({ params }: { params: Promise<{ c
       {/* Ranking Tab */}
       {activeTab === "ranking" && (
         <>
-        <Section title={t("orgRankingMarketPlayers")}>
-          <div className="flex gap-2 mb-3">
-            {([30, 60, 90] as const).map((d) => (
+        {/* ── Stats section with Players / Behavior sub-tabs ── */}
+        <div className="mb-6 min-w-0">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="font-semibold">Stats</h2>
+          </div>
+          <div className="flex gap-1 mb-4 p-1 bg-gray-100 dark:bg-gray-800 rounded-lg w-fit">
+            {(["players", "behavior"] as const).map((tab) => (
               <button
-                key={d}
-                onClick={() => setMarketPlayersDays(d)}
-                className={`px-3 py-1 text-xs rounded-full font-medium transition-colors ${
-                  marketPlayersDays === d
-                    ? "bg-indigo-600 text-white"
-                    : "bg-surface-alt text-muted hover:bg-indigo-100"
+                key={tab}
+                onClick={() => setRankingStatsTab(tab)}
+                className={`px-4 py-1.5 text-sm font-medium rounded-md transition ${
+                  rankingStatsTab === tab
+                    ? "bg-white dark:bg-gray-700 text-foreground shadow-sm"
+                    : "text-muted hover:text-foreground"
                 }`}
               >
-                {d} days
+                {tab === "players" ? "Players" : "Behavior"}
               </button>
             ))}
           </div>
-          {marketPlayersLoading ? (
-            <div className="flex items-center justify-center h-[256px] text-muted text-sm">Loading...</div>
-          ) : marketPlayersData.length > 0 ? (
-            <MarketPlayersPerDayChart data={marketPlayersData} />
-          ) : (
-            <p className="text-sm text-muted py-4">No data available.</p>
-          )}
-        </Section>
+
+          <div className="min-w-0 rounded-xl border border-card-border bg-card p-4">
+            {rankingStatsTab === "players" && (
+              <>
+                <p className="text-xs text-muted mb-3">{t("orgRankingMarketPlayers")}</p>
+                <div className="flex gap-2 mb-3">
+                  {([30, 60, 90] as const).map((d) => (
+                    <button
+                      key={d}
+                      onClick={() => setMarketPlayersDays(d)}
+                      className={`px-3 py-1 text-xs rounded-full font-medium transition-colors ${
+                        marketPlayersDays === d
+                          ? "bg-indigo-600 text-white"
+                          : "bg-surface-alt text-muted hover:bg-indigo-100"
+                      }`}
+                    >
+                      {d} days
+                    </button>
+                  ))}
+                </div>
+                {marketPlayersLoading ? (
+                  <div className="flex items-center justify-center h-[256px] text-muted text-sm">Loading...</div>
+                ) : marketPlayersData.length > 0 ? (
+                  <MarketPlayersPerDayChart data={marketPlayersData} />
+                ) : (
+                  <p className="text-sm text-muted py-4">No data available.</p>
+                )}
+              </>
+            )}
+
+            {rankingStatsTab === "behavior" && (
+              <>
+                <p className="text-xs text-muted mb-4">
+                  Distribution of when players appear in session rosters relative to session start — a proxy for booking lead time. Based on the 4 daily scrape windows across the last 60 days.
+                </p>
+                {bookingBehaviorLoading ? (
+                  <div className="space-y-3">
+                    <div className="animate-pulse h-8 bg-gray-100 dark:bg-gray-800 rounded-full" />
+                    <div className="grid grid-cols-4 gap-3">
+                      {Array.from({ length: 4 }).map((_, i) => (
+                        <div key={i} className="animate-pulse h-20 bg-gray-100 dark:bg-gray-800 rounded-lg" />
+                      ))}
+                    </div>
+                  </div>
+                ) : bookingBehavior ? (
+                  <>
+                    <BookingBehaviorChart distribution={bookingBehavior.distribution} />
+                    <div className="mt-5">
+                      <p className="text-xs font-medium text-muted mb-1">Trend — last 30 days</p>
+                      <BookingBehaviorTrendChart trend={bookingBehavior.trend} />
+                    </div>
+                  </>
+                ) : (
+                  <p className="text-sm text-muted py-4">No data available.</p>
+                )}
+              </>
+            )}
+          </div>
+        </div>
 
         <Section title={t("orgRankingTitle")}>
           <p className="text-xs text-muted mb-3">

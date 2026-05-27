@@ -19,7 +19,7 @@ import { ProfileMenuProvider } from './src/contexts/ProfileMenuContext'
 import { ToastOverlay } from './src/components/Toast'
 import { useAuthStore, resolveApiBase } from './src/stores/authStore'
 import { useSessionStore } from './src/stores/sessionStore'
-import { useUiStore } from './src/stores/uiStore'
+import { useUiStore, type PendingNewFollower } from './src/stores/uiStore'
 import { useAvatarCacheStore } from './src/stores/avatarCacheStore'
 import { registerForPushNotifications, useNotificationListeners } from './src/services/notifications'
 import { SplashScreen } from './src/screens/SplashScreen'
@@ -119,7 +119,17 @@ export default function App() {
       },
       (response) => {
         const data = response.notification.request.content.data as Record<string, string> | undefined
-        if (data?.screen === 'Circle') setActiveTab('circle')
+        if (data?.screen === 'Circle') {
+          setActiveTab('circle')
+          if (data?.type === 'pn4' && data.followerUserId) {
+            const follower: PendingNewFollower = {
+              userId: data.followerUserId,
+              displayName: data.followerName || 'Someone',
+              imageUrl: data.followerImageUrl || null,
+            }
+            useUiStore.getState().setPendingNewFollower(follower)
+          }
+        }
       }
     )
   }, [])

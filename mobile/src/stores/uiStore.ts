@@ -4,6 +4,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 export type SessionSort = 'match' | 'friends'
 export type SwipeDateFilter = 'today' | 'tomorrow'
 
+export type PendingNewFollower = {
+  userId: string
+  displayName: string
+  imageUrl: string | null
+}
+
 const STORAGE_KEY = 'ui-session-sort'
 
 type Stored = {
@@ -20,6 +26,8 @@ interface UiState extends Stored {
   setShortlistSort: (sort: SessionSort) => void
   setNotificationsEnabled: (enabled: boolean) => void
   setSwipeDateFilter: (filter: SwipeDateFilter) => void
+  pendingNewFollower: PendingNewFollower | null
+  setPendingNewFollower: (follower: PendingNewFollower | null) => void
 }
 
 async function persist(prefs: Stored) {
@@ -32,6 +40,8 @@ export const useUiStore = create<UiState>((set, get) => ({
   notificationsEnabled: true,
   swipeDateFilter: 'today',
   hydrated: false,
+  pendingNewFollower: null,
+  setPendingNewFollower: (follower) => set({ pendingNewFollower: follower }),
 
   hydrate: async () => {
     try {
