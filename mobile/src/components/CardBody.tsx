@@ -28,6 +28,7 @@ import { ProfileAvatar } from './ProfileAvatar'
 import {
   type Session,
   RING_COLORS,
+  averageDupr,
   formatPriceDuration,
   formatDistance,
   formatTime,
@@ -195,6 +196,44 @@ export function MatchDial({ pct }: { pct: number }) {
   )
 }
 
+/* ── TopDuprAlternatingLabel — cycles "Top 6 DUPR" ↔ "Avge. X.XX" ─ */
+function TopDuprAlternatingLabel({ average }: { average: number }) {
+  const showAvg = useSharedValue(0)
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      showAvg.value = withTiming(showAvg.value === 0 ? 1 : 0, { duration: 450 })
+    }, 3200)
+    return () => clearInterval(timer)
+  }, [showAvg])
+
+  const titleStyle = useAnimatedStyle(() => ({
+    opacity: 1 - showAvg.value,
+  }))
+  const avgStyle = useAnimatedStyle(() => ({
+    opacity: showAvg.value,
+    position: 'absolute',
+    left: 0,
+    right: 0,
+  }))
+
+  const labelText = {
+    fontSize: 11,
+    fontWeight: '700' as const,
+    color: T.amber,
+    textAlign: 'center' as const,
+  }
+
+  return (
+    <View style={{ height: 15, minWidth: 100, alignItems: 'center', justifyContent: 'center' }}>
+      <Animated.Text style={[labelText, titleStyle]}>Top 6 DUPR</Animated.Text>
+      <Animated.Text style={[labelText, avgStyle]}>
+        Avge. {average.toFixed(2)}
+      </Animated.Text>
+    </View>
+  )
+}
+
 /* ── CardBgRotator ───────────────────────────────────────────── */
 export function CardBgRotator() {
   const opacity0 = useSharedValue(1)
@@ -276,6 +315,7 @@ export function CardBody({
     .filter((p) => p.duprDoubles != null && p.duprDoubles > 0)
     .sort((a, b) => (b.duprDoubles ?? 0) - (a.duprDoubles ?? 0))
     .slice(0, 6)
+  const topDuprAverage = averageDupr(topDuprPlayers)
   const vibeLabel = VIBE_LABELS[s.vibeTag] ?? 'Social'
   const friendsOverflow =
     s.friendsOverflow > 0
@@ -638,9 +678,13 @@ export function CardBody({
                   </View>
                 ))}
               </View>
-              <Text style={{ fontSize: 11, fontWeight: '700', color: T.amber }}>
-                {isSignedIn ? 'Top 6 DUPR' : 'See Top 6 DUPR joining'}
-              </Text>
+              {isSignedIn && topDuprAverage != null ? (
+                <TopDuprAlternatingLabel average={topDuprAverage} />
+              ) : (
+                <Text style={{ fontSize: 11, fontWeight: '700', color: T.amber }}>
+                  {isSignedIn ? 'Top 6 DUPR' : 'See Top 6 DUPR joining'}
+                </Text>
+              )}
             </TouchableOpacity>
           ) : s.roster.length === 0 ? (
             <Text style={{ fontSize: 11, color: '#555' }}>

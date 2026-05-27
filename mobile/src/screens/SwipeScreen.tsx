@@ -29,6 +29,7 @@ import { T } from '../theme'
 import {
   type Session,
   RING_COLORS,
+  averageDupr,
   formatPriceDuration,
   formatDistance,
   formatTime,
@@ -409,6 +410,7 @@ export function SwipeScreen({ onOpenGearSheet, gearSaved }: { onOpenGearSheet?: 
     title: string
     friends: FriendListItem[]
     overflowNote?: string
+    showFollow?: boolean
   }>({ visible: false, title: '', friends: [] })
 
   const [playTab, setPlayTab] = useState<'discover' | 'shortlist'>('discover')
@@ -502,17 +504,41 @@ export function SwipeScreen({ onOpenGearSheet, gearSaved }: { onOpenGearSheet?: 
       .filter((p) => p.duprDoubles != null && p.duprDoubles > 0)
       .sort((a, b) => (b.duprDoubles ?? 0) - (a.duprDoubles ?? 0))
       .slice(0, 6)
+    const avg = averageDupr(topPlayers)
+    const title =
+      avg != null
+        ? `Top 6 DUPR joining - Avge. ${avg.toFixed(2)}`
+        : 'Top 6 DUPR joining'
     setFriendsModal({
       visible: true,
-      title: 'Top 6 DUPR joining',
-      friends: topPlayers.map((p, i) => ({
-        userId: `dupr-${i}`,
+      title,
+      showFollow: true,
+      friends: topPlayers.map((p) => ({
+        userId: p.userId,
         displayName: p.displayName,
         imageUrl: p.imageUrl,
         duprDoubles: p.duprDoubles,
+        isFollowing: p.isFollowing ?? false,
       })),
     })
   }, [signedIn])
+
+  const handleFollowFromTopDupr = useCallback(
+    async (userId: string) => {
+      try {
+        await auth.authedFetch(`/api/players/${userId}/follow`, { method: 'POST' })
+        setFriendsModal((m) => ({
+          ...m,
+          friends: m.friends.map((f) =>
+            f.userId === userId ? { ...f, isFollowing: true } : f,
+          ),
+        }))
+      } catch {
+        // ignore
+      }
+    },
+    [auth],
+  )
 
   const displayDeck = useMemo(() => {
     let result = deck
@@ -1133,6 +1159,7 @@ export function SwipeScreen({ onOpenGearSheet, gearSaved }: { onOpenGearSheet?: 
         title={friendsModal.title}
         friends={friendsModal.friends}
         overflowNote={friendsModal.overflowNote}
+        onFollow={friendsModal.showFollow ? handleFollowFromTopDupr : undefined}
       />
 
       {/* Filter overlay — root-level so it always covers the full screen */}

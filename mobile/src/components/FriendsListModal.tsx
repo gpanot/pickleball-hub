@@ -24,6 +24,7 @@ export function FriendsListModal({
   friends,
   overflowNote,
   onUnfollow,
+  onFollow,
 }: {
   visible: boolean
   onClose: () => void
@@ -31,6 +32,7 @@ export function FriendsListModal({
   friends: FriendListItem[]
   overflowNote?: string
   onUnfollow?: (userId: string) => void
+  onFollow?: (userId: string) => void
 }) {
   const insets = useSafeAreaInsets()
 
@@ -68,6 +70,7 @@ export function FriendsListModal({
             renderItem={({ item }) => (
               <FriendListRow
                 item={item}
+                onFollow={onFollow ? () => onFollow(item.userId) : undefined}
                 onUnfollow={onUnfollow ? () => onUnfollow(item.userId) : undefined}
               />
             )}

@@ -179,17 +179,6 @@ export async function GET(req: NextRequest) {
 
     const friendSessionIds = [...friendsBySessionId.keys()];
 
-    console.log(
-      `\n[swipe-deck] ────────────────────────────────` +
-      `\n  date        : ${date}  offset=${offset}  limit=${limit}  dbFetch=${filtersActive ? FILTER_BATCH : dbFetchLimit}` +
-      `\n  FILTERS` +
-      `\n  duprMin     : ${duprMin != null ? duprMin + "+" : "any"}` +
-      `\n  timeSlots   : ${timeSlots?.join(", ") ?? "all"}` +
-      `\n  rangeKm     : ${rangeKm != null ? rangeKm + "km" : "none"}` +
-      `\n  friendSess  : ${friendSessionIds.length}` +
-      `\n────────────────────────────────────────────`
-    );
-
     const sessionInclude = {
       club: { select: { name: true, slug: true } },
       venue: { select: { name: true, latitude: true, longitude: true } },
@@ -226,6 +215,17 @@ export async function GET(req: NextRequest) {
           ? Math.max(0, limit - friendSessionIds.length)
           : limit
         : null
+    );
+
+    console.log(
+      `\n[swipe-deck] ────────────────────────────────` +
+      `\n  date        : ${date}  offset=${offset}  limit=${limit}  dbFetch=${dbFetchLimit ?? "all"}` +
+      `\n  FILTERS` +
+      `\n  duprMin     : ${duprMin != null ? duprMin + "+" : "any"}` +
+      `\n  timeSlots   : ${timeSlots?.join(", ") ?? "all"}` +
+      `\n  rangeKm     : ${rangeKm != null ? rangeKm + "km" : "none"}` +
+      `\n  friendSess  : ${friendSessionIds.length}` +
+      `\n────────────────────────────────────────────`
     );
 
     const [totalCount, friendSessions, normalSessions] = await Promise.all([
@@ -354,14 +354,19 @@ export async function GET(req: NextRequest) {
       // Roster for card display
       const clubRegulars = regularsByClub.get(s.clubId) ?? new Set<bigint>();
 
-      const roster = s.rosters.slice(0, ROSTER_CAP).map((r) => ({
-        displayName: r.player?.displayName ?? "Player",
-        imageUrl:
-          r.player?.imageUrl ?? reclubAvatarUrl(r.player?.userId ?? r.userId),
-        duprDoubles:
-          r.player?.duprDoubles != null ? Number(r.player.duprDoubles) : null,
-        isHost: r.isHost,
-      }));
+      const roster = s.rosters.slice(0, ROSTER_CAP).map((r) => {
+        const uid = (r.player?.userId ?? r.userId).toString();
+        return {
+          userId: uid,
+          displayName: r.player?.displayName ?? "Player",
+          imageUrl:
+            r.player?.imageUrl ?? reclubAvatarUrl(r.player?.userId ?? r.userId),
+          duprDoubles:
+            r.player?.duprDoubles != null ? Number(r.player.duprDoubles) : null,
+          isHost: r.isHost,
+          isFollowing: followedPlayerIds.has(uid),
+        };
+      });
 
       const regulars = s.rosters
         .filter((r) => !r.isHost && clubRegulars.has(r.userId))

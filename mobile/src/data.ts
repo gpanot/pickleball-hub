@@ -1,10 +1,24 @@
 export type VibeTag = 'social' | 'competitive' | 'chill'
 
 export type RosterPlayer = {
+  userId: string
   displayName: string
   imageUrl: string
   duprDoubles: number | null
   isHost: boolean
+  isFollowing?: boolean
+}
+
+/** Average DUPR of players with a valid rating (e.g. top 6 on a card). */
+export function averageDupr(
+  players: { duprDoubles: number | null }[],
+): number | null {
+  const vals = players
+    .map((p) => p.duprDoubles)
+    .filter((d): d is number => d != null && d > 0)
+  if (vals.length === 0) return null
+  const avg = vals.reduce((a, b) => a + b, 0) / vals.length
+  return Math.round(avg * 100) / 100
 }
 
 export type RegularPlayer = {
