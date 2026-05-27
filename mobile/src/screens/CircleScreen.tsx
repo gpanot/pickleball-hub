@@ -528,18 +528,23 @@ export function CircleScreen({ onOpenGear, gearSaved }: { onOpenGear?: () => voi
             <ActivityIndicator color={T.amber} style={{ marginTop: 40 }} />
           )}
 
-          {/* Presence banners — 70/30 side-by-side row, no scrolling */}
+          {/* Presence banners — 70/30 header row + full-width expanded content below */}
           {presence && (presence.totalLive > 0 || (presence.upcomingVenues?.length ?? 0) > 0) && (
-            <View style={styles.presenceBannerRail}>
-              {/* On Court card — flex 7 when both present, flex 1 alone */}
-              {presence.totalLive > 0 && (
-                <View style={[
-                  styles.presenceBanner,
-                  (presence.upcomingVenues?.length ?? 0) > 0 ? { flex: 7 } : { flex: 1 },
-                ]}>
+            <View style={styles.presenceBannerWrap}>
+              {/* Header row — always visible, 70/30 split */}
+              <View style={styles.presenceBannerRail}>
+                {/* On Court pill */}
+                {presence.totalLive > 0 && (
                   <TouchableOpacity
-                    style={styles.presenceBannerHeader}
-                    onPress={() => setPresenceExpanded((prev) => !prev)}
+                    style={[
+                      styles.presenceBanner,
+                      (presence.upcomingVenues?.length ?? 0) > 0 ? { flex: 7 } : { flex: 1 },
+                      presenceExpanded && styles.presenceBannerActive,
+                    ]}
+                    onPress={() => {
+                      setPresenceExpanded((prev) => !prev)
+                      setExpandedUpcomingId(null)
+                    }}
                     activeOpacity={0.8}
                   >
                     <View style={styles.presenceDot} />
@@ -556,66 +561,24 @@ export function CircleScreen({ onOpenGear, gearSaved }: { onOpenGear?: () => voi
                     <Text style={styles.presenceBannerCount}>{presence.totalLive}</Text>
                     <Text style={[styles.presenceChevron, presenceExpanded && styles.presenceChevronOpen]}>▾</Text>
                   </TouchableOpacity>
+                )}
 
-                  {presenceExpanded && (
-                    <View style={styles.presenceVenueList}>
-                      {presence.liveVenues.map((venue: any, index: number) => {
-                        const minsLeft = Math.floor(
-                          (new Date(venue.endTime).getTime() - Date.now()) / 60000
-                        )
-                        const endingSoon = minsLeft > 0 && minsLeft <= 60
-                        const friendName =
-                          venue.players?.[0]?.displayName?.split(' ')[0] ?? 'Someone'
-                        const extraFriends =
-                          venue.circleCount > 1 ? ` +${venue.circleCount - 1} more` : ''
-                        return (
-                          <View
-                            key={venue.sessionId}
-                            style={[
-                              styles.presenceVenueRow,
-                              index === presence.liveVenues.length - 1 && { borderBottomWidth: 0 },
-                            ]}
-                          >
-                            <View style={styles.presenceVenueLeft}>
-                              <Text style={styles.presenceVenueName} numberOfLines={1}>
-                                {venue.venueName}
-                              </Text>
-                              <Text style={styles.presenceVenueWho}>
-                                {friendName}{extraFriends}
-                              </Text>
-                            </View>
-                            <View style={styles.presenceVenueRight}>
-                              {endingSoon ? (
-                                <View style={styles.endingSoonPill}>
-                                  <Text style={styles.endingSoonText}>⚡ {minsLeft}m</Text>
-                                </View>
-                              ) : (
-                                <Text style={styles.endsAtText}>
-                                  {formatClock(venue.endTime)}
-                                </Text>
-                              )}
-                            </View>
-                          </View>
-                        )
-                      })}
-                    </View>
-                  )}
-                </View>
-              )}
-
-              {/* Playing Soon card — flex 3 when both present, flex 1 alone */}
-              {(presence.upcomingVenues?.length ?? 0) > 0 && (() => {
-                const totalSoon = presence.upcomingVenues.reduce(
-                  (acc: number, v: any) => acc + (v.circleCount ?? 1), 0
-                )
-                return (
-                  <View style={[
-                    styles.soonBanner,
-                    presence.totalLive > 0 ? { flex: 3 } : { flex: 1 },
-                  ]}>
+                {/* Playing Soon pill */}
+                {(presence.upcomingVenues?.length ?? 0) > 0 && (() => {
+                  const totalSoon = presence.upcomingVenues.reduce(
+                    (acc: number, v: any) => acc + (v.circleCount ?? 1), 0
+                  )
+                  return (
                     <TouchableOpacity
-                      style={styles.soonBannerHeader}
-                      onPress={() => setExpandedUpcomingId(expandedUpcomingId === -1 ? null : -1)}
+                      style={[
+                        styles.soonBanner,
+                        presence.totalLive > 0 ? { flex: 3 } : { flex: 1 },
+                        expandedUpcomingId === -1 && styles.soonBannerActive,
+                      ]}
+                      onPress={() => {
+                        setExpandedUpcomingId(expandedUpcomingId === -1 ? null : -1)
+                        setPresenceExpanded(false)
+                      }}
                       activeOpacity={0.8}
                     >
                       <View style={styles.soonDot} />
@@ -629,41 +592,58 @@ export function CircleScreen({ onOpenGear, gearSaved }: { onOpenGear?: () => voi
                       </View>
                       <Text style={[styles.soonChevron, expandedUpcomingId === -1 && styles.presenceChevronOpen]}>▾</Text>
                     </TouchableOpacity>
+                  )
+                })()}
+              </View>
 
-                    {expandedUpcomingId === -1 && (
-                      <View style={styles.presenceVenueList}>
-                        {presence.upcomingVenues.map((venue: any, index: number) => {
-                          const friendName =
-                            venue.players?.[0]?.displayName?.split(' ')[0] ?? 'Someone'
-                          return (
-                            <View
-                              key={venue.sessionId}
-                              style={[
-                                styles.presenceVenueRow,
-                                index === presence.upcomingVenues.length - 1 && { borderBottomWidth: 0 },
-                              ]}
-                            >
-                              <View style={styles.presenceVenueLeft}>
-                                <Text style={styles.soonVenueName} numberOfLines={1}>
-                                  {venue.venueName}
-                                </Text>
-                                <Text style={[styles.presenceVenueWho, { color: '#a06000' }]}>
-                                  {friendName}
-                                </Text>
-                              </View>
-                              <View style={styles.presenceVenueRight}>
-                                <Text style={styles.soonStartsAt}>
-                                  {formatClock(venue.startTime)}
-                                </Text>
-                              </View>
-                            </View>
-                          )
-                        })}
+              {/* Expanded: On Court — full width, PresenceCard per venue */}
+              {presenceExpanded && presence.totalLive > 0 && (
+                <View style={styles.presenceExpandedWrap}>
+                  {presence.liveVenues.map((venue: any) => (
+                    <PresenceCard
+                      key={venue.sessionId}
+                      venue={venue}
+                      onPlayerPress={(userId) => setSelectedPlayerId(userId)}
+                    />
+                  ))}
+                </View>
+              )}
+
+              {/* Expanded: Playing Soon — full width, venue rows */}
+              {expandedUpcomingId === -1 && (presence.upcomingVenues?.length ?? 0) > 0 && (
+                <View style={[styles.presenceExpandedWrap, styles.soonExpandedWrap]}>
+                  {presence.upcomingVenues.map((venue: any, index: number) => {
+                    const friendName =
+                      venue.players?.[0]?.displayName?.split(' ')[0] ?? 'Someone'
+                    const extraFriends =
+                      venue.circleCount > 1 ? ` +${venue.circleCount - 1} more` : ''
+                    return (
+                      <View
+                        key={venue.sessionId}
+                        style={[
+                          styles.presenceVenueRow,
+                          styles.presenceVenueRowSoon,
+                          index === presence.upcomingVenues.length - 1 && { borderBottomWidth: 0 },
+                        ]}
+                      >
+                        <View style={styles.presenceVenueLeft}>
+                          <Text style={styles.soonVenueName} numberOfLines={1}>
+                            {venue.venueName}
+                          </Text>
+                          <Text style={[styles.presenceVenueWho, { color: '#a06000' }]}>
+                            {friendName}{extraFriends} from your circle
+                          </Text>
+                        </View>
+                        <View style={styles.presenceVenueRight}>
+                          <Text style={styles.soonStartsAt}>
+                            Starts {formatClock(venue.startTime)}
+                          </Text>
+                        </View>
                       </View>
-                    )}
-                  </View>
-                )
-              })()}
+                    )
+                  })}
+                </View>
+              )}
             </View>
           )}
 
@@ -1113,12 +1093,27 @@ const styles = StyleSheet.create({
     color: T.amber,
     lineHeight: 17,
   },
-  presenceBannerRail: {
-    flexDirection: 'row',
+  presenceBannerWrap: {
     marginHorizontal: 12,
     marginBottom: 10,
+  },
+  presenceBannerRail: {
+    flexDirection: 'row',
     gap: 6,
-    alignItems: 'flex-start',
+    alignItems: 'stretch',
+  },
+  presenceBannerActive: {
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
+  },
+  presenceExpandedWrap: {
+    backgroundColor: '#0a1f0a',
+    borderWidth: 0.5,
+    borderTopWidth: 0,
+    borderColor: '#1D9E75',
+    borderBottomLeftRadius: 12,
+    borderBottomRightRadius: 12,
+    overflow: 'hidden',
   },
   soonBanner: {
     backgroundColor: '#1a1200',
@@ -1126,12 +1121,28 @@ const styles = StyleSheet.create({
     borderColor: '#7a5000',
     borderRadius: 12,
     overflow: 'hidden',
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 10,
+    gap: 6,
+  },
+  soonBannerActive: {
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
   },
   soonBannerHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     padding: 10,
     gap: 8,
+  },
+  presenceVenueRowSoon: {
+    backgroundColor: '#1a1200',
+    borderBottomColor: 'rgba(122,80,0,0.15)',
+  },
+  soonExpandedWrap: {
+    backgroundColor: '#1a1200',
+    borderColor: '#7a5000',
   },
   soonDot: {
     width: 8,
@@ -1176,6 +1187,10 @@ const styles = StyleSheet.create({
     borderColor: '#1D9E75',
     borderRadius: 12,
     overflow: 'hidden',
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 10,
+    gap: 8,
   },
   presenceBannerHeader: {
     flexDirection: 'row',
