@@ -31,7 +31,10 @@ export function GearTeaserCard({ height = 230, onPress, gearSaved }: Props) {
   }, [])
 
   useEffect(() => {
-    if (gearSaved) setVisible(false)
+    if (gearSaved) {
+      setVisible(false)
+      AsyncStorage.setItem(GEAR_PROMPT_KEY, 'done').catch(() => {})
+    }
   }, [gearSaved])
 
   useEffect(() => {
@@ -135,7 +138,7 @@ const s = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: 'rgba(0,0,0,0.45)',
+    backgroundColor: 'rgba(0,0,0,0.35)',
     zIndex: 2,
   },
   overlayRight: {
