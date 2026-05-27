@@ -1224,8 +1224,52 @@ const styles = StyleSheet.create({
   presenceVenueList: {
     borderTopWidth: 0.5,
     borderTopColor: 'rgba(29,158,117,0.2)',
-    paddingTop: 8,
+    paddingTop: 4,
     paddingBottom: 4,
+  },
+  presenceVenueRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderBottomWidth: 0.5,
+    borderBottomColor: 'rgba(29,158,117,0.1)',
+  },
+  presenceVenueLeft: {
+    flex: 1,
+    marginRight: 8,
+  },
+  presenceVenueName: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#5DCAA5',
+  },
+  presenceVenueWho: {
+    fontSize: 9,
+    color: '#0F6E56',
+    marginTop: 1,
+  },
+  presenceVenueRight: {
+    flexShrink: 0,
+    alignItems: 'flex-end',
+  },
+  endingSoonPill: {
+    backgroundColor: '#1f1400',
+    borderWidth: 0.5,
+    borderColor: '#f5a623',
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  endingSoonText: {
+    fontSize: 9,
+    color: '#f5a623',
+    fontWeight: '500',
+  },
+  endsAtText: {
+    fontSize: 9,
+    color: '#2a5a3a',
   },
   noOneLive: {
     marginHorizontal: 12,
