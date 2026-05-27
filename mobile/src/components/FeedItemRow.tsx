@@ -46,6 +46,7 @@ interface Props {
   isLive?: boolean
   showAvatarTip?: boolean
   onDismissTip?: () => void
+  onShowRoster?: (sessionId: number) => void
 }
 
 export function FeedItemRow({
@@ -55,6 +56,7 @@ export function FeedItemRow({
   isLive,
   showAvatarTip,
   onDismissTip,
+  onShowRoster,
 }: Props) {
   const name = item.player.displayName ?? 'Player'
   const dupr = item.player.duprDoubles?.toFixed(2) ?? '–'
@@ -274,6 +276,33 @@ export function FeedItemRow({
               </View>
             </View>
           </>
+        )}
+
+        {item.type === 'played_today' && (
+          <Text style={s.action}>
+            just finished playing at{' '}
+            <Text style={s.highlight}>{item.venueName}</Text>
+            {' '}· give them some kudos 🤜
+          </Text>
+        )}
+
+        {item.type === 'you_are_playing' && (
+          <View>
+            <Text style={s.action}>
+              You are playing at{' '}
+              <Text style={[s.highlight, { color: T.green }]}>{item.venueName}</Text>
+            </Text>
+            <Text style={s.youPlayingSub}>
+              Want to check the best players and follow them?
+            </Text>
+            <TouchableOpacity
+              style={s.showMeBtn}
+              onPress={() => item.sessionId != null && onShowRoster?.(item.sessionId)}
+              activeOpacity={0.85}
+            >
+              <Text style={s.showMeBtnText}>Show me</Text>
+            </TouchableOpacity>
+          </View>
         )}
 
         <View style={s.footerRow}>
@@ -542,5 +571,23 @@ const s = StyleSheet.create({
     color: 'rgba(26,10,0,0.45)',
     textAlign: 'center',
     marginTop: 3,
+  },
+  youPlayingSub: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 3,
+    marginBottom: 8,
+  },
+  showMeBtn: {
+    alignSelf: 'flex-start',
+    backgroundColor: T.green,
+    borderRadius: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  showMeBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#fff',
   },
 })

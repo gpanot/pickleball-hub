@@ -93,6 +93,8 @@ export const RING_COLORS = ['#7F77DD', '#1D9E75', '#D4537E', '#f5a623']
 export type FeedItemType =
   | 'joining'
   | 'played'
+  | 'played_today'
+  | 'you_are_playing'
   | 'dupr_update'
   | 'just_followed'
   | 'streak_milestone'

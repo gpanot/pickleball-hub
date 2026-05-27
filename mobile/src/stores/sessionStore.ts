@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { useAuthStore } from './authStore'
+import { useUiStore } from './uiStore'
 import { debugLog, debugError } from '../lib/debug'
 import type { Session } from '../data'
 
@@ -26,7 +27,7 @@ interface SessionState {
   currentIdx: number
   swipeHistory: number[]
 
-  fetchSessions: (lat?: number | null, lng?: number | null, date?: string) => Promise<void>
+  fetchSessions: (lat?: number | null, lng?: number | null, date?: string, filters?: { duprMin?: number; timeSlots?: string[]; maxCards?: number; rangeKm?: number | null }) => Promise<void>
   fetchIfNeeded: (lat?: number | null, lng?: number | null, date?: string) => Promise<void>
   prefetchNextBatch: (date?: string) => Promise<void>
   saveSession: (id: number) => void
@@ -58,17 +59,26 @@ export const useSessionStore = create<SessionState>()((set, get) => ({
   currentIdx: 0,
   swipeHistory: [],
 
-  fetchSessions: async (lat, lng, date) => {
+  fetchSessions: async (lat, lng, date, filters) => {
     set({ loading: true, error: null })
     try {
       const { authedFetch } = useAuthStore.getState()
+      // Use explicit filter overrides when provided (avoids Zustand batching race), else read store
+      const { swipeDuprMin, swipeTimeSlots, swipeMaxCards, swipeRangeKm } = useUiStore.getState()
+      const duprMin = filters?.duprMin ?? swipeDuprMin
+      const timeSlots = filters?.timeSlots ?? swipeTimeSlots
+      const maxCards = filters?.maxCards ?? swipeMaxCards
+      const rangeKm = filters?.rangeKm !== undefined ? filters.rangeKm : swipeRangeKm
       const params = new URLSearchParams()
       if (lat != null && lng != null) {
         params.set('lat', lat.toString())
         params.set('lng', lng.toString())
       }
       if (date) params.set('date', date)
-      params.set('limit', PAGE_SIZE.toString())
+      if (duprMin > 0) params.set('duprMin', duprMin.toString())
+      if (Array.isArray(timeSlots) && timeSlots.length > 0 && timeSlots.length < 3) params.set('timeSlots', timeSlots.join(','))
+      if (rangeKm != null) params.set('rangeKm', rangeKm.toString())
+      params.set('limit', maxCards.toString())
       params.set('offset', '0')
       const path = `/api/sessions/swipe-deck?${params.toString()}`
       debugLog('sessions', `fetchSessions → ${path}`)
@@ -100,7 +110,8 @@ export const useSessionStore = create<SessionState>()((set, get) => ({
         swipeHistory: [],
         hasMore: data.hasMore ?? false,
         nextOffset: PAGE_SIZE,
-        totalCount: data.total ?? null,
+        // Use filteredTotal if available (last page), otherwise show sessions.length as floor estimate
+        totalCount: data.filteredTotal != null ? data.filteredTotal : sessions.length,
         _lastLat: lat ?? null,
         _lastLng: lng ?? null,
         _lastDate: date,
@@ -127,6 +138,7 @@ export const useSessionStore = create<SessionState>()((set, get) => ({
     set({ prefetching: true })
     try {
       const { authedFetch } = useAuthStore.getState()
+      const { swipeDuprMin, swipeTimeSlots, swipeMaxCards, swipeRangeKm } = useUiStore.getState()
       const params = new URLSearchParams()
       if (_lastLat != null && _lastLng != null) {
         params.set('lat', _lastLat.toString())
@@ -134,7 +146,10 @@ export const useSessionStore = create<SessionState>()((set, get) => ({
       }
       const resolvedDate = date ?? _lastDate
       if (resolvedDate) params.set('date', resolvedDate)
-      params.set('limit', PAGE_SIZE.toString())
+      if (swipeDuprMin > 0) params.set('duprMin', swipeDuprMin.toString())
+      if (swipeTimeSlots.length > 0 && swipeTimeSlots.length < 3) params.set('timeSlots', swipeTimeSlots.join(','))
+      if (swipeRangeKm != null) params.set('rangeKm', swipeRangeKm.toString())
+      params.set('limit', swipeMaxCards.toString())
       params.set('offset', nextOffset.toString())
       const path = `/api/sessions/swipe-deck?${params.toString()}`
       debugLog('sessions', `prefetchNextBatch → ${path}`)
@@ -152,7 +167,7 @@ export const useSessionStore = create<SessionState>()((set, get) => ({
         sessions: [...state.sessions, ...filtered],
         hasMore: data.hasMore ?? false,
         nextOffset: nextOffset + PAGE_SIZE,
-        totalCount: data.total ?? state.totalCount,
+        totalCount: data.filteredTotal != null ? data.filteredTotal : state.totalCount,
         prefetching: false,
       }))
     } catch (err) {

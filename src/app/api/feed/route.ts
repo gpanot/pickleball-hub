@@ -154,17 +154,37 @@ export async function GET(req: NextRequest) {
       },
       session: {
         select: {
+          id: true,
+          name: true,
           startTime: true,
+          endTime: true,
           scrapedDate: true,
           club: { select: { name: true } },
         },
       },
     },
-    orderBy: { session: { scrapedDate: "desc" } },
+    orderBy: { session: { startTime: "desc" } },
     take: 20,
   });
 
-  // Group by player+club, count sessions, keep most recent date
+  // played_today: distinct item per (followee, session) for sessions finished today
+  const seenTodayKeys = new Set<string>();
+  for (const r of todayCompletedRosters) {
+    const key = `${r.userId}_${r.sessionId}`;
+    if (seenTodayKeys.has(key)) continue;
+    seenTodayKeys.add(key);
+    items.push({
+      id: `played_today_${r.userId}_${r.sessionId}`,
+      type: "played_today",
+      player: toPlayerPayload(r.player),
+      isFollowing: true,
+      timestamp: `${r.session.scrapedDate}T${r.session.startTime}:00`,
+      venueName: r.session.club.name,
+      sessionId: r.session.id,
+    });
+  }
+
+  // Group past sessions (not today) by player+club for "played" aggregated items
   const playedMap = new Map<
     string,
     {
@@ -175,7 +195,7 @@ export async function GET(req: NextRequest) {
     }
   >();
 
-  for (const r of [...recentRosters, ...todayCompletedRosters]) {
+  for (const r of recentRosters) {
     const key = `${r.userId}_${r.session.club.name}`;
     const existing = playedMap.get(key);
     if (existing) {
@@ -200,6 +220,50 @@ export async function GET(req: NextRequest) {
       venueName: v.venueName,
       sessionCount: v.count,
     });
+  }
+
+  // "you_are_playing": current user is on a live session right now
+  if (user.reclubUserId) {
+    const myLiveRoster = await prisma.sessionRoster.findFirst({
+      where: {
+        userId: user.reclubUserId,
+        session: {
+          scrapedDate: todayStr,
+          startTime: { lte: nowTimeVN },
+          endTime: { gt: nowTimeVN },
+        },
+      },
+      include: {
+        session: {
+          select: {
+            id: true,
+            name: true,
+            eventUrl: true,
+            club: { select: { name: true } },
+          },
+        },
+      },
+    });
+
+    if (myLiveRoster) {
+      const myProfile = await prisma.player.findUnique({
+        where: { userId: user.reclubUserId },
+        select: { userId: true, displayName: true, imageUrl: true, duprDoubles: true },
+      });
+      if (myProfile) {
+        items.push({
+          id: `you_are_playing_${myLiveRoster.sessionId}`,
+          type: "you_are_playing",
+          player: toPlayerPayload(myProfile),
+          isFollowing: false,
+          timestamp: new Date().toISOString(),
+          sessionId: myLiveRoster.session.id,
+          sessionName: myLiveRoster.session.name,
+          venueName: myLiveRoster.session.club.name,
+          eventUrl: myLiveRoster.session.eventUrl,
+        });
+      }
+    }
   }
 
   const MILESTONE_WEEKS = [4, 8, 12, 26, 52];
@@ -338,8 +402,10 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // Sort: joining first, then by timestamp desc
+  // Sort: you_are_playing first, then joining, then by timestamp desc
   items.sort((a, b) => {
+    if (a.type === "you_are_playing") return -1;
+    if (b.type === "you_are_playing") return 1;
     if (a.type === "joining" && b.type !== "joining") return -1;
     if (b.type === "joining" && a.type !== "joining") return 1;
     return (
@@ -347,10 +413,11 @@ export async function GET(req: NextRequest) {
     );
   });
 
-  // Max 2 items per player (follow events are exempt — always show)
+  // Max 2 items per player (follow events + played_today + you_are_playing are exempt)
+  const EXEMPT_TYPES = new Set(["just_followed", "new_follower", "played_today", "you_are_playing"]);
   const playerCount = new Map<string, number>();
   const filtered = items.filter((item) => {
-    if (item.type === "just_followed" || item.type === "new_follower") return true;
+    if (EXEMPT_TYPES.has(item.type)) return true;
     const uid = item.player.userId;
     const count = playerCount.get(uid) ?? 0;
     if (count >= 2) return false;

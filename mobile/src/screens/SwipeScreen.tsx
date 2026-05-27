@@ -42,12 +42,13 @@ import { SignInPrompt } from '../components/SignInPrompt'
 import { useAuthStore } from '../stores/authStore'
 import { useSessionStore } from '../stores/sessionStore'
 import { useUiStore } from '../stores/uiStore'
-import type { SwipeDateFilter } from '../stores/uiStore'
+import type { SwipeDateFilter, TimeSlotKey, SwipeMaxCards } from '../stores/uiStore'
 import { FriendsListModal } from '../components/FriendsListModal'
 import type { FriendListItem } from '../components/FriendListRow'
 import { FriendGoingCard } from '../components/FriendGoingCard'
 import type { FriendGoingItem } from '../components/FriendGoingCard'
 import { debugLog } from '../lib/debug'
+import Slider from '@react-native-community/slider'
 
 /* eslint-disable @typescript-eslint/no-var-requires */
 const CARD_BG_IMAGES = [
@@ -259,8 +260,8 @@ function AnimatedSwipeCard({
 
 /* ── SecondaryCard ───────────────────────────────────────────── */
 function SecondaryCard({ s }: { s: Session }) {
-  const isNew = s.matchScore === 0
-  const mc = isNew
+  const showScore = s.matchScore >= 50
+  const mc = !showScore
     ? '#666'
     : s.matchScore >= 85
       ? T.amber
@@ -332,22 +333,24 @@ function SecondaryCard({ s }: { s: Session }) {
           )}
         </View>
         <View style={{ alignItems: 'flex-end' }}>
-          <Text style={{ fontSize: 20, fontWeight: '700', color: mc, lineHeight: 22 }}>
-            {isNew ? 'New' : `${s.matchScore}%`}
-          </Text>
-          {!isNew && (
-            <Text
-              style={{
-                fontSize: 9,
-                color: 'rgba(255,255,255,0.3)',
-                textTransform: 'uppercase',
-                letterSpacing: 0.8,
-                marginTop: 2,
-              }}
-            >
-              Match
-            </Text>
-          )}
+          {showScore ? (
+            <>
+              <Text style={{ fontSize: 20, fontWeight: '700', color: mc, lineHeight: 22 }}>
+                {s.matchScore}%
+              </Text>
+              <Text
+                style={{
+                  fontSize: 9,
+                  color: 'rgba(255,255,255,0.3)',
+                  textTransform: 'uppercase',
+                  letterSpacing: 0.8,
+                  marginTop: 2,
+                }}
+              >
+                Match
+              </Text>
+            </>
+          ) : null}
         </View>
       </View>
     </View>
@@ -382,6 +385,23 @@ export function SwipeScreen({ onOpenGearSheet, gearSaved }: { onOpenGearSheet?: 
   const [refreshing, setRefreshing] = useState(false)
   const dateFilter = useUiStore((s) => s.swipeDateFilter)
   const setDateFilter = useUiStore((s) => s.setSwipeDateFilter)
+  const swipeDuprMin = useUiStore((s) => s.swipeDuprMin)
+  const setSwipeDuprMin = useUiStore((s) => s.setSwipeDuprMin)
+  const swipeTimeSlots = useUiStore((s) => s.swipeTimeSlots)
+  const setSwipeTimeSlots = useUiStore((s) => s.setSwipeTimeSlots)
+  const swipeMaxCards = useUiStore((s) => s.swipeMaxCards)
+  const setSwipeMaxCards = useUiStore((s) => s.setSwipeMaxCards)
+  const swipeRangeKm = useUiStore((s) => s.swipeRangeKm)
+  const setSwipeRangeKm = useUiStore((s) => s.setSwipeRangeKm)
+  const [filterModalVisible, setFilterModalVisible] = useState(false)
+  const [filterOpenKey, setFilterOpenKey] = useState(0)
+  const [draftDupr, setDraftDupr] = useState(swipeDuprMin)
+  const [slidingDupr, setSlidingDupr] = useState(swipeDuprMin)
+  const [draftTimeSlots, setDraftTimeSlots] = useState<TimeSlotKey[]>(swipeTimeSlots)
+  const [draftMaxCards, setDraftMaxCards] = useState(swipeMaxCards)
+  const [draftRangeKm, setDraftRangeKm] = useState<number | null>(swipeRangeKm)
+  const [vibeFilter, setVibeFilter] = useState<'social' | 'competitive' | null>(null)
+  const [spotsOnly, setSpotsOnly] = useState(false)
   const [viewIdx, setViewIdx] = useState(0)
   const [viewHistory, setViewHistory] = useState<{ id: number; saved: boolean }[]>([])
   const [friendsModal, setFriendsModal] = useState<{
@@ -481,10 +501,10 @@ export function SwipeScreen({ onOpenGearSheet, gearSaved }: { onOpenGearSheet?: 
     const topPlayers = session.roster
       .filter((p) => p.duprDoubles != null && p.duprDoubles > 0)
       .sort((a, b) => (b.duprDoubles ?? 0) - (a.duprDoubles ?? 0))
-      .slice(0, 3)
+      .slice(0, 6)
     setFriendsModal({
       visible: true,
-      title: 'Top 3 DUPR joining',
+      title: 'Top 6 DUPR joining',
       friends: topPlayers.map((p, i) => ({
         userId: `dupr-${i}`,
         displayName: p.displayName,
@@ -495,14 +515,11 @@ export function SwipeScreen({ onOpenGearSheet, gearSaved }: { onOpenGearSheet?: 
   }, [signedIn])
 
   const displayDeck = useMemo(() => {
-    const withFriends = deck.filter((s) => s.friendCount > 0).sort((a, b) => b.friendCount - a.friendCount)
-    const withoutFriends = deck.filter((s) => s.friendCount === 0)
-    debugLog('Discover', `deck=${deck.length} withFriends=${withFriends.length} dateFilter=${dateFilter}`)
-    withFriends.forEach((s) => {
-      debugLog('Discover', `  → [FRIEND] "${s.name}" startTime=${s.startTime} friendCount=${s.friendCount} friends=${s.friends.map((f) => f.displayName).join(', ')}`)
-    })
-    return [...withFriends, ...withoutFriends]
-  }, [deck, dateFilter])
+    let result = deck
+    if (vibeFilter) result = result.filter(s => s.vibeTag === vibeFilter)
+    if (spotsOnly) result = result.filter(s => s.spotsLeft >= 3)
+    return result
+  }, [deck, vibeFilter, spotsOnly])
 
   useEffect(() => {
     setViewIdx(0)
@@ -641,7 +658,7 @@ export function SwipeScreen({ onOpenGearSheet, gearSaved }: { onOpenGearSheet?: 
       {/* ── Discover tab ─────────────────────────────────────── */}
       {playTab === 'discover' && (
         <>
-          {/* Date filter pills */}
+          {/* Date filter pills + filter button */}
           <View
             style={{
               flexDirection: 'row',
@@ -672,7 +689,32 @@ export function SwipeScreen({ onOpenGearSheet, gearSaved }: { onOpenGearSheet?: 
                 </TouchableOpacity>
               )
             })}
+            <View style={{ flex: 1 }} />
+            {/* Filter pill */}
+            {(() => {
+              const activeCount = (swipeDuprMin !== 3.0 ? 1 : 0) + (swipeTimeSlots.length < 3 ? 1 : 0) + (swipeMaxCards !== 20 ? 1 : 0) + (vibeFilter ? 1 : 0) + (spotsOnly ? 1 : 0) + (swipeRangeKm != null ? 1 : 0)
+              return (
+                <TouchableOpacity
+                  onPress={() => {
+                    setDraftDupr(swipeDuprMin)
+                    setSlidingDupr(swipeDuprMin)
+                    setDraftTimeSlots([...swipeTimeSlots])
+                    setDraftMaxCards(swipeMaxCards)
+                    setDraftRangeKm(swipeRangeKm)
+                    setFilterOpenKey(k => k + 1)
+                    setFilterModalVisible(true)
+                  }}
+                  style={[s.filterPill, activeCount > 0 && s.filterPillActive]}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[s.filterPillText, activeCount > 0 && s.filterPillTextActive]}>
+                    ⚡ Filters{activeCount > 0 ? ` · ${activeCount}` : ''}
+                  </Text>
+                </TouchableOpacity>
+              )
+            })()}
           </View>
+
 
           {loading && total === 0 && !error ? (
             <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
@@ -765,7 +807,7 @@ export function SwipeScreen({ onOpenGearSheet, gearSaved }: { onOpenGearSheet?: 
                 current && (
                   <>
                     <AnimatedSwipeCard
-                      key={current.id}
+                      key={`card-${viewIdx}-${current.id}`}
                       s={current}
                       onSkip={handleSkip}
                       onSave={handleSave}
@@ -861,7 +903,7 @@ export function SwipeScreen({ onOpenGearSheet, gearSaved }: { onOpenGearSheet?: 
                         </Text>
                         <View style={{ gap: 10 }}>
                           {upNext.map((sess, i) => (
-                            <View key={sess.id} style={{ opacity: 1 - i * 0.2 }}>
+                            <View key={`upnext-${viewIdx + 1 + i}-${sess.id}`} style={{ opacity: 1 - i * 0.2 }}>
                               <SecondaryCard s={sess} />
                             </View>
                           ))}
@@ -996,7 +1038,7 @@ export function SwipeScreen({ onOpenGearSheet, gearSaved }: { onOpenGearSheet?: 
                     >
                       <View style={s.savedThumb}>
                           <Text style={s.savedThumbPct} numberOfLines={1}>
-                            {item.matchScore > 0 ? `${item.matchScore}%` : 'New'}
+                            {item.matchScore >= 50 ? `${item.matchScore}%` : '—'}
                           </Text>
                         </View>
                         <View style={s.savedInfo}>
@@ -1092,6 +1134,192 @@ export function SwipeScreen({ onOpenGearSheet, gearSaved }: { onOpenGearSheet?: 
         friends={friendsModal.friends}
         overflowNote={friendsModal.overflowNote}
       />
+
+      {/* Filter overlay — root-level so it always covers the full screen */}
+      {filterModalVisible && (
+        <View style={s.filterHost} pointerEvents="box-none">
+          <Pressable style={s.filterBackdrop} onPress={() => setFilterModalVisible(false)} />
+          <View style={s.filterSheet} pointerEvents="auto">
+            <View style={s.filterHandle} />
+
+            {/* Header */}
+            <View style={s.filterHeader}>
+              <Text style={s.filterTitle}>Filters</Text>
+              <View style={s.filterHeaderRight}>
+                <TouchableOpacity
+                  onPress={() => {
+                    setDraftDupr(3.0)
+                    setSlidingDupr(3.0)
+                    setDraftTimeSlots(['morning', 'afternoon', 'evening'])
+                    setDraftRangeKm(null)
+                    setVibeFilter(null)
+                    setSpotsOnly(false)
+                  }}
+                >
+                  <Text style={s.filterReset}>Reset</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={s.filterClose} onPress={() => setFilterModalVisible(false)}>
+                  <X size={16} color="#555" />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 8 }}>
+              {/* DUPR slider */}
+              <View style={s.filterSection}>
+                <View style={s.filterSectionRow}>
+                  <Text style={s.filterLabel}>Min DUPR</Text>
+                  <Text style={s.filterValue}>{slidingDupr.toFixed(1)}+</Text>
+                </View>
+                <Slider
+                  key={`slider-${filterOpenKey}`}
+                  style={{ width: '100%', height: 32 }}
+                  minimumValue={2.0}
+                  maximumValue={6.0}
+                  step={0.1}
+                  value={draftDupr}
+                  onValueChange={(val) => setSlidingDupr(Math.round(val * 10) / 10)}
+                  onSlidingComplete={(val) => {
+                    const rounded = Math.round(val * 10) / 10
+                    setSlidingDupr(rounded)
+                    setDraftDupr(rounded)
+                  }}
+                  minimumTrackTintColor={T.amber}
+                  maximumTrackTintColor="#1e1e1e"
+                  thumbTintColor={T.amber}
+                />
+                <View style={s.sliderLabels}>
+                  {['2.0', '3.0', '4.0', '5.0', '6.0'].map(l => (
+                    <Text key={l} style={s.sliderLabel}>{l}</Text>
+                  ))}
+                </View>
+              </View>
+
+              {/* Time of day */}
+              <View style={s.filterSection}>
+                <Text style={s.filterLabel}>Time of day</Text>
+                <View style={s.filterChipRow}>
+                  {([
+                    { key: 'morning' as TimeSlotKey, label: 'Morning', sub: 'Before 12h' },
+                    { key: 'afternoon' as TimeSlotKey, label: 'Afternoon', sub: '12h — 17h' },
+                    { key: 'evening' as TimeSlotKey, label: 'Evening', sub: 'After 17h' },
+                  ]).map(t => {
+                    const on = draftTimeSlots.includes(t.key)
+                    return (
+                      <TouchableOpacity
+                        key={t.key}
+                        style={[s.filterTimeBtn, on && s.filterTimeBtnOn]}
+                        onPress={() => setDraftTimeSlots(prev =>
+                          prev.includes(t.key)
+                            ? prev.filter(k => k !== t.key).length > 0 ? prev.filter(k => k !== t.key) : prev
+                            : [...prev, t.key]
+                        )}
+                      >
+                        <Text style={[s.filterTimeLbl, on && s.filterTimeLblOn]}>{t.label}</Text>
+                        <Text style={[s.filterTimeSub, on && s.filterTimeSubOn]}>{t.sub}</Text>
+                      </TouchableOpacity>
+                    )
+                  })}
+                </View>
+              </View>
+
+              {/* Vibe */}
+              <View style={s.filterSection}>
+                <Text style={s.filterLabel}>Vibe</Text>
+                <View style={s.filterChipRow}>
+                  {([
+                    { key: 'social' as const, label: 'Social' },
+                    { key: 'competitive' as const, label: 'Competitive' },
+                  ]).map(v => (
+                    <TouchableOpacity
+                      key={v.key}
+                      style={[s.filterVibeBtn, vibeFilter === v.key && s.filterVibeBtnOn]}
+                      onPress={() => setVibeFilter(prev => prev === v.key ? null : v.key)}
+                    >
+                      <Text style={[s.filterVibeLbl, vibeFilter === v.key && s.filterVibeLblOn]}>{v.label}</Text>
+                    </TouchableOpacity>
+                  ))}
+                  <TouchableOpacity
+                    style={[s.filterVibeBtn, vibeFilter === null && s.filterVibeBtnOn]}
+                    onPress={() => setVibeFilter(null)}
+                  >
+                    <Text style={[s.filterVibeLbl, vibeFilter === null && s.filterVibeLblOn]}>Any</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {/* Distance range */}
+              <View style={s.filterSection}>
+                <Text style={s.filterLabel}>Max distance</Text>
+                <View style={s.filterChipRow}>
+                  {([null, 5, 10, 20, 30] as (number | null)[]).map((v) => (
+                    <TouchableOpacity
+                      key={v ?? 'any'}
+                      style={[s.filterVibeBtn, draftRangeKm === v && s.filterVibeBtnOn]}
+                      onPress={() => setDraftRangeKm(v)}
+                    >
+                      <Text style={[s.filterVibeLbl, draftRangeKm === v && s.filterVibeLblOn]}>
+                        {v == null ? 'Any' : `${v} km`}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              {/* Spots toggle */}
+              <View style={s.filterSection}>
+                <TouchableOpacity
+                  style={s.filterToggleRow}
+                  onPress={() => setSpotsOnly(prev => !prev)}
+                  activeOpacity={0.8}
+                >
+                  <View style={s.filterToggleLeft}>
+                    <Text style={s.filterToggleLbl}>3+ spots available only</Text>
+                    <Text style={s.filterToggleSub}>Hide sessions that are nearly full</Text>
+                  </View>
+                  <View style={[s.filterToggle, spotsOnly && s.filterToggleOn]}>
+                    <View style={[s.filterToggleDot, spotsOnly && s.filterToggleDotOn]} />
+                  </View>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+
+            {/* Apply */}
+            <TouchableOpacity
+              style={s.filterApply}
+              onPress={() => {
+                console.log(
+                  `\n[Filters] ─────────────────────────────\n` +
+                  `  DUPR min   : ${draftDupr.toFixed(1)}+\n` +
+                  `  Time slots : ${draftTimeSlots.join(', ')}\n` +
+                  `  Max dist   : ${draftRangeKm != null ? draftRangeKm + ' km' : 'any'}\n` +
+                  `  Max cards  : ${draftMaxCards}\n` +
+                  `  Vibe       : ${vibeFilter ?? 'any'}\n` +
+                  `  3+ spots   : ${spotsOnly ? 'ON' : 'off'}\n` +
+                  `────────────────────────────────────────`
+                )
+                // Commit to store for persistence
+                setSwipeDuprMin(draftDupr)
+                setSwipeTimeSlots(draftTimeSlots)
+                setSwipeMaxCards(draftMaxCards)
+                setSwipeRangeKm(draftRangeKm)
+                setFilterModalVisible(false)
+                const date = dateFilter === 'tomorrow' ? vnDateString(1) : undefined
+                // Pass draft values directly so the fetch doesn't race with Zustand batching
+                fetchSessions(locationRef.current.lat, locationRef.current.lng, date, {
+                  duprMin: draftDupr,
+                  timeSlots: draftTimeSlots,
+                  maxCards: draftMaxCards,
+                  rangeKm: draftRangeKm,
+                })
+              }}
+              activeOpacity={0.85}
+            >
+              <Text style={s.filterApplyText}>Apply Filters</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
     </View>
   )
 }
@@ -1387,5 +1615,241 @@ const s = StyleSheet.create({
     color: '#fff',
     fontSize: 13,
     fontWeight: '700',
+  },
+  // ── Filter overlay (root-level, same pattern as FriendsListModal) ───────────
+  filterHost: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 9000,
+    elevation: 9000,
+    justifyContent: 'flex-end',
+  },
+  filterBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+  },
+  filterSheet: {
+    backgroundColor: '#111',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 36,
+    borderWidth: 1,
+    borderColor: '#222',
+    maxHeight: '85%',
+  },
+  filterHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  // ── Filter pill ──────────────────────────────────────────────
+  filterPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    backgroundColor: 'rgba(245,166,35,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(245,166,35,0.25)',
+  },
+  filterPillActive: {
+    backgroundColor: T.amber,
+    borderColor: T.amber,
+  },
+  filterPillText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: T.amber,
+  },
+  filterPillTextActive: {
+    color: '#1a0a00',
+  },
+  filterHandle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#333',
+    alignSelf: 'center',
+    marginBottom: 4,
+  },
+  filterHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 18,
+    paddingTop: 12,
+    paddingBottom: 14,
+  },
+  filterTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  filterHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  filterReset: {
+    fontSize: 13,
+    color: T.amber,
+    fontWeight: '500',
+  },
+  filterClose: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#1a1a1a',
+    borderWidth: 0.5,
+    borderColor: '#2a2a2a',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  filterSection: {
+    paddingHorizontal: 18,
+    marginBottom: 22,
+  },
+  filterSectionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  filterLabel: {
+    fontSize: 11,
+    color: '#555',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    fontWeight: '500',
+    marginBottom: 10,
+  },
+  filterValue: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: T.amber,
+  },
+  sliderLabels: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 2,
+  },
+  sliderLabel: {
+    fontSize: 10,
+    color: '#333',
+  },
+  filterChipRow: {
+    flexDirection: 'row',
+    gap: 7,
+  },
+  filterTimeBtn: {
+    flex: 1,
+    backgroundColor: '#1a1a1a',
+    borderWidth: 0.5,
+    borderColor: '#2a2a2a',
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: 'center',
+    gap: 3,
+  },
+  filterTimeBtnOn: {
+    backgroundColor: '#1f1400',
+    borderColor: T.amber,
+  },
+  filterTimeLbl: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#555',
+  },
+  filterTimeLblOn: {
+    color: T.amber,
+  },
+  filterTimeSub: {
+    fontSize: 9,
+    color: '#2a2a2a',
+  },
+  filterTimeSubOn: {
+    color: T.amber,
+    opacity: 0.6,
+  },
+  filterVibeBtn: {
+    flex: 1,
+    backgroundColor: '#1a1a1a',
+    borderWidth: 0.5,
+    borderColor: '#2a2a2a',
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  filterVibeBtnOn: {
+    backgroundColor: '#1f1400',
+    borderColor: T.amber,
+  },
+  filterVibeLbl: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#555',
+  },
+  filterVibeLblOn: {
+    color: T.amber,
+  },
+  filterToggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  filterToggleLeft: {
+    flex: 1,
+  },
+  filterToggleLbl: {
+    fontSize: 13,
+    color: '#aaa',
+    fontWeight: '500',
+  },
+  filterToggleSub: {
+    fontSize: 10,
+    color: '#333',
+    marginTop: 2,
+  },
+  filterToggle: {
+    width: 38,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#2a2a2a',
+    position: 'relative',
+    flexShrink: 0,
+  },
+  filterToggleOn: {
+    backgroundColor: T.amber,
+  },
+  filterToggleDot: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#555',
+    position: 'absolute',
+    top: 2,
+    left: 2,
+  },
+  filterToggleDotOn: {
+    backgroundColor: '#fff',
+    left: 18,
+  },
+  filterApply: {
+    marginHorizontal: 18,
+    marginBottom: 24,
+    backgroundColor: T.amber,
+    borderRadius: 12,
+    padding: 14,
+    alignItems: 'center',
+  },
+  filterApplyText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1a0a00',
   },
 })

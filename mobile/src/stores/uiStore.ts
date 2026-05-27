@@ -3,6 +3,11 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 
 export type SessionSort = 'match' | 'friends'
 export type SwipeDateFilter = 'today' | 'tomorrow'
+/** Individual time-of-day slot key — used in multi-select array */
+export type TimeSlotKey = 'morning' | 'afternoon' | 'evening'
+export type SwipeMaxCards = 5 | 10 | 20
+
+const ALL_SLOTS: TimeSlotKey[] = ['morning', 'afternoon', 'evening']
 
 export type PendingNewFollower = {
   userId: string
@@ -17,6 +22,10 @@ type Stored = {
   shortlistSort: SessionSort
   notificationsEnabled: boolean
   swipeDateFilter: SwipeDateFilter
+  swipeDuprMin: number
+  swipeTimeSlots: TimeSlotKey[]
+  swipeMaxCards: SwipeMaxCards
+  swipeRangeKm: number | null
 }
 
 interface UiState extends Stored {
@@ -26,6 +35,10 @@ interface UiState extends Stored {
   setShortlistSort: (sort: SessionSort) => void
   setNotificationsEnabled: (enabled: boolean) => void
   setSwipeDateFilter: (filter: SwipeDateFilter) => void
+  setSwipeDuprMin: (v: number) => void
+  setSwipeTimeSlots: (slots: TimeSlotKey[]) => void
+  setSwipeMaxCards: (v: SwipeMaxCards) => void
+  setSwipeRangeKm: (v: number | null) => void
   pendingNewFollower: PendingNewFollower | null
   setPendingNewFollower: (follower: PendingNewFollower | null) => void
 }
@@ -39,6 +52,10 @@ export const useUiStore = create<UiState>((set, get) => ({
   shortlistSort: 'match',
   notificationsEnabled: true,
   swipeDateFilter: 'today',
+  swipeDuprMin: 3.0,
+  swipeTimeSlots: [...ALL_SLOTS],
+  swipeMaxCards: 20,
+  swipeRangeKm: null,
   hydrated: false,
   pendingNewFollower: null,
   setPendingNewFollower: (follower) => set({ pendingNewFollower: follower }),
@@ -48,11 +65,20 @@ export const useUiStore = create<UiState>((set, get) => ({
       const raw = await AsyncStorage.getItem(STORAGE_KEY)
       if (raw) {
         const data = JSON.parse(raw) as Partial<Stored>
+        const validMaxCards: SwipeMaxCards[] = [5, 10, 20]
+        const validSlotKeys = new Set<string>(['morning', 'afternoon', 'evening'])
+        const savedSlots = Array.isArray(data.swipeTimeSlots)
+          ? (data.swipeTimeSlots as string[]).filter((s) => validSlotKeys.has(s)) as TimeSlotKey[]
+          : [...ALL_SLOTS]
         set({
           swipeSort: data.swipeSort === 'friends' ? 'friends' : 'match',
           shortlistSort: data.shortlistSort === 'friends' ? 'friends' : 'match',
           notificationsEnabled: data.notificationsEnabled !== false,
           swipeDateFilter: data.swipeDateFilter === 'tomorrow' ? 'tomorrow' : 'today',
+          swipeDuprMin: typeof data.swipeDuprMin === 'number' ? data.swipeDuprMin : 3.0,
+          swipeTimeSlots: savedSlots.length > 0 ? savedSlots : [...ALL_SLOTS],
+          swipeMaxCards: validMaxCards.includes(data.swipeMaxCards as SwipeMaxCards) ? (data.swipeMaxCards as SwipeMaxCards) : 20,
+          swipeRangeKm: typeof data.swipeRangeKm === 'number' ? data.swipeRangeKm : null,
           hydrated: true,
         })
         return
@@ -65,25 +91,49 @@ export const useUiStore = create<UiState>((set, get) => ({
 
   setSwipeSort: (swipeSort) => {
     set({ swipeSort })
-    const { shortlistSort, notificationsEnabled, swipeDateFilter } = get()
-    void persist({ swipeSort, shortlistSort, notificationsEnabled, swipeDateFilter })
+    const s = get()
+    void persist({ swipeSort, shortlistSort: s.shortlistSort, notificationsEnabled: s.notificationsEnabled, swipeDateFilter: s.swipeDateFilter, swipeDuprMin: s.swipeDuprMin, swipeTimeSlots: s.swipeTimeSlots, swipeMaxCards: s.swipeMaxCards, swipeRangeKm: s.swipeRangeKm })
   },
 
   setShortlistSort: (shortlistSort) => {
     set({ shortlistSort })
-    const { swipeSort, notificationsEnabled, swipeDateFilter } = get()
-    void persist({ swipeSort, shortlistSort, notificationsEnabled, swipeDateFilter })
+    const s = get()
+    void persist({ swipeSort: s.swipeSort, shortlistSort, notificationsEnabled: s.notificationsEnabled, swipeDateFilter: s.swipeDateFilter, swipeDuprMin: s.swipeDuprMin, swipeTimeSlots: s.swipeTimeSlots, swipeMaxCards: s.swipeMaxCards, swipeRangeKm: s.swipeRangeKm })
   },
 
   setNotificationsEnabled: (notificationsEnabled) => {
     set({ notificationsEnabled })
-    const { swipeSort, shortlistSort, swipeDateFilter } = get()
-    void persist({ swipeSort, shortlistSort, notificationsEnabled, swipeDateFilter })
+    const s = get()
+    void persist({ swipeSort: s.swipeSort, shortlistSort: s.shortlistSort, notificationsEnabled, swipeDateFilter: s.swipeDateFilter, swipeDuprMin: s.swipeDuprMin, swipeTimeSlots: s.swipeTimeSlots, swipeMaxCards: s.swipeMaxCards, swipeRangeKm: s.swipeRangeKm })
   },
 
   setSwipeDateFilter: (swipeDateFilter) => {
     set({ swipeDateFilter })
-    const { swipeSort, shortlistSort, notificationsEnabled } = get()
-    void persist({ swipeSort, shortlistSort, notificationsEnabled, swipeDateFilter })
+    const s = get()
+    void persist({ swipeSort: s.swipeSort, shortlistSort: s.shortlistSort, notificationsEnabled: s.notificationsEnabled, swipeDateFilter, swipeDuprMin: s.swipeDuprMin, swipeTimeSlots: s.swipeTimeSlots, swipeMaxCards: s.swipeMaxCards, swipeRangeKm: s.swipeRangeKm })
+  },
+
+  setSwipeDuprMin: (swipeDuprMin) => {
+    set({ swipeDuprMin })
+    const s = get()
+    void persist({ swipeSort: s.swipeSort, shortlistSort: s.shortlistSort, notificationsEnabled: s.notificationsEnabled, swipeDateFilter: s.swipeDateFilter, swipeDuprMin, swipeTimeSlots: s.swipeTimeSlots, swipeMaxCards: s.swipeMaxCards, swipeRangeKm: s.swipeRangeKm })
+  },
+
+  setSwipeTimeSlots: (swipeTimeSlots) => {
+    set({ swipeTimeSlots })
+    const s = get()
+    void persist({ swipeSort: s.swipeSort, shortlistSort: s.shortlistSort, notificationsEnabled: s.notificationsEnabled, swipeDateFilter: s.swipeDateFilter, swipeDuprMin: s.swipeDuprMin, swipeTimeSlots, swipeMaxCards: s.swipeMaxCards, swipeRangeKm: s.swipeRangeKm })
+  },
+
+  setSwipeMaxCards: (swipeMaxCards) => {
+    set({ swipeMaxCards })
+    const s = get()
+    void persist({ swipeSort: s.swipeSort, shortlistSort: s.shortlistSort, notificationsEnabled: s.notificationsEnabled, swipeDateFilter: s.swipeDateFilter, swipeDuprMin: s.swipeDuprMin, swipeTimeSlots: s.swipeTimeSlots, swipeMaxCards, swipeRangeKm: s.swipeRangeKm })
+  },
+
+  setSwipeRangeKm: (swipeRangeKm) => {
+    set({ swipeRangeKm })
+    const s = get()
+    void persist({ swipeSort: s.swipeSort, shortlistSort: s.shortlistSort, notificationsEnabled: s.notificationsEnabled, swipeDateFilter: s.swipeDateFilter, swipeDuprMin: s.swipeDuprMin, swipeTimeSlots: s.swipeTimeSlots, swipeMaxCards: s.swipeMaxCards, swipeRangeKm })
   },
 }))

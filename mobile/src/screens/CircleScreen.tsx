@@ -12,6 +12,9 @@ import {
   Linking,
   useWindowDimensions,
   Image,
+  Modal,
+  Pressable,
+  Dimensions,
 } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { Rss, Users, Search, ArrowLeft, Sparkles, X } from 'lucide-react-native'
@@ -91,6 +94,24 @@ export function CircleScreen({ onOpenGear, gearSaved }: { onOpenGear?: () => voi
   const [showSearch, setShowSearch] = useState(false)
   const [showSuggested, setShowSuggested] = useState(false)
 
+  // Roster modal (for "you are playing" feed item)
+  type RosterPlayer = {
+    userId: string
+    displayName: string
+    imageUrl: string | null
+    duprDoubles: number | null
+    isHost: boolean
+    isFollowing: boolean
+  }
+  const [rosterModal, setRosterModal] = useState<{
+    visible: boolean
+    sessionName: string
+    venueName: string
+    players: RosterPlayer[]
+    loadingId: number | null
+  }>({ visible: false, sessionName: '', venueName: '', players: [], loadingId: null })
+  const [followingSet, setFollowingSet] = useState<Set<string>>(new Set())
+
   const { authedFetch, jwt, ensureServerAuth, reclubUserId } = useAuthStore()
   const toast = useToast((s) => s.show)
   const { openProfileSheet } = useProfileMenu()
@@ -149,6 +170,29 @@ export function CircleScreen({ onOpenGear, gearSaved }: { onOpenGear?: () => voi
     setShowAvatarTip(false)
     await AsyncStorage.setItem('hasSeenAvatarTip', 'true')
   }, [])
+
+  const handleShowRoster = useCallback(async (sessionId: number) => {
+    setRosterModal(prev => ({ ...prev, visible: true, loadingId: sessionId, players: [], sessionName: '', venueName: '' }))
+    try {
+      const res = await authedFetch(`/api/sessions/${sessionId}/roster`)
+      if (res.ok) {
+        const data = await res.json()
+        setRosterModal({ visible: true, sessionName: data.sessionName, venueName: data.venueName, players: data.players, loadingId: null })
+        const followed = new Set<string>((data.players as { userId: string; isFollowing: boolean }[])
+          .filter(p => p.isFollowing).map(p => p.userId))
+        setFollowingSet(followed)
+      }
+    } catch {
+      setRosterModal(prev => ({ ...prev, loadingId: null }))
+    }
+  }, [authedFetch])
+
+  const handleFollowFromRoster = useCallback(async (userId: string) => {
+    try {
+      await authedFetch(`/api/players/${userId}/follow`, { method: 'POST' })
+      setFollowingSet(prev => new Set([...prev, userId]))
+    } catch {}
+  }, [authedFetch])
 
   const loadFeed = useCallback(async () => {
     if (!jwt) return
@@ -718,6 +762,7 @@ export function CircleScreen({ onOpenGear, gearSaved }: { onOpenGear?: () => voi
                 isLive={livePlayerIds.has(item.player.userId)}
                 showAvatarTip={index === 0 && showAvatarTip}
                 onDismissTip={dismissAvatarTip}
+                onShowRoster={handleShowRoster}
               />
             ))
           })()}
@@ -939,6 +984,83 @@ export function CircleScreen({ onOpenGear, gearSaved }: { onOpenGear?: () => voi
         stub={selectedPlayerStub}
         onClose={() => { setSelectedPlayerId(null); setSelectedPlayerStub(null) }}
       />
+
+      {/* Roster Modal — "You are playing" */}
+      <Modal
+        visible={rosterModal.visible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setRosterModal(prev => ({ ...prev, visible: false }))}
+      >
+        <Pressable
+          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.65)' }}
+          onPress={() => setRosterModal(prev => ({ ...prev, visible: false }))}
+        />
+        <View style={styles.rosterSheet}>
+          <View style={styles.rosterHandle} />
+          <Text style={styles.rosterTitle} numberOfLines={1}>
+            {rosterModal.sessionName || 'Session roster'}
+          </Text>
+          {rosterModal.venueName ? (
+            <Text style={styles.rosterVenue}>{rosterModal.venueName}</Text>
+          ) : null}
+
+          {rosterModal.loadingId !== null ? (
+            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+              <ActivityIndicator color="#22c55e" />
+            </View>
+          ) : (
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
+              {(() => {
+                const players = rosterModal.players
+                const rows: React.ReactNode[] = []
+                for (let i = 0; i < players.length; i += 3) {
+                  const group = players.slice(i, i + 3)
+                  rows.push(
+                    <View key={i} style={styles.rosterRow}>
+                      {group.map((p) => {
+                        const isFollowed = followingSet.has(p.userId)
+                        return (
+                          <View key={p.userId} style={styles.rosterCell}>
+                            <TouchableOpacity onPress={() => {
+                              setSelectedPlayerStub({ userId: p.userId, displayName: p.displayName, imageUrl: p.imageUrl, duprDoubles: p.duprDoubles })
+                              setSelectedPlayerId(p.userId)
+                            }}>
+                              <Image
+                                source={{ uri: p.imageUrl ?? `https://api.reclub.vn/avatars/${p.userId}.jpg` }}
+                                style={styles.rosterAvatar}
+                              />
+                            </TouchableOpacity>
+                            <Text style={styles.rosterName} numberOfLines={1}>{p.displayName}</Text>
+                            {p.duprDoubles != null && (
+                              <View style={styles.rosterDuprPill}>
+                                <Text style={styles.rosterDuprText}>DUPR {p.duprDoubles.toFixed(2)}</Text>
+                              </View>
+                            )}
+                            <TouchableOpacity
+                              style={[styles.rosterFollowBtn, isFollowed && styles.rosterFollowBtnDone]}
+                              onPress={() => !isFollowed && handleFollowFromRoster(p.userId)}
+                              activeOpacity={isFollowed ? 1 : 0.8}
+                            >
+                              <Text style={[styles.rosterFollowBtnText, isFollowed && styles.rosterFollowBtnTextDone]}>
+                                {isFollowed ? 'Following' : 'Follow'}
+                              </Text>
+                            </TouchableOpacity>
+                          </View>
+                        )
+                      })}
+                      {group.length < 3 && Array.from({ length: 3 - group.length }).map((_, gi) => (
+                        <View key={`empty-${gi}`} style={styles.rosterCell} />
+                      ))}
+                    </View>
+                  )
+                }
+                return rows
+              })()}
+            </ScrollView>
+          )}
+        </View>
+      </Modal>
     </View>
   )
 }
@@ -1460,5 +1582,93 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: '#2a2a2a',
     marginTop: 1,
+  },
+  // ── Roster modal ──────────────────────────────────────────────
+  rosterSheet: {
+    backgroundColor: '#0e0e0e',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    height: Dimensions.get('window').height * 0.88,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    borderWidth: 1,
+    borderColor: '#222',
+  },
+  rosterHandle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#333',
+    alignSelf: 'center',
+    marginBottom: 16,
+  },
+  rosterTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#fff',
+    marginBottom: 2,
+  },
+  rosterVenue: {
+    fontSize: 12,
+    color: '#666',
+    marginBottom: 16,
+  },
+  rosterRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 20,
+  },
+  rosterCell: {
+    flex: 1,
+    alignItems: 'center',
+    marginHorizontal: 4,
+  },
+  rosterAvatar: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: '#222',
+    marginBottom: 6,
+  },
+  rosterName: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#fff',
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  rosterDuprPill: {
+    backgroundColor: 'rgba(139,92,246,0.18)',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    marginBottom: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(139,92,246,0.4)',
+  },
+  rosterDuprText: {
+    fontSize: 10,
+    color: '#a78bfa',
+    fontWeight: '700',
+  },
+  rosterFollowBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 5,
+    borderRadius: 8,
+    backgroundColor: '#22c55e',
+    alignItems: 'center',
+  },
+  rosterFollowBtnDone: {
+    backgroundColor: '#1a1a1a',
+    borderWidth: 1,
+    borderColor: '#333',
+  },
+  rosterFollowBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  rosterFollowBtnTextDone: {
+    color: '#555',
   },
 })

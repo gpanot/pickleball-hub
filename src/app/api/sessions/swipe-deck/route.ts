@@ -14,6 +14,64 @@ import { getMobileUser } from "@/lib/mobile-auth";
 const ROSTER_CAP = 10;
 const REGULARS_CAP = 5;
 
+function calculateMatchScore(params: {
+  userDupr: number | null
+  sessionAvgDupr: number | null
+  distanceKm: number | null
+  fillRate: number
+  joinedRecently: number
+  fillingFast: boolean
+  returningPlayerPct: number | null
+  friendCount: number
+}): number {
+  const {
+    userDupr, sessionAvgDupr, distanceKm,
+    fillRate, joinedRecently, fillingFast,
+    returningPlayerPct, friendCount,
+  } = params
+
+  // 1. DUPR compatibility — 40 pts
+  let dupr = 20
+  if (userDupr && sessionAvgDupr) {
+    const diff = Math.abs(userDupr - sessionAvgDupr)
+    if (diff <= 0.2) dupr = 40
+    else if (diff <= 0.4) dupr = 32
+    else if (diff <= 0.6) dupr = 22
+    else if (diff <= 1.0) dupr = 10
+    else dupr = 0
+  }
+
+  // 2. Distance — 25 pts (hard wall at 5km)
+  let dist = 12
+  if (distanceKm !== null) {
+    if (distanceKm <= 1.5) dist = 25
+    else if (distanceKm <= 3.0) dist = 20
+    else if (distanceKm <= 5.0) dist = 14
+    else dist = 0
+  }
+
+  // 3. Fill momentum — 20 pts
+  let momentum = 2
+  if (fillingFast) momentum = 20
+  else if (joinedRecently >= 2) momentum = 15
+  else if (fillRate >= 0.5) momentum = 10
+  else if (fillRate >= 0.3) momentum = 6
+
+  // 4. Community quality — 10 pts
+  let community = 5
+  if (returningPlayerPct !== null) {
+    if (returningPlayerPct >= 0.7) community = 10
+    else if (returningPlayerPct >= 0.5) community = 7
+    else if (returningPlayerPct >= 0.3) community = 4
+    else community = 2
+  }
+
+  // 5. Friend presence — 5 pts
+  const friends = friendCount >= 3 ? 5 : friendCount >= 1 ? 3 : 0
+
+  return Math.min(100, dupr + dist + momentum + community + friends)
+}
+
 /**
  * GET /api/sessions/swipe-deck?date=YYYY-MM-DD&lat=10.78&lng=106.69
  *
@@ -36,18 +94,46 @@ export async function GET(req: NextRequest) {
 
     const limitParam = searchParams.get("limit");
     const offsetParam = searchParams.get("offset");
-    const limit = limitParam ? Math.min(parseInt(limitParam, 10), 50) : null;
+    // When filters active we overfetch and return all matching — don't cap at 50.
+    const limit = limitParam ? parseInt(limitParam, 10) : null;
     const offset = offsetParam ? parseInt(offsetParam, 10) : 0;
 
-    // Resolve followed player IDs for the authenticated mobile user
+    // New filters
+    const duprMinParam = searchParams.get("duprMin");
+    const duprMin = duprMinParam ? parseFloat(duprMinParam) : null;
+    // timeSlots: comma-separated list e.g. "morning,evening". Absent = all slots allowed.
+    const timeSlotsParam = searchParams.get("timeSlots");
+    const timeSlots = timeSlotsParam ? timeSlotsParam.split(",") as ("morning" | "afternoon" | "evening")[] : null;
+    // rangeKm: max distance filter (optional, default none)
+    const rangeKmParam = searchParams.get("rangeKm");
+    const rangeKm = rangeKmParam ? parseFloat(rangeKmParam) : null;
+
+    // When filters are active, fetch a larger batch so post-map filtering has enough to work with.
+    // Without this, limit=20 is applied at DB level, then filtering can reduce to just a few results.
+    const filtersActive = (duprMin !== null) || (timeSlots !== null && timeSlots.length < 3);
+    const FILTER_BATCH = 400; // fetch up to this many when filters are active
+
+    // Resolve followed player IDs and user's own DUPR for scoring
     const mobileUser = await getMobileUser(req);
     let followedPlayerIds: Set<string> = new Set();
+    let userProfile: { duprDoubles: import("@prisma/client").Prisma.Decimal | null } | null = null;
     if (mobileUser?.profileId) {
-      const follows = await prisma.follow.findMany({
+      const followsPromise = prisma.follow.findMany({
         where: { followerId: mobileUser.profileId },
         select: { followeeId: true },
       });
+      // Player.userId is a BigInt (Reclub numeric ID), not the Firebase UUID.
+      // Look up via reclubUserId on PlayerProfile, which we already have.
+      const profilePromise = mobileUser.reclubUserId
+        ? prisma.player.findUnique({
+            where: { userId: mobileUser.reclubUserId },
+            select: { duprDoubles: true },
+          })
+        : Promise.resolve(null);
+
+      const [follows, profile] = await Promise.all([followsPromise, profilePromise]);
       followedPlayerIds = new Set(follows.map((f) => f.followeeId.toString()));
+      userProfile = profile;
     }
 
     const sessionWhere = {
@@ -93,7 +179,16 @@ export async function GET(req: NextRequest) {
 
     const friendSessionIds = [...friendsBySessionId.keys()];
 
-    console.log(`[swipe-deck] date=${date} minTime=${minTime ?? "none"} offset=${offset} limit=${limit} friendSessions=${friendSessionIds.length}`);
+    console.log(
+      `\n[swipe-deck] ────────────────────────────────` +
+      `\n  date        : ${date}  offset=${offset}  limit=${limit}  dbFetch=${filtersActive ? FILTER_BATCH : dbFetchLimit}` +
+      `\n  FILTERS` +
+      `\n  duprMin     : ${duprMin != null ? duprMin + "+" : "any"}` +
+      `\n  timeSlots   : ${timeSlots?.join(", ") ?? "all"}` +
+      `\n  rangeKm     : ${rangeKm != null ? rangeKm + "km" : "none"}` +
+      `\n  friendSess  : ${friendSessionIds.length}` +
+      `\n────────────────────────────────────────────`
+    );
 
     const sessionInclude = {
       club: { select: { name: true, slug: true } },
@@ -122,13 +217,16 @@ export async function GET(req: NextRequest) {
       friendSessionIds.length > 0
         ? { ...sessionWhere, id: { notIn: friendSessionIds } }
         : sessionWhere;
-    const normalSkip = isFirstPage ? 0 : offset - friendSessionIds.length;
-    const normalTake =
+    const normalSkip = isFirstPage ? 0 : Math.max(0, offset - friendSessionIds.length);
+    // When filters are active, overfetch so post-map filtering has enough sessions to fill the limit.
+    // Without this, DB paging (limit=20) runs before filtering, leaving very few results after filter.
+    const dbFetchLimit = filtersActive ? FILTER_BATCH : (
       limit !== null
         ? isFirstPage
           ? Math.max(0, limit - friendSessionIds.length)
           : limit
-        : null;
+        : null
+    );
 
     const [totalCount, friendSessions, normalSessions] = await Promise.all([
       prisma.session.count({ where: sessionWhere }),
@@ -143,7 +241,7 @@ export async function GET(req: NextRequest) {
         where: normalWhere,
         include: sessionInclude,
         orderBy: { startTime: "asc" },
-        ...(normalTake !== null ? { skip: Math.max(0, normalSkip), take: normalTake } : {}),
+        ...(dbFetchLimit !== null ? { skip: normalSkip, take: dbFetchLimit } : {}),
       }),
     ]);
 
@@ -274,6 +372,20 @@ export async function GET(req: NextRequest) {
             r.player?.imageUrl ?? reclubAvatarUrl(r.player?.userId ?? r.userId),
         }));
 
+      const friendsInSession = friendsBySessionId.get(s.id) ?? [];
+      const friendCount = friendsInSession.length;
+
+      const matchScore = calculateMatchScore({
+        userDupr: userProfile?.duprDoubles ? Number(userProfile.duprDoubles) : null,
+        sessionAvgDupr: s.duprStat?.avgDuprDoubles ? Number(s.duprStat.avgDuprDoubles) : null,
+        distanceKm,
+        fillRate,
+        joinedRecently,
+        fillingFast,
+        returningPlayerPct: s.duprStat?.returningPlayerPct ? Number(s.duprStat.returningPlayerPct) : null,
+        friendCount,
+      });
+
       return {
         id: s.id,
         referenceCode: s.referenceCode,
@@ -290,7 +402,7 @@ export async function GET(req: NextRequest) {
         fillRate: Math.round(fillRate * 100) / 100,
         fillingFast,
         joinedRecently,
-        matchScore: 0,
+        matchScore,
         distanceKm,
         vibeTag,
 
@@ -308,30 +420,56 @@ export async function GET(req: NextRequest) {
         roster,
         regulars,
 
-        ...(() => {
-          const friendsInSession = friendsBySessionId.get(s.id) ?? [];
-          const friendCount = friendsInSession.length;
-          return {
-            friends: friendsInSession.slice(0, FRIENDS_AVATAR_CAP),
-            friendCount,
-            friendsOverflow: Math.max(0, friendCount - FRIENDS_AVATAR_CAP),
-          };
-        })(),
+        friends: friendsInSession.slice(0, FRIENDS_AVATAR_CAP),
+        friendCount,
+        friendsOverflow: Math.max(0, friendCount - FRIENDS_AVATAR_CAP),
 
         eventUrl: s.eventUrl,
       };
     });
 
-    const hasMore = limit !== null ? offset + sessions.length < totalCount : false;
+    // Apply post-map filters
+    const filtered = mapped.filter((s) => {
+      // Distance range filter (applies to all including friends)
+      if (rangeKm !== null && s.distanceKm !== null && s.distanceKm > rangeKm) return false;
 
-    const friendSessionsLogged = mapped.filter((s) => s.friendCount > 0);
-    console.log(`[swipe-deck] total=${totalCount} returned=${mapped.length} withFriends=${friendSessionsLogged.length}`);
+      if (s.friendCount > 0) return true; // friends skip remaining filters
+      // DUPR filter: session must have a player at or above duprMin
+      if (duprMin !== null) {
+        if (!s.duprRange || s.duprRange.max < duprMin) return false;
+      }
+      // Time-of-day filter (multi-select — keep session if it matches ANY selected slot)
+      if (timeSlots && timeSlots.length > 0) {
+        const start = s.startTime; // "HH:mm"
+        const matchesMorning   = timeSlots.includes("morning")   && start < "12:00";
+        const matchesAfternoon = timeSlots.includes("afternoon") && start >= "12:00" && start < "17:00";
+        const matchesEvening   = timeSlots.includes("evening")   && start >= "17:00";
+        if (!matchesMorning && !matchesAfternoon && !matchesEvening) return false;
+      }
+      return true;
+    });
+
+    // When filters are active, return all matching sessions so users can swipe through the full set.
+    // When no filters, honour the page limit for lazy-loading.
+    const trimLimit = filtersActive ? filtered.length : (limit ?? filtered.length);
+
+    // Sort by matchScore descending (friend sessions first, then non-friend — within each group by score)
+    const friendFiltered = filtered.filter((s) => s.friendCount > 0).sort((a, b) => b.matchScore - a.matchScore);
+    const normalFiltered = filtered.filter((s) => s.friendCount === 0).sort((a, b) => b.matchScore - a.matchScore);
+    const sorted = [...friendFiltered, ...normalFiltered].slice(0, trimLimit);
+
+    const hasMore = !filtersActive && limit !== null ? offset + sessions.length < totalCount : false;
+
+    const friendSessionsLogged = sorted.filter((s) => s.friendCount > 0);
+    console.log(
+      `[swipe-deck] RESULT  total=${totalCount}  mapped=${mapped.length}  afterFilter=${filtered.length}  returned=${sorted.length}  withFriends=${friendSessionsLogged.length}\n`
+    );
     friendSessionsLogged.forEach((s) => {
-      console.log(`  → [FRIENDS] "${s.name}" startTime=${s.startTime} friendCount=${s.friendCount} friends=${s.friends.map((f) => f.displayName).join(", ")}`);
+      console.log(`  → [FRIENDS] "${s.name}" startTime=${s.startTime} friendCount=${s.friendCount} score=${s.matchScore} friends=${s.friends.map((f) => f.displayName).join(", ")}`);
     });
 
     return NextResponse.json(
-      { sessions: mapped, count: mapped.length, total: totalCount, offset, hasMore },
+      { sessions: sorted, count: sorted.length, total: totalCount, filteredTotal: hasMore ? null : offset + sorted.length, offset, hasMore },
       { headers: { "Cache-Control": CACHE_CONTROL_PRIVATE } },
     );
   } catch (err) {

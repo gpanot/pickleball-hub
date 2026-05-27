@@ -275,7 +275,7 @@ export function CardBody({
   const topDuprPlayers = s.roster
     .filter((p) => p.duprDoubles != null && p.duprDoubles > 0)
     .sort((a, b) => (b.duprDoubles ?? 0) - (a.duprDoubles ?? 0))
-    .slice(0, 3)
+    .slice(0, 6)
   const vibeLabel = VIBE_LABELS[s.vibeTag] ?? 'Social'
   const friendsOverflow =
     s.friendsOverflow > 0
@@ -639,7 +639,7 @@ export function CardBody({
                 ))}
               </View>
               <Text style={{ fontSize: 11, fontWeight: '700', color: T.amber }}>
-                {isSignedIn ? 'Top 3 DUPR' : 'See Top 3 DUPR joining'}
+                {isSignedIn ? 'Top 6 DUPR' : 'See Top 6 DUPR joining'}
               </Text>
             </TouchableOpacity>
           ) : s.roster.length === 0 ? (
