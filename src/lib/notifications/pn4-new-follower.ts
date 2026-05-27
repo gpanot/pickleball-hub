@@ -17,7 +17,7 @@ export async function notifyNewFollower({
     where: { id: followerProfileId },
     select: {
       reclubUserId: true,
-      player: { select: { userId: true, displayName: true, imageUrl: true } },
+      reclubPlayer: { select: { userId: true, displayName: true, imageUrl: true } },
     },
   });
   // Find all profiles that have this reclubUserId linked — the followee may be an app user
@@ -51,11 +51,11 @@ export async function notifyNewFollower({
     }
   }
 
-  const followerName = followerDetails?.player?.displayName ?? null;
-  const followerUserId = followerDetails?.player?.userId
-    ? String(followerDetails.player.userId)
+  const followerName = followerDetails?.reclubPlayer?.displayName ?? null;
+  const followerUserId = followerDetails?.reclubPlayer?.userId
+    ? String(followerDetails.reclubPlayer.userId)
     : null;
-  const followerImageUrl = followerDetails?.player?.imageUrl ?? null;
+  const followerImageUrl = followerDetails?.reclubPlayer?.imageUrl ?? null;
 
   await sendPushNotification({
     token: targetProfile.pushToken,
