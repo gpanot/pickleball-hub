@@ -177,7 +177,9 @@ export function FeedItemRow({
               {name}
             </Text>
             {item.isFollowing && (
-              <Text style={s.followingLabel}> · following</Text>
+              <Text style={s.followingLabel}>
+                {item.type === 'joining' ? ' · joining' : ' · following'}
+              </Text>
             )}
           </View>
           {isLive && (
@@ -190,10 +192,6 @@ export function FeedItemRow({
 
         {item.type === 'joining' && (
           <>
-            <Text style={s.action}>
-              joining <Text style={s.highlight}>{sessionLabel}</Text>{' '}
-              {formatSessionTime(item.sessionTime!)}
-            </Text>
             {item.eventUrl && (
               <TouchableOpacity
                 style={s.miniCard}

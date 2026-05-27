@@ -11,6 +11,7 @@ import {
   RefreshControl,
   Linking,
   useWindowDimensions,
+  Image,
 } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { Rss, Users, Search, ArrowLeft, Sparkles, X } from 'lucide-react-native'
@@ -609,35 +610,77 @@ export function CircleScreen({ onOpenGear, gearSaved }: { onOpenGear?: () => voi
                 </View>
               )}
 
-              {/* Expanded: Playing Soon — full width, venue rows */}
+              {/* Expanded: Playing Soon — same card layout as PresenceCard but amber */}
               {expandedUpcomingId === -1 && (presence.upcomingVenues?.length ?? 0) > 0 && (
-                <View style={[styles.presenceExpandedWrap, styles.soonExpandedWrap]}>
-                  {presence.upcomingVenues.map((venue: any, index: number) => {
-                    const friendName =
-                      venue.players?.[0]?.displayName?.split(' ')[0] ?? 'Someone'
-                    const extraFriends =
-                      venue.circleCount > 1 ? ` +${venue.circleCount - 1} more` : ''
+                <View style={styles.presenceExpandedWrap}>
+                  {presence.upcomingVenues.map((venue: any) => {
+                    const durationH = (() => {
+                      const [sh, sm] = venue.startTime.split(':').map(Number)
+                      const [eh, em] = venue.endTime.split(':').map(Number)
+                      const diff = (eh * 60 + em) - (sh * 60 + sm)
+                      return Math.max(1, Math.round((diff > 0 ? diff : diff + 1440) / 60))
+                    })()
+                    const circleNames = venue.players
+                      ?.slice(0, 2)
+                      .map((p: any) => p.displayName?.split(' ')[0] ?? 'Player')
+                      .join(', ') ?? ''
+                    const extraCircle = (venue.circleCount ?? 1) > 2
+                      ? ` + ${venue.circleCount - 2} more from your circle`
+                      : ' from your circle'
                     return (
-                      <View
-                        key={venue.sessionId}
-                        style={[
-                          styles.presenceVenueRow,
-                          styles.presenceVenueRowSoon,
-                          index === presence.upcomingVenues.length - 1 && { borderBottomWidth: 0 },
-                        ]}
-                      >
-                        <View style={styles.presenceVenueLeft}>
-                          <Text style={styles.soonVenueName} numberOfLines={1}>
-                            {venue.venueName}
-                          </Text>
-                          <Text style={[styles.presenceVenueWho, { color: '#a06000' }]}>
-                            {friendName}{extraFriends} from your circle
-                          </Text>
+                      <View key={venue.sessionId} style={styles.soonCard}>
+                        <View style={styles.soonCardHeader}>
+                          <View style={{ flex: 1, minWidth: 0 }}>
+                            <Text style={styles.soonCardVenue} numberOfLines={1}>
+                              {venue.venueName}
+                            </Text>
+                            <Text style={styles.soonCardTime}>
+                              {formatClock(venue.startTime)} · {durationH}h session
+                            </Text>
+                          </View>
+                          <View style={styles.soonCardBadge}>
+                            <View style={styles.soonCardDot} />
+                            <Text style={styles.soonCardBadgeText}>SOON</Text>
+                          </View>
                         </View>
-                        <View style={styles.presenceVenueRight}>
-                          <Text style={styles.soonStartsAt}>
-                            Starts {formatClock(venue.startTime)}
-                          </Text>
+                        <View style={styles.soonCardBody}>
+                          <View style={styles.soonCardPlayersRow}>
+                            <View style={styles.soonCardPlayersMain}>
+                              {venue.players?.slice(0, 3).map((p: any, i: number) => (
+                                <TouchableOpacity
+                                  key={p.userId}
+                                  style={[styles.soonCardAvWrap, { zIndex: 4 - i }]}
+                                  onPress={() => setSelectedPlayerId(p.userId)}
+                                >
+                                  {p.imageUrl ? (
+                                    <Image source={{ uri: p.imageUrl }} style={styles.soonCardAv} resizeMode="cover" />
+                                  ) : (
+                                    <View style={[styles.soonCardAv, styles.soonCardAvFallback]}>
+                                      <Text style={styles.soonCardAvInitial}>
+                                        {(p.displayName ?? '?')[0].toUpperCase()}
+                                      </Text>
+                                    </View>
+                                  )}
+                                </TouchableOpacity>
+                              ))}
+                              {(venue.totalRoster ?? 0) > 3 && (
+                                <View style={[styles.soonCardAvWrap, styles.soonCardAvMore]}>
+                                  <Text style={styles.soonCardAvMoreText}>+{venue.totalRoster - 3}</Text>
+                                </View>
+                              )}
+                              <Text style={styles.soonCardCircleInfo} numberOfLines={2}>
+                                <Text style={styles.soonCardCircleNames}>{circleNames}</Text>
+                                {extraCircle}
+                              </Text>
+                            </View>
+                            <TouchableOpacity
+                              style={styles.soonCardJoinBtn}
+                              onPress={() => venue.eventUrl && Linking.openURL(venue.eventUrl)}
+                              activeOpacity={0.75}
+                            >
+                              <Text style={styles.soonCardJoinText}>Join too</Text>
+                            </TouchableOpacity>
+                          </View>
                         </View>
                       </View>
                     )
@@ -1107,13 +1150,8 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: 0,
   },
   presenceExpandedWrap: {
-    backgroundColor: '#0a1f0a',
-    borderWidth: 0.5,
-    borderTopWidth: 0,
-    borderColor: '#1D9E75',
-    borderBottomLeftRadius: 12,
-    borderBottomRightRadius: 12,
-    overflow: 'hidden',
+    paddingTop: 4,
+    paddingBottom: 2,
   },
   soonBanner: {
     backgroundColor: '#1a1200',
@@ -1140,9 +1178,121 @@ const styles = StyleSheet.create({
     backgroundColor: '#1a1200',
     borderBottomColor: 'rgba(122,80,0,0.15)',
   },
-  soonExpandedWrap: {
+  soonCard: {
+    marginHorizontal: 12,
+    marginBottom: 8,
     backgroundColor: '#1a1200',
+    borderWidth: 0.5,
     borderColor: '#7a5000',
+    borderRadius: 14,
+    overflow: 'hidden',
+  },
+  soonCardHeader: {
+    backgroundColor: '#1f1500',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  soonCardVenue: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: T.amber,
+  },
+  soonCardTime: {
+    fontSize: 9,
+    color: '#a06000',
+    marginTop: 1,
+  },
+  soonCardBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    flexShrink: 0,
+  },
+  soonCardDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: T.amber,
+  },
+  soonCardBadgeText: {
+    fontSize: 9,
+    color: T.amber,
+    fontWeight: '600',
+    letterSpacing: 0.6,
+  },
+  soonCardBody: {
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  soonCardPlayersRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  soonCardPlayersMain: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    minWidth: 0,
+  },
+  soonCardAvWrap: {
+    marginRight: -6,
+  },
+  soonCardAv: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: '#0a0a0a',
+    overflow: 'hidden',
+  },
+  soonCardAvFallback: {
+    backgroundColor: '#2a1a00',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  soonCardAvInitial: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: T.amber,
+  },
+  soonCardAvMore: {
+    backgroundColor: '#141414',
+    borderColor: '#1e1e1e',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  soonCardAvMoreText: {
+    fontSize: 8,
+    color: '#555',
+  },
+  soonCardCircleInfo: {
+    fontSize: 10,
+    color: '#555',
+    marginLeft: 10,
+    flex: 1,
+    minWidth: 0,
+  },
+  soonCardCircleNames: {
+    color: T.amber,
+    fontWeight: '500',
+  },
+  soonCardJoinBtn: {
+    backgroundColor: T.amber,
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    flexShrink: 0,
+    alignSelf: 'center',
+  },
+  soonCardJoinText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#1a0a00',
   },
   soonDot: {
     width: 8,
