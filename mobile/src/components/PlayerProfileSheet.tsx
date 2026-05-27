@@ -299,13 +299,16 @@ export function PlayerProfileSheet({ userId, onClose, stub }: Props) {
                 )}
               </View>
 
-              <View style={s.statsRow}>
-                <View style={[s.stat, { borderRightWidth: 0.5, borderRightColor: '#1e1e1e' }]}>
-                  <Text style={s.statVal}>
-                    {profile.duprDoubles?.toFixed(2) ?? '–'}
-                  </Text>
-                  <Text style={s.statLbl}>DUPR</Text>
+              {profile.duprDoubles != null && (
+                <View style={s.duprPillRow}>
+                  <View style={s.duprPill}>
+                    <Text style={s.duprPillLabel}>DUPR</Text>
+                    <Text style={s.duprPillValue}>{profile.duprDoubles.toFixed(2)}</Text>
+                  </View>
                 </View>
+              )}
+
+              <View style={s.statsRow}>
                 <View style={[s.stat, { borderRightWidth: 0.5, borderRightColor: '#1e1e1e' }]}>
                   <Text style={s.statVal}>{profile.followingCount}</Text>
                   <Text style={s.statLbl}>Following</Text>
@@ -563,6 +566,33 @@ const s = StyleSheet.create({
     color: '#555',
     marginTop: 4,
     textAlign: 'center',
+  },
+  duprPillRow: {
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  duprPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(127,119,221,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(127,119,221,0.3)',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    gap: 6,
+  },
+  duprPillLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#7F77DD',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  duprPillValue: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#7F77DD',
   },
   statsRow: {
     flexDirection: 'row',

@@ -82,18 +82,19 @@ export function FriendGoingCard({ item, onFriendsPress }: Props) {
 
   return (
     <View style={s.card}>
-      {/* ── Top row: club + tag + match score ── */}
+      {/* ── Top row: club + time pill + match score ── */}
       <View style={s.topRow}>
         <View style={s.nameCol}>
           <View style={s.titleRow}>
-            <Text style={s.clubTitle} numberOfLines={2}>
+            <Text style={s.clubTitle} numberOfLines={1}>
               {(item.clubName ?? item.venueName).toUpperCase()}
             </Text>
-            <View style={s.hotPill}>
-              <Text style={s.hotPillText}>🔥 Friends going</Text>
+            <View style={s.timePill}>
+              <Clock size={9} color={T.amber} strokeWidth={2.5} />
+              <Text style={s.timePillText}>{item.startTime}</Text>
             </View>
           </View>
-          <Text style={s.sessionName} numberOfLines={2}>{item.name}</Text>
+          <Text style={s.sessionName} numberOfLines={1}>{item.name}</Text>
         </View>
         {item.matchScore > 0 && (
           <View style={s.scoreBox}>
@@ -101,12 +102,6 @@ export function FriendGoingCard({ item, onFriendsPress }: Props) {
             <Text style={s.scoreLabel}>match</Text>
           </View>
         )}
-      </View>
-
-      {/* ── Meta row: time ── */}
-      <View style={s.metaRow}>
-        <Clock size={11} color={T.amber} strokeWidth={2} />
-        <Text style={s.metaText}>{item.startTime}</Text>
       </View>
 
       {/* ── Friends strip ── */}
@@ -190,16 +185,19 @@ const s = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
-  hotPill: {
+  timePill: {
     flexShrink: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
     backgroundColor: 'rgba(245,166,35,0.12)',
     borderWidth: 1,
     borderColor: 'rgba(245,166,35,0.2)',
     borderRadius: 20,
     paddingHorizontal: 8,
-    paddingVertical: 2,
+    paddingVertical: 3,
   },
-  hotPillText: {
+  timePillText: {
     fontSize: 10,
     color: T.amber,
     fontWeight: '600',
@@ -233,15 +231,6 @@ const s = StyleSheet.create({
     color: 'rgba(255,255,255,0.3)',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
-  },
-  metaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-  },
-  metaText: {
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.45)',
   },
   friendsRow: {
     flexDirection: 'row',

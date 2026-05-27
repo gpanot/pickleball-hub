@@ -424,8 +424,11 @@ export function SwipeScreen({ onOpenGearSheet, gearSaved }: { onOpenGearSheet?: 
     }
   }, [auth])
 
+  const goingLoadedRef = useRef(false)
+
   useEffect(() => {
-    if (playTab === 'shortlist') {
+    if (playTab === 'shortlist' && !goingLoadedRef.current) {
+      goingLoadedRef.current = true
       loadGoing()
     }
   }, [playTab, loadGoing])
@@ -446,6 +449,7 @@ export function SwipeScreen({ onOpenGearSheet, gearSaved }: { onOpenGearSheet?: 
         userId: f.userId,
         displayName: f.displayName,
         imageUrl: f.imageUrl,
+        duprDoubles: f.duprDoubles ?? null,
       })),
       overflowNote:
         session.friendsOverflow > 0
