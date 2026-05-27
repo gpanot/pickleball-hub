@@ -59,7 +59,7 @@ export async function GET(req: NextRequest) {
     // Build a full friend-presence map for the whole day — not limited to the current page.
     // This ensures friend sessions are visible regardless of their position in the paginated deck.
     const FRIENDS_AVATAR_CAP = 4;
-    const friendsBySessionId = new Map<number, { userId: string; displayName: string; imageUrl: string }[]>();
+    const friendsBySessionId = new Map<number, { userId: string; displayName: string; imageUrl: string; duprDoubles: number | null }[]>();
     if (followedPlayerIds.size > 0) {
       const friendRosterRows = await prisma.sessionRoster.findMany({
         where: {
@@ -70,7 +70,7 @@ export async function GET(req: NextRequest) {
         select: {
           sessionId: true,
           userId: true,
-          player: { select: { userId: true, displayName: true, imageUrl: true } },
+          player: { select: { userId: true, displayName: true, imageUrl: true, duprDoubles: true } },
         },
       });
       for (const r of friendRosterRows) {
@@ -79,6 +79,7 @@ export async function GET(req: NextRequest) {
           userId: uid.toString(),
           displayName: r.player?.displayName ?? "Player",
           imageUrl: r.player?.imageUrl ?? reclubAvatarUrl(uid),
+          duprDoubles: r.player?.duprDoubles != null ? Number(r.player.duprDoubles) : null,
         };
         const list = friendsBySessionId.get(r.sessionId);
         if (list) {

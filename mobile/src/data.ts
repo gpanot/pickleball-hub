@@ -17,6 +17,7 @@ export type FriendPlayer = {
   userId: string
   displayName: string
   imageUrl: string | null
+  duprDoubles?: number | null
 }
 
 export type Session = {
