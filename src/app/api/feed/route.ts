@@ -279,6 +279,65 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // "just_followed" — players the current user started following in the last 30 days
+  const recentFollowing = await prisma.follow.findMany({
+    where: {
+      followerId: user.profileId,
+      createdAt: { gte: thirtyDaysAgo },
+    },
+    include: {
+      followee: {
+        select: { userId: true, displayName: true, imageUrl: true, duprDoubles: true },
+      },
+    },
+    orderBy: { createdAt: "desc" },
+    take: 10,
+  });
+
+  for (const f of recentFollowing) {
+    items.push({
+      id: `just_followed_${f.followeeId}`,
+      type: "just_followed",
+      player: toPlayerPayload(f.followee),
+      isFollowing: true,
+      timestamp: f.createdAt.toISOString(),
+    });
+  }
+
+  // "new_follower" — players who started following the current user in the last 30 days
+  if (user.reclubUserId) {
+    const recentFollowers = await prisma.follow.findMany({
+      where: {
+        followeeId: user.reclubUserId,
+        createdAt: { gte: thirtyDaysAgo },
+      },
+      include: {
+        follower: {
+          select: {
+            id: true,
+            reclubPlayer: {
+              select: { userId: true, displayName: true, imageUrl: true, duprDoubles: true },
+            },
+          },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 10,
+    });
+
+    for (const f of recentFollowers) {
+      const p = f.follower.reclubPlayer;
+      if (!p) continue;
+      items.push({
+        id: `new_follower_${f.follower.id}`,
+        type: "new_follower",
+        player: toPlayerPayload(p),
+        isFollowing: false,
+        timestamp: f.createdAt.toISOString(),
+      });
+    }
+  }
+
   // Sort: joining first, then by timestamp desc
   items.sort((a, b) => {
     if (a.type === "joining" && b.type !== "joining") return -1;
@@ -288,9 +347,10 @@ export async function GET(req: NextRequest) {
     );
   });
 
-  // Max 2 items per player
+  // Max 2 items per player (follow events are exempt — always show)
   const playerCount = new Map<string, number>();
   const filtered = items.filter((item) => {
+    if (item.type === "just_followed" || item.type === "new_follower") return true;
     const uid = item.player.userId;
     const count = playerCount.get(uid) ?? 0;
     if (count >= 2) return false;
