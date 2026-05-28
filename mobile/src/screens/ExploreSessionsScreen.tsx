@@ -271,6 +271,11 @@ export function ExploreSessionsScreen({ onClose }: Props) {
           <ActivityIndicator size="large" color={T.amber} />
           <Text style={styles.loadingText}>Loading sessions...</Text>
         </View>
+      ) : loading && total > 0 ? (
+        <View style={styles.centered}>
+          <ActivityIndicator size="large" color={T.amber} />
+          <Text style={styles.loadingText}>Updating sessions...</Text>
+        </View>
       ) : error && total === 0 ? (
         <View style={[styles.centered, styles.centeredPad]}>
           <AlertCircle size={40} color="#666" strokeWidth={1.5} />

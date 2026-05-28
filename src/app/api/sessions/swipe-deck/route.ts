@@ -142,23 +142,7 @@ export async function GET(req: NextRequest) {
       },
     } as const;
 
-    // On the first page, always prepend friend sessions regardless of their startTime rank.
-    // For subsequent pages, exclude friend sessions from the normal paging so they don't repeat.
-    const isFirstPage = offset === 0;
-    const normalWhere =
-      friendSessionIds.length > 0
-        ? { ...sessionWhere, id: { notIn: friendSessionIds } }
-        : sessionWhere;
-    const normalSkip = isFirstPage ? 0 : Math.max(0, offset - friendSessionIds.length);
-    // When filters are active, overfetch so post-map filtering has enough sessions to fill the limit.
-    // Without this, DB paging (limit=20) runs before filtering, leaving very few results after filter.
-    const dbFetchLimit = filtersActive ? FILTER_BATCH : (
-      limit !== null
-        ? isFirstPage
-          ? Math.max(0, limit - friendSessionIds.length)
-          : limit
-        : null
-    );
+    const dbFetchLimit = filtersActive ? FILTER_BATCH : (limit ?? null);
 
     console.log(
       `\n[swipe-deck] ────────────────────────────────` +
@@ -171,25 +155,15 @@ export async function GET(req: NextRequest) {
       `\n────────────────────────────────────────────`
     );
 
-    const [totalCount, friendSessions, normalSessions] = await Promise.all([
+    const [totalCount, sessions] = await Promise.all([
       prisma.session.count({ where: sessionWhere }),
-      isFirstPage && friendSessionIds.length > 0
-        ? prisma.session.findMany({
-            where: { id: { in: friendSessionIds } },
-            include: sessionInclude,
-            orderBy: { startTime: "asc" },
-          })
-        : Promise.resolve([]),
       prisma.session.findMany({
-        where: normalWhere,
+        where: sessionWhere,
         include: sessionInclude,
         orderBy: { startTime: "asc" },
-        ...(dbFetchLimit !== null ? { skip: normalSkip, take: dbFetchLimit } : {}),
+        ...(dbFetchLimit !== null ? { skip: offset, take: dbFetchLimit } : {}),
       }),
     ]);
-
-    // Friend sessions first, then normal sessions (no duplicates)
-    const sessions = [...friendSessions, ...normalSessions];
 
     if (sessions.length === 0) {
       return NextResponse.json(
@@ -379,10 +353,7 @@ export async function GET(req: NextRequest) {
 
     // Apply post-map filters
     const filtered = mapped.filter((s) => {
-      // Distance range filter (applies to all including friends)
       if (rangeKm !== null && s.distanceKm !== null && s.distanceKm > rangeKm) return false;
-
-      if (s.friendCount > 0) return true; // friends skip remaining filters
       // DUPR filter: session must have a player at or above duprMin
       if (duprMin !== null) {
         if (!s.duprRange || s.duprRange.max < duprMin) return false;
@@ -402,10 +373,7 @@ export async function GET(req: NextRequest) {
     // When no filters, honour the page limit for lazy-loading.
     const trimLimit = filtersActive ? filtered.length : (limit ?? filtered.length);
 
-    // Sort by matchScore descending (friend sessions first, then non-friend — within each group by score)
-    const friendFiltered = filtered.filter((s) => s.friendCount > 0).sort((a, b) => b.matchScore - a.matchScore);
-    const normalFiltered = filtered.filter((s) => s.friendCount === 0).sort((a, b) => b.matchScore - a.matchScore);
-    const sorted = [...friendFiltered, ...normalFiltered].slice(0, trimLimit);
+    const sorted = [...filtered].sort((a, b) => b.matchScore - a.matchScore).slice(0, trimLimit);
 
     const hasMore = !filtersActive && limit !== null ? offset + sessions.length < totalCount : false;
 

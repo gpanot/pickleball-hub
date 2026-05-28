@@ -6,6 +6,7 @@ import {
   ScrollView,
   Pressable,
   StyleSheet,
+  ActivityIndicator,
 } from 'react-native'
 import { X } from 'lucide-react-native'
 import Slider from '@react-native-community/slider'
@@ -122,22 +123,36 @@ export function SwipeFilterSheet({
     setDraftRangeKm(swipeRangeKm)
   }, [visible, filterOpenKey, swipeDuprMin, swipeTimeSlots, swipeMaxCards, swipeRangeKm])
 
+  const [applying, setApplying] = useState(false)
+
   if (!visible) return null
 
-  const handleApply = () => {
+  const handleApply = async () => {
+    if (applying) return
+    setApplying(true)
+
     setSwipeDuprMin(draftDupr)
     setSwipeTimeSlots(draftTimeSlots)
     setSwipeMaxCards(draftMaxCards)
     setSwipeRangeKm(draftRangeKm)
-    onClose()
+
     const date = dateFilter === 'tomorrow' ? vnDateString(1) : undefined
     const { lat, lng } = locationRef.current
-    fetchSessions(lat, lng, date, {
+    const fetchPromise = fetchSessions(lat, lng, date, {
       duprMin: draftDupr,
       timeSlots: draftTimeSlots,
       maxCards: draftMaxCards,
       rangeKm: draftRangeKm,
-    }).then(() => onApplied?.())
+    })
+
+    // Keep the button in loading state for at least 2s so user sees feedback
+    await new Promise((r) => setTimeout(r, 2000))
+    setApplying(false)
+    onClose()
+
+    // Wait for fetch to finish, then signal parent
+    await fetchPromise
+    onApplied?.()
   }
 
   return (
@@ -288,8 +303,20 @@ export function SwipeFilterSheet({
           </View>
         </ScrollView>
 
-        <TouchableOpacity style={sheet.apply} onPress={handleApply} activeOpacity={0.85}>
-          <Text style={sheet.applyText}>Apply Filters</Text>
+        <TouchableOpacity
+          style={[sheet.apply, applying && sheet.applyDisabled]}
+          onPress={handleApply}
+          activeOpacity={0.85}
+          disabled={applying}
+        >
+          {applying ? (
+            <View style={sheet.applyRow}>
+              <ActivityIndicator size="small" color="#1a0a00" />
+              <Text style={sheet.applyText}>Applying...</Text>
+            </View>
+          ) : (
+            <Text style={sheet.applyText}>Apply Filters</Text>
+          )}
         </TouchableOpacity>
       </View>
     </View>
@@ -542,6 +569,14 @@ const sheet = StyleSheet.create({
     borderRadius: 12,
     padding: 14,
     alignItems: 'center',
+  },
+  applyDisabled: {
+    opacity: 0.75,
+  },
+  applyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   applyText: {
     fontSize: 14,
