@@ -46,6 +46,7 @@ type PlayCard = {
   }>;
   hasFriends: boolean;
   totalRoster: number;
+  duprCount: number;
 };
 
 /**
@@ -234,6 +235,9 @@ export async function GET(req: NextRequest) {
       topDupr,
       hasFriends: friendCount > 0,
       totalRoster: session._count.rosters,
+      duprCount: session.rosters.filter(
+        (r) => r.player?.duprDoubles != null && Number(r.player.duprDoubles) > 0,
+      ).length,
     };
 
     const duprPct = session.duprStat
