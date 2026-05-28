@@ -124,6 +124,7 @@ export async function GET(req: NextRequest) {
     card: PlayCard;
     swipe: Record<string, unknown>;
     sessionId: number;
+    duprCoverageCount: number;
   };
 
   const scored: Scored[] = [];
