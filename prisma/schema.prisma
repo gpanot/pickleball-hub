@@ -79,6 +79,7 @@ model Session {
   @@index([clubId])
   @@index([venueId])
   @@index([startTime])
+  @@index([scrapedDate, status, startTime])
   @@map("sessions")
 }
 

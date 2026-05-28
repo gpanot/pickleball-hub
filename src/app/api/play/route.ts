@@ -94,6 +94,8 @@ export async function GET(req: NextRequest) {
           },
         },
       },
+      orderBy: { player: { duprDoubles: "desc" as const } },
+      take: 10,
     },
     _count: { select: { rosters: true } },
   } as const;
