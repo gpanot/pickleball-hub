@@ -326,7 +326,15 @@ export async function GET(req: NextRequest) {
         userId: followeeId,
         session: { scrapedDate: { lt: todayStr } },
       },
-      select: { session: { select: { startTime: true, scrapedDate: true } } },
+      select: {
+        session: {
+          select: {
+            startTime: true,
+            scrapedDate: true,
+            snapshots: { orderBy: { scrapedAt: "desc" }, take: 1 },
+          },
+        },
+      },
       orderBy: { session: { startTime: "desc" } },
       take: 200,
     });
@@ -374,7 +382,8 @@ export async function GET(req: NextRequest) {
           type: "streak_milestone",
           player: toPlayerPayload(player),
           isFollowing: true,
-          timestamp: new Date().toISOString(),
+          timestamp: sessions[0]?.session.snapshots?.[0]?.scrapedAt?.toISOString()
+            ?? `${sessions[0]?.session.scrapedDate}T${sessions[0]?.session.startTime}:00+07:00`,
           streakCount: streak,
           weeklyPlayed: weeklyPlayed.reverse(),
         });
