@@ -419,8 +419,9 @@ def scrape_session_roster(
             cur.execute(
                 """
                 INSERT INTO session_rosters (
-                    session_id, user_id, is_host, is_confirmed, scraped_at
-                ) VALUES (%s, %s, %s, TRUE, NOW())
+                    session_id, user_id, is_host, is_confirmed,
+                    scraped_at, first_seen_at
+                ) VALUES (%s, %s, %s, TRUE, NOW(), NOW())
                 ON CONFLICT (session_id, user_id) DO UPDATE SET
                     is_host = EXCLUDED.is_host,
                     scraped_at = NOW()

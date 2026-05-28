@@ -20,10 +20,11 @@ import { TopBar, CardBody, CARD_HEIGHT } from '../components/CardBody'
 import { useSignUpModal } from '../contexts/SignUpModalContext'
 import { GearTeaserCard } from '../components/GearTeaserCard'
 import { SignInPrompt } from '../components/SignInPrompt'
-import { useAuthStore } from '../stores/authStore'
+import { useAuthStore, resolveApiBase } from '../stores/authStore'
 import { useSessionStore } from '../stores/sessionStore'
 import { useUiStore } from '../stores/uiStore'
-import { type SwipeDateFilter } from '../stores/uiStore'
+import { type SwipeDateFilter, type TimeSlotKey } from '../stores/uiStore'
+import { FilterPill, SwipeFilterSheet } from '../components/SwipeFilterControls'
 import { FriendsListModal } from '../components/FriendsListModal'
 import type { FriendListItem } from '../components/FriendListRow'
 import {
@@ -86,13 +87,6 @@ const { height: H } = Dimensions.get('window')
 const HCMC_LAT = 10.78
 const HCMC_LNG = 106.69
 
-/** Returns a YYYY-MM-DD date string offset by `days` days in Vietnam time (UTC+7). */
-function vnDateString(offsetDays: number): string {
-  const now = new Date()
-  now.setTime(now.getTime() + (7 * 60 + offsetDays * 24 * 60) * 60 * 1000)
-  return now.toISOString().slice(0, 10)
-}
-
 /* ── SwipeScreen (main export) ───────────────────────────────── */
 export function SwipeScreen({
   onOpenGearSheet,
@@ -107,11 +101,8 @@ export function SwipeScreen({
 }) {
   const { openSignUp } = useSignUpModal()
   const signedIn = useAuthStore((s) => s.isSignedIn)()
-  const { fetchSessions, fetchIfNeeded, loadSavedIds, saveSession, unsaveSession } =
+  const { loadSavedIds, saveSession, unsaveSession } =
     useSessionStore.getState()
-  // For unauthenticated users — show the swipe-deck sessions as top 5
-  const guestSessions = useSessionStore((s) => s.sessions)
-  const guestLoading = useSessionStore((s) => s.loading)
   const bootedRef = useRef(false)
   const locationRef = useRef<{ lat: number; lng: number }>({ lat: HCMC_LAT, lng: HCMC_LNG })
   const [refreshing, setRefreshing] = useState(false)
@@ -134,27 +125,35 @@ export function SwipeScreen({
   const [removedSavedIds, setRemovedSavedIds] = useState<Set<number>>(new Set())
   const [top5, setTop5] = useState<FriendGoingItem[]>([])
   const [playLoading, setPlayLoading] = useState(false)
-
-  // Unauthenticated users see the first 5 sessions from the swipe deck as their top 5
-  const guestTop5 = useMemo(
-    () => (!signedIn ? guestSessions.slice(0, 5).map(sessionToFriendGoingItem) : []),
-    [signedIn, guestSessions],
-  )
+  const [top5FilterVisible, setTop5FilterVisible] = useState(false)
+  const [top5FilterKey, setTop5FilterKey] = useState(0)
+  const [top5VibeFilter, setTop5VibeFilter] = useState<'social' | 'competitive' | null>(null)
+  const [top5SpotsOnly, setTop5SpotsOnly] = useState(false)
 
   const auth = useAuthStore.getState()
 
   const playDataLoadedRef = useRef(false)
 
-  const loadPlayData = useCallback(async () => {
-    if (!signedIn) return
+  const loadPlayData = useCallback(async (filterOverrides?: { duprMin: number; timeSlots: TimeSlotKey[] }) => {
     setPlayLoading(true)
     try {
       const { lat, lng } = locationRef.current
       const filter = top5DateFilter === 'tomorrow' ? 'tomorrow' : 'today'
+      const uiState = useUiStore.getState()
+      const duprMin = filterOverrides?.duprMin ?? uiState.swipeDuprMin
+      const timeSlots = filterOverrides?.timeSlots ?? uiState.swipeTimeSlots
 
-      const res = await auth.authedFetch(
-        `/api/play?filter=${filter}&lat=${lat}&lng=${lng}`,
-      )
+      const qs = new URLSearchParams({
+        filter,
+        lat: String(lat),
+        lng: String(lng),
+        duprMin: String(duprMin),
+        timeSlots: timeSlots.join(','),
+      })
+
+      const res = signedIn
+        ? await auth.authedFetch(`/api/play?${qs}`)
+        : await fetch(`${resolveApiBase()}/api/play?${qs}`)
       if (!res.ok) {
         debugLog('Play', `loadPlayData /api/play returned ${res.status}`)
         return
@@ -383,12 +382,7 @@ export function SwipeScreen({
         // fallback to HCMC
       }
       playDataLoadedRef.current = true
-      if (signedIn) {
-        await loadPlayData()
-      } else {
-        const date = top5DateFilter === 'tomorrow' ? vnDateString(1) : undefined
-        await fetchIfNeeded(locationRef.current.lat, locationRef.current.lng, date)
-      }
+      await loadPlayData()
     })()
   }, [])
 
@@ -396,24 +390,14 @@ export function SwipeScreen({
   // Skip the very first render (boot effect handles that).
   useEffect(() => {
     if (!playDataLoadedRef.current) return
-    if (signedIn) {
-      loadPlayData()
-    } else {
-      const date = top5DateFilter === 'tomorrow' ? vnDateString(1) : undefined
-      fetchSessions(locationRef.current.lat, locationRef.current.lng, date)
-    }
-  }, [top5DateFilter, signedIn, loadPlayData, fetchSessions])
+    loadPlayData()
+  }, [top5DateFilter, signedIn, loadPlayData])
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true)
-    if (signedIn) {
-      await loadPlayData()
-    } else {
-      const date = top5DateFilter === 'tomorrow' ? vnDateString(1) : undefined
-      await fetchSessions(locationRef.current.lat, locationRef.current.lng, date)
-    }
+    await loadPlayData()
     setRefreshing(false)
-  }, [fetchSessions, top5DateFilter, signedIn, loadPlayData])
+  }, [loadPlayData])
 
   return (
     <View style={{ flex: 1, backgroundColor: T.bg }}>
@@ -452,7 +436,7 @@ export function SwipeScreen({
       {/* ── TOP 5 tab ─────────────────────────────────────────── */}
       {playTab === 'discover' && (
         <>
-          {/* Today / Tomorrow — top 5 list only */}
+          {/* Today / Tomorrow + Filters */}
           <View style={s.top5DateRow}>
             {(['today', 'tomorrow'] as const).map((key: SwipeDateFilter) => {
               const on = top5DateFilter === key
@@ -475,6 +459,18 @@ export function SwipeScreen({
                 </TouchableOpacity>
               )
             })}
+            <View style={{ flex: 1 }} />
+            <FilterPill
+              onPress={() => {
+                if (!signedIn) {
+                  openSignUp()
+                  return
+                }
+                setTop5FilterKey((k) => k + 1)
+                setTop5FilterVisible(true)
+              }}
+              hideSections={{ maxDistance: true, vibe: true, spotsOnly: true }}
+            />
           </View>
 
           <ScrollView
@@ -488,81 +484,61 @@ export function SwipeScreen({
               />
             }
           >
-            {signedIn && (
-              <>
-                {playLoading && top5.length === 0 && (
-                  <ActivityIndicator color={T.amber} style={{ marginTop: 40 }} />
-                )}
+            {playLoading && top5.length === 0 && (
+              <ActivityIndicator color={T.amber} style={{ marginTop: 40 }} />
+            )}
 
-                {top5.length === 0 && !playLoading && (
-                  <View style={s.emptyTop5}>
-                    <Text style={s.emptyTop5Text}>
-                      No sessions found · try changing the date
-                    </Text>
-                  </View>
-                )}
+            {top5.length === 0 && !playLoading && (
+              <View style={s.emptyTop5}>
+                <Text style={s.emptyTop5Text}>
+                  No sessions found · try changing the date
+                </Text>
+              </View>
+            )}
 
-                {top5.map((item, index) => (
+            {top5.map((item, index) =>
+              signedIn ? (
+                <FriendGoingCard
+                  key={item.sessionId}
+                  item={item}
+                  isTop={index === 0}
+                  dimLevel={index}
+                  onFriendsPress={
+                    item.friendCount > 0
+                      ? () => openGoingFriends(item)
+                      : undefined
+                  }
+                  onTopDuprPress={
+                    item.topDupr && item.topDupr.length > 0
+                      ? () => openTopDuprFromItem(item)
+                      : undefined
+                  }
+                />
+              ) : (
+                <TouchableOpacity
+                  key={item.sessionId}
+                  onPress={() => openSignUp()}
+                  activeOpacity={1}
+                >
                   <FriendGoingCard
-                    key={item.sessionId}
                     item={item}
                     isTop={index === 0}
                     dimLevel={index}
-                    onFriendsPress={
-                      item.friendCount > 0
-                        ? () => openGoingFriends(item)
-                        : undefined
-                    }
-                    onTopDuprPress={
-                      item.topDupr && item.topDupr.length > 0
-                        ? () => openTopDuprFromItem(item)
-                        : undefined
-                    }
                   />
-                ))}
-              </>
+                </TouchableOpacity>
+              ),
             )}
 
-            {!signedIn && (
-              <>
-                {guestLoading && guestTop5.length === 0 && (
-                  <ActivityIndicator color={T.amber} style={{ marginTop: 40 }} />
-                )}
-
-                {guestTop5.length === 0 && !guestLoading && (
-                  <View style={s.emptyTop5}>
-                    <Text style={s.emptyTop5Text}>
-                      No sessions found · try changing the date
-                    </Text>
-                  </View>
-                )}
-
-                {guestTop5.map((item, index) => (
-                  <TouchableOpacity
-                    key={item.sessionId}
-                    onPress={() => openSignUp()}
-                    activeOpacity={1}
-                  >
-                    <FriendGoingCard
-                      item={item}
-                      isTop={index === 0}
-                      dimLevel={index}
-                    />
-                  </TouchableOpacity>
-                ))}
-
-                {guestTop5.length > 0 && (
-                  <TouchableOpacity
-                    style={s.signInBanner}
-                    onPress={() => openSignUp()}
-                    activeOpacity={0.85}
-                  >
-                    <Text style={s.signInBannerText}>
-                      Sign in for personalised matches
-                    </Text>
-                  </TouchableOpacity>
-                )}
-              </>
+            {!signedIn && top5.length > 0 && (
+              <TouchableOpacity
+                style={s.signInBanner}
+                onPress={() => openSignUp()}
+                activeOpacity={0.85}
+              >
+                <Text style={s.signInBannerText}>
+                  Sign in for personalised matches
+                </Text>
+              </TouchableOpacity>
             )}
 
             <TouchableOpacity
@@ -796,6 +772,21 @@ export function SwipeScreen({
         friends={friendsModal.friends}
         overflowNote={friendsModal.overflowNote}
         onFollow={friendsModal.showFollow ? handleFollowFromTopDupr : undefined}
+      />
+
+      <SwipeFilterSheet
+        visible={top5FilterVisible}
+        onClose={() => setTop5FilterVisible(false)}
+        locationRef={locationRef}
+        filterOpenKey={top5FilterKey}
+        vibeFilter={top5VibeFilter}
+        setVibeFilter={setTop5VibeFilter}
+        spotsOnly={top5SpotsOnly}
+        setSpotsOnly={setTop5SpotsOnly}
+        hideSections={{ maxDistance: true, vibe: true, spotsOnly: true }}
+        onApplyCustom={async (filters) => {
+          await loadPlayData(filters)
+        }}
       />
 
     </View>

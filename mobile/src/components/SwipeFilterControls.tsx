@@ -8,6 +8,11 @@ import {
   StyleSheet,
   ActivityIndicator,
 } from 'react-native'
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+} from 'react-native-reanimated'
 import { X } from 'lucide-react-native'
 import Slider from '@react-native-community/slider'
 import { T } from '../theme'
@@ -27,6 +32,75 @@ function vnDateString(offsetDays: number): string {
 
 type LocationRef = { lat: number; lng: number }
 
+/** Standalone filter pill — can be placed anywhere */
+export function FilterPill({
+  onPress,
+  hideSections,
+}: {
+  onPress: () => void
+  hideSections?: HiddenFilterSections
+}) {
+  const swipeDuprMin = useUiStore((s) => s.swipeDuprMin)
+  const swipeTimeSlots = useUiStore((s) => s.swipeTimeSlots)
+  const swipeMaxCards = useUiStore((s) => s.swipeMaxCards)
+  const swipeRangeKm = useUiStore((s) => s.swipeRangeKm)
+
+  let activeCount =
+    (swipeDuprMin !== SWIPE_FILTER_DEFAULTS.duprMin ? 1 : 0) +
+    (swipeTimeSlots.length < SWIPE_FILTER_DEFAULTS.timeSlots.length ? 1 : 0)
+  if (!hideSections?.maxDistance) {
+    activeCount += swipeMaxCards !== SWIPE_FILTER_DEFAULTS.maxCards ? 1 : 0
+    activeCount += swipeRangeKm !== SWIPE_FILTER_DEFAULTS.rangeKm ? 1 : 0
+  }
+
+  const hasDuprFilter = swipeDuprMin !== SWIPE_FILTER_DEFAULTS.duprMin
+  const primaryLabel = `⚡ Filters${activeCount > 0 ? ` · ${activeCount}` : ''}`
+  const secondaryLabel = hasDuprFilter ? `Min ${swipeDuprMin.toFixed(1)}+` : null
+
+  const phase = useSharedValue(0)
+
+  useEffect(() => {
+    if (!secondaryLabel) return
+    const timer = setInterval(() => {
+      phase.value = withTiming(phase.value === 0 ? 1 : 0, { duration: 450 })
+    }, 3200)
+    return () => clearInterval(timer)
+  }, [phase, !!secondaryLabel])
+
+  const primaryStyle = useAnimatedStyle(() => ({
+    opacity: 1 - phase.value,
+  }))
+  const secondaryStyle = useAnimatedStyle(() => ({
+    opacity: phase.value,
+    position: 'absolute' as const,
+    left: 0,
+    right: 0,
+  }))
+
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      style={[bar.filterPill, activeCount > 0 && bar.filterPillActive]}
+      activeOpacity={0.8}
+    >
+      {secondaryLabel ? (
+        <View style={{ height: 16, minWidth: 70, alignItems: 'center', justifyContent: 'center' }}>
+          <Animated.Text style={[bar.filterPillText, activeCount > 0 && bar.filterPillTextActive, primaryStyle]}>
+            {primaryLabel}
+          </Animated.Text>
+          <Animated.Text style={[bar.filterPillText, activeCount > 0 && bar.filterPillTextActive, secondaryStyle]}>
+            {secondaryLabel}
+          </Animated.Text>
+        </View>
+      ) : (
+        <Text style={[bar.filterPillText, activeCount > 0 && bar.filterPillTextActive]}>
+          {primaryLabel}
+        </Text>
+      )}
+    </TouchableOpacity>
+  )
+}
+
 /** Today / Tomorrow pills + Filters button */
 export function SwipeFilterBar({
   onFiltersPress,
@@ -35,16 +109,6 @@ export function SwipeFilterBar({
 }) {
   const dateFilter = useUiStore((s) => s.swipeDateFilter)
   const setDateFilter = useUiStore((s) => s.setSwipeDateFilter)
-  const swipeDuprMin = useUiStore((s) => s.swipeDuprMin)
-  const swipeTimeSlots = useUiStore((s) => s.swipeTimeSlots)
-  const swipeMaxCards = useUiStore((s) => s.swipeMaxCards)
-  const swipeRangeKm = useUiStore((s) => s.swipeRangeKm)
-
-  const activeCount =
-    (swipeDuprMin !== SWIPE_FILTER_DEFAULTS.duprMin ? 1 : 0) +
-    (swipeTimeSlots.length < SWIPE_FILTER_DEFAULTS.timeSlots.length ? 1 : 0) +
-    (swipeMaxCards !== SWIPE_FILTER_DEFAULTS.maxCards ? 1 : 0) +
-    (swipeRangeKm !== SWIPE_FILTER_DEFAULTS.rangeKm ? 1 : 0)
 
   return (
     <View style={bar.row}>
@@ -62,17 +126,16 @@ export function SwipeFilterBar({
         )
       })}
       <View style={{ flex: 1 }} />
-      <TouchableOpacity
-        onPress={onFiltersPress}
-        style={[bar.filterPill, activeCount > 0 && bar.filterPillActive]}
-        activeOpacity={0.8}
-      >
-        <Text style={[bar.filterPillText, activeCount > 0 && bar.filterPillTextActive]}>
-          ⚡ Filters{activeCount > 0 ? ` · ${activeCount}` : ''}
-        </Text>
-      </TouchableOpacity>
+      <FilterPill onPress={onFiltersPress} />
     </View>
   )
+}
+
+/** Which filter sections to hide */
+export type HiddenFilterSections = {
+  maxDistance?: boolean
+  vibe?: boolean
+  spotsOnly?: boolean
 }
 
 /** Full-screen filter sheet — call onApply after store commit */
@@ -86,6 +149,8 @@ export function SwipeFilterSheet({
   spotsOnly,
   setSpotsOnly,
   onApplied,
+  hideSections,
+  onApplyCustom,
 }: {
   visible: boolean
   onClose: () => void
@@ -96,6 +161,10 @@ export function SwipeFilterSheet({
   spotsOnly: boolean
   setSpotsOnly: React.Dispatch<React.SetStateAction<boolean>>
   onApplied?: () => void
+  /** Hide specific filter sections for contexts that don't need them */
+  hideSections?: HiddenFilterSections
+  /** Override apply handler (e.g. Top 5 uses /api/play instead of fetchSessions) */
+  onApplyCustom?: (filters: { duprMin: number; timeSlots: TimeSlotKey[] }) => Promise<void>
 }) {
   const dateFilter = useUiStore((s) => s.swipeDateFilter)
   const swipeDuprMin = useUiStore((s) => s.swipeDuprMin)
@@ -136,23 +205,29 @@ export function SwipeFilterSheet({
     setSwipeMaxCards(draftMaxCards)
     setSwipeRangeKm(draftRangeKm)
 
-    const date = dateFilter === 'tomorrow' ? vnDateString(1) : undefined
-    const { lat, lng } = locationRef.current
-    const fetchPromise = fetchSessions(lat, lng, date, {
-      duprMin: draftDupr,
-      timeSlots: draftTimeSlots,
-      maxCards: draftMaxCards,
-      rangeKm: draftRangeKm,
-    })
+    if (onApplyCustom) {
+      await onApplyCustom({ duprMin: draftDupr, timeSlots: draftTimeSlots })
+      await new Promise((r) => setTimeout(r, 1000))
+      setApplying(false)
+      onClose()
+      onApplied?.()
+    } else {
+      const date = dateFilter === 'tomorrow' ? vnDateString(1) : undefined
+      const { lat, lng } = locationRef.current
+      const fetchPromise = fetchSessions(lat, lng, date, {
+        duprMin: draftDupr,
+        timeSlots: draftTimeSlots,
+        maxCards: draftMaxCards,
+        rangeKm: draftRangeKm,
+      })
 
-    // Keep the button in loading state for at least 2s so user sees feedback
-    await new Promise((r) => setTimeout(r, 2000))
-    setApplying(false)
-    onClose()
+      await new Promise((r) => setTimeout(r, 2000))
+      setApplying(false)
+      onClose()
 
-    // Wait for fetch to finish, then signal parent
-    await fetchPromise
-    onApplied?.()
+      await fetchPromise
+      onApplied?.()
+    }
   }
 
   return (
@@ -243,64 +318,70 @@ export function SwipeFilterSheet({
             </View>
           </View>
 
-          <View style={sheet.section}>
-            <Text style={sheet.label}>Vibe</Text>
-            <View style={sheet.chipRow}>
-              {([
-                { key: 'social' as const, label: 'Social' },
-                { key: 'competitive' as const, label: 'Competitive' },
-              ]).map((v) => (
+          {!hideSections?.vibe && (
+            <View style={sheet.section}>
+              <Text style={sheet.label}>Vibe</Text>
+              <View style={sheet.chipRow}>
+                {([
+                  { key: 'social' as const, label: 'Social' },
+                  { key: 'competitive' as const, label: 'Competitive' },
+                ]).map((v) => (
+                  <TouchableOpacity
+                    key={v.key}
+                    style={[sheet.vibeBtn, vibeFilter === v.key && sheet.vibeBtnOn]}
+                    onPress={() => setVibeFilter((prev) => (prev === v.key ? null : v.key))}
+                  >
+                    <Text style={[sheet.vibeLbl, vibeFilter === v.key && sheet.vibeLblOn]}>
+                      {v.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
                 <TouchableOpacity
-                  key={v.key}
-                  style={[sheet.vibeBtn, vibeFilter === v.key && sheet.vibeBtnOn]}
-                  onPress={() => setVibeFilter((prev) => (prev === v.key ? null : v.key))}
+                  style={[sheet.vibeBtn, vibeFilter === null && sheet.vibeBtnOn]}
+                  onPress={() => setVibeFilter(null)}
                 >
-                  <Text style={[sheet.vibeLbl, vibeFilter === v.key && sheet.vibeLblOn]}>
-                    {v.label}
-                  </Text>
+                  <Text style={[sheet.vibeLbl, vibeFilter === null && sheet.vibeLblOn]}>Any</Text>
                 </TouchableOpacity>
-              ))}
+              </View>
+            </View>
+          )}
+
+          {!hideSections?.maxDistance && (
+            <View style={sheet.section}>
+              <Text style={sheet.label}>Max distance</Text>
+              <View style={sheet.chipRow}>
+                {([null, 5, 10, 20, 30] as (number | null)[]).map((v) => (
+                  <TouchableOpacity
+                    key={v ?? 'any'}
+                    style={[sheet.vibeBtn, draftRangeKm === v && sheet.vibeBtnOn]}
+                    onPress={() => setDraftRangeKm(v)}
+                  >
+                    <Text style={[sheet.vibeLbl, draftRangeKm === v && sheet.vibeLblOn]}>
+                      {v == null ? 'Any' : `${v} km`}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          )}
+
+          {!hideSections?.spotsOnly && (
+            <View style={sheet.section}>
               <TouchableOpacity
-                style={[sheet.vibeBtn, vibeFilter === null && sheet.vibeBtnOn]}
-                onPress={() => setVibeFilter(null)}
+                style={sheet.toggleRow}
+                onPress={() => setSpotsOnly((prev) => !prev)}
+                activeOpacity={0.8}
               >
-                <Text style={[sheet.vibeLbl, vibeFilter === null && sheet.vibeLblOn]}>Any</Text>
+                <View style={sheet.toggleLeft}>
+                  <Text style={sheet.toggleLbl}>3+ spots available only</Text>
+                  <Text style={sheet.toggleSub}>Hide sessions that are nearly full</Text>
+                </View>
+                <View style={[sheet.toggle, spotsOnly && sheet.toggleOn]}>
+                  <View style={[sheet.toggleDot, spotsOnly && sheet.toggleDotOn]} />
+                </View>
               </TouchableOpacity>
             </View>
-          </View>
-
-          <View style={sheet.section}>
-            <Text style={sheet.label}>Max distance</Text>
-            <View style={sheet.chipRow}>
-              {([null, 5, 10, 20, 30] as (number | null)[]).map((v) => (
-                <TouchableOpacity
-                  key={v ?? 'any'}
-                  style={[sheet.vibeBtn, draftRangeKm === v && sheet.vibeBtnOn]}
-                  onPress={() => setDraftRangeKm(v)}
-                >
-                  <Text style={[sheet.vibeLbl, draftRangeKm === v && sheet.vibeLblOn]}>
-                    {v == null ? 'Any' : `${v} km`}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-
-          <View style={sheet.section}>
-            <TouchableOpacity
-              style={sheet.toggleRow}
-              onPress={() => setSpotsOnly((prev) => !prev)}
-              activeOpacity={0.8}
-            >
-              <View style={sheet.toggleLeft}>
-                <Text style={sheet.toggleLbl}>3+ spots available only</Text>
-                <Text style={sheet.toggleSub}>Hide sessions that are nearly full</Text>
-              </View>
-              <View style={[sheet.toggle, spotsOnly && sheet.toggleOn]}>
-                <View style={[sheet.toggleDot, spotsOnly && sheet.toggleDotOn]} />
-              </View>
-            </TouchableOpacity>
-          </View>
+          )}
         </ScrollView>
 
         <TouchableOpacity

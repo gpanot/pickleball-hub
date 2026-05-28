@@ -11,7 +11,7 @@ import {
 import { CACHE_CONTROL_PRIVATE } from "@/lib/http-cache-headers";
 import { calculateMatchScore } from "@/lib/match-score";
 
-const RANGE_KM = 5;
+const RANGE_KM = 10;
 
 type PlayCard = {
   sessionId: number;
@@ -54,14 +54,17 @@ type PlayCard = {
  */
 export async function GET(req: NextRequest) {
   const user = await getMobileUser(req);
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
 
   const { searchParams } = new URL(req.url);
   const lat = parseFloat(searchParams.get("lat") ?? "");
   const lng = parseFloat(searchParams.get("lng") ?? "");
   const filter = searchParams.get("filter") ?? "today";
+  const duprMinParam = parseFloat(searchParams.get("duprMin") ?? "0");
+  const duprMin = Number.isFinite(duprMinParam) ? duprMinParam : 0;
+  const timeSlotsParam = searchParams.get("timeSlots") ?? "";
+  const timeSlots = timeSlotsParam
+    ? timeSlotsParam.split(",").filter((s) => ["morning", "afternoon", "evening"].includes(s))
+    : ["morning", "afternoon", "evening"];
 
   const today = vnCalendarDateString(0);
   const tomorrow = vnCalendarDateString(1);
@@ -101,16 +104,18 @@ export async function GET(req: NextRequest) {
   } as const;
 
   const [userProfile, follows, sessions] = await Promise.all([
-    user.reclubUserId
+    user?.reclubUserId
       ? prisma.player.findUnique({
           where: { userId: user.reclubUserId },
           select: { duprDoubles: true },
         })
       : Promise.resolve(null),
-    prisma.follow.findMany({
-      where: { followerId: user.profileId },
-      select: { followeeId: true },
-    }),
+    user?.profileId
+      ? prisma.follow.findMany({
+          where: { followerId: user.profileId },
+          select: { followeeId: true },
+        })
+      : Promise.resolve([]),
     prisma.session.findMany({
       where: sessionWhere,
       include: sessionInclude,
@@ -135,6 +140,18 @@ export async function GET(req: NextRequest) {
     const joinedRecently = Math.max(0, joined - joinedPrev);
     const spotsLeft = Math.max(0, session.maxPlayers - joined);
     if (spotsLeft <= 0) continue;
+
+    // Time-slot filter
+    const startHour = parseInt(session.startTime.split(":")[0] ?? "12", 10);
+    const slot =
+      startHour < 12 ? "morning" : startHour < 17 ? "afternoon" : "evening";
+    if (timeSlots.length > 0 && timeSlots.length < 3 && !timeSlots.includes(slot))
+      continue;
+
+    // Min DUPR filter
+    if (duprMin > 0 && session.duprStat?.avgDuprDoubles != null) {
+      if (Number(session.duprStat.avgDuprDoubles) < duprMin) continue;
+    }
 
     const fillRate =
       session.maxPlayers > 0 ? joined / session.maxPlayers : 0;

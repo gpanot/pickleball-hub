@@ -185,6 +185,7 @@ model SessionRoster {
   isHost      Boolean  @default(false) @map("is_host")
   isConfirmed Boolean  @default(true) @map("is_confirmed")
   scrapedAt   DateTime @default(now()) @map("scraped_at")
+  firstSeenAt DateTime @default(now()) @map("first_seen_at")
 
   session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   player  Player  @relation(fields: [userId], references: [userId], onDelete: Cascade)

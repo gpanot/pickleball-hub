@@ -6,8 +6,8 @@ import { CACHE_CONTROL_PUBLIC_LISTINGS } from "@/lib/http-cache-headers";
  * GET /api/dashboard/organizer/booking-behavior
  *
  * Returns booking lead-time distribution for HCM pickleball sessions.
- * Uses session_rosters.scraped_at as a proxy for when a player was first
- * seen on a roster, relative to the session's start time.
+ * Uses session_rosters.first_seen_at — the timestamp when a player was first
+ * seen on a roster — relative to the session's start time.
  *
  * The 4 scrape windows (UTC): ~23:00, ~01:00, ~05:00, ~14:00
  * Buckets: >48h | 24–48h | 12–24h | <12h (before session start)
@@ -16,7 +16,7 @@ import { CACHE_CONTROL_PUBLIC_LISTINGS } from "@/lib/http-cache-headers";
  */
 export async function GET() {
   try {
-    // Raw query: for each roster entry, compute hours_before = session start UTC - scraped_at
+    // Raw query: for each roster entry, compute hours_before = session start UTC - first_seen_at
     // and classify into buckets. Uses last 60 days of sessions.
     const rows = await prisma.$queryRaw<
       { bucket: string; count: bigint }[]
@@ -35,7 +35,7 @@ export async function GET() {
             EXTRACT(EPOCH FROM (
               (s.scraped_date || ' ' || s.start_time)::timestamp
               - INTERVAL '7 hours'
-              - sr.scraped_at
+              - sr.first_seen_at
             )) / 3600
           ) AS hours_before
         FROM session_rosters sr
@@ -43,7 +43,7 @@ export async function GET() {
         WHERE s.scraped_date >= (CURRENT_DATE - INTERVAL '60 days')::text
           AND s.scraped_date <= CURRENT_DATE::text
           -- Only count entries scraped BEFORE the session started (positive lead time)
-          AND sr.scraped_at < (s.scraped_date || ' ' || s.start_time)::timestamp - INTERVAL '7 hours'
+          AND sr.first_seen_at < (s.scraped_date || ' ' || s.start_time)::timestamp - INTERVAL '7 hours'
       ) sub
       GROUP BY bucket
     `;
@@ -66,14 +66,14 @@ export async function GET() {
             EXTRACT(EPOCH FROM (
               (s.scraped_date || ' ' || s.start_time)::timestamp
               - INTERVAL '7 hours'
-              - sr.scraped_at
+              - sr.first_seen_at
             )) / 3600
           ) AS hours_before
         FROM session_rosters sr
         JOIN sessions s ON s.id = sr.session_id
         WHERE s.scraped_date >= (CURRENT_DATE - INTERVAL '30 days')::text
           AND s.scraped_date <= CURRENT_DATE::text
-          AND sr.scraped_at < (s.scraped_date || ' ' || s.start_time)::timestamp - INTERVAL '7 hours'
+          AND sr.first_seen_at < (s.scraped_date || ' ' || s.start_time)::timestamp - INTERVAL '7 hours'
       ) sub
       GROUP BY sub.scraped_date
       ORDER BY sub.scraped_date ASC

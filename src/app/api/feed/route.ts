@@ -174,8 +174,8 @@ export async function GET(req: NextRequest) {
       type: "joining",
       player: toPlayerPayload(r.player),
       isFollowing: true,
-      timestamp: r.session.snapshots[0]?.scrapedAt?.toISOString()
-        ?? `${r.session.scrapedDate}T${r.session.startTime}:00+07:00`,
+      timestamp: r.firstSeenAt?.toISOString()
+        ?? new Date().toISOString(),
       sessionName: r.session.name,
       venueName: r.session.club.name,
       sessionTime: `${r.session.scrapedDate}T${r.session.startTime}:00+07:00`,

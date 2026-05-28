@@ -247,8 +247,6 @@ export function FriendGoingCard({
         <View style={s.fcHeaderLeft}>
           <Text style={s.fcVenue} numberOfLines={1}>
             {item.clubName}
-            {item.venueName && item.venueName !== item.clubName ? ` · ${item.venueName}` : ''}
-            {item.distanceKm != null ? ` · ${item.distanceKm.toFixed(1)} km` : ''}
           </Text>
           <Text style={s.fcName} numberOfLines={1}>
             {periodSocialTitle(startHour)}
@@ -266,7 +264,8 @@ export function FriendGoingCard({
       <View style={s.pillsRow}>
         <View style={s.friendTimePill}>
           <Text style={s.friendTimePillText}>
-            {periodLabel(startHour)} · {formatStartTimePill(startHour, startMins)}
+            {formatStartTimePill(startHour, startMins)}
+            {item.distanceKm != null ? ` · ${item.distanceKm.toFixed(1)} km` : ''}
           </Text>
         </View>
         {showFillingFast && (
