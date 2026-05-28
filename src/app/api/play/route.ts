@@ -6,14 +6,11 @@ import {
   vnCalendarDateString,
   vnCurrentTimeString,
   haversineKm,
-  deriveVibeTag,
   isFillingFast,
 } from "@/lib/utils";
 import { CACHE_CONTROL_PRIVATE } from "@/lib/http-cache-headers";
 import { calculateMatchScore } from "@/lib/match-score";
 
-const ROSTER_CAP = 10;
-const FRIENDS_AVATAR_CAP = 4;
 const RANGE_KM = 5;
 
 type PlayCard = {
@@ -50,9 +47,10 @@ type PlayCard = {
 };
 
 /**
- * GET /api/play?filter=today|tomorrow&lat=&lng=&saved=1,2,3
+ * GET /api/play?filter=today|tomorrow&lat=&lng=
  *
- * Combined Play screen payload: top5, friendsGoing, savedSessions, exploreSessions.
+ * Returns the top 5 recommended sessions for the Play screen.
+ * Explore sessions are loaded separately via /api/sessions/swipe-deck.
  */
 export async function GET(req: NextRequest) {
   const user = await getMobileUser(req);
@@ -72,21 +70,6 @@ export async function GET(req: NextRequest) {
 
   const userLat = Number.isFinite(lat) ? lat : null;
   const userLng = Number.isFinite(lng) ? lng : null;
-
-  let userProfile: { duprDoubles: import("@prisma/client").Prisma.Decimal | null } | null =
-    null;
-  if (user.reclubUserId) {
-    userProfile = await prisma.player.findUnique({
-      where: { userId: user.reclubUserId },
-      select: { duprDoubles: true },
-    });
-  }
-
-  const follows = await prisma.follow.findMany({
-    where: { followerId: user.profileId },
-    select: { followeeId: true },
-  });
-  const followeeIds = new Set(follows.map((f) => f.followeeId.toString()));
 
   const sessionWhere = {
     scrapedDate: dateStr,
@@ -115,15 +98,27 @@ export async function GET(req: NextRequest) {
     _count: { select: { rosters: true } },
   } as const;
 
-  const sessions = await prisma.session.findMany({
-    where: sessionWhere,
-    include: sessionInclude,
-    orderBy: { startTime: "asc" },
-  });
+  const [userProfile, follows, sessions] = await Promise.all([
+    user.reclubUserId
+      ? prisma.player.findUnique({
+          where: { userId: user.reclubUserId },
+          select: { duprDoubles: true },
+        })
+      : Promise.resolve(null),
+    prisma.follow.findMany({
+      where: { followerId: user.profileId },
+      select: { followeeId: true },
+    }),
+    prisma.session.findMany({
+      where: sessionWhere,
+      include: sessionInclude,
+      orderBy: { startTime: "asc" },
+    }),
+  ]);
+  const followeeIds = new Set(follows.map((f) => f.followeeId.toString()));
 
   type Scored = {
     card: PlayCard;
-    swipe: Record<string, unknown>;
     sessionId: number;
     duprCoverageCount: number;
   };
@@ -240,139 +235,26 @@ export async function GET(req: NextRequest) {
       ).length,
     };
 
-    const duprPct = session.duprStat
-      ? Number(session.duprStat.duprParticipationPct)
-      : null;
-    const vibeTag = deriveVibeTag(
-      session.name,
-      session.skillLevelMin,
-      duprPct,
-    );
-
-    const roster = session.rosters.slice(0, ROSTER_CAP).map((r) => {
-      const uid = (r.player?.userId ?? r.userId).toString();
-      return {
-        userId: uid,
-        displayName: r.player?.displayName ?? "Player",
-        imageUrl:
-          r.player?.imageUrl ?? reclubAvatarUrl(r.player?.userId ?? r.userId),
-        duprDoubles:
-          r.player?.duprDoubles != null ? Number(r.player.duprDoubles) : null,
-        isHost: r.isHost,
-        isFollowing: followeeIds.has(uid),
-      };
-    });
-
-    let duprRange: { min: number; max: number } | null = null;
-    const duprVals = session.rosters
-      .map((r) =>
-        r.player?.duprDoubles != null ? Number(r.player.duprDoubles) : null,
-      )
-      .filter((v): v is number => v !== null && v > 0);
-    if (duprVals.length >= 2) {
-      duprRange = {
-        min: Math.round(Math.min(...duprVals) * 10) / 10,
-        max: Math.round(Math.max(...duprVals) * 10) / 10,
-      };
-    } else if (session.skillLevelMin != null && session.skillLevelMax != null) {
-      duprRange = { min: session.skillLevelMin, max: session.skillLevelMax };
-    } else if (session.duprStat?.avgDuprDoubles != null) {
-      const avg = Number(session.duprStat.avgDuprDoubles);
-      duprRange = {
-        min: Math.round((avg - 0.3) * 10) / 10,
-        max: Math.round((avg + 0.3) * 10) / 10,
-      };
-    }
-
-    const swipe = {
-      id: session.id,
-      referenceCode: session.referenceCode,
-      name: session.name,
-      startTime: session.startTime,
-      endTime: session.endTime,
-      durationMin: session.durationMin,
-      maxPlayers: session.maxPlayers,
-      feeAmount: session.feeAmount,
-      feeCurrency: session.feeCurrency,
-      joined,
-      spotsLeft,
-      fillRate: Math.round(fillRate * 100) / 100,
-      fillingFast,
-      joinedRecently,
-      matchScore,
-      distanceKm,
-      vibeTag,
-      duprRange,
-      venue: session.venue
-        ? {
-            name: session.venue.name,
-            latitude: session.venue.latitude,
-            longitude: session.venue.longitude,
-          }
-        : null,
-      club: session.club,
-      roster,
-      regulars: [] as { displayName: string; imageUrl: string }[],
-      friends: friends.slice(0, FRIENDS_AVATAR_CAP),
-      friendCount,
-      friendsOverflow: Math.max(0, friendCount - FRIENDS_AVATAR_CAP),
-      eventUrl: session.eventUrl,
-      scrapedDate: session.scrapedDate,
-    };
-
     const duprCoverageCount = session.rosters.filter(
       (r) => r.player?.duprDoubles != null && Number(r.player.duprDoubles) > 0,
     ).length;
 
-    scored.push({ card, swipe, sessionId: session.id, duprCoverageCount });
+    scored.push({ card, sessionId: session.id, duprCoverageCount });
   }
 
   scored.sort((a, b) => b.card.matchScore - a.card.matchScore);
 
-  const friendsGoing = scored
-    .filter((s) => s.card.hasFriends)
-    .map((s) => s.card);
-
-  const friendSessionIds = new Set(friendsGoing.map((s) => s.sessionId));
+  const friendSessionIds = new Set(
+    scored.filter((s) => s.card.hasFriends).map((s) => s.sessionId),
+  );
 
   const top5 = scored
     .filter((s) => !friendSessionIds.has(s.sessionId) && s.duprCoverageCount >= 6)
     .slice(0, 5)
     .map((s) => s.card);
 
-  const top5Ids = new Set(top5.map((s) => s.sessionId));
-
-  const exploreSessions = scored
-    .filter(
-      (s) =>
-        !friendSessionIds.has(s.sessionId) &&
-        !top5Ids.has(s.sessionId) &&
-        s.duprCoverageCount >= 6,
-    )
-    .map((s) => s.swipe);
-
-  const savedParam = searchParams.get("saved");
-  const savedIdList = savedParam
-    ? savedParam
-        .split(",")
-        .map((x) => parseInt(x.trim(), 10))
-        .filter((n) => !Number.isNaN(n))
-    : [];
-
-  const savedSessions =
-    savedIdList.length > 0
-      ? scored
-          .filter((s) => savedIdList.includes(s.sessionId))
-          .map((s) => s.card)
-      : [];
-
   return NextResponse.json(
-    {
-      top5,
-      friendsGoing,
-      savedSessions,
-      exploreSessions,
-    },
+    { top5 },
     { headers: { "Cache-Control": CACHE_CONTROL_PRIVATE } },
   );
 }

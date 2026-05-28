@@ -23,7 +23,7 @@ function toPlayerPayload(p: {
  * Returns a chronological feed of activity from players the user follows:
  *   - "joining": followees on upcoming session rosters (today or future)
  *   - "played_today": followees who finished a session today
- *   - "played": followees who attended sessions in the last 30 days
+ *   - "played": followees who attended sessions in the last 5 days
  *   - "you_are_playing": current user on a live session
  *   - "just_followed" / "new_follower": recent follow events
  *   - "streak_milestone" / "dupr_update": social milestones
@@ -51,41 +51,119 @@ export async function GET(req: NextRequest) {
   const today = new Date();
   const todayStr = today.toISOString().slice(0, 10);
 
-  // 30 days ago as YYYY-MM-DD for scrapedDate comparison
-  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-  const cutoffStr = thirtyDaysAgo.toISOString().slice(0, 10);
+  const fiveDaysAgo = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000);
+  const cutoffStr = fiveDaysAgo.toISOString().slice(0, 10);
 
-  // "joining" — followee is on the roster of an upcoming session (scrapedDate >= today)
-  const upcomingRosters = await prisma.sessionRoster.findMany({
-    where: {
-      userId: { in: followeeIds },
-      session: { scrapedDate: { gte: todayStr } },
-    },
-    include: {
-      player: {
-        select: {
-          userId: true,
-          displayName: true,
-          imageUrl: true,
-          duprDoubles: true,
+  const vnNow = new Date(Date.now() + 7 * 60 * 60 * 1000);
+  const nowTimeVN = vnNow.toISOString().slice(11, 16); // HH:mm
+
+  const playerSelect = {
+    userId: true,
+    displayName: true,
+    imageUrl: true,
+    duprDoubles: true,
+  } as const;
+
+  // Fire all three roster queries + follow-event queries in parallel
+  const [upcomingRosters, recentRosters, todayCompletedRosters, recentFollowing, recentFollowers] =
+    await Promise.all([
+      // "joining" — followees on upcoming sessions
+      prisma.sessionRoster.findMany({
+        where: {
+          userId: { in: followeeIds },
+          session: { scrapedDate: { gte: todayStr } },
         },
-      },
-      session: {
-        select: {
-          id: true,
-          name: true,
-          startTime: true,
-          scrapedDate: true,
-          eventUrl: true,
-          maxPlayers: true,
-          club: { select: { name: true } },
-          snapshots: { orderBy: { scrapedAt: "desc" }, take: 1 },
+        include: {
+          player: { select: playerSelect },
+          session: {
+            select: {
+              id: true,
+              name: true,
+              startTime: true,
+              scrapedDate: true,
+              eventUrl: true,
+              maxPlayers: true,
+              club: { select: { name: true } },
+              snapshots: { orderBy: { scrapedAt: "desc" }, take: 1 },
+            },
+          },
         },
-      },
-    },
-    orderBy: { session: { startTime: "asc" } },
-    take: 15,
-  });
+        orderBy: { session: { startTime: "asc" } },
+        take: 15,
+      }),
+      // "played" — followees who attended sessions in last 5 days
+      prisma.sessionRoster.findMany({
+        where: {
+          userId: { in: followeeIds },
+          session: { scrapedDate: { gte: cutoffStr, lt: todayStr } },
+        },
+        include: {
+          player: { select: playerSelect },
+          session: {
+            select: {
+              startTime: true,
+              scrapedDate: true,
+              club: { select: { name: true } },
+              snapshots: { orderBy: { scrapedAt: "desc" }, take: 1 },
+            },
+          },
+        },
+        orderBy: { session: { scrapedDate: "desc" } },
+        take: 40,
+      }),
+      // "played_today" — followees who finished a session today
+      prisma.sessionRoster.findMany({
+        where: {
+          userId: { in: followeeIds },
+          session: { scrapedDate: todayStr, endTime: { lte: nowTimeVN } },
+        },
+        include: {
+          player: { select: playerSelect },
+          session: {
+            select: {
+              id: true,
+              name: true,
+              startTime: true,
+              endTime: true,
+              scrapedDate: true,
+              club: { select: { name: true } },
+              snapshots: { orderBy: { scrapedAt: "desc" }, take: 1 },
+            },
+          },
+        },
+        orderBy: { session: { startTime: "desc" } },
+        take: 20,
+      }),
+      // "just_followed" — players the user recently followed
+      prisma.follow.findMany({
+        where: {
+          followerId: user.profileId,
+          createdAt: { gte: fiveDaysAgo },
+        },
+        include: { followee: { select: playerSelect } },
+        orderBy: { createdAt: "desc" },
+        take: 10,
+      }),
+      // "new_follower" — players who recently followed the user
+      user.reclubUserId
+        ? prisma.follow.findMany({
+            where: {
+              followeeId: user.reclubUserId,
+              createdAt: { gte: fiveDaysAgo },
+            },
+            include: {
+              follower: {
+                select: {
+                  id: true,
+                  reclubPlayer: { select: playerSelect },
+                },
+              },
+            },
+            orderBy: { createdAt: "desc" },
+            take: 10,
+          })
+        : Promise.resolve([]),
+    ]);
 
   for (const r of upcomingRosters) {
     const joined = r.session.snapshots[0]?.joined ?? 0;
@@ -106,73 +184,6 @@ export async function GET(req: NextRequest) {
       eventUrl: r.session.eventUrl,
     });
   }
-
-  // "played" — followee attended a session in last 30 days (scrapedDate < today)
-  const recentRosters = await prisma.sessionRoster.findMany({
-    where: {
-      userId: { in: followeeIds },
-      session: {
-        scrapedDate: { gte: cutoffStr, lt: todayStr },
-      },
-    },
-    include: {
-      player: {
-        select: {
-          userId: true,
-          displayName: true,
-          imageUrl: true,
-          duprDoubles: true,
-        },
-      },
-      session: {
-        select: {
-          startTime: true,
-          scrapedDate: true,
-          club: { select: { name: true } },
-          snapshots: { orderBy: { scrapedAt: "desc" }, take: 1 },
-        },
-      },
-    },
-    orderBy: { session: { scrapedDate: "desc" } },
-    take: 40,
-  });
-
-  // Also include today's sessions that have already ended (endTime <= nowTime in VN)
-  const vnNow = new Date(Date.now() + 7 * 60 * 60 * 1000);
-  const nowTimeVN = vnNow.toISOString().slice(11, 16); // HH:mm
-
-  const todayCompletedRosters = await prisma.sessionRoster.findMany({
-    where: {
-      userId: { in: followeeIds },
-      session: {
-        scrapedDate: todayStr,
-        endTime: { lte: nowTimeVN },
-      },
-    },
-    include: {
-      player: {
-        select: {
-          userId: true,
-          displayName: true,
-          imageUrl: true,
-          duprDoubles: true,
-        },
-      },
-      session: {
-        select: {
-          id: true,
-          name: true,
-          startTime: true,
-          endTime: true,
-          scrapedDate: true,
-          club: { select: { name: true } },
-          snapshots: { orderBy: { scrapedAt: "desc" }, take: 1 },
-        },
-      },
-    },
-    orderBy: { session: { startTime: "desc" } },
-    take: 20,
-  });
 
   // played_today: distinct item per (followee, session) for sessions finished today
   const seenTodayKeys = new Set<string>();
@@ -305,6 +316,7 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // Streak milestones — single batched query for all followees instead of N+1
   const MILESTONE_WEEKS = [4, 8, 12, 26, 52];
 
   function getWeekKey(date: Date): string {
@@ -320,25 +332,42 @@ export async function GET(req: NextRequest) {
 
   const now = new Date();
 
-  for (const followeeId of followeeIds) {
-    const sessions = await prisma.sessionRoster.findMany({
-      where: {
-        userId: followeeId,
-        session: { scrapedDate: { lt: todayStr } },
-      },
-      select: {
-        session: {
-          select: {
-            startTime: true,
-            scrapedDate: true,
-            snapshots: { orderBy: { scrapedAt: "desc" }, take: 1 },
-          },
+  // ~90 days covers 12 weeks of history needed for streak computation
+  const streakCutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+  const streakCutoffStr = streakCutoff.toISOString().slice(0, 10);
+
+  const allStreakRosters = await prisma.sessionRoster.findMany({
+    where: {
+      userId: { in: followeeIds },
+      session: { scrapedDate: { gte: streakCutoffStr, lt: todayStr } },
+    },
+    select: {
+      userId: true,
+      session: {
+        select: {
+          startTime: true,
+          scrapedDate: true,
+          snapshots: { orderBy: { scrapedAt: "desc" }, take: 1 },
         },
       },
-      orderBy: { session: { startTime: "desc" } },
-      take: 200,
-    });
+    },
+    orderBy: { session: { startTime: "desc" } },
+  });
 
+  // Group roster rows by followee
+  const rostersByFollowee = new Map<bigint, typeof allStreakRosters>();
+  for (const r of allStreakRosters) {
+    const list = rostersByFollowee.get(r.userId) ?? [];
+    list.push(r);
+    rostersByFollowee.set(r.userId, list);
+  }
+
+  // Compute streaks per followee from the grouped data
+  const milestoneFolloweeIds: bigint[] = [];
+  const milestoneData = new Map<bigint, { streak: number; weeklyPlayed: boolean[]; sessions: typeof allStreakRosters }>();
+
+  for (const followeeId of followeeIds) {
+    const sessions = rostersByFollowee.get(followeeId) ?? [];
     const weeksWithSessions = new Set(
       sessions.map((s) =>
         getWeekKey(new Date(`${s.session.scrapedDate}T12:00:00`))
@@ -364,47 +393,38 @@ export async function GET(req: NextRequest) {
     }
 
     const isCurrentWeekPlayed = weeksWithSessions.has(getWeekKey(now));
-
     if (isCurrentWeekPlayed && MILESTONE_WEEKS.includes(streak)) {
-      const player = await prisma.player.findUnique({
-        where: { userId: followeeId },
-        select: {
-          userId: true,
-          displayName: true,
-          imageUrl: true,
-          duprDoubles: true,
-        },
-      });
+      milestoneFolloweeIds.push(followeeId);
+      milestoneData.set(followeeId, { streak, weeklyPlayed, sessions });
+    }
+  }
 
+  // Single batch query for player profiles of milestone holders
+  if (milestoneFolloweeIds.length > 0) {
+    const milestonePlayers = await prisma.player.findMany({
+      where: { userId: { in: milestoneFolloweeIds } },
+      select: playerSelect,
+    });
+    const playerMap = new Map(milestonePlayers.map((p) => [p.userId, p]));
+
+    for (const followeeId of milestoneFolloweeIds) {
+      const player = playerMap.get(followeeId);
+      const data = milestoneData.get(followeeId)!;
       if (player) {
+        const latestSession = data.sessions[0];
         items.push({
-          id: `streak_${followeeId}_${streak}`,
+          id: `streak_${followeeId}_${data.streak}`,
           type: "streak_milestone",
           player: toPlayerPayload(player),
           isFollowing: true,
-          timestamp: sessions[0]?.session.snapshots?.[0]?.scrapedAt?.toISOString()
-            ?? `${sessions[0]?.session.scrapedDate}T${sessions[0]?.session.startTime}:00+07:00`,
-          streakCount: streak,
-          weeklyPlayed: weeklyPlayed.reverse(),
+          timestamp: latestSession?.session.snapshots?.[0]?.scrapedAt?.toISOString()
+            ?? `${latestSession?.session.scrapedDate}T${latestSession?.session.startTime}:00+07:00`,
+          streakCount: data.streak,
+          weeklyPlayed: data.weeklyPlayed.reverse(),
         });
       }
     }
   }
-
-  // "just_followed" — players the current user started following in the last 30 days
-  const recentFollowing = await prisma.follow.findMany({
-    where: {
-      followerId: user.profileId,
-      createdAt: { gte: thirtyDaysAgo },
-    },
-    include: {
-      followee: {
-        select: { userId: true, displayName: true, imageUrl: true, duprDoubles: true },
-      },
-    },
-    orderBy: { createdAt: "desc" },
-    take: 10,
-  });
 
   for (const f of recentFollowing) {
     items.push({
@@ -416,77 +436,51 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  // "new_follower" — players who started following the current user in the last 30 days
-  if (user.reclubUserId) {
-    const recentFollowers = await prisma.follow.findMany({
-      where: {
-        followeeId: user.reclubUserId,
-        createdAt: { gte: thirtyDaysAgo },
-      },
-      include: {
-        follower: {
-          select: {
-            id: true,
-            reclubPlayer: {
-              select: { userId: true, displayName: true, imageUrl: true, duprDoubles: true },
-            },
-          },
-        },
-      },
-      orderBy: { createdAt: "desc" },
-      take: 10,
+  for (const f of recentFollowers) {
+    const p = (f as any).follower?.reclubPlayer;
+    if (!p) continue;
+    items.push({
+      id: `new_follower_${(f as any).follower.id}`,
+      type: "new_follower",
+      player: toPlayerPayload(p),
+      isFollowing: false,
+      timestamp: f.createdAt.toISOString(),
     });
+  }
 
-    for (const f of recentFollowers) {
-      const p = f.follower.reclubPlayer;
-      if (!p) continue;
-      items.push({
-        id: `new_follower_${f.follower.id}`,
-        type: "new_follower",
-        player: toPlayerPayload(p),
-        isFollowing: false,
-        timestamp: f.createdAt.toISOString(),
-      });
+  // dupr_update — batch-fetch recent DUPR history for all followees at once
+  const duprCutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const allDuprHistory = await prisma.playerDuprHistory.findMany({
+    where: {
+      playerId: { in: followeeIds },
+      recordedAt: { gte: duprCutoff },
+    },
+    orderBy: { recordedAt: "desc" },
+    include: {
+      player: { select: playerSelect },
+    },
+  });
+
+  // Group by playerId and keep only the 2 most recent per player
+  const duprByPlayer = new Map<bigint, typeof allDuprHistory>();
+  for (const row of allDuprHistory) {
+    const list = duprByPlayer.get(row.playerId) ?? [];
+    if (list.length < 2) {
+      list.push(row);
+      duprByPlayer.set(row.playerId, list);
     }
   }
 
-  // dupr_update — followees whose DUPR improved in the last 30 days
-  const duprHistoryItems: typeof items = [];
-
-  for (const followeeId of followeeIds) {
-    const history = await prisma.playerDuprHistory.findMany({
-      where: { playerId: followeeId },
-      orderBy: { recordedAt: "desc" },
-      take: 2,
-      include: {
-        player: {
-          select: {
-            userId: true,
-            displayName: true,
-            imageUrl: true,
-            duprDoubles: true,
-          },
-        },
-      },
-    });
-
+  for (const [followeeId, history] of duprByPlayer) {
     if (history.length < 2) continue;
-
     const latest = history[0];
     const previous = history[1];
-
     if (!latest.duprDoubles || !previous.duprDoubles) continue;
-
     const newVal = Number(latest.duprDoubles);
     const oldVal = Number(previous.duprDoubles);
-
     if (newVal <= oldVal) continue;
 
-    const daysSince =
-      (Date.now() - latest.recordedAt.getTime()) / 86400000;
-    if (daysSince > 30) continue;
-
-    duprHistoryItems.push({
+    items.push({
       id: `dupr_update_${followeeId}_${latest.id}`,
       type: "dupr_update",
       player: toPlayerPayload(latest.player),
@@ -496,8 +490,6 @@ export async function GET(req: NextRequest) {
       duprNew: newVal,
     });
   }
-
-  items.push(...duprHistoryItems);
 
   // Strict chronological: newest timestamp first.
   items.sort((a, b) =>

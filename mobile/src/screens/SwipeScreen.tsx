@@ -107,13 +107,12 @@ export function SwipeScreen({
 }) {
   const { openSignUp } = useSignUpModal()
   const signedIn = useAuthStore((s) => s.isSignedIn)()
-  const { fetchSessions, fetchIfNeeded, loadSavedIds, saveSession, unsaveSession, setExploreSessions } =
+  const { fetchSessions, fetchIfNeeded, loadSavedIds, saveSession, unsaveSession } =
     useSessionStore.getState()
   // For unauthenticated users — show the swipe-deck sessions as top 5
   const guestSessions = useSessionStore((s) => s.sessions)
   const guestLoading = useSessionStore((s) => s.loading)
   const bootedRef = useRef(false)
-  const didRefetchPlayForAuth = useRef(false)
   const locationRef = useRef<{ lat: number; lng: number }>({ lat: HCMC_LAT, lng: HCMC_LNG })
   const [refreshing, setRefreshing] = useState(false)
   const [top5DateFilter, setTop5DateFilter] = useState<SwipeDateFilter>('today')
@@ -143,28 +142,18 @@ export function SwipeScreen({
   )
 
   const auth = useAuthStore.getState()
-  const jwt = useAuthStore((s) => s.jwt)
 
-  // Mirror App.tsx pattern: once jwt rehydrates (null → real token), refetch play data
-  // so TOP 5 populates on first install without needing a pull-to-refresh.
-  useEffect(() => {
-    if (!jwt || didRefetchPlayForAuth.current) return
-    didRefetchPlayForAuth.current = true
-    loadPlayData()
-  }, [jwt, loadPlayData])
+  const playDataLoadedRef = useRef(false)
 
   const loadPlayData = useCallback(async () => {
     if (!signedIn) return
     setPlayLoading(true)
     try {
-      const savedIds = [...useSessionStore.getState().savedIds]
-      const savedQuery = savedIds.length > 0 ? `&saved=${savedIds.join(',')}` : ''
       const { lat, lng } = locationRef.current
-      const latLng = `&lat=${lat}&lng=${lng}`
       const filter = top5DateFilter === 'tomorrow' ? 'tomorrow' : 'today'
 
       const res = await auth.authedFetch(
-        `/api/play?filter=${filter}${latLng}${savedQuery}`,
+        `/api/play?filter=${filter}&lat=${lat}&lng=${lng}`,
       )
       if (!res.ok) {
         debugLog('Play', `loadPlayData /api/play returned ${res.status}`)
@@ -176,11 +165,10 @@ export function SwipeScreen({
         (cards ?? []).map(playCardToFriendGoingItem)
 
       setTop5(mapCards(data.top5))
-      setExploreSessions((data.exploreSessions ?? []) as Session[])
     } finally {
       setPlayLoading(false)
     }
-  }, [auth, signedIn, top5DateFilter, setExploreSessions])
+  }, [auth, signedIn, top5DateFilter])
 
   const loadGoing = useCallback(async () => {
     setGoingLoading(true)
@@ -377,15 +365,7 @@ export function SwipeScreen({
     [auth],
   )
 
-  useEffect(() => {
-    if (signedIn) {
-      loadPlayData()
-    } else {
-      const date = top5DateFilter === 'tomorrow' ? vnDateString(1) : undefined
-      fetchSessions(locationRef.current.lat, locationRef.current.lng, date)
-    }
-  }, [top5DateFilter, signedIn, loadPlayData, fetchSessions])
-
+  // Boot: resolve location, load saved IDs, then do the initial data fetch.
   useEffect(() => {
     if (bootedRef.current) return
     bootedRef.current = true
@@ -402,6 +382,7 @@ export function SwipeScreen({
       } catch {
         // fallback to HCMC
       }
+      playDataLoadedRef.current = true
       if (signedIn) {
         await loadPlayData()
       } else {
@@ -411,11 +392,17 @@ export function SwipeScreen({
     })()
   }, [])
 
+  // Re-fetch when date filter changes or jwt arrives after boot.
+  // Skip the very first render (boot effect handles that).
   useEffect(() => {
-    if (signedIn && playTab === 'discover') {
+    if (!playDataLoadedRef.current) return
+    if (signedIn) {
       loadPlayData()
+    } else {
+      const date = top5DateFilter === 'tomorrow' ? vnDateString(1) : undefined
+      fetchSessions(locationRef.current.lat, locationRef.current.lng, date)
     }
-  }, [playTab, signedIn, loadPlayData])
+  }, [top5DateFilter, signedIn, loadPlayData, fetchSessions])
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true)
