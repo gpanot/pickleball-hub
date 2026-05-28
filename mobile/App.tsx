@@ -41,7 +41,7 @@ export default function App() {
   const profileId = useAuthStore((s) => s.profileId)
   const pushTokenRegistered = useRef(false)
 
-  const { gear, loading: gearLoading, saving: gearSaving, error: gearError, saveGear, savedConfirmation } =
+  const { gear, loading: gearLoading, saving: gearSaving, error: gearError, saveGear, savedConfirmation, gearSetupComplete } =
     useGearProfile(profileId ?? null, authStore.authedFetch)
 
   const handleGearSave = async (updated: GearProfile) => {
@@ -223,12 +223,14 @@ export default function App() {
                     setFlowScreen('gear')
                   }}
                   gearSaved={savedConfirmation}
+                  gearSetupComplete={gearSetupComplete}
                 />
               </View>
               <View style={{ flex: 1, display: activeTab === 'swipe' ? 'flex' : 'none' }}>
                 <SwipeScreen
                   onOpenGearSheet={() => setGearSheetOpen(true)}
                   gearSaved={savedConfirmation}
+                  gearSetupComplete={gearSetupComplete}
                   onOpenExplore={() => setFlowScreen('explore')}
                 />
               </View>

@@ -81,7 +81,7 @@ function formatClock(clock: string): string {
   return `${h12}${m > 0 ? `:${String(m).padStart(2, '0')}` : ''} ${ampm}`
 }
 
-export function CircleScreen({ onOpenGear, gearSaved }: { onOpenGear?: () => void; gearSaved?: boolean }) {
+export function CircleScreen({ onOpenGear, gearSaved, gearSetupComplete }: { onOpenGear?: () => void; gearSaved?: boolean; gearSetupComplete?: boolean }) {
   const [subTab, setSubTab] = useState<CircleSubTab>('feed')
   const [friends, setFriends] = useState<FollowedPlayer[]>([])
   const [loadingFriends, setLoadingFriends] = useState(false)
@@ -226,6 +226,12 @@ export function CircleScreen({ onOpenGear, gearSaved }: { onOpenGear?: () => voi
                   other.player.userId === item.player.userId &&
                   other.type === item.type
               ) === index
+          )
+
+          // Keep strictly newest-first so local follow items don't break API sort order
+          deduped.sort(
+            (a, b) =>
+              new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
           )
 
           return deduped
@@ -565,6 +571,7 @@ export function CircleScreen({ onOpenGear, gearSaved }: { onOpenGear?: () => voi
             height={216}
             onPress={() => onOpenGear?.()}
             gearSaved={gearSaved}
+            gearSetupComplete={gearSetupComplete}
           />
 
           {/* Link Reclub banner */}

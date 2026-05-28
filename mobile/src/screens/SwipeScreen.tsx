@@ -91,17 +91,23 @@ function vnDateString(offsetDays: number): string {
 export function SwipeScreen({
   onOpenGearSheet,
   gearSaved,
+  gearSetupComplete,
   onOpenExplore,
 }: {
   onOpenGearSheet?: () => void
   gearSaved?: boolean
+  gearSetupComplete?: boolean
   onOpenExplore?: () => void
 }) {
   const { openSignUp } = useSignUpModal()
   const signedIn = useAuthStore((s) => s.isSignedIn)()
   const { fetchSessions, fetchIfNeeded, loadSavedIds, saveSession, unsaveSession, setExploreSessions } =
     useSessionStore.getState()
+  // For unauthenticated users — show the swipe-deck sessions as top 5
+  const guestSessions = useSessionStore((s) => s.sessions)
+  const guestLoading = useSessionStore((s) => s.loading)
   const bootedRef = useRef(false)
+  const didRefetchPlayForAuth = useRef(false)
   const locationRef = useRef<{ lat: number; lng: number }>({ lat: HCMC_LAT, lng: HCMC_LNG })
   const [refreshing, setRefreshing] = useState(false)
   const [top5DateFilter, setTop5DateFilter] = useState<SwipeDateFilter>('today')
@@ -123,7 +129,22 @@ export function SwipeScreen({
   const [top5, setTop5] = useState<FriendGoingItem[]>([])
   const [playLoading, setPlayLoading] = useState(false)
 
+  // Unauthenticated users see the first 5 sessions from the swipe deck as their top 5
+  const guestTop5 = useMemo(
+    () => (!signedIn ? guestSessions.slice(0, 5).map(sessionToFriendGoingItem) : []),
+    [signedIn, guestSessions],
+  )
+
   const auth = useAuthStore.getState()
+  const jwt = useAuthStore((s) => s.jwt)
+
+  // Mirror App.tsx pattern: once jwt rehydrates (null → real token), refetch play data
+  // so TOP 5 populates on first install without needing a pull-to-refresh.
+  useEffect(() => {
+    if (!jwt || didRefetchPlayForAuth.current) return
+    didRefetchPlayForAuth.current = true
+    loadPlayData()
+  }, [jwt, loadPlayData])
 
   const loadPlayData = useCallback(async () => {
     if (!signedIn) return
@@ -138,7 +159,10 @@ export function SwipeScreen({
       const res = await auth.authedFetch(
         `/api/play?filter=${filter}${latLng}${savedQuery}`,
       )
-      if (!res.ok) return
+      if (!res.ok) {
+        debugLog('Play', `loadPlayData /api/play returned ${res.status}`)
+        return
+      }
       const data = await res.json()
 
       const mapCards = (cards: PlayApiCard[]) =>
@@ -489,11 +513,45 @@ export function SwipeScreen({
             )}
 
             {!signedIn && (
-              <View style={s.emptyTop5}>
-                <Text style={s.emptyTop5Text}>
-                  Sign in to see your top 5 matches
-                </Text>
-              </View>
+              <>
+                {guestLoading && guestTop5.length === 0 && (
+                  <ActivityIndicator color={T.amber} style={{ marginTop: 40 }} />
+                )}
+
+                {guestTop5.length === 0 && !guestLoading && (
+                  <View style={s.emptyTop5}>
+                    <Text style={s.emptyTop5Text}>
+                      No sessions found · try changing the date
+                    </Text>
+                  </View>
+                )}
+
+                {guestTop5.map((item, index) => (
+                  <TouchableOpacity
+                    key={item.sessionId}
+                    onPress={() => openSignUp()}
+                    activeOpacity={1}
+                  >
+                    <FriendGoingCard
+                      item={item}
+                      isTop={index === 0}
+                      dimLevel={index}
+                    />
+                  </TouchableOpacity>
+                ))}
+
+                {guestTop5.length > 0 && (
+                  <TouchableOpacity
+                    style={s.signInBanner}
+                    onPress={() => openSignUp()}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={s.signInBannerText}>
+                      Sign in for personalised matches
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </>
             )}
 
             <TouchableOpacity
@@ -564,6 +622,7 @@ export function SwipeScreen({
             height={230}
             onPress={() => onOpenGearSheet?.()}
             gearSaved={gearSaved}
+            gearSetupComplete={gearSetupComplete}
           />
 
           {goingLoading ? (
@@ -924,6 +983,22 @@ const s = StyleSheet.create({
     fontSize: 13,
     color: '#333',
     textAlign: 'center',
+  },
+  signInBanner: {
+    marginHorizontal: 16,
+    marginTop: 4,
+    marginBottom: 12,
+    backgroundColor: 'rgba(245,166,35,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(245,166,35,0.4)',
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  signInBannerText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: T.amber,
   },
   exploreBtn: {
     flexDirection: 'row',

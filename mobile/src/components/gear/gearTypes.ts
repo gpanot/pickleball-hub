@@ -6,6 +6,8 @@ export type GearProfile = {
   shirt: string | null
   paddle: string | null
   shoes: string | null
+  /** True when all 4 zones were saved — persisted in DB so it survives reinstall. */
+  setupComplete?: boolean
 }
 
 export type GearZoneConfig = {

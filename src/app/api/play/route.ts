@@ -315,7 +315,11 @@ export async function GET(req: NextRequest) {
       scrapedDate: session.scrapedDate,
     };
 
-    scored.push({ card, swipe, sessionId: session.id });
+    const duprCoverageCount = session.rosters.filter(
+      (r) => r.player?.duprDoubles != null && Number(r.player.duprDoubles) > 0,
+    ).length;
+
+    scored.push({ card, swipe, sessionId: session.id, duprCoverageCount });
   }
 
   scored.sort((a, b) => b.card.matchScore - a.card.matchScore);
@@ -327,7 +331,7 @@ export async function GET(req: NextRequest) {
   const friendSessionIds = new Set(friendsGoing.map((s) => s.sessionId));
 
   const top5 = scored
-    .filter((s) => !friendSessionIds.has(s.sessionId))
+    .filter((s) => !friendSessionIds.has(s.sessionId) && s.duprCoverageCount >= 6)
     .slice(0, 5)
     .map((s) => s.card);
 
@@ -336,7 +340,9 @@ export async function GET(req: NextRequest) {
   const exploreSessions = scored
     .filter(
       (s) =>
-        !friendSessionIds.has(s.sessionId) && !top5Ids.has(s.sessionId),
+        !friendSessionIds.has(s.sessionId) &&
+        !top5Ids.has(s.sessionId) &&
+        s.duprCoverageCount >= 6,
     )
     .map((s) => s.swipe);
 

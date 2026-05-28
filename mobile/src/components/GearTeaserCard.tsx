@@ -18,9 +18,10 @@ interface Props {
   height?: number
   onPress: () => void
   gearSaved?: boolean
+  gearSetupComplete?: boolean
 }
 
-export function GearTeaserCard({ height = 230, onPress, gearSaved }: Props) {
+export function GearTeaserCard({ height = 230, onPress, gearSaved, gearSetupComplete }: Props) {
   const [visible, setVisible] = useState(false)
   const fadeAnim = useRef(new Animated.Value(1)).current
 
@@ -31,11 +32,11 @@ export function GearTeaserCard({ height = 230, onPress, gearSaved }: Props) {
   }, [])
 
   useEffect(() => {
-    if (gearSaved) {
+    if (gearSaved || gearSetupComplete) {
       setVisible(false)
       AsyncStorage.setItem(GEAR_PROMPT_KEY, 'done').catch(() => {})
     }
-  }, [gearSaved])
+  }, [gearSaved, gearSetupComplete])
 
   useEffect(() => {
     if (!visible) return

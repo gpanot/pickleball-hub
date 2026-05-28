@@ -223,14 +223,15 @@ model PlayerProfile {
 }
 
 model PlayerGear {
-  id         String    @id @default(cuid())
-  profileId  String    @unique @map("profile_id")
-  gender     String?
-  cap        String?
-  shirt      String?
-  paddle     String?
-  shoes      String?
-  updatedAt  DateTime  @updatedAt @map("updated_at")
+  id                String    @id @default(cuid())
+  profileId         String    @unique @map("profile_id")
+  gender            String?
+  cap               String?
+  shirt             String?
+  paddle            String?
+  shoes             String?
+  setupCompletedAt  DateTime? @map("setup_completed_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
 
   profile    PlayerProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
 

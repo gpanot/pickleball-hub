@@ -21,10 +21,14 @@ function toPlayerPayload(p: {
  * GET /api/feed
  *
  * Returns a chronological feed of activity from players the user follows:
- *   - "played" items: followees who attended sessions in the last 30 days
- *   - "joining" items: followees on upcoming session rosters (today or future scrapedDates)
+ *   - "joining": followees on upcoming session rosters (today or future)
+ *   - "played_today": followees who finished a session today
+ *   - "played": followees who attended sessions in the last 30 days
+ *   - "you_are_playing": current user on a live session
+ *   - "just_followed" / "new_follower": recent follow events
+ *   - "streak_milestone" / "dupr_update": social milestones
  *
- * Sorted: joining first, then by timestamp desc. Max 2 items per player, 20 total.
+ * Sorted strictly newest-first by timestamp. Max 2 items per player, 20 total.
  */
 export async function GET(req: NextRequest) {
   const user = await getMobileUser(req);
@@ -222,7 +226,10 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  // "you_are_playing": current user is on a live session right now
+  // "you_are_playing": current user is on a live session right now.
+  // Primary check: startTime <= now < endTime (exact window).
+  // Fallback: session started today and durationMin covers the current time,
+  // to handle sessions with a missing or stale endTime string.
   if (user.reclubUserId) {
     const myLiveRoster = await prisma.sessionRoster.findFirst({
       where: {
@@ -230,7 +237,6 @@ export async function GET(req: NextRequest) {
         session: {
           scrapedDate: todayStr,
           startTime: { lte: nowTimeVN },
-          endTime: { gt: nowTimeVN },
         },
       },
       include: {
@@ -239,29 +245,55 @@ export async function GET(req: NextRequest) {
             id: true,
             name: true,
             eventUrl: true,
+            startTime: true,
+            endTime: true,
+            durationMin: true,
             club: { select: { name: true } },
           },
         },
       },
+      orderBy: { session: { startTime: "desc" } },
     });
 
     if (myLiveRoster) {
-      const myProfile = await prisma.player.findUnique({
-        where: { userId: user.reclubUserId },
-        select: { userId: true, displayName: true, imageUrl: true, duprDoubles: true },
-      });
-      if (myProfile) {
-        items.push({
-          id: `you_are_playing_${myLiveRoster.sessionId}`,
-          type: "you_are_playing",
-          player: toPlayerPayload(myProfile),
-          isFollowing: false,
-          timestamp: new Date().toISOString(),
-          sessionId: myLiveRoster.session.id,
-          sessionName: myLiveRoster.session.name,
-          venueName: myLiveRoster.session.club.name,
-          eventUrl: myLiveRoster.session.eventUrl,
+      const sess = myLiveRoster.session;
+      // Derive effective endTime: prefer DB value, fall back to startTime + durationMin
+      let isLive = false;
+      if (sess.endTime) {
+        isLive = sess.endTime > nowTimeVN;
+      } else if (sess.durationMin) {
+        const [sh, sm] = sess.startTime.split(":").map(Number);
+        const startMinutes = (sh ?? 0) * 60 + (sm ?? 0);
+        const [nh, nm] = nowTimeVN.split(":").map(Number);
+        const nowMinutes = (nh ?? 0) * 60 + (nm ?? 0);
+        isLive = nowMinutes < startMinutes + sess.durationMin;
+      } else {
+        // No end info — treat as live for 2 hours after start
+        const [sh, sm] = sess.startTime.split(":").map(Number);
+        const startMinutes = (sh ?? 0) * 60 + (sm ?? 0);
+        const [nh, nm] = nowTimeVN.split(":").map(Number);
+        const nowMinutes = (nh ?? 0) * 60 + (nm ?? 0);
+        isLive = nowMinutes < startMinutes + 120;
+      }
+
+      if (isLive) {
+        const myProfile = await prisma.player.findUnique({
+          where: { userId: user.reclubUserId },
+          select: { userId: true, displayName: true, imageUrl: true, duprDoubles: true },
         });
+        if (myProfile) {
+          items.push({
+            id: `you_are_playing_${myLiveRoster.sessionId}`,
+            type: "you_are_playing",
+            player: toPlayerPayload(myProfile),
+            isFollowing: false,
+            timestamp: `${todayStr}T${sess.startTime}:00`,
+            sessionId: sess.id,
+            sessionName: sess.name,
+            venueName: sess.club.name,
+            eventUrl: sess.eventUrl,
+          });
+        }
       }
     }
   }
@@ -451,16 +483,10 @@ export async function GET(req: NextRequest) {
 
   items.push(...duprHistoryItems);
 
-  // Sort: you_are_playing first, then joining, then by timestamp desc
-  items.sort((a, b) => {
-    if (a.type === "you_are_playing") return -1;
-    if (b.type === "you_are_playing") return 1;
-    if (a.type === "joining" && b.type !== "joining") return -1;
-    if (b.type === "joining" && a.type !== "joining") return 1;
-    return (
-      new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-    );
-  });
+  // Strict chronological: newest timestamp first.
+  items.sort((a, b) =>
+    new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+  );
 
   // Max 2 items per player (follow events + played_today + you_are_playing are exempt)
   const EXEMPT_TYPES = new Set(["just_followed", "new_follower", "played_today", "you_are_playing"]);

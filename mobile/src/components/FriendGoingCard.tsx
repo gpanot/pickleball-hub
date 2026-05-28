@@ -229,7 +229,8 @@ export function FriendGoingCard({
       <View style={s.fcHeader}>
         <View style={s.fcHeaderLeft}>
           <Text style={s.fcVenue} numberOfLines={1}>
-            {item.venueName}
+            {item.clubName}
+            {item.venueName && item.venueName !== item.clubName ? ` · ${item.venueName}` : ''}
             {item.distanceKm != null ? ` · ${item.distanceKm.toFixed(1)} km` : ''}
           </Text>
           <Text style={s.fcName} numberOfLines={1}>
@@ -304,7 +305,6 @@ export function FriendGoingCard({
       {/* ④ Top 6 DUPR */}
       {item.topDupr && item.topDupr.length > 0 && (
         <View style={s.duprSection}>
-          <Text style={s.duprRowLabel}>TOP 6</Text>
           <View style={s.duprRow}>
             <TouchableOpacity
               style={s.avatarStack}
@@ -338,7 +338,7 @@ export function FriendGoingCard({
                 disabled={!onTopDuprPress}
                 activeOpacity={onTopDuprPress ? 0.75 : 1}
               >
-                <Text style={s.avgDuprLbl}>AVG</Text>
+                <Text style={s.avgDuprLbl}>Top 6 AVG</Text>
                 <Text style={s.avgDuprVal}>{avgDupr.toFixed(2)}</Text>
               </TouchableOpacity>
             )}
@@ -398,7 +398,7 @@ const s = StyleSheet.create({
   },
   fcVenue: {
     fontSize: 9,
-    color: '#555',
+    color: '#999',
     textTransform: 'uppercase',
     letterSpacing: 0.6,
     marginBottom: 3,
@@ -518,13 +518,6 @@ const s = StyleSheet.create({
     paddingHorizontal: 12,
     paddingBottom: 4,
     gap: 6,
-  },
-  duprRowLabel: {
-    fontSize: 9,
-    fontWeight: '600',
-    color: '#555',
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
   },
   duprRow: {
     flexDirection: 'row',

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { getMobileUser } from '@/lib/mobile-auth'
 
-const EMPTY_GEAR = { gender: null, cap: null, shirt: null, paddle: null, shoes: null }
+const EMPTY_GEAR = { gender: null, cap: null, shirt: null, paddle: null, shoes: null, setupComplete: false }
 const VALID_KEYS = ['gender', 'cap', 'shirt', 'paddle', 'shoes'] as const
 
 export async function GET(
@@ -20,9 +20,15 @@ export async function GET(
   try {
     const gear = await prisma.playerGear.findUnique({
       where: { profileId: id },
-      select: { gender: true, cap: true, shirt: true, paddle: true, shoes: true },
+      select: { gender: true, cap: true, shirt: true, paddle: true, shoes: true, setupCompletedAt: true },
     })
-    return NextResponse.json(gear ?? EMPTY_GEAR)
+    if (!gear) return NextResponse.json(EMPTY_GEAR)
+
+    const setupComplete =
+      gear.setupCompletedAt != null ||
+      (gear.cap != null && gear.shirt != null && gear.paddle != null && gear.shoes != null)
+
+    return NextResponse.json({ ...gear, setupCompletedAt: undefined, setupComplete })
   } catch (err) {
     console.error('[GET /api/players/[id]/gear]', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
@@ -49,13 +55,25 @@ export async function PUT(
       data[key] = typeof val === 'string' && val.trim() ? val.trim() : null
     }
 
+    const allFilled = data.cap != null && data.shirt != null && data.paddle != null && data.shoes != null
+
     const gear = await prisma.playerGear.upsert({
       where: { profileId: id },
-      update: data,
-      create: { profileId: id, ...data },
-      select: { gender: true, cap: true, shirt: true, paddle: true, shoes: true },
+      update: {
+        ...data,
+        ...(allFilled ? { setupCompletedAt: new Date() } : {}),
+      },
+      create: {
+        profileId: id,
+        ...data,
+        ...(allFilled ? { setupCompletedAt: new Date() } : {}),
+      },
+      select: { gender: true, cap: true, shirt: true, paddle: true, shoes: true, setupCompletedAt: true },
     })
-    return NextResponse.json(gear)
+
+    const setupComplete = gear.setupCompletedAt != null || allFilled
+
+    return NextResponse.json({ ...gear, setupCompletedAt: undefined, setupComplete })
   } catch (err) {
     console.error('[PUT /api/players/[id]/gear]', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
