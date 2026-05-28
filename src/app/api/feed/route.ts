@@ -96,8 +96,7 @@ export async function GET(req: NextRequest) {
       type: "joining",
       player: toPlayerPayload(r.player),
       isFollowing: true,
-      timestamp: r.session.snapshots?.[0]?.scrapedAt?.toISOString()
-        ?? `${r.session.scrapedDate}T${r.session.startTime}:00+07:00`,
+      timestamp: `${r.session.scrapedDate}T${r.session.startTime}:00+07:00`,
       sessionName: r.session.name,
       venueName: r.session.club.name,
       sessionTime: `${r.session.scrapedDate}T${r.session.startTime}:00+07:00`,
@@ -129,7 +128,6 @@ export async function GET(req: NextRequest) {
           startTime: true,
           scrapedDate: true,
           club: { select: { name: true } },
-          snapshots: { orderBy: { scrapedAt: "desc" }, take: 1 },
         },
       },
     },
@@ -166,7 +164,6 @@ export async function GET(req: NextRequest) {
           endTime: true,
           scrapedDate: true,
           club: { select: { name: true } },
-          snapshots: { orderBy: { scrapedAt: "desc" }, take: 1 },
         },
       },
     },
@@ -185,8 +182,7 @@ export async function GET(req: NextRequest) {
       type: "played_today",
       player: toPlayerPayload(r.player),
       isFollowing: true,
-      timestamp: r.session.snapshots?.[0]?.scrapedAt?.toISOString()
-        ?? `${r.session.scrapedDate}T${r.session.startTime}:00+07:00`,
+      timestamp: `${r.session.scrapedDate}T${r.session.startTime}:00+07:00`,
       venueName: r.session.club.name,
       sessionId: r.session.id,
     });
@@ -213,8 +209,7 @@ export async function GET(req: NextRequest) {
         player: toPlayerPayload(r.player),
         venueName: r.session.club.name,
         count: 1,
-        lastSeen: r.session.snapshots?.[0]?.scrapedAt?.toISOString()
-          ?? `${r.session.scrapedDate}T${r.session.startTime}:00+07:00`,
+        lastSeen: `${r.session.scrapedDate}T${r.session.startTime}:00+07:00`,
       });
     }
   }
@@ -254,7 +249,6 @@ export async function GET(req: NextRequest) {
             endTime: true,
             durationMin: true,
             club: { select: { name: true } },
-            snapshots: { orderBy: { scrapedAt: "desc" }, take: 1 },
           },
         },
       },
@@ -293,8 +287,7 @@ export async function GET(req: NextRequest) {
             type: "you_are_playing",
             player: toPlayerPayload(myProfile),
             isFollowing: false,
-            timestamp: sess.snapshots?.[0]?.scrapedAt?.toISOString()
-              ?? `${todayStr}T${sess.startTime}:00+07:00`,
+            timestamp: `${todayStr}T${sess.startTime}:00+07:00`,
             sessionId: sess.id,
             sessionName: sess.name,
             venueName: sess.club.name,
