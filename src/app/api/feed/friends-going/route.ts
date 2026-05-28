@@ -12,13 +12,11 @@ import { CACHE_CONTROL_PRIVATE } from '@/lib/http-cache-headers'
 import { calculateMatchScore } from '@/lib/match-score'
 
 /**
- * GET /api/feed/friends-going?filter=today|tomorrow|all
+ * GET /api/feed/friends-going?filter=today|tomorrow|both|all
  *
- * Returns two lists:
- * - friendsGoing: sessions where ≥1 followed player appears on the roster,
- *   sorted by friend count desc, with up to 3 friend avatars each.
- * - savedSessionIds: echoes back the caller's saved session IDs so the
- *   client can cross-reference them locally (ids passed as ?saved=1,2,3).
+ * filter=both  →  returns { today: FriendGoingItem[], tomorrow: FriendGoingItem[] }
+ *                 in a single request: auth + follow graph + roster queries run once.
+ * filter=today|tomorrow|all  →  returns { friendsGoing: FriendGoingItem[] } (legacy shape)
  */
 export async function GET(req: NextRequest) {
   const user = await getMobileUser(req)
@@ -31,49 +29,56 @@ export async function GET(req: NextRequest) {
   const userLat = Number.isFinite(lat) ? lat : null
   const userLng = Number.isFinite(lng) ? lng : null
 
-  // scrapedDate strings in Vietnam time
   const today = vnCalendarDateString(0)
   const tomorrow = vnCalendarDateString(1)
+  const minTime = vnCurrentTimeString()
 
-  // For today only, hide sessions that have already started — same logic as swipe-deck.
-  const minTime = filter === 'today' ? vnCurrentTimeString() : undefined
+  // ── Fetch follow graph + user DUPR in parallel ──────────────────────────────
+  const [follows, userProfile] = await Promise.all([
+    prisma.follow.findMany({
+      where: { followerId: user.profileId },
+      select: { followeeId: true },
+    }),
+    user.reclubUserId
+      ? prisma.player.findUnique({
+          where: { userId: user.reclubUserId },
+          select: { duprDoubles: true },
+        })
+      : Promise.resolve(null),
+  ])
 
-  const scrapedDateFilter =
-    filter === 'today'
-      ? { scrapedDate: today, ...(minTime ? { startTime: { gte: minTime } } : {}) }
-      : filter === 'tomorrow'
-        ? { scrapedDate: tomorrow }
-        : { scrapedDate: { gte: today } }
-
-  // Who does this user follow?
-  const follows = await prisma.follow.findMany({
-    where: { followerId: user.profileId },
-    select: { followeeId: true },
-  })
   const followeeIds = follows.map((f) => f.followeeId)
   const followeeIdSet = new Set(followeeIds.map((id) => id.toString()))
+  const userDupr = userProfile?.duprDoubles != null ? Number(userProfile.duprDoubles) : null
 
-  console.log(`[friends-going] filter=${filter} today=${today} minTime=${minTime ?? 'none'} followeeCount=${followeeIds.length}`)
+  console.log(`[friends-going] filter=${filter} followeeCount=${followeeIds.length}`)
 
   if (followeeIds.length === 0) {
-    console.log(`[friends-going] no followees → returning empty`)
+    console.log('[friends-going] no followees → returning empty')
+    if (filter === 'both') {
+      return NextResponse.json(
+        { today: [], tomorrow: [] },
+        { headers: { 'Cache-Control': CACHE_CONTROL_PRIVATE } },
+      )
+    }
     return NextResponse.json(
       { friendsGoing: [] },
       { headers: { 'Cache-Control': CACHE_CONTROL_PRIVATE } },
     )
   }
 
-  let userDupr: number | null = null
-  if (user.reclubUserId) {
-    const player = await prisma.player.findUnique({
-      where: { userId: user.reclubUserId },
-      select: { duprDoubles: true },
-    })
-    userDupr = player?.duprDoubles != null ? Number(player.duprDoubles) : null
-  }
+  // ── Build date filter ───────────────────────────────────────────────────────
+  // filter=both queries both dates in one roster scan; minTime only applies to today rows.
+  const scrapedDateFilter =
+    filter === 'both'
+      ? { scrapedDate: { in: [today, tomorrow] } }
+      : filter === 'today'
+        ? { scrapedDate: today, startTime: { gte: minTime } }
+        : filter === 'tomorrow'
+          ? { scrapedDate: tomorrow }
+          : { scrapedDate: { gte: today } }
 
-  // Roster entries for sessions on the requested date(s) where a followed player appears.
-  // Note: Club has no lat/lng — only Venue does. We join venue for location display.
+  // ── Main roster query — one scan for all dates ──────────────────────────────
   const rosterRows = await prisma.sessionRoster.findMany({
     where: {
       userId: { in: followeeIds },
@@ -109,9 +114,9 @@ export async function GET(req: NextRequest) {
     orderBy: { session: { startTime: 'asc' } },
   })
 
-  console.log(`[friends-going] rosterRows=${rosterRows.length} scrapedDateFilter=${JSON.stringify(scrapedDateFilter)}`)
+  console.log(`[friends-going] rosterRows=${rosterRows.length}`)
 
-  // Group by session
+  // Group by session, collecting friend entries
   const sessionMap = new Map<
     number,
     {
@@ -133,7 +138,6 @@ export async function GET(req: NextRequest) {
       sessionMap.set(sid, { session: row.session, friends: [], friendUserIds: new Set() })
     }
     const entry = sessionMap.get(sid)!
-    // Deduplicate: same player may appear multiple times if scraped across days
     if (!entry.friendUserIds.has(uid)) {
       entry.friendUserIds.add(uid)
       entry.friends.push({
@@ -145,117 +149,175 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  const friendsGoing = await Promise.all(
-    Array.from(sessionMap.values())
-      .sort((a, b) => b.friends.length - a.friends.length)
-      .map(async ({ session, friends }) => {
-        const snap0 = session.snapshots[0]
-        const snap1 = session.snapshots[1]
-        const joined = snap0?.joined ?? 0
-        const joinedPrev = snap1?.joined ?? 0
-        const joinedRecently = Math.max(0, joined - joinedPrev)
-        const spotsLeft = Math.max(0, session.maxPlayers - joined)
-        const fillRate = session.maxPlayers > 0 ? joined / session.maxPlayers : 0
-        const fillingFast = isFillingFast(fillRate, joinedRecently)
-        const friendCount = friends.length
+  if (sessionMap.size === 0) {
+    if (filter === 'both') {
+      return NextResponse.json(
+        { today: [], tomorrow: [] },
+        { headers: { 'Cache-Control': CACHE_CONTROL_PRIVATE } },
+      )
+    }
+    return NextResponse.json(
+      { friendsGoing: [] },
+      { headers: { 'Cache-Control': CACHE_CONTROL_PRIVATE } },
+    )
+  }
 
-        let distanceKm: number | null = null
-        if (
-          userLat !== null &&
-          userLng !== null &&
-          session.venue?.latitude != null &&
-          session.venue?.longitude != null
-        ) {
-          distanceKm =
-            Math.round(
-              haversineKm(
-                userLat,
-                userLng,
-                session.venue.latitude,
-                session.venue.longitude,
-              ) * 10,
-            ) / 10
-        }
+  // ── Batch top-DUPR + count across ALL sessions in 2 queries (Fix 2) ─────────
+  // Previously: 2 queries × S sessions (N+1). Now: 2 queries total, grouped in memory.
+  const allSessionIds = Array.from(sessionMap.keys())
 
-        const matchScore = calculateMatchScore({
-          userDupr,
-          sessionAvgDupr: session.duprStat?.avgDuprDoubles
-            ? Number(session.duprStat.avgDuprDoubles)
-            : null,
-          distanceKm,
-          fillRate,
-          joinedRecently,
-          fillingFast,
-          returningPlayerPct: session.duprStat?.returningPlayerPct
-            ? Number(session.duprStat.returningPlayerPct)
-            : null,
-          friendCount,
-        })
+  const [allTopRosterRows, allDuprCounts] = await Promise.all([
+    prisma.sessionRoster.findMany({
+      where: {
+        sessionId: { in: allSessionIds },
+        player: { duprDoubles: { not: null } },
+      },
+      select: {
+        sessionId: true,
+        player: {
+          select: {
+            userId: true,
+            displayName: true,
+            imageUrl: true,
+            duprDoubles: true,
+          },
+        },
+      },
+      orderBy: { player: { duprDoubles: 'desc' } },
+    }),
+    prisma.sessionRoster.groupBy({
+      by: ['sessionId'],
+      where: {
+        sessionId: { in: allSessionIds },
+        player: { duprDoubles: { not: null } },
+      },
+      _count: { sessionId: true },
+    }),
+  ])
 
-        const [topRoster, duprCount] = await Promise.all([
-          prisma.sessionRoster.findMany({
-            where: {
-              sessionId: session.id,
-              player: { duprDoubles: { not: null } },
-            },
-            include: {
-              player: {
-                select: {
-                  userId: true,
-                  displayName: true,
-                  imageUrl: true,
-                  duprDoubles: true,
-                },
-              },
-            },
-            orderBy: { player: { duprDoubles: 'desc' } },
-            take: 8,
-          }),
-          prisma.sessionRoster.count({
-            where: {
-              sessionId: session.id,
-              player: { duprDoubles: { not: null } },
-            },
-          }),
-        ])
+  // Build per-session lookup maps from the batched results
+  const topRosterBySession = new Map<number, typeof allTopRosterRows>()
+  for (const row of allTopRosterRows) {
+    const sid = row.sessionId
+    if (!topRosterBySession.has(sid)) topRosterBySession.set(sid, [])
+    topRosterBySession.get(sid)!.push(row)
+  }
 
-        return {
-          sessionId: session.id,
-          name: session.name,
-          clubName: session.club.name,
-          venueName: session.venue?.name ?? session.club.name,
-          startTime: session.startTime,
-          scrapedDate: session.scrapedDate,
-          spotsLeft,
-          totalSpots: session.maxPlayers,
-          eventUrl: session.eventUrl,
-          matchScore,
-          fillingFast,
-          distanceKm,
-          friendCount,
-          friends: friends.slice(0, 3),
-          totalRoster: session._count.rosters,
-          duprCount,
-          topDupr: topRoster.map((r) => ({
-            userId: String(r.player.userId),
-            displayName: r.player.displayName,
-            imageUrl: r.player.imageUrl ?? null,
-            duprDoubles: r.player.duprDoubles
-              ? Number(r.player.duprDoubles)
-              : null,
-            isFollowing: followeeIdSet.has(String(r.player.userId)),
-          })),
-        }
-      }),
-  )
+  const duprCountBySession = new Map<number, number>()
+  for (const g of allDuprCounts) {
+    duprCountBySession.set(g.sessionId, g._count.sessionId)
+  }
 
-  console.log(`[friends-going] result: ${friendsGoing.length} sessions`)
-  friendsGoing.forEach((s) => {
-    console.log(`  → "${s.name}" startTime=${s.startTime} scrapedDate=${s.scrapedDate} friendCount=${s.friendCount} friends=${s.friends.map((f) => f.displayName).join(', ')}`)
-  })
+  // ── Build result items (pure in-memory, no more per-session queries) ─────────
+  function buildItem({
+    session,
+    friends,
+  }: {
+    session: (typeof rosterRows)[0]['session']
+    friends: Array<{ userId: string; displayName: string; imageUrl: string | null; duprDoubles: number | null }>
+  }) {
+    const snap0 = session.snapshots[0]
+    const snap1 = session.snapshots[1]
+    const joined = snap0?.joined ?? 0
+    const joinedPrev = snap1?.joined ?? 0
+    const joinedRecently = Math.max(0, joined - joinedPrev)
+    const spotsLeft = Math.max(0, session.maxPlayers - joined)
+    const fillRate = session.maxPlayers > 0 ? joined / session.maxPlayers : 0
+    const fillingFast = isFillingFast(fillRate, joinedRecently)
+    const friendCount = friends.length
 
+    let distanceKm: number | null = null
+    if (
+      userLat !== null &&
+      userLng !== null &&
+      session.venue?.latitude != null &&
+      session.venue?.longitude != null
+    ) {
+      distanceKm =
+        Math.round(
+          haversineKm(userLat, userLng, session.venue.latitude, session.venue.longitude) * 10,
+        ) / 10
+    }
+
+    const matchScore = calculateMatchScore({
+      userDupr,
+      sessionAvgDupr: session.duprStat?.avgDuprDoubles
+        ? Number(session.duprStat.avgDuprDoubles)
+        : null,
+      distanceKm,
+      fillRate,
+      joinedRecently,
+      fillingFast,
+      returningPlayerPct: session.duprStat?.returningPlayerPct
+        ? Number(session.duprStat.returningPlayerPct)
+        : null,
+      friendCount,
+    })
+
+    const topRosterRows = (topRosterBySession.get(session.id) ?? []).slice(0, 8)
+    const duprCount = duprCountBySession.get(session.id) ?? 0
+
+    return {
+      sessionId: session.id,
+      name: session.name,
+      clubName: session.club.name,
+      venueName: session.venue?.name ?? session.club.name,
+      startTime: session.startTime,
+      scrapedDate: session.scrapedDate,
+      spotsLeft,
+      totalSpots: session.maxPlayers,
+      eventUrl: session.eventUrl,
+      matchScore,
+      fillingFast,
+      distanceKm,
+      friendCount,
+      friends: friends.slice(0, 3),
+      totalRoster: session._count.rosters,
+      duprCount,
+      topDupr: topRosterRows.map((r) => ({
+        userId: String(r.player.userId),
+        displayName: r.player.displayName,
+        imageUrl: r.player.imageUrl ?? null,
+        duprDoubles: r.player.duprDoubles ? Number(r.player.duprDoubles) : null,
+        isFollowing: followeeIdSet.has(String(r.player.userId)),
+      })),
+    }
+  }
+
+  // For filter=both, split results by scrapedDate.
+  // Today rows: also filter out sessions that have already started (minTime).
+  if (filter === 'both') {
+    const todayItems: ReturnType<typeof buildItem>[] = []
+    const tomorrowItems: ReturnType<typeof buildItem>[] = []
+
+    for (const entry of sessionMap.values()) {
+      if (entry.session.scrapedDate === today) {
+        // Drop sessions that have already started (same guard as filter=today)
+        if (entry.session.startTime < minTime) continue
+        todayItems.push(buildItem(entry))
+      } else {
+        tomorrowItems.push(buildItem(entry))
+      }
+    }
+
+    todayItems.sort((a, b) => b.friendCount - a.friendCount)
+    tomorrowItems.sort((a, b) => b.friendCount - a.friendCount)
+
+    console.log(`[friends-going] both: today=${todayItems.length} tomorrow=${tomorrowItems.length}`)
+    return NextResponse.json(
+      { today: todayItems, tomorrow: tomorrowItems },
+      { headers: { 'Cache-Control': CACHE_CONTROL_PRIVATE } },
+    )
+  }
+
+  // Legacy single-filter response
+  const items = Array.from(sessionMap.values())
+    .sort((a, b) => b.friends.length - a.friends.length)
+    .map(buildItem)
+
+  console.log(`[friends-going] result: ${items.length} sessions`)
   return NextResponse.json(
-    { friendsGoing },
+    { friendsGoing: items },
     { headers: { 'Cache-Control': CACHE_CONTROL_PRIVATE } },
   )
 }

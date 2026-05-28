@@ -135,6 +135,8 @@ export function SwipeScreen({
   const playDataLoadedRef = useRef(false)
 
   const loadPlayData = useCallback(async (filterOverrides?: { duprMin: number; timeSlots: TimeSlotKey[] }) => {
+    const t0 = Date.now()
+    debugLog('PERF[TOP5]', `⏱ load started (filter=${top5DateFilter})`)
     setPlayLoading(true)
     try {
       const { lat, lng } = locationRef.current
@@ -151,45 +153,50 @@ export function SwipeScreen({
         timeSlots: timeSlots.join(','),
       })
 
+      const tFetch = Date.now()
       const res = signedIn
         ? await auth.authedFetch(`/api/play?${qs}`)
         : await fetch(`${resolveApiBase()}/api/play?${qs}`)
+      debugLog('PERF[TOP5]', `⏱ /api/play network: ${Date.now() - tFetch}ms → HTTP ${res.status}`)
+
       if (!res.ok) {
         debugLog('Play', `loadPlayData /api/play returned ${res.status}`)
+        debugLog('PERF[TOP5]', `⏱ TOTAL (error): ${Date.now() - t0}ms`)
         return
       }
+      const tParse = Date.now()
       const data = await res.json()
+      debugLog('PERF[TOP5]', `⏱ JSON parse: ${Date.now() - tParse}ms — cards=${data.top5?.length ?? 0}`)
 
       const mapCards = (cards: PlayApiCard[]) =>
         (cards ?? []).map(playCardToFriendGoingItem)
 
       setTop5(mapCards(data.top5))
+      debugLog('PERF[TOP5]', `⏱ TOTAL: ${Date.now() - t0}ms ✅`)
     } finally {
       setPlayLoading(false)
     }
   }, [auth, signedIn, top5DateFilter])
 
   const loadGoing = useCallback(async () => {
+    const t0 = Date.now()
+    debugLog('PERF[FRIENDS]', '⏱ load started (filter=both — single request)')
     setGoingLoading(true)
     try {
       const { lat, lng } = locationRef.current
       const locQs = `&lat=${lat}&lng=${lng}`
-      const [todayRes, tomorrowRes] = await Promise.all([
-        auth.authedFetch(`/api/feed/friends-going?filter=today${locQs}`),
-        auth.authedFetch(`/api/feed/friends-going?filter=tomorrow${locQs}`),
-      ])
-      if (todayRes.ok) {
-        const data = await todayRes.json()
-        const items: FriendGoingItem[] = data.friendsGoing ?? []
-        setFriendsGoingToday(items)
-        debugLog('Going', `today friendsGoing=${items.length}`)
+      const tFetch = Date.now()
+      const res = await auth.authedFetch(`/api/feed/friends-going?filter=both${locQs}`)
+      debugLog('PERF[FRIENDS]', `⏱ network: ${Date.now() - tFetch}ms → HTTP ${res.status}`)
+      if (res.ok) {
+        const data = await res.json()
+        const todayItems: FriendGoingItem[] = data.today ?? []
+        const tomorrowItems: FriendGoingItem[] = data.tomorrow ?? []
+        setFriendsGoingToday(todayItems)
+        setFriendsGoingTomorrow(tomorrowItems)
+        debugLog('PERF[FRIENDS]', `⏱ parsed: today=${todayItems.length} tomorrow=${tomorrowItems.length}`)
       }
-      if (tomorrowRes.ok) {
-        const data = await tomorrowRes.json()
-        const items: FriendGoingItem[] = data.friendsGoing ?? []
-        setFriendsGoingTomorrow(items)
-        debugLog('Going', `tomorrow friendsGoing=${items.length}`)
-      }
+      debugLog('PERF[FRIENDS]', `⏱ TOTAL: ${Date.now() - t0}ms ✅`)
     } finally {
       setGoingLoading(false)
     }
@@ -368,15 +375,20 @@ export function SwipeScreen({
   useEffect(() => {
     if (bootedRef.current) return
     bootedRef.current = true
+    debugLog('PERF[TOP5]', '⏱ screen mounted — starting boot load')
     loadSavedIds()
     ;(async () => {
       try {
+        const tLoc = Date.now()
         const { status } = await Location.requestForegroundPermissionsAsync()
         if (status === 'granted') {
           const loc = await Location.getCurrentPositionAsync({
             accuracy: Location.Accuracy.Balanced,
           })
           locationRef.current = { lat: loc.coords.latitude, lng: loc.coords.longitude }
+          debugLog('PERF[TOP5]', `⏱ location resolved: ${Date.now() - tLoc}ms`)
+        } else {
+          debugLog('PERF[TOP5]', `⏱ location skipped (status=${status}): ${Date.now() - tLoc}ms — using HCMC default`)
         }
       } catch {
         // fallback to HCMC
@@ -410,7 +422,10 @@ export function SwipeScreen({
       <View style={s.tabRow}>
         <TouchableOpacity
           style={[s.tab, playTab === 'discover' && s.tabActive]}
-          onPress={() => setPlayTab('discover')}
+          onPress={() => {
+            debugLog('PERF[TOP5]', '⏱ tab tapped by user')
+            setPlayTab('discover')
+          }}
         >
           <Text style={[s.tabText, playTab === 'discover' && s.tabTextActive]}>
             TOP 5
@@ -418,7 +433,10 @@ export function SwipeScreen({
         </TouchableOpacity>
         <TouchableOpacity
           style={[s.tab, playTab === 'shortlist' && s.tabActive]}
-          onPress={() => setPlayTab('shortlist')}
+          onPress={() => {
+            debugLog('PERF[FRIENDS]', '⏱ tab tapped by user')
+            setPlayTab('shortlist')
+          }}
         >
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
             <Text style={[s.tabText, playTab === 'shortlist' && s.tabTextActive]}>

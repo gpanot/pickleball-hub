@@ -247,22 +247,30 @@ export function CircleScreen({ onOpenGear, gearSaved, gearSetupComplete }: { onO
 
   const loadSuggestions = useCallback(async () => {
     if (!reclubUserId) return
+    const t0 = Date.now()
+    console.log('[TheHub][PERF[PLAYERS]] ⏱ loadSuggestions started')
     setSuggestionsLoading(true)
     try {
+      const tFetch = Date.now()
       const res = await authedFetch(
         `/api/players/${reclubUserId}/co-players`
       )
+      console.log(`[TheHub][PERF[PLAYERS]] ⏱ /api/players/co-players network: ${Date.now() - tFetch}ms → HTTP ${res.status}`)
       if (res.ok) {
+        const tParse = Date.now()
         const data = await res.json()
+        const count = (data.coPlayers ?? []).length
+        console.log(`[TheHub][PERF[PLAYERS]] ⏱ JSON parse: ${Date.now() - tParse}ms — suggestions=${count}`)
         setSuggestions(
           (data.coPlayers ?? []).slice(0, 8).map((p: any) => ({
             ...p,
             venueName: 'a nearby club',
           }))
         )
+        console.log(`[TheHub][PERF[PLAYERS]] ⏱ TOTAL loadSuggestions: ${Date.now() - t0}ms ✅`)
       }
     } catch (e) {
-      if (__DEV__) console.warn('[Feed] loadSuggestions', e)
+      console.warn('[TheHub][PERF[PLAYERS]] loadSuggestions error', e)
     } finally {
       setSuggestionsLoading(false)
     }
@@ -311,22 +319,27 @@ export function CircleScreen({ onOpenGear, gearSaved, gearSetupComplete }: { onO
 
   const loadFriends = useCallback(async () => {
     if (!jwt) return
+    const t0 = Date.now()
+    console.log('[TheHub][PERF[PLAYERS]] ⏱ loadFriends started')
     await ensureServerAuth()
     setLoadingFriends(true)
     try {
+      const tFetch = Date.now()
       const res = await authedFetch('/api/follows')
+      console.log(`[TheHub][PERF[PLAYERS]] ⏱ /api/follows network: ${Date.now() - tFetch}ms → HTTP ${res.status}`)
       if (res.ok) {
+        const tParse = Date.now()
         const list = await res.json()
+        console.log(`[TheHub][PERF[PLAYERS]] ⏱ JSON parse: ${Date.now() - tParse}ms — friends=${list.length}`)
         setFriends(list)
-        if (__DEV__) {
-          console.log('[Profile] friends loaded', list.length)
-        }
-      } else if (__DEV__) {
+        console.log(`[TheHub][PERF[PLAYERS]] ⏱ TOTAL loadFriends: ${Date.now() - t0}ms ✅`)
+      } else {
         const body = await res.text()
-        console.warn('[Profile] GET /api/follows', res.status, body)
+        console.warn('[TheHub][PERF[PLAYERS]] GET /api/follows', res.status, body)
+        console.log(`[TheHub][PERF[PLAYERS]] ⏱ TOTAL loadFriends (error): ${Date.now() - t0}ms`)
       }
     } catch (e) {
-      if (__DEV__) console.warn('[Profile] loadFriends', e)
+      console.warn('[TheHub][PERF[PLAYERS]] loadFriends error', e)
     } finally {
       setLoadingFriends(false)
     }
@@ -519,7 +532,14 @@ export function CircleScreen({ onOpenGear, gearSaved, gearSetupComplete }: { onO
             return (
               <TouchableOpacity
                 key={key}
-                onPress={() => setSubTab(key)}
+                onPress={() => {
+                  if (key === 'players') {
+                    console.log('[TheHub][PERF[PLAYERS]] ⏱ tab tapped by user')
+                  } else {
+                    console.log('[TheHub][PERF[FEED]] ⏱ tab tapped by user')
+                  }
+                  setSubTab(key)
+                }}
                 style={{
                   flex: 1,
                   flexDirection: 'row',
