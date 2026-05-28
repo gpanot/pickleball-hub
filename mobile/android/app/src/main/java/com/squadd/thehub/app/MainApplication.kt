@@ -1,4 +1,4 @@
-package com.thehub.app
+package com.squadd.thehub.app
 
 import android.app.Application
 import android.content.res.Configuration

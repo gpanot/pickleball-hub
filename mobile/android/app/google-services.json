@@ -7,17 +7,12 @@
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:485785977181:android:a9cb26a516aa20b7ea68b4",
+        "mobilesdk_app_id": "1:485785977181:android:d40f0719d127a00bea68b4",
         "android_client_info": {
-          "package_name": "com.thehub.app"
+          "package_name": "com.squadd.thehub.app"
         }
       },
-      "oauth_client": [
-        {
-          "client_id": "140906288105-0do1cdl3ldk2ceblnu56f6oguh3u5odb.apps.googleusercontent.com",
-          "client_type": 3
-        }
-      ],
+      "oauth_client": [],
       "api_key": [
         {
           "current_key": "AIzaSyCTynr4uYbK6Jbu6Vhi0rFNVFcdxcYTaa8"

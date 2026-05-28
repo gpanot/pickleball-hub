@@ -51,9 +51,14 @@ type PlayApiCard = {
   friends: FriendGoingItem['friends']
   topDupr: FriendGoingItem['topDupr']
   totalRoster: number
+  duprCount?: number
 }
 
 function playCardToFriendGoingItem(c: PlayApiCard): FriendGoingItem {
+  const duprCount =
+    c.duprCount ??
+    (c.topDupr ?? []).filter((p) => p.duprDoubles != null && p.duprDoubles > 0)
+      .length
   return {
     sessionId: c.sessionId,
     name: c.name,
@@ -71,6 +76,7 @@ function playCardToFriendGoingItem(c: PlayApiCard): FriendGoingItem {
     friends: c.friends,
     topDupr: c.topDupr,
     totalRoster: c.totalRoster,
+    duprCount,
   }
 }
 import { debugLog } from '../lib/debug'
@@ -114,6 +120,7 @@ export function SwipeScreen({
   const [friendsModal, setFriendsModal] = useState<{
     visible: boolean
     title: string
+    subtitle?: string
     friends: FriendListItem[]
     overflowNote?: string
     showFollow?: boolean
@@ -294,16 +301,27 @@ export function SwipeScreen({
         duprDoubles: number | null
         isFollowing?: boolean
       }>,
+      duprCount: number,
+      totalRoster: number,
     ) => {
       if (!signedIn || topPlayers.length === 0) return
       const avg = averageDupr(topPlayers)
       const title =
         avg != null
-          ? `Top 6 DUPR joining - Avge. ${avg.toFixed(2)}`
-          : 'Top 6 DUPR joining'
+          ? `Top 8 DUPR joining - Avge. ${avg.toFixed(2)}`
+          : 'Top 8 DUPR joining'
+
+      const duprPct =
+        totalRoster > 0 ? Math.round((duprCount / totalRoster) * 100) : null
+      const subtitle =
+        duprPct != null
+          ? `${duprPct}% of the players have a DUPR rating`
+          : undefined
+
       setFriendsModal({
         visible: true,
         title,
+        subtitle,
         showFollow: true,
         friends: topPlayers.map((p) => ({
           userId: p.userId,
@@ -322,8 +340,11 @@ export function SwipeScreen({
       const topPlayers = session.roster
         .filter((p) => p.duprDoubles != null && p.duprDoubles > 0)
         .sort((a, b) => (b.duprDoubles ?? 0) - (a.duprDoubles ?? 0))
-        .slice(0, 6)
-      openTopDuprModal(topPlayers)
+        .slice(0, 8)
+      const duprCount = session.roster.filter(
+        (p) => p.duprDoubles != null && p.duprDoubles > 0,
+      ).length
+      openTopDuprModal(topPlayers, duprCount, session.roster.length)
     },
     [openTopDuprModal],
   )
@@ -331,7 +352,10 @@ export function SwipeScreen({
   const openTopDuprFromItem = useCallback(
     (item: FriendGoingItem) => {
       if (!item.topDupr?.length) return
-      openTopDuprModal(item.topDupr)
+      const dc = item.duprCount ?? item.topDupr.filter(
+        (p) => p.duprDoubles != null && p.duprDoubles > 0,
+      ).length
+      openTopDuprModal(item.topDupr, dc, item.totalRoster)
     },
     [openTopDuprModal],
   )
@@ -781,6 +805,7 @@ export function SwipeScreen({
         visible={friendsModal.visible}
         onClose={() => setFriendsModal((m) => ({ ...m, visible: false }))}
         title={friendsModal.title}
+        subtitle={friendsModal.subtitle}
         friends={friendsModal.friends}
         overflowNote={friendsModal.overflowNote}
         onFollow={friendsModal.showFollow ? handleFollowFromTopDupr : undefined}

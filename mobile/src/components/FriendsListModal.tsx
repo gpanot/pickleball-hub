@@ -21,6 +21,7 @@ export function FriendsListModal({
   visible,
   onClose,
   title,
+  subtitle,
   friends,
   overflowNote,
   onUnfollow,
@@ -29,6 +30,7 @@ export function FriendsListModal({
   visible: boolean
   onClose: () => void
   title: string
+  subtitle?: string
   friends: FriendListItem[]
   overflowNote?: string
   onUnfollow?: (userId: string) => void
@@ -57,6 +59,10 @@ export function FriendsListModal({
           </TouchableOpacity>
         </View>
 
+        {subtitle ? (
+          <Text style={styles.subtitle}>{subtitle}</Text>
+        ) : null}
+
         {overflowNote ? (
           <Text style={styles.overflow}>{overflowNote}</Text>
         ) : null}
@@ -74,7 +80,7 @@ export function FriendsListModal({
                 onUnfollow={onUnfollow ? () => onUnfollow(item.userId) : undefined}
               />
             )}
-            style={{ maxHeight: 360 }}
+            style={{ flexShrink: 1 }}
             keyboardShouldPersistTaps="handled"
           />
         )}
@@ -124,6 +130,12 @@ const styles = StyleSheet.create({
     color: '#fff',
     flex: 1,
     paddingRight: 12,
+  },
+  subtitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#f5a623',
+    marginBottom: 10,
   },
   overflow: {
     fontSize: 13,

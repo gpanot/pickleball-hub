@@ -48,9 +48,10 @@ function truncateVenueName(name: string, maxLen = 28): string {
 interface Props {
   venue: LiveVenue
   onPlayerPress: (userId: string) => void
+  onShowRoster?: (sessionId: number) => void
 }
 
-export function PresenceCard({ venue, onPlayerPress }: Props) {
+export function PresenceCard({ venue, onPlayerPress, onShowRoster }: Props) {
   const minsLeft = minutesUntil(venue.endTime)
   const durationH = sessionDurationHours(venue.startTime, venue.endTime)
   const endingSoon = minsLeft <= 60
@@ -145,7 +146,18 @@ export function PresenceCard({ venue, onPlayerPress }: Props) {
               {extraCircle}
             </Text>
           </View>
-          {footerRight()}
+          <View style={s.btnGroup}>
+            {onShowRoster && (
+              <TouchableOpacity
+                style={s.showMeBtn}
+                onPress={() => onShowRoster(venue.sessionId)}
+                activeOpacity={0.85}
+              >
+                <Text style={s.showMeBtnText}>Show me</Text>
+              </TouchableOpacity>
+            )}
+            {footerRight()}
+          </View>
         </View>
       </View>
     </View>
@@ -290,5 +302,22 @@ const s = StyleSheet.create({
     fontSize: 10,
     fontWeight: '600',
     color: '#1a0a00',
+  },
+  btnGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexShrink: 0,
+  },
+  showMeBtn: {
+    backgroundColor: '#1D9E75',
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  showMeBtnText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#fff',
   },
 })

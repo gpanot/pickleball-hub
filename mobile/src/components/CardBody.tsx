@@ -196,7 +196,7 @@ export function MatchDial({ pct }: { pct: number }) {
   )
 }
 
-/* ── TopDuprAlternatingLabel — cycles "Top 6 DUPR" ↔ "Avge. X.XX" ─ */
+/* ── TopDuprAlternatingLabel — cycles "Top 8 DUPR" ↔ "Avge. X.XX" ─ */
 function TopDuprAlternatingLabel({ average }: { average: number }) {
   const showAvg = useSharedValue(0)
 
@@ -226,7 +226,7 @@ function TopDuprAlternatingLabel({ average }: { average: number }) {
 
   return (
     <View style={{ height: 15, minWidth: 100, alignItems: 'center', justifyContent: 'center' }}>
-      <Animated.Text style={[labelText, titleStyle]}>Top 6 DUPR</Animated.Text>
+      <Animated.Text style={[labelText, titleStyle]}>Top 8 DUPR</Animated.Text>
       <Animated.Text style={[labelText, avgStyle]}>
         Avge. {average.toFixed(2)}
       </Animated.Text>
@@ -314,7 +314,7 @@ export function CardBody({
   const topDuprPlayers = s.roster
     .filter((p) => p.duprDoubles != null && p.duprDoubles > 0)
     .sort((a, b) => (b.duprDoubles ?? 0) - (a.duprDoubles ?? 0))
-    .slice(0, 6)
+    .slice(0, 8)
   const topDuprAverage = averageDupr(topDuprPlayers)
   const vibeLabel = VIBE_LABELS[s.vibeTag] ?? 'Social'
   const friendsOverflow =
@@ -660,20 +660,20 @@ export function CardBody({
                   <View
                     key={`dupr-${p.displayName}-${i}`}
                     style={{
-                      width: 33,
-                      height: 33,
-                      borderRadius: 17,
+                      width: 28,
+                      height: 28,
+                      borderRadius: 14,
                       overflow: 'hidden',
-                      marginLeft: i > 0 ? -8 : 0,
+                      marginLeft: i > 0 ? -7 : 0,
                       borderWidth: 1,
                       borderColor: 'rgba(127,119,221,0.5)',
-                      zIndex: 3 - i,
+                      zIndex: topDuprPlayers.length - i,
                     }}
                   >
                     {isSignedIn ? (
-                      <ImageAvatar url={p.imageUrl} name={p.displayName} size={33} />
+                      <ImageAvatar url={p.imageUrl} name={p.displayName} size={28} />
                     ) : (
-                      <View style={{ width: 33, height: 33, backgroundColor: '#2a2a3a' }} />
+                      <View style={{ width: 28, height: 28, backgroundColor: '#2a2a3a' }} />
                     )}
                   </View>
                 ))}
@@ -682,7 +682,7 @@ export function CardBody({
                 <TopDuprAlternatingLabel average={topDuprAverage} />
               ) : (
                 <Text style={{ fontSize: 11, fontWeight: '700', color: T.amber }}>
-                  {isSignedIn ? 'Top 6 DUPR' : 'See Top 6 DUPR joining'}
+                  {isSignedIn ? 'Top 8 DUPR' : 'See Top 8 DUPR joining'}
                 </Text>
               )}
             </TouchableOpacity>

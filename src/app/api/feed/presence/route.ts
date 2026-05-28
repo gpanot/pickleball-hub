@@ -42,11 +42,16 @@ export async function GET(req: NextRequest) {
     select: { followeeId: true }
   })
 
-  if (follows.length === 0) {
-    return NextResponse.json({ liveVenues: [], totalLive: 0 })
+  if (follows.length === 0 && !user.reclubUserId) {
+    return NextResponse.json({ liveVenues: [], totalLive: 0, upcomingVenues: [] })
   }
 
   const followeeIds = follows.map(f => f.followeeId)
+
+  // Include the current user so they see themselves in on-court / upcoming
+  if (user.reclubUserId && !followeeIds.includes(user.reclubUserId)) {
+    followeeIds.push(user.reclubUserId)
+  }
 
   // Current VN time (UTC+7) as comparable strings
   const vnNow = new Date(Date.now() + 7 * 60 * 60 * 1000)
@@ -85,17 +90,17 @@ export async function GET(req: NextRequest) {
     }
   })
 
-  // Upcoming: sessions starting in the next 4 hours
+  // Upcoming: sessions starting in the next 8 hours
   const vnNowMs = Date.now() + 7 * 60 * 60 * 1000
-  const fourHoursLaterMs = vnNowMs + 4 * 60 * 60 * 1000
-  const fourHoursLaterTime = new Date(fourHoursLaterMs).toISOString().slice(11, 16)
+  const eightHoursLaterMs = vnNowMs + 8 * 60 * 60 * 1000
+  const eightHoursLaterTime = new Date(eightHoursLaterMs).toISOString().slice(11, 16)
 
   const upcomingRosters = await prisma.sessionRoster.findMany({
     where: {
       userId: { in: followeeIds },
       session: {
         scrapedDate: todayStr,
-        startTime: { gt: nowTime, lte: fourHoursLaterTime },
+        startTime: { gt: nowTime, lte: eightHoursLaterTime },
       }
     },
     include: {

@@ -70,6 +70,7 @@ export function ExploreSessionsScreen({ onClose }: Props) {
   const [friendsModal, setFriendsModal] = useState<{
     visible: boolean
     title: string
+    subtitle?: string
     friends: FriendListItem[]
     overflowNote?: string
     showFollow?: boolean
@@ -174,15 +175,27 @@ export function ExploreSessionsScreen({ onClose }: Props) {
     const topPlayers = session.roster
       .filter((p) => p.duprDoubles != null && p.duprDoubles > 0)
       .sort((a, b) => (b.duprDoubles ?? 0) - (a.duprDoubles ?? 0))
-      .slice(0, 6)
+      .slice(0, 8)
     const avg = averageDupr(topPlayers)
     const title =
       avg != null
-        ? `Top 6 DUPR joining - Avge. ${avg.toFixed(2)}`
-        : 'Top 6 DUPR joining'
+        ? `Top 8 DUPR joining - Avge. ${avg.toFixed(2)}`
+        : 'Top 8 DUPR joining'
+    const duprCount = session.roster.filter(
+      (p) => p.duprDoubles != null && p.duprDoubles > 0,
+    ).length
+    const duprPct =
+      session.roster.length > 0
+        ? Math.round((duprCount / session.roster.length) * 100)
+        : null
+    const subtitle =
+      duprPct != null
+        ? `${duprPct}% of the players have a DUPR rating`
+        : undefined
     setFriendsModal({
       visible: true,
       title,
+      subtitle,
       showFollow: true,
       friends: topPlayers.map((p) => ({
         userId: p.userId,
@@ -350,6 +363,7 @@ export function ExploreSessionsScreen({ onClose }: Props) {
         visible={friendsModal.visible}
         onClose={() => setFriendsModal((m) => ({ ...m, visible: false }))}
         title={friendsModal.title}
+        subtitle={friendsModal.subtitle}
         friends={friendsModal.friends}
         overflowNote={friendsModal.overflowNote}
         showFollow={friendsModal.showFollow}

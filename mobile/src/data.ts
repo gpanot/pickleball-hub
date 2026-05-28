@@ -9,7 +9,7 @@ export type RosterPlayer = {
   isFollowing?: boolean
 }
 
-/** Average DUPR of players with a valid rating (e.g. top 6 on a card). */
+/** Average DUPR of players with a valid rating (e.g. top 8 on a card). */
 export function averageDupr(
   players: { duprDoubles: number | null }[],
 ): number | null {

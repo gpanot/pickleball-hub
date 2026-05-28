@@ -680,6 +680,7 @@ export function CircleScreen({ onOpenGear, gearSaved, gearSetupComplete }: { onO
                       key={venue.sessionId}
                       venue={venue}
                       onPlayerPress={(userId) => setSelectedPlayerId(userId)}
+                      onShowRoster={handleShowRoster}
                     />
                   ))}
                 </View>
@@ -748,13 +749,22 @@ export function CircleScreen({ onOpenGear, gearSaved, gearSetupComplete }: { onO
                                 {extraCircle}
                               </Text>
                             </View>
-                            <TouchableOpacity
-                              style={styles.soonCardJoinBtn}
-                              onPress={() => venue.eventUrl && Linking.openURL(venue.eventUrl)}
-                              activeOpacity={0.75}
-                            >
-                              <Text style={styles.soonCardJoinText}>Join too</Text>
-                            </TouchableOpacity>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                              <TouchableOpacity
+                                style={styles.soonCardShowMeBtn}
+                                onPress={() => venue.sessionId && handleShowRoster(venue.sessionId)}
+                                activeOpacity={0.85}
+                              >
+                                <Text style={styles.soonCardShowMeText}>Show me</Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                style={styles.soonCardJoinBtn}
+                                onPress={() => venue.eventUrl && Linking.openURL(venue.eventUrl)}
+                                activeOpacity={0.75}
+                              >
+                                <Text style={styles.soonCardJoinText}>Join too</Text>
+                              </TouchableOpacity>
+                            </View>
                           </View>
                         </View>
                       </View>
@@ -1446,6 +1456,17 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '600',
     color: '#1a0a00',
+  },
+  soonCardShowMeBtn: {
+    backgroundColor: '#1D9E75',
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  soonCardShowMeText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#fff',
   },
   soonDot: {
     width: 8,

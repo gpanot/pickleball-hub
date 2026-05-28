@@ -185,7 +185,7 @@ export async function GET(req: NextRequest) {
         (a, b) =>
           Number(b.player!.duprDoubles) - Number(a.player!.duprDoubles),
       )
-      .slice(0, 6)
+      .slice(0, 8)
       .map((r) => {
         const uid = (r.player?.userId ?? r.userId).toString();
         return {

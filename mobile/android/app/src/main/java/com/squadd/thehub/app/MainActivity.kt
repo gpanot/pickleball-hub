@@ -1,4 +1,4 @@
-package com.thehub.app
+package com.squadd.thehub.app
 
 import android.os.Build
 import android.os.Bundle

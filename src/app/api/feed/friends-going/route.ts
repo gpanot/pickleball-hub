@@ -192,24 +192,32 @@ export async function GET(req: NextRequest) {
           friendCount,
         })
 
-        const topRoster = await prisma.sessionRoster.findMany({
-          where: {
-            sessionId: session.id,
-            player: { duprDoubles: { not: null } },
-          },
-          include: {
-            player: {
-              select: {
-                userId: true,
-                displayName: true,
-                imageUrl: true,
-                duprDoubles: true,
+        const [topRoster, duprCount] = await Promise.all([
+          prisma.sessionRoster.findMany({
+            where: {
+              sessionId: session.id,
+              player: { duprDoubles: { not: null } },
+            },
+            include: {
+              player: {
+                select: {
+                  userId: true,
+                  displayName: true,
+                  imageUrl: true,
+                  duprDoubles: true,
+                },
               },
             },
-          },
-          orderBy: { player: { duprDoubles: 'desc' } },
-          take: 6,
-        })
+            orderBy: { player: { duprDoubles: 'desc' } },
+            take: 8,
+          }),
+          prisma.sessionRoster.count({
+            where: {
+              sessionId: session.id,
+              player: { duprDoubles: { not: null } },
+            },
+          }),
+        ])
 
         return {
           sessionId: session.id,
@@ -227,6 +235,7 @@ export async function GET(req: NextRequest) {
           friendCount,
           friends: friends.slice(0, 3),
           totalRoster: session._count.rosters,
+          duprCount,
           topDupr: topRoster.map((r) => ({
             userId: String(r.player.userId),
             displayName: r.player.displayName,

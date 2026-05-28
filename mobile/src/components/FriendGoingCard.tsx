@@ -41,6 +41,7 @@ export interface FriendGoingItem {
     isFollowing?: boolean
   }>
   totalRoster: number
+  duprCount?: number
 }
 
 interface Props {
@@ -50,6 +51,8 @@ interface Props {
   dimLevel?: number
   /** Opens top-DUPR player list modal (same as swipe card). */
   onTopDuprPress?: () => void
+  /** Tap anywhere on the card (except friends row) opens DUPR modal. */
+  onCardPress?: () => void
 }
 
 /* ── Match score: green / yellow / light red ─────────────────── */
@@ -122,7 +125,7 @@ export function sessionToFriendGoingItem(session: Session): FriendGoingItem {
   const topDupr = session.roster
     .filter((p) => p.duprDoubles != null && p.duprDoubles > 0)
     .sort((a, b) => (b.duprDoubles ?? 0) - (a.duprDoubles ?? 0))
-    .slice(0, 6)
+    .slice(0, 8)
     .map((p) => ({
       userId: p.userId,
       displayName: p.displayName,
@@ -130,6 +133,10 @@ export function sessionToFriendGoingItem(session: Session): FriendGoingItem {
       duprDoubles: p.duprDoubles,
       isFollowing: p.isFollowing ?? false,
     }))
+
+  const duprCount = session.roster.filter(
+    (p) => p.duprDoubles != null && p.duprDoubles > 0,
+  ).length
 
   return {
     sessionId: session.id,
@@ -152,6 +159,7 @@ export function sessionToFriendGoingItem(session: Session): FriendGoingItem {
     })),
     topDupr,
     totalRoster: session.roster.length,
+    duprCount,
   }
 }
 
@@ -176,6 +184,7 @@ export function FriendGoingCard({
   isTop = false,
   dimLevel = 0,
   onTopDuprPress,
+  onCardPress,
 }: Props) {
   const joined = item.totalSpots - item.spotsLeft
   const pulseAnim = useRef(new Animated.Value(1)).current
@@ -223,8 +232,16 @@ export function FriendGoingCard({
     : dimLevel === 3 ? 0.75
     : 0.65
 
+  const cardTappable = !!(onCardPress || onTopDuprPress)
+  const handleCardPress = onCardPress ?? onTopDuprPress
+
   return (
-    <View style={[s.card, isTop && s.cardTop, { opacity }]}>
+    <TouchableOpacity
+      activeOpacity={cardTappable ? 0.85 : 1}
+      onPress={handleCardPress}
+      disabled={!cardTappable}
+      style={[s.card, isTop && s.cardTop, { opacity }]}
+    >
       {/* ① Header */}
       <View style={s.fcHeader}>
         <View style={s.fcHeaderLeft}>
@@ -302,7 +319,7 @@ export function FriendGoingCard({
         </TouchableOpacity>
       )}
 
-      {/* ④ Top 6 DUPR */}
+      {/* ④ Top 8 DUPR */}
       {item.topDupr && item.topDupr.length > 0 && (
         <View style={s.duprSection}>
           <View style={s.duprRow}>
@@ -338,7 +355,7 @@ export function FriendGoingCard({
                 disabled={!onTopDuprPress}
                 activeOpacity={onTopDuprPress ? 0.75 : 1}
               >
-                <Text style={s.avgDuprLbl}>Top 6 AVG</Text>
+                <Text style={s.avgDuprLbl}>Top 8 AVG</Text>
                 <Text style={s.avgDuprVal}>{avgDupr.toFixed(2)}</Text>
               </TouchableOpacity>
             )}
@@ -365,7 +382,7 @@ export function FriendGoingCard({
         <ExternalLink size={13} color="#1a0a00" strokeWidth={2.5} />
         <Text style={s.joinBtnText}>Join on Reclub</Text>
       </TouchableOpacity>
-    </View>
+    </TouchableOpacity>
   )
 }
 

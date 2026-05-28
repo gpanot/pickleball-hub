@@ -13,18 +13,18 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.thehub.app"
+      "bundleIdentifier": "com.squadd.thehub.app"
     },
     "newArchEnabled": true,
     "android": {
-      "package": "com.thehub.app",
+      "package": "com.squadd.thehub.app",
       "adaptiveIcon": {
         "foregroundImage": "./assets/icon.png",
         "backgroundColor": "#0a0a0a"
       },
       "googleServicesFile": "./google-services.json"
     },
-    "scheme": "com.thehub.app",
+    "scheme": "com.squadd.thehub.app",
     "plugins": [
       "expo-asset",
       "expo-font",

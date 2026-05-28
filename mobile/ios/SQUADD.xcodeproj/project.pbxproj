@@ -370,7 +370,7 @@
 					"-lc++",
 				);
 				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_DEBUG";
-				PRODUCT_BUNDLE_IDENTIFIER = com.thehub.app;
+				PRODUCT_BUNDLE_IDENTIFIER = com.squadd.thehub.app;
 				PRODUCT_NAME = SQUADD;
 				SWIFT_OBJC_BRIDGING_HEADER = "SQUADD/SQUADD-Bridging-Header.h";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
@@ -398,7 +398,7 @@
 					"-lc++",
 				);
 				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_RELEASE";
-				PRODUCT_BUNDLE_IDENTIFIER = com.thehub.app;
+				PRODUCT_BUNDLE_IDENTIFIER = com.squadd.thehub.app;
 				PRODUCT_NAME = SQUADD;
 				SWIFT_OBJC_BRIDGING_HEADER = "SQUADD/SQUADD-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
