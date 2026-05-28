@@ -89,6 +89,7 @@ export function CircleScreen({ onOpenGear, gearSaved }: { onOpenGear?: () => voi
   const [selectedPlayerStub, setSelectedPlayerStub] = useState<import('../components/PlayerProfileSheet').PlayerProfileStub | null>(null)
 
   const feedLoadedRef = useRef(false)
+  const localFeedItemIds = useRef<Set<string>>(new Set())
   const friendsLoadedRef = useRef(false)
   const suggestionsLoadedRef = useRef(false)
   const [showSearch, setShowSearch] = useState(false)
@@ -202,7 +203,33 @@ export function CircleScreen({ onOpenGear, gearSaved }: { onOpenGear?: () => voi
       const res = await authedFetch('/api/feed')
       if (res.ok) {
         const data = await res.json()
-        setFeedItems(data.items ?? [])
+        setFeedItems((prev) => {
+          const apiItems: FeedItem[] = data.items ?? []
+          const apiPlayerIds = new Set(apiItems.map((i) => i.player.userId))
+
+          const localOnlyItems = prev.filter(
+            (item) =>
+              (item.type === 'just_followed' || item.type === 'new_follower') &&
+              !apiPlayerIds.has(item.player.userId)
+          )
+
+          apiItems.forEach((item) => {
+            if (item.type === 'just_followed') {
+              localFeedItemIds.current.delete(item.player.userId)
+            }
+          })
+
+          const deduped = [...localOnlyItems, ...apiItems].filter(
+            (item, index, arr) =>
+              arr.findIndex(
+                (other) =>
+                  other.player.userId === item.player.userId &&
+                  other.type === item.type
+              ) === index
+          )
+
+          return deduped
+        })
         setHasFollows(data.hasFollows ?? true)
       }
     } catch (e) {
@@ -304,20 +331,17 @@ export function CircleScreen({ onOpenGear, gearSaved }: { onOpenGear?: () => voi
       userId: string,
       displayName: string | null,
       imageUrl: string | null,
-      duprDoubles: number | null
+      dupr: number | null
     ) => {
+      const id = `follow_${userId}_${Date.now()}`
       const newItem: FeedItem = {
-        id: `follow_${userId}_${Date.now()}`,
+        id,
         type: 'just_followed' as FeedItemType,
-        player: {
-          userId,
-          displayName,
-          imageUrl,
-          duprDoubles,
-        },
+        player: { userId, displayName, imageUrl, duprDoubles: dupr },
         isFollowing: true,
         timestamp: new Date().toISOString(),
       }
+      localFeedItemIds.current.add(userId)
       setFeedItems((prev) => [newItem, ...prev])
     },
     []

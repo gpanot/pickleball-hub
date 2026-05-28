@@ -2,7 +2,6 @@ import React, { useEffect, useRef, useCallback, useMemo, useState } from 'react'
 import {
   View,
   Text,
-  Image,
   TouchableOpacity,
   ScrollView,
   RefreshControl,
@@ -12,351 +11,71 @@ import {
   Linking,
   Pressable,
 } from 'react-native'
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withSpring,
-  withTiming,
-  interpolate,
-  runOnJS,
-} from 'react-native-reanimated'
-import { Gesture, GestureDetector } from 'react-native-gesture-handler'
-import ReanimatedSwipeable from 'react-native-gesture-handler/ReanimatedSwipeable'
-import { X, RotateCcw, Heart, RefreshCw, AlertCircle, Inbox, CheckCircle2, Users, Bookmark } from 'lucide-react-native'
+import { RefreshCw, Bookmark, ChevronRight } from 'lucide-react-native'
 import * as Location from 'expo-location'
 import * as Haptics from 'expo-haptics'
 import { T } from '../theme'
-import {
-  type Session,
-  RING_COLORS,
-  averageDupr,
-  formatPriceDuration,
-  formatDistance,
-  formatTime,
-} from '../data'
+import { type Session, averageDupr, isSessionStarted } from '../data'
 import { TopBar, CardBody, CARD_HEIGHT } from '../components/CardBody'
-import { LockedFriendsRow } from '../components/LockedFriendsRow'
-import { PlayerAvatar } from '../components/PlayerAvatar'
 import { useSignUpModal } from '../contexts/SignUpModalContext'
 import { GearTeaserCard } from '../components/GearTeaserCard'
 import { SignInPrompt } from '../components/SignInPrompt'
 import { useAuthStore } from '../stores/authStore'
 import { useSessionStore } from '../stores/sessionStore'
 import { useUiStore } from '../stores/uiStore'
-import type { SwipeDateFilter, TimeSlotKey, SwipeMaxCards } from '../stores/uiStore'
+import { type SwipeDateFilter } from '../stores/uiStore'
 import { FriendsListModal } from '../components/FriendsListModal'
 import type { FriendListItem } from '../components/FriendListRow'
-import { FriendGoingCard } from '../components/FriendGoingCard'
+import {
+  FriendGoingCard,
+  sessionToFriendGoingItem,
+} from '../components/FriendGoingCard'
 import type { FriendGoingItem } from '../components/FriendGoingCard'
-import { debugLog } from '../lib/debug'
-import Slider from '@react-native-community/slider'
 
-/* eslint-disable @typescript-eslint/no-var-requires */
-const CARD_BG_IMAGES = [
-  require('../../assets/images/card-bg.webp'),
-  require('../../assets/images/card-bg-2.jpg'),
-]
+type GoingTabFilter = SwipeDateFilter | 'saved'
 
-const { width: W, height: H } = Dimensions.get('window')
-
-/* ── SwipeCard (with Shortlist CTA) ─────────────────────────── */
-function SwipeCard({
-  s,
-  onSave,
-  isSignedIn,
-  lockedFriendsSlot,
-  onSignIn,
-  onFriendsPress,
-  onTopDuprPress,
-}: {
-  s: Session
-  onSkip: () => void
-  onSave: () => void
-  isSignedIn: boolean
-  lockedFriendsSlot?: React.ReactNode
-  onSignIn?: () => void
-  onFriendsPress?: () => void
-  onTopDuprPress?: () => void
-}) {
-  const fillPct = s.maxPlayers > 0 ? Math.min(1, s.joined / s.maxPlayers) : 0
-  const cta = (
-    <TouchableOpacity
-      onPress={onSave}
-      accessibilityLabel={`Shortlist this session, ${s.spotsLeft} spots left`}
-      accessibilityRole="button"
-      style={{
-        backgroundColor: T.amber,
-        borderRadius: 14,
-        paddingVertical: 11,
-        paddingHorizontal: 16,
-        shadowColor: T.amber,
-        shadowOffset: { width: 0, height: 0 },
-        shadowOpacity: 0.2,
-        shadowRadius: 32,
-        elevation: 6,
-      }}
-    >
-      <Text style={{ fontSize: 14, fontWeight: '600', color: '#1a0a00', textAlign: 'center' }}>
-        Shortlist · {s.spotsLeft} spots left
-      </Text>
-      <View style={{ flexDirection: 'row', alignItems: 'center', alignSelf: 'center', marginTop: 6, gap: 6, maxWidth: 180 }}>
-        <View style={{ flex: 1, height: 5, borderRadius: 3, backgroundColor: 'rgba(0,0,0,0.15)' }}>
-          <View
-            style={{
-              width: `${Math.round(fillPct * 100)}%`,
-              height: 5,
-              borderRadius: 3,
-              backgroundColor: fillPct >= 0.85 ? '#c0392b' : '#1a0a00',
-              opacity: fillPct >= 0.85 ? 1 : 0.6,
-            }}
-          />
-        </View>
-        <Text style={{ fontSize: 10, fontWeight: '600', color: 'rgba(0,0,0,0.5)' }}>
-          {s.joined}/{s.maxPlayers}
-        </Text>
-      </View>
-    </TouchableOpacity>
-  )
-
-  return (
-    <View style={{ width: '100%', height: CARD_HEIGHT }}>
-      <CardBody
-        s={s}
-        renderCta={cta}
-        isSignedIn={isSignedIn}
-        lockedFriendsSlot={lockedFriendsSlot}
-        onSignIn={onSignIn}
-        onFriendsPress={onFriendsPress}
-        onTopDuprPress={onTopDuprPress}
-      />
-    </View>
-  )
+type PlayApiCard = {
+  sessionId: number
+  name: string
+  clubName: string
+  venueName: string
+  startTime: string
+  scrapedDate: string
+  spotsLeft: number
+  totalSpots: number
+  eventUrl: string
+  matchScore: number
+  distanceKm: number | null
+  fillingFast: boolean
+  friendCount: number
+  friends: FriendGoingItem['friends']
+  topDupr: FriendGoingItem['topDupr']
+  totalRoster: number
 }
 
-/* ── SwipeOverlayLabel ────────────────────────────────────────── */
-function SwipeOverlayLabel({
-  text,
-  color,
-  align,
-  opacity,
-}: {
-  text: string
-  color: string
-  align: 'left' | 'right'
-  opacity: Animated.SharedValue<number>
-}) {
-  const style = useAnimatedStyle(() => ({
-    opacity: opacity.value,
-  }))
-  return (
-    <Animated.View
-      style={[
-        {
-          position: 'absolute',
-          top: 24,
-          [align === 'left' ? 'left' : 'right']: 20,
-          zIndex: 50,
-          borderWidth: 3,
-          borderColor: color,
-          borderRadius: 10,
-          paddingHorizontal: 14,
-          paddingVertical: 6,
-          transform: [{ rotate: align === 'left' ? '-15deg' : '15deg' }],
-        },
-        style,
-      ]}
-    >
-      <Text
-        style={{
-          fontSize: 24,
-          fontWeight: '900',
-          color,
-          letterSpacing: 2,
-        }}
-      >
-        {text}
-      </Text>
-    </Animated.View>
-  )
-}
-
-/* ── AnimatedSwipeCard ───────────────────────────────────────── */
-function AnimatedSwipeCard({
-  s,
-  onSkip,
-  onSave,
-  isSignedIn,
-  lockedFriendsSlot,
-  onSignIn,
-  onFriendsPress,
-  onTopDuprPress,
-}: {
-  s: Session
-  onSkip: () => void
-  onSave: () => void
-  isSignedIn: boolean
-  lockedFriendsSlot?: React.ReactNode
-  onSignIn?: () => void
-  onFriendsPress?: () => void
-  onTopDuprPress?: () => void
-}) {
-  const translateX = useSharedValue(0)
-  const rotate = useSharedValue(0)
-  const likeOpacity = useSharedValue(0)
-  const nopeOpacity = useSharedValue(0)
-
-  const triggerHaptic = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
+function playCardToFriendGoingItem(c: PlayApiCard): FriendGoingItem {
+  return {
+    sessionId: c.sessionId,
+    name: c.name,
+    clubName: c.clubName,
+    venueName: c.venueName,
+    startTime: c.startTime,
+    scrapedDate: c.scrapedDate,
+    spotsLeft: c.spotsLeft,
+    totalSpots: c.totalSpots,
+    eventUrl: c.eventUrl,
+    matchScore: c.matchScore,
+    fillingFast: c.fillingFast,
+    distanceKm: c.distanceKm,
+    friendCount: c.friendCount,
+    friends: c.friends,
+    topDupr: c.topDupr,
+    totalRoster: c.totalRoster,
   }
-
-  const gesture = Gesture.Pan()
-    .activeOffsetX([-20, 20])
-    .onUpdate((e) => {
-      translateX.value = e.translationX
-      rotate.value = e.translationX / 15
-      likeOpacity.value = interpolate(e.translationX, [0, 80], [0, 1], 'clamp')
-      nopeOpacity.value = interpolate(e.translationX, [-80, 0], [1, 0], 'clamp')
-    })
-    .onEnd((e) => {
-      if (e.translationX > 100) {
-        runOnJS(triggerHaptic)()
-        translateX.value = withTiming(W * 1.5, { duration: 200 }, () => runOnJS(onSave)())
-      } else if (e.translationX < -100) {
-        runOnJS(triggerHaptic)()
-        translateX.value = withTiming(-W * 1.5, { duration: 200 }, () => runOnJS(onSkip)())
-      } else {
-        translateX.value = withSpring(0)
-        rotate.value = withSpring(0)
-        likeOpacity.value = withSpring(0)
-        nopeOpacity.value = withSpring(0)
-      }
-    })
-
-  const animStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateX: translateX.value },
-      { rotate: `${rotate.value}deg` },
-    ],
-  }))
-
-  return (
-    <GestureDetector gesture={gesture}>
-      <Animated.View style={[{ width: '100%' }, animStyle]}>
-        <SwipeOverlayLabel text="SHORTLIST" color={T.amber} align="left" opacity={likeOpacity} />
-        <SwipeOverlayLabel text="NOPE" color="#ef4444" align="right" opacity={nopeOpacity} />
-        <SwipeCard
-          s={s}
-          onSkip={onSkip}
-          onSave={onSave}
-          isSignedIn={isSignedIn}
-          lockedFriendsSlot={lockedFriendsSlot}
-          onSignIn={onSignIn}
-          onFriendsPress={onFriendsPress}
-          onTopDuprPress={onTopDuprPress}
-        />
-      </Animated.View>
-    </GestureDetector>
-  )
 }
+import { debugLog } from '../lib/debug'
 
-/* ── SecondaryCard ───────────────────────────────────────────── */
-function SecondaryCard({ s }: { s: Session }) {
-  const showScore = s.matchScore >= 50
-  const mc = !showScore
-    ? '#666'
-    : s.matchScore >= 85
-      ? T.amber
-      : s.matchScore >= 70
-        ? 'rgba(255,255,255,0.5)'
-        : 'rgba(255,255,255,0.3)'
-  const price = formatPriceDuration(s.feeAmount, s.durationMin)
-  const distance = formatDistance(s.distanceKm)
-  const timeLabel = formatTime(s.startTime)
-
-  return (
-    <View
-      style={{
-        borderRadius: 20,
-        overflow: 'hidden',
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.06)',
-      }}
-    >
-      <View style={StyleSheet.absoluteFillObject}>
-        <Image
-          source={CARD_BG_IMAGES[1]}
-          style={{ width: '100%', height: '100%' }}
-          resizeMode="cover"
-        />
-        <View
-          style={{
-            ...StyleSheet.absoluteFillObject,
-            backgroundColor: 'rgba(0,0,0,0.88)',
-          }}
-        />
-      </View>
-      <View
-        style={{
-          position: 'relative',
-          zIndex: 2,
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: 14,
-          paddingHorizontal: 16,
-          paddingVertical: 14,
-        }}
-      >
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <Text
-            style={{ fontSize: 14, fontWeight: '600', color: '#fff', marginBottom: 4 }}
-            numberOfLines={1}
-          >
-            {s.name}
-          </Text>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>{timeLabel}</Text>
-            <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>·</Text>
-            <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>{price}</Text>
-            {distance !== '' && (
-              <>
-                <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>·</Text>
-                <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>{distance}</Text>
-              </>
-            )}
-          </View>
-          {s.friendCount > 0 && (
-            <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginTop: 4 }}>
-              {s.friends[0]?.displayName ?? 'A friend'}
-              {s.friendCount > 1
-                ? ` +${s.friendCount - 1} ${s.friendCount === 2 ? 'friend' : 'friends'}`
-                : ' joining'}
-            </Text>
-          )}
-        </View>
-        <View style={{ alignItems: 'flex-end' }}>
-          {showScore ? (
-            <>
-              <Text style={{ fontSize: 20, fontWeight: '700', color: mc, lineHeight: 22 }}>
-                {s.matchScore}%
-              </Text>
-              <Text
-                style={{
-                  fontSize: 9,
-                  color: 'rgba(255,255,255,0.3)',
-                  textTransform: 'uppercase',
-                  letterSpacing: 0.8,
-                  marginTop: 2,
-                }}
-              >
-                Match
-              </Text>
-            </>
-          ) : null}
-        </View>
-      </View>
-    </View>
-  )
-}
+const { height: H } = Dimensions.get('window')
 
 const HCMC_LAT = 10.78
 const HCMC_LNG = 106.69
@@ -369,42 +88,23 @@ function vnDateString(offsetDays: number): string {
 }
 
 /* ── SwipeScreen (main export) ───────────────────────────────── */
-export function SwipeScreen({ onOpenGearSheet, gearSaved }: { onOpenGearSheet?: () => void; gearSaved?: boolean }) {
+export function SwipeScreen({
+  onOpenGearSheet,
+  gearSaved,
+  onOpenExplore,
+}: {
+  onOpenGearSheet?: () => void
+  gearSaved?: boolean
+  onOpenExplore?: () => void
+}) {
   const { openSignUp } = useSignUpModal()
   const signedIn = useAuthStore((s) => s.isSignedIn)()
-  const allSessions = useSessionStore((s) => s.sessions)
-  const savedIds = useSessionStore((s) => s.savedIds)
-  const deck = useMemo(() => allSessions.filter((s) => !savedIds.has(s.id)), [allSessions, savedIds])
-  const loading = useSessionStore((s) => s.loading)
-  const error = useSessionStore((s) => s.error)
-  const { fetchSessions, fetchIfNeeded, loadSavedIds, saveSession, unsaveSession, resetDeck, prefetchNextBatch } =
+  const { fetchSessions, fetchIfNeeded, loadSavedIds, saveSession, unsaveSession, setExploreSessions } =
     useSessionStore.getState()
-  const hasMore = useSessionStore((s) => s.hasMore)
-  const totalCount = useSessionStore((s) => s.totalCount)
   const bootedRef = useRef(false)
   const locationRef = useRef<{ lat: number; lng: number }>({ lat: HCMC_LAT, lng: HCMC_LNG })
   const [refreshing, setRefreshing] = useState(false)
-  const dateFilter = useUiStore((s) => s.swipeDateFilter)
-  const setDateFilter = useUiStore((s) => s.setSwipeDateFilter)
-  const swipeDuprMin = useUiStore((s) => s.swipeDuprMin)
-  const setSwipeDuprMin = useUiStore((s) => s.setSwipeDuprMin)
-  const swipeTimeSlots = useUiStore((s) => s.swipeTimeSlots)
-  const setSwipeTimeSlots = useUiStore((s) => s.setSwipeTimeSlots)
-  const swipeMaxCards = useUiStore((s) => s.swipeMaxCards)
-  const setSwipeMaxCards = useUiStore((s) => s.setSwipeMaxCards)
-  const swipeRangeKm = useUiStore((s) => s.swipeRangeKm)
-  const setSwipeRangeKm = useUiStore((s) => s.setSwipeRangeKm)
-  const [filterModalVisible, setFilterModalVisible] = useState(false)
-  const [filterOpenKey, setFilterOpenKey] = useState(0)
-  const [draftDupr, setDraftDupr] = useState(swipeDuprMin)
-  const [slidingDupr, setSlidingDupr] = useState(swipeDuprMin)
-  const [draftTimeSlots, setDraftTimeSlots] = useState<TimeSlotKey[]>(swipeTimeSlots)
-  const [draftMaxCards, setDraftMaxCards] = useState(swipeMaxCards)
-  const [draftRangeKm, setDraftRangeKm] = useState<number | null>(swipeRangeKm)
-  const [vibeFilter, setVibeFilter] = useState<'social' | 'competitive' | null>(null)
-  const [spotsOnly, setSpotsOnly] = useState(false)
-  const [viewIdx, setViewIdx] = useState(0)
-  const [viewHistory, setViewHistory] = useState<{ id: number; saved: boolean }[]>([])
+  const [top5DateFilter, setTop5DateFilter] = useState<SwipeDateFilter>('today')
   const [friendsModal, setFriendsModal] = useState<{
     visible: boolean
     title: string
@@ -417,17 +117,48 @@ export function SwipeScreen({ onOpenGearSheet, gearSaved }: { onOpenGearSheet?: 
   const [expandedSession, setExpandedSession] = useState<Session | null>(null)
   const [friendsGoingToday, setFriendsGoingToday] = useState<FriendGoingItem[]>([])
   const [friendsGoingTomorrow, setFriendsGoingTomorrow] = useState<FriendGoingItem[]>([])
+  const [goingTabFilter, setGoingTabFilter] = useState<GoingTabFilter>('today')
   const [goingLoading, setGoingLoading] = useState(false)
   const [removedSavedIds, setRemovedSavedIds] = useState<Set<number>>(new Set())
+  const [top5, setTop5] = useState<FriendGoingItem[]>([])
+  const [playLoading, setPlayLoading] = useState(false)
 
   const auth = useAuthStore.getState()
+
+  const loadPlayData = useCallback(async () => {
+    if (!signedIn) return
+    setPlayLoading(true)
+    try {
+      const savedIds = [...useSessionStore.getState().savedIds]
+      const savedQuery = savedIds.length > 0 ? `&saved=${savedIds.join(',')}` : ''
+      const { lat, lng } = locationRef.current
+      const latLng = `&lat=${lat}&lng=${lng}`
+      const filter = top5DateFilter === 'tomorrow' ? 'tomorrow' : 'today'
+
+      const res = await auth.authedFetch(
+        `/api/play?filter=${filter}${latLng}${savedQuery}`,
+      )
+      if (!res.ok) return
+      const data = await res.json()
+
+      const mapCards = (cards: PlayApiCard[]) =>
+        (cards ?? []).map(playCardToFriendGoingItem)
+
+      setTop5(mapCards(data.top5))
+      setExploreSessions((data.exploreSessions ?? []) as Session[])
+    } finally {
+      setPlayLoading(false)
+    }
+  }, [auth, signedIn, top5DateFilter, setExploreSessions])
 
   const loadGoing = useCallback(async () => {
     setGoingLoading(true)
     try {
+      const { lat, lng } = locationRef.current
+      const locQs = `&lat=${lat}&lng=${lng}`
       const [todayRes, tomorrowRes] = await Promise.all([
-        auth.authedFetch('/api/feed/friends-going?filter=today'),
-        auth.authedFetch('/api/feed/friends-going?filter=tomorrow'),
+        auth.authedFetch(`/api/feed/friends-going?filter=today${locQs}`),
+        auth.authedFetch(`/api/feed/friends-going?filter=tomorrow${locQs}`),
       ])
       if (todayRes.ok) {
         const data = await todayRes.json()
@@ -448,6 +179,27 @@ export function SwipeScreen({ onOpenGearSheet, gearSaved }: { onOpenGearSheet?: 
 
   const goingLoadedRef = useRef(false)
 
+  const friendsGoingTodayUpcoming = useMemo(
+    () => friendsGoingToday.filter((i) => !isSessionStarted(i)),
+    [friendsGoingToday],
+  )
+  const friendsGoingTomorrowUpcoming = useMemo(
+    () => friendsGoingTomorrow.filter((i) => !isSessionStarted(i)),
+    [friendsGoingTomorrow],
+  )
+
+  const friendsGoingForDay =
+    goingTabFilter === 'today' ? friendsGoingTodayUpcoming : friendsGoingTomorrowUpcoming
+
+  const removeSavedSession = useCallback(
+    (id: number) => {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+      setRemovedSavedIds((prev) => new Set([...prev, id]))
+      unsaveSession(id)
+    },
+    [unsaveSession],
+  )
+
   useEffect(() => {
     if (playTab === 'shortlist' && !goingLoadedRef.current) {
       goingLoadedRef.current = true
@@ -457,10 +209,21 @@ export function SwipeScreen({ onOpenGearSheet, gearSaved }: { onOpenGearSheet?: 
 
   const savedSessions = useSessionStore((s) => s.getSavedSessions)()
   const shortlistItems = useMemo(
-    () => savedSessions.filter((s) => !removedSavedIds.has(s.id)),
+    () =>
+      savedSessions.filter(
+        (s) => !removedSavedIds.has(s.id) && !isSessionStarted(s),
+      ),
     [savedSessions, removedSavedIds],
   )
   const shortlistCount = shortlistItems.length
+
+  // Drop expired saves from storage so the badge stays accurate
+  useEffect(() => {
+    if (playTab !== 'shortlist') return
+    const expired = savedSessions.filter((s) => isSessionStarted(s))
+    if (expired.length === 0) return
+    expired.forEach((s) => unsaveSession(s.id))
+  }, [playTab, savedSessions, unsaveSession])
 
   const openSessionFriends = useCallback((session: Session) => {
     if (!signedIn) return
@@ -498,30 +261,56 @@ export function SwipeScreen({ onOpenGearSheet, gearSaved }: { onOpenGearSheet?: 
     })
   }, [signedIn])
 
-  const openTopDupr = useCallback((session: Session) => {
-    if (!signedIn) return
-    const topPlayers = session.roster
-      .filter((p) => p.duprDoubles != null && p.duprDoubles > 0)
-      .sort((a, b) => (b.duprDoubles ?? 0) - (a.duprDoubles ?? 0))
-      .slice(0, 6)
-    const avg = averageDupr(topPlayers)
-    const title =
-      avg != null
-        ? `Top 6 DUPR joining - Avge. ${avg.toFixed(2)}`
-        : 'Top 6 DUPR joining'
-    setFriendsModal({
-      visible: true,
-      title,
-      showFollow: true,
-      friends: topPlayers.map((p) => ({
-        userId: p.userId,
-        displayName: p.displayName,
-        imageUrl: p.imageUrl,
-        duprDoubles: p.duprDoubles,
-        isFollowing: p.isFollowing ?? false,
-      })),
-    })
-  }, [signedIn])
+  const openTopDuprModal = useCallback(
+    (
+      topPlayers: Array<{
+        userId: string
+        displayName: string | null
+        imageUrl: string | null
+        duprDoubles: number | null
+        isFollowing?: boolean
+      }>,
+    ) => {
+      if (!signedIn || topPlayers.length === 0) return
+      const avg = averageDupr(topPlayers)
+      const title =
+        avg != null
+          ? `Top 6 DUPR joining - Avge. ${avg.toFixed(2)}`
+          : 'Top 6 DUPR joining'
+      setFriendsModal({
+        visible: true,
+        title,
+        showFollow: true,
+        friends: topPlayers.map((p) => ({
+          userId: p.userId,
+          displayName: p.displayName,
+          imageUrl: p.imageUrl,
+          duprDoubles: p.duprDoubles,
+          isFollowing: p.isFollowing ?? false,
+        })),
+      })
+    },
+    [signedIn],
+  )
+
+  const openTopDupr = useCallback(
+    (session: Session) => {
+      const topPlayers = session.roster
+        .filter((p) => p.duprDoubles != null && p.duprDoubles > 0)
+        .sort((a, b) => (b.duprDoubles ?? 0) - (a.duprDoubles ?? 0))
+        .slice(0, 6)
+      openTopDuprModal(topPlayers)
+    },
+    [openTopDuprModal],
+  )
+
+  const openTopDuprFromItem = useCallback(
+    (item: FriendGoingItem) => {
+      if (!item.topDupr?.length) return
+      openTopDuprModal(item.topDupr)
+    },
+    [openTopDuprModal],
+  )
 
   const handleFollowFromTopDupr = useCallback(
     async (userId: string) => {
@@ -540,22 +329,14 @@ export function SwipeScreen({ onOpenGearSheet, gearSaved }: { onOpenGearSheet?: 
     [auth],
   )
 
-  const displayDeck = useMemo(() => {
-    let result = deck
-    if (vibeFilter) result = result.filter(s => s.vibeTag === vibeFilter)
-    if (spotsOnly) result = result.filter(s => s.spotsLeft >= 3)
-    return result
-  }, [deck, vibeFilter, spotsOnly])
-
   useEffect(() => {
-    setViewIdx(0)
-    setViewHistory([])
-  }, [deck.length])
-
-  useEffect(() => {
-    const date = dateFilter === 'tomorrow' ? vnDateString(1) : undefined
-    fetchSessions(locationRef.current.lat, locationRef.current.lng, date)
-  }, [dateFilter])
+    if (signedIn) {
+      loadPlayData()
+    } else {
+      const date = top5DateFilter === 'tomorrow' ? vnDateString(1) : undefined
+      fetchSessions(locationRef.current.lat, locationRef.current.lng, date)
+    }
+  }, [top5DateFilter, signedIn, loadPlayData, fetchSessions])
 
   useEffect(() => {
     if (bootedRef.current) return
@@ -573,85 +354,37 @@ export function SwipeScreen({ onOpenGearSheet, gearSaved }: { onOpenGearSheet?: 
       } catch {
         // fallback to HCMC
       }
-      const date = dateFilter === 'tomorrow' ? vnDateString(1) : undefined
-      await fetchIfNeeded(locationRef.current.lat, locationRef.current.lng, date)
+      if (signedIn) {
+        await loadPlayData()
+      } else {
+        const date = top5DateFilter === 'tomorrow' ? vnDateString(1) : undefined
+        await fetchIfNeeded(locationRef.current.lat, locationRef.current.lng, date)
+      }
     })()
   }, [])
 
+  useEffect(() => {
+    if (signedIn && playTab === 'discover') {
+      loadPlayData()
+    }
+  }, [playTab, signedIn, loadPlayData])
+
   const handleRefresh = useCallback(async () => {
     setRefreshing(true)
-    const date = dateFilter === 'tomorrow' ? vnDateString(1) : undefined
-    await fetchSessions(locationRef.current.lat, locationRef.current.lng, date)
-    setRefreshing(false)
-  }, [fetchSessions, dateFilter])
-
-  const total = displayDeck.length
-  const current = displayDeck[viewIdx]
-  const upNext = displayDeck.slice(viewIdx + 1, viewIdx + 4)
-  const isDone = viewIdx >= total && total > 0
-
-  const triggerPrefetchIfNeeded = (nextIdx: number) => {
-    if (hasMore && total - nextIdx <= 5) {
-      prefetchNextBatch()
+    if (signedIn) {
+      await loadPlayData()
+    } else {
+      const date = top5DateFilter === 'tomorrow' ? vnDateString(1) : undefined
+      await fetchSessions(locationRef.current.lat, locationRef.current.lng, date)
     }
-  }
-
-  const handleSave = () => {
-    if (!current) return
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
-    saveSession(current.id)
-    setViewHistory((h) => [...h, { id: current.id, saved: true }])
-    const nextIdx = viewIdx + 1
-    setViewIdx(nextIdx)
-    triggerPrefetchIfNeeded(nextIdx)
-  }
-
-  const handleSkip = () => {
-    if (!current) return
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
-    setViewHistory((h) => [...h, { id: current.id, saved: false }])
-    const nextIdx = viewIdx + 1
-    setViewIdx(nextIdx)
-    triggerPrefetchIfNeeded(nextIdx)
-  }
-
-  const handleUndo = () => {
-    if (!viewHistory.length) return
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
-    const last = viewHistory[viewHistory.length - 1]
-    if (last.saved) unsaveSession(last.id)
-    setViewHistory((h) => h.slice(0, -1))
-    setViewIdx((i) => Math.max(0, i - 1))
-  }
-
-  const handleStartOver = () => {
-    resetDeck()
-    setViewIdx(0)
-    setViewHistory([])
-  }
-
-  const lockedFriends = !signedIn ? (
-    <LockedFriendsRow onPress={openSignUp} />
-  ) : undefined
-
-  const doneMessage = (() => {
-    if (deck.length === 0) return "You've seen all sessions."
-    const hours = deck.map((s) => parseInt(s.startTime.split(':')[0], 10))
-    const maxHour = Math.max(...hours)
-    if (maxHour >= 17) return "You've seen all games tonight."
-    if (maxHour < 12) return "You've seen all morning sessions."
-    return "You've seen all sessions for today."
-  })()
+    setRefreshing(false)
+  }, [fetchSessions, top5DateFilter, signedIn, loadPlayData])
 
   return (
     <View style={{ flex: 1, backgroundColor: T.bg }}>
       <TopBar
         title="Where to play?"
-        counter={
-          playTab === 'discover' && total > 0
-            ? `${viewIdx + (viewIdx < total ? 1 : 0)}/${totalCount ?? total}`
-            : undefined
-        }
+        counter={undefined}
       />
 
       {/* Sub-tab switcher */}
@@ -661,7 +394,7 @@ export function SwipeScreen({ onOpenGearSheet, gearSaved }: { onOpenGearSheet?: 
           onPress={() => setPlayTab('discover')}
         >
           <Text style={[s.tabText, playTab === 'discover' && s.tabTextActive]}>
-            Discover
+            TOP 5
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -670,7 +403,7 @@ export function SwipeScreen({ onOpenGearSheet, gearSaved }: { onOpenGearSheet?: 
         >
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
             <Text style={[s.tabText, playTab === 'shortlist' && s.tabTextActive]}>
-              Going
+              FRIENDS
             </Text>
             {shortlistCount > 0 && (
               <View style={s.tabBadge}>
@@ -681,26 +414,18 @@ export function SwipeScreen({ onOpenGearSheet, gearSaved }: { onOpenGearSheet?: 
         </TouchableOpacity>
       </View>
 
-      {/* ── Discover tab ─────────────────────────────────────── */}
+      {/* ── TOP 5 tab ─────────────────────────────────────────── */}
       {playTab === 'discover' && (
         <>
-          {/* Date filter pills + filter button */}
-          <View
-            style={{
-              flexDirection: 'row',
-              gap: 8,
-              paddingHorizontal: 16,
-              paddingBottom: 10,
-              alignItems: 'center',
-            }}
-          >
+          {/* Today / Tomorrow — top 5 list only */}
+          <View style={s.top5DateRow}>
             {(['today', 'tomorrow'] as const).map((key: SwipeDateFilter) => {
-              const on = dateFilter === key
+              const on = top5DateFilter === key
               const label = key === 'today' ? 'Today' : 'Tomorrow'
               return (
                 <TouchableOpacity
                   key={key}
-                  onPress={() => setDateFilter(key)}
+                  onPress={() => setTop5DateFilter(key)}
                   style={{ paddingVertical: 5, paddingHorizontal: 2 }}
                 >
                   <Text
@@ -715,234 +440,73 @@ export function SwipeScreen({ onOpenGearSheet, gearSaved }: { onOpenGearSheet?: 
                 </TouchableOpacity>
               )
             })}
-            <View style={{ flex: 1 }} />
-            {/* Filter pill */}
-            {(() => {
-              const activeCount = (swipeDuprMin !== 3.0 ? 1 : 0) + (swipeTimeSlots.length < 3 ? 1 : 0) + (swipeMaxCards !== 20 ? 1 : 0) + (vibeFilter ? 1 : 0) + (spotsOnly ? 1 : 0) + (swipeRangeKm != null ? 1 : 0)
-              return (
-                <TouchableOpacity
-                  onPress={() => {
-                    setDraftDupr(swipeDuprMin)
-                    setSlidingDupr(swipeDuprMin)
-                    setDraftTimeSlots([...swipeTimeSlots])
-                    setDraftMaxCards(swipeMaxCards)
-                    setDraftRangeKm(swipeRangeKm)
-                    setFilterOpenKey(k => k + 1)
-                    setFilterModalVisible(true)
-                  }}
-                  style={[s.filterPill, activeCount > 0 && s.filterPillActive]}
-                  activeOpacity={0.8}
-                >
-                  <Text style={[s.filterPillText, activeCount > 0 && s.filterPillTextActive]}>
-                    ⚡ Filters{activeCount > 0 ? ` · ${activeCount}` : ''}
-                  </Text>
-                </TouchableOpacity>
-              )
-            })()}
           </View>
 
+          <ScrollView
+            style={{ flex: 1 }}
+            showsVerticalScrollIndicator={false}
+            refreshControl={
+              <RefreshControl
+                refreshing={playLoading || refreshing}
+                onRefresh={handleRefresh}
+                tintColor={T.amber}
+              />
+            }
+          >
+            {signedIn && (
+              <>
+                {playLoading && top5.length === 0 && (
+                  <ActivityIndicator color={T.amber} style={{ marginTop: 40 }} />
+                )}
 
-          {loading && total === 0 && !error ? (
-            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-              <ActivityIndicator size="large" color={T.amber} />
-              <Text style={{ fontSize: 13, color: '#666', marginTop: 12 }}>
-                Loading sessions...
-              </Text>
-            </View>
-          ) : error && total === 0 ? (
-            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 }}>
-              <AlertCircle size={40} color="#666" strokeWidth={1.5} />
-              <Text style={{ fontSize: 16, fontWeight: '600', color: '#fff', marginTop: 16, textAlign: 'center' }}>
-                Couldn't load sessions
-              </Text>
-              <Text style={{ fontSize: 13, color: '#888', marginTop: 6, textAlign: 'center' }}>
-                Check your connection and try again
-              </Text>
-              <TouchableOpacity
-                onPress={handleRefresh}
-                style={{
-                  marginTop: 20,
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 8,
-                  backgroundColor: T.amber,
-                  borderRadius: 12,
-                  paddingVertical: 12,
-                  paddingHorizontal: 24,
-                }}
-                accessibilityLabel="Retry loading sessions"
-              >
-                <RefreshCw size={16} color="#0B0B0C" strokeWidth={2} />
-                <Text style={{ fontSize: 15, fontWeight: '700', color: '#0B0B0C' }}>Retry</Text>
-              </TouchableOpacity>
-            </View>
-          ) : !loading && deck.length === 0 && !error ? (
-            <ScrollView
-              style={{ flex: 1 }}
-              contentContainerStyle={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 }}
-              refreshControl={
-                <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={T.amber} />
-              }
-            >
-              <Inbox size={48} color="#444" strokeWidth={1.5} style={{ marginBottom: 16 }} />
-              <Text style={{ fontSize: 16, fontWeight: '600', color: '#fff', textAlign: 'center' }}>
-                No sessions available
-              </Text>
-              <Text style={{ fontSize: 13, color: '#888', marginTop: 6, textAlign: 'center' }}>
-                Pull down to refresh, or check back later for new games
-              </Text>
-            </ScrollView>
-          ) : (
-            <ScrollView
-              style={{ flex: 1 }}
-              contentContainerStyle={{ paddingHorizontal: 16 }}
-              showsVerticalScrollIndicator={false}
-              refreshControl={
-                <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={T.amber} />
-              }
-            >
-              {isDone ? (
-                <View style={{ alignItems: 'center', paddingVertical: 56 }}>
-                  <CheckCircle2 size={48} color="#444" strokeWidth={1.5} style={{ marginBottom: 16 }} />
-                  <Text
-                    style={{
-                      fontSize: 15,
-                      color: 'rgba(255,255,255,0.35)',
-                      marginBottom: 24,
-                      textAlign: 'center',
-                    }}
-                  >
-                    {doneMessage}
-                  </Text>
-                  <TouchableOpacity
-                    onPress={handleStartOver}
-                    style={{
-                      backgroundColor: T.amber,
-                      borderRadius: 14,
-                      paddingHorizontal: 28,
-                      paddingVertical: 12,
-                    }}
-                    accessibilityLabel="Start swiping over"
-                  >
-                    <Text style={{ fontSize: 14, fontWeight: '700', color: '#0B0B0C' }}>
-                      Start over
+                {top5.length === 0 && !playLoading && (
+                  <View style={s.emptyTop5}>
+                    <Text style={s.emptyTop5Text}>
+                      No sessions found · try changing the date
                     </Text>
-                  </TouchableOpacity>
-                </View>
-              ) : (
-                current && (
-                  <>
-                    <AnimatedSwipeCard
-                      key={`card-${viewIdx}-${current.id}`}
-                      s={current}
-                      onSkip={handleSkip}
-                      onSave={handleSave}
-                      isSignedIn={signedIn}
-                      lockedFriendsSlot={lockedFriends}
-                      onSignIn={openSignUp}
-                      onFriendsPress={() => openSessionFriends(current)}
-                      onTopDuprPress={() => openTopDupr(current)}
-                    />
+                  </View>
+                )}
 
-                    {/* Action buttons */}
-                    <View
-                      style={{
-                        flexDirection: 'row',
-                        justifyContent: 'center',
-                        alignItems: 'center',
-                        gap: 28,
-                        marginVertical: 16,
-                      }}
-                    >
-                      <TouchableOpacity
-                        onPress={handleSkip}
-                        accessibilityLabel="Skip this session"
-                        accessibilityRole="button"
-                        style={{
-                          width: 58,
-                          height: 58,
-                          borderRadius: 29,
-                          backgroundColor: '#1a1a1a',
-                          borderWidth: 1.5,
-                          borderColor: '#2a2a2a',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                        }}
-                      >
-                        <X size={24} color="#777" strokeWidth={2} />
-                      </TouchableOpacity>
+                {top5.map((item, index) => (
+                  <FriendGoingCard
+                    key={item.sessionId}
+                    item={item}
+                    isTop={index === 0}
+                    dimLevel={index}
+                    onFriendsPress={
+                      item.friendCount > 0
+                        ? () => openGoingFriends(item)
+                        : undefined
+                    }
+                    onTopDuprPress={
+                      item.topDupr && item.topDupr.length > 0
+                        ? () => openTopDuprFromItem(item)
+                        : undefined
+                    }
+                  />
+                ))}
+              </>
+            )}
 
-                      <TouchableOpacity
-                        onPress={handleUndo}
-                        accessibilityLabel="Undo last swipe"
-                        accessibilityRole="button"
-                        style={{
-                          width: 52,
-                          height: 52,
-                          borderRadius: 26,
-                          backgroundColor: '#1a1a1a',
-                          borderWidth: 1.5,
-                          borderColor: '#2a2a2a',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          opacity: viewHistory.length ? 1 : 0.35,
-                        }}
-                      >
-                        <RotateCcw size={18} color="#888" strokeWidth={2} />
-                      </TouchableOpacity>
+            {!signedIn && (
+              <View style={s.emptyTop5}>
+                <Text style={s.emptyTop5Text}>
+                  Sign in to see your top 5 matches
+                </Text>
+              </View>
+            )}
 
-                      <TouchableOpacity
-                        onPress={handleSave}
-                        accessibilityLabel="Save to shortlist"
-                        accessibilityRole="button"
-                        style={{
-                          width: 64,
-                          height: 64,
-                          borderRadius: 32,
-                          backgroundColor: T.amber,
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          shadowColor: T.amber,
-                          shadowOffset: { width: 0, height: 0 },
-                          shadowOpacity: 0.35,
-                          shadowRadius: 18,
-                          elevation: 8,
-                        }}
-                      >
-                        <Heart size={28} color="#0B0B0C" fill="#0B0B0C" strokeWidth={2} />
-                      </TouchableOpacity>
-                    </View>
-
-                    {/* Up Next */}
-                    {upNext.length > 0 && (
-                      <View>
-                        <Text
-                          style={{
-                            fontSize: 12,
-                            color: 'rgba(255,255,255,0.3)',
-                            textTransform: 'uppercase',
-                            letterSpacing: 1,
-                            marginBottom: 10,
-                          }}
-                        >
-                          Up next
-                        </Text>
-                        <View style={{ gap: 10 }}>
-                          {upNext.map((sess, i) => (
-                            <View key={`upnext-${viewIdx + 1 + i}-${sess.id}`} style={{ opacity: 1 - i * 0.2 }}>
-                              <SecondaryCard s={sess} />
-                            </View>
-                          ))}
-                        </View>
-                      </View>
-                    )}
-                  </>
-                )
-              )}
-
-              <View style={{ height: 24 }} />
-            </ScrollView>
-          )}
+            <TouchableOpacity
+              style={s.exploreBtn}
+              onPress={() => onOpenExplore?.()}
+              activeOpacity={0.85}
+            >
+              <Text style={s.exploreBtnText}>
+                {signedIn ? 'Explore more sessions' : 'Browse all sessions'}
+              </Text>
+              <ChevronRight size={18} color={T.amber} strokeWidth={2.5} />
+            </TouchableOpacity>
+          </ScrollView>
         </>
       )}
 
@@ -964,6 +528,38 @@ export function SwipeScreen({ onOpenGearSheet, gearSaved }: { onOpenGearSheet?: 
             />
           }
         >
+          {/* Today / Tomorrow — same pattern as Discover */}
+          <View style={s.goingDateFilterRow}>
+            {(['today', 'tomorrow', 'saved'] as const).map((key) => {
+              const on = goingTabFilter === key
+              const count =
+                key === 'today'
+                  ? friendsGoingTodayUpcoming.length
+                  : key === 'tomorrow'
+                    ? friendsGoingTomorrowUpcoming.length
+                    : shortlistItems.length
+              const label =
+                key === 'today' ? 'Today' : key === 'tomorrow' ? 'Tomorrow' : 'Saved'
+              return (
+                <TouchableOpacity
+                  key={key}
+                  onPress={() => setGoingTabFilter(key)}
+                  style={{ paddingVertical: 5, paddingHorizontal: 2 }}
+                >
+                  <Text
+                    style={{
+                      fontSize: 12,
+                      fontWeight: on ? '600' : '400',
+                      color: on ? '#fff' : T.muted,
+                    }}
+                  >
+                    {label} ({count})
+                  </Text>
+                </TouchableOpacity>
+              )
+            })}
+          </View>
+
           <GearTeaserCard
             height={230}
             onPress={() => onOpenGearSheet?.()}
@@ -974,117 +570,67 @@ export function SwipeScreen({ onOpenGearSheet, gearSaved }: { onOpenGearSheet?: 
             <ActivityIndicator color={T.amber} style={{ marginTop: 40 }} />
           ) : (
             <>
-              {friendsGoingToday.length > 0 && (
+              {goingTabFilter !== 'saved' && friendsGoingForDay.length > 0 && (
                 <>
                   <View style={s.goingSectionHeader}>
                     <Text style={s.goingSectionLabel}>
                       FRIENDS GOING{' '}
-                      <Text style={s.goingSectionDay}>TODAY</Text>
-                    </Text>
-                    <Text style={s.goingSectionCount}>
-                      {friendsGoingToday.length} session{friendsGoingToday.length !== 1 ? 's' : ''}
+                      <Text style={s.goingSectionDay}>
+                        {goingTabFilter === 'today' ? 'TODAY' : 'TOMORROW'}
+                      </Text>
                     </Text>
                   </View>
-                  {friendsGoingToday.map((item) => (
+                  {friendsGoingForDay.map((item) => (
                     <FriendGoingCard
                       key={item.sessionId}
                       item={item}
                       onFriendsPress={() => openGoingFriends(item)}
+                      onTopDuprPress={
+                        item.topDupr && item.topDupr.length > 0
+                          ? () => openTopDuprFromItem(item)
+                          : undefined
+                      }
                     />
                   ))}
                 </>
               )}
 
-              {friendsGoingTomorrow.length > 0 && (
-                <>
-                  <View style={s.goingSectionHeader}>
-                    <Text style={s.goingSectionLabel}>
-                      FRIENDS GOING{' '}
-                      <Text style={s.goingSectionDay}>TOMORROW</Text>
-                    </Text>
-                    <Text style={s.goingSectionCount}>
-                      {friendsGoingTomorrow.length} session{friendsGoingTomorrow.length !== 1 ? 's' : ''}
-                    </Text>
-                  </View>
-                  {friendsGoingTomorrow.map((item) => (
-                    <FriendGoingCard
-                      key={item.sessionId}
-                      item={item}
-                      onFriendsPress={() => openGoingFriends(item)}
-                    />
-                  ))}
-                </>
-              )}
-
-              {friendsGoingToday.length === 0 && friendsGoingTomorrow.length === 0 && (
+              {goingTabFilter !== 'saved' && friendsGoingForDay.length === 0 && (
                 <View style={s.emptyFriends}>
                   <Text style={s.emptyFriendsIcon}>👥</Text>
-                  <Text style={s.emptyFriendsTitle}>No friends going today or tomorrow</Text>
+                  <Text style={s.emptyFriendsTitle}>
+                    {goingTabFilter === 'today'
+                      ? 'No upcoming friends going today'
+                      : 'No upcoming friends going tomorrow'}
+                  </Text>
                   <Text style={s.emptyFriendsSub}>
                     Follow players in Circle to see where they play
                   </Text>
                 </View>
               )}
 
-              {/* Saved sessions section */}
-              {shortlistItems.length > 0 && (
+              {goingTabFilter === 'saved' && shortlistItems.length > 0 && (
                 <>
-                  <View style={s.savedDivider} />
                   <View style={s.goingSectionHeader}>
-                    <Text style={s.goingSectionLabel}>Your saved sessions</Text>
-                    <Text style={s.goingSectionCount}>
-                      {shortlistItems.length} saved
-                    </Text>
+                    <Text style={s.goingSectionLabel}>YOUR SAVED SESSIONS</Text>
                   </View>
-                  {shortlistItems.map((item, index) => (
-                    <ReanimatedSwipeable
-                      key={`saved-${item.id}-${index}`}
-                      friction={2}
-                      leftThreshold={60}
-                      renderLeftActions={() => (
-                        <View style={s.savedSwipeDelete}>
-                          <Text style={s.savedSwipeDeleteText}>Remove</Text>
-                        </View>
-                      )}
-                      onSwipeableOpen={(direction) => {
-                        if (direction === 'left') {
-                          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
-                          setRemovedSavedIds((prev) => new Set([...prev, item.id]))
-                          unsaveSession(item.id)
+                  {shortlistItems.map((session) => (
+                    <Pressable
+                      key={`saved-${session.id}`}
+                      onPress={() => setExpandedSession(session)}
+                      onLongPress={() => removeSavedSession(session.id)}
+                      delayLongPress={450}
+                    >
+                      <FriendGoingCard
+                        item={sessionToFriendGoingItem(session)}
+                        onFriendsPress={
+                          session.friendCount > 0
+                            ? () => openSessionFriends(session)
+                            : undefined
                         }
-                      }}
-                    >
-                      <TouchableOpacity
-                        style={[
-                          s.savedRow,
-                          index === shortlistItems.length - 1 && { borderBottomWidth: 0 },
-                        ]}
-                      activeOpacity={0.8}
-                      onPress={() => setExpandedSession(item)}
-                    >
-                      <View style={s.savedThumb}>
-                          <Text style={s.savedThumbPct} numberOfLines={1}>
-                            {item.matchScore >= 50 ? `${item.matchScore}%` : '—'}
-                          </Text>
-                        </View>
-                        <View style={s.savedInfo}>
-                          <Text style={s.savedName} numberOfLines={1}>{item.name}</Text>
-                          <Text style={s.savedMeta}>
-                            {formatTime(item.startTime)} · {item.spotsLeft} spots left
-                          </Text>
-                          {item.club?.name && (
-                            <Text style={s.savedVenue} numberOfLines={1}>{item.club.name}</Text>
-                          )}
-                        </View>
-                        <TouchableOpacity
-                          style={s.savedJoinBtn}
-                          onPress={() => item.eventUrl && Linking.openURL(item.eventUrl)}
-                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                        >
-                          <Text style={s.savedJoinText}>Join on{'\n'}Reclub</Text>
-                        </TouchableOpacity>
-                      </TouchableOpacity>
-                    </ReanimatedSwipeable>
+                        onTopDuprPress={() => openTopDupr(session)}
+                      />
+                    </Pressable>
                   ))}
                   <TouchableOpacity style={s.keepSwiping} onPress={() => setPlayTab('discover')}>
                     <Text style={s.keepSwipingText}>Keep swiping for more →</Text>
@@ -1092,12 +638,31 @@ export function SwipeScreen({ onOpenGearSheet, gearSaved }: { onOpenGearSheet?: 
                 </>
               )}
 
-              {/* Both empty */}
-              {friendsGoingToday.length === 0 && friendsGoingTomorrow.length === 0 && shortlistItems.length === 0 && (
+              {goingTabFilter === 'saved' && shortlistItems.length === 0 && (
                 <View style={s.emptyShortlist}>
                   <Bookmark size={44} color="#1e1e1e" />
                   <Text style={s.emptyShortlistText}>
-                    Swipe sessions in Discover to save them here
+                    Swipe sessions in TOP 5 to save them here
+                  </Text>
+                  <Text style={s.emptyFriendsSub}>
+                    Press and hold a saved card to remove it
+                  </Text>
+                  <TouchableOpacity
+                    style={s.emptyShortlistBtn}
+                    onPress={() => setPlayTab('discover')}
+                  >
+                    <Text style={s.emptyShortlistBtnText}>Start swiping</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {goingTabFilter !== 'saved' &&
+                friendsGoingForDay.length === 0 &&
+                shortlistItems.length === 0 && (
+                <View style={s.emptyShortlist}>
+                  <Bookmark size={44} color="#1e1e1e" />
+                  <Text style={s.emptyShortlistText}>
+                    Swipe sessions in TOP 5 to save them here
                   </Text>
                   <TouchableOpacity
                     style={s.emptyShortlistBtn}
@@ -1162,191 +727,6 @@ export function SwipeScreen({ onOpenGearSheet, gearSaved }: { onOpenGearSheet?: 
         onFollow={friendsModal.showFollow ? handleFollowFromTopDupr : undefined}
       />
 
-      {/* Filter overlay — root-level so it always covers the full screen */}
-      {filterModalVisible && (
-        <View style={s.filterHost} pointerEvents="box-none">
-          <Pressable style={s.filterBackdrop} onPress={() => setFilterModalVisible(false)} />
-          <View style={s.filterSheet} pointerEvents="auto">
-            <View style={s.filterHandle} />
-
-            {/* Header */}
-            <View style={s.filterHeader}>
-              <Text style={s.filterTitle}>Filters</Text>
-              <View style={s.filterHeaderRight}>
-                <TouchableOpacity
-                  onPress={() => {
-                    setDraftDupr(3.0)
-                    setSlidingDupr(3.0)
-                    setDraftTimeSlots(['morning', 'afternoon', 'evening'])
-                    setDraftRangeKm(null)
-                    setVibeFilter(null)
-                    setSpotsOnly(false)
-                  }}
-                >
-                  <Text style={s.filterReset}>Reset</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={s.filterClose} onPress={() => setFilterModalVisible(false)}>
-                  <X size={16} color="#555" />
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 8 }}>
-              {/* DUPR slider */}
-              <View style={s.filterSection}>
-                <View style={s.filterSectionRow}>
-                  <Text style={s.filterLabel}>Min DUPR</Text>
-                  <Text style={s.filterValue}>{slidingDupr.toFixed(1)}+</Text>
-                </View>
-                <Slider
-                  key={`slider-${filterOpenKey}`}
-                  style={{ width: '100%', height: 32 }}
-                  minimumValue={2.0}
-                  maximumValue={6.0}
-                  step={0.1}
-                  value={draftDupr}
-                  onValueChange={(val) => setSlidingDupr(Math.round(val * 10) / 10)}
-                  onSlidingComplete={(val) => {
-                    const rounded = Math.round(val * 10) / 10
-                    setSlidingDupr(rounded)
-                    setDraftDupr(rounded)
-                  }}
-                  minimumTrackTintColor={T.amber}
-                  maximumTrackTintColor="#1e1e1e"
-                  thumbTintColor={T.amber}
-                />
-                <View style={s.sliderLabels}>
-                  {['2.0', '3.0', '4.0', '5.0', '6.0'].map(l => (
-                    <Text key={l} style={s.sliderLabel}>{l}</Text>
-                  ))}
-                </View>
-              </View>
-
-              {/* Time of day */}
-              <View style={s.filterSection}>
-                <Text style={s.filterLabel}>Time of day</Text>
-                <View style={s.filterChipRow}>
-                  {([
-                    { key: 'morning' as TimeSlotKey, label: 'Morning', sub: 'Before 12h' },
-                    { key: 'afternoon' as TimeSlotKey, label: 'Afternoon', sub: '12h — 17h' },
-                    { key: 'evening' as TimeSlotKey, label: 'Evening', sub: 'After 17h' },
-                  ]).map(t => {
-                    const on = draftTimeSlots.includes(t.key)
-                    return (
-                      <TouchableOpacity
-                        key={t.key}
-                        style={[s.filterTimeBtn, on && s.filterTimeBtnOn]}
-                        onPress={() => setDraftTimeSlots(prev =>
-                          prev.includes(t.key)
-                            ? prev.filter(k => k !== t.key).length > 0 ? prev.filter(k => k !== t.key) : prev
-                            : [...prev, t.key]
-                        )}
-                      >
-                        <Text style={[s.filterTimeLbl, on && s.filterTimeLblOn]}>{t.label}</Text>
-                        <Text style={[s.filterTimeSub, on && s.filterTimeSubOn]}>{t.sub}</Text>
-                      </TouchableOpacity>
-                    )
-                  })}
-                </View>
-              </View>
-
-              {/* Vibe */}
-              <View style={s.filterSection}>
-                <Text style={s.filterLabel}>Vibe</Text>
-                <View style={s.filterChipRow}>
-                  {([
-                    { key: 'social' as const, label: 'Social' },
-                    { key: 'competitive' as const, label: 'Competitive' },
-                  ]).map(v => (
-                    <TouchableOpacity
-                      key={v.key}
-                      style={[s.filterVibeBtn, vibeFilter === v.key && s.filterVibeBtnOn]}
-                      onPress={() => setVibeFilter(prev => prev === v.key ? null : v.key)}
-                    >
-                      <Text style={[s.filterVibeLbl, vibeFilter === v.key && s.filterVibeLblOn]}>{v.label}</Text>
-                    </TouchableOpacity>
-                  ))}
-                  <TouchableOpacity
-                    style={[s.filterVibeBtn, vibeFilter === null && s.filterVibeBtnOn]}
-                    onPress={() => setVibeFilter(null)}
-                  >
-                    <Text style={[s.filterVibeLbl, vibeFilter === null && s.filterVibeLblOn]}>Any</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-
-              {/* Distance range */}
-              <View style={s.filterSection}>
-                <Text style={s.filterLabel}>Max distance</Text>
-                <View style={s.filterChipRow}>
-                  {([null, 5, 10, 20, 30] as (number | null)[]).map((v) => (
-                    <TouchableOpacity
-                      key={v ?? 'any'}
-                      style={[s.filterVibeBtn, draftRangeKm === v && s.filterVibeBtnOn]}
-                      onPress={() => setDraftRangeKm(v)}
-                    >
-                      <Text style={[s.filterVibeLbl, draftRangeKm === v && s.filterVibeLblOn]}>
-                        {v == null ? 'Any' : `${v} km`}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-
-              {/* Spots toggle */}
-              <View style={s.filterSection}>
-                <TouchableOpacity
-                  style={s.filterToggleRow}
-                  onPress={() => setSpotsOnly(prev => !prev)}
-                  activeOpacity={0.8}
-                >
-                  <View style={s.filterToggleLeft}>
-                    <Text style={s.filterToggleLbl}>3+ spots available only</Text>
-                    <Text style={s.filterToggleSub}>Hide sessions that are nearly full</Text>
-                  </View>
-                  <View style={[s.filterToggle, spotsOnly && s.filterToggleOn]}>
-                    <View style={[s.filterToggleDot, spotsOnly && s.filterToggleDotOn]} />
-                  </View>
-                </TouchableOpacity>
-              </View>
-            </ScrollView>
-
-            {/* Apply */}
-            <TouchableOpacity
-              style={s.filterApply}
-              onPress={() => {
-                console.log(
-                  `\n[Filters] ─────────────────────────────\n` +
-                  `  DUPR min   : ${draftDupr.toFixed(1)}+\n` +
-                  `  Time slots : ${draftTimeSlots.join(', ')}\n` +
-                  `  Max dist   : ${draftRangeKm != null ? draftRangeKm + ' km' : 'any'}\n` +
-                  `  Max cards  : ${draftMaxCards}\n` +
-                  `  Vibe       : ${vibeFilter ?? 'any'}\n` +
-                  `  3+ spots   : ${spotsOnly ? 'ON' : 'off'}\n` +
-                  `────────────────────────────────────────`
-                )
-                // Commit to store for persistence
-                setSwipeDuprMin(draftDupr)
-                setSwipeTimeSlots(draftTimeSlots)
-                setSwipeMaxCards(draftMaxCards)
-                setSwipeRangeKm(draftRangeKm)
-                setFilterModalVisible(false)
-                const date = dateFilter === 'tomorrow' ? vnDateString(1) : undefined
-                // Pass draft values directly so the fetch doesn't race with Zustand batching
-                fetchSessions(locationRef.current.lat, locationRef.current.lng, date, {
-                  duprMin: draftDupr,
-                  timeSlots: draftTimeSlots,
-                  maxCards: draftMaxCards,
-                  rangeKm: draftRangeKm,
-                })
-              }}
-              activeOpacity={0.85}
-            >
-              <Text style={s.filterApplyText}>Apply Filters</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      )}
     </View>
   )
 }
@@ -1521,6 +901,51 @@ const s = StyleSheet.create({
     overflow: 'hidden',
   },
   // ── Going tab styles ──────────────────────────────────────────
+  goingDateFilterRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingTop: 4,
+    paddingBottom: 10,
+    alignItems: 'center',
+  },
+  top5DateRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingBottom: 10,
+    alignItems: 'center',
+  },
+  emptyTop5: {
+    padding: 32,
+    alignItems: 'center',
+  },
+  emptyTop5Text: {
+    fontSize: 13,
+    color: '#333',
+    textAlign: 'center',
+  },
+  exploreBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginHorizontal: 16,
+    marginTop: 8,
+    marginBottom: 28,
+    backgroundColor: 'rgba(245,166,35,0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(245,166,35,0.5)',
+    borderRadius: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 18,
+  },
+  exploreBtnText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: T.amber,
+    letterSpacing: 0.2,
+  },
   goingSectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1538,10 +963,6 @@ const s = StyleSheet.create({
   },
   goingSectionDay: {
     color: T.amber,
-  },
-  goingSectionCount: {
-    fontSize: 11,
-    color: '#444',
   },
   emptyFriends: {
     alignItems: 'center',
@@ -1565,318 +986,5 @@ const s = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 17,
     marginTop: 2,
-  },
-  savedDivider: {
-    height: 1,
-    backgroundColor: '#161616',
-    marginHorizontal: 16,
-    marginTop: 6,
-    marginBottom: 2,
-  },
-  savedRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 0.5,
-    borderBottomColor: '#111',
-    backgroundColor: '#000',
-    gap: 12,
-  },
-  savedThumb: {
-    width: 44,
-    height: 44,
-    borderRadius: 10,
-    backgroundColor: '#1a1a1a',
-    borderWidth: 1,
-    borderColor: '#2a2a2a',
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  savedThumbPct: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: T.amber,
-  },
-  savedInfo: {
-    flex: 1,
-    minWidth: 0,
-    gap: 2,
-  },
-  savedName: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#eee',
-  },
-  savedMeta: {
-    fontSize: 11,
-    color: '#555',
-  },
-  savedVenue: {
-    fontSize: 10,
-    color: '#3a3a3a',
-  },
-  savedJoinBtn: {
-    backgroundColor: '#f5a623',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    alignItems: 'center',
-    flexShrink: 0,
-  },
-  savedJoinText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#1a0a00',
-    textAlign: 'center',
-  },
-  savedSwipeDelete: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#ef4444',
-    width: 80,
-    marginVertical: 1,
-  },
-  savedSwipeDeleteText: {
-    color: '#fff',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  // ── Filter overlay (root-level, same pattern as FriendsListModal) ───────────
-  filterHost: {
-    ...StyleSheet.absoluteFillObject,
-    zIndex: 9000,
-    elevation: 9000,
-    justifyContent: 'flex-end',
-  },
-  filterBackdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.65)',
-  },
-  filterSheet: {
-    backgroundColor: '#111',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 36,
-    borderWidth: 1,
-    borderColor: '#222',
-    maxHeight: '85%',
-  },
-  filterHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 4,
-  },
-  // ── Filter pill ──────────────────────────────────────────────
-  filterPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 20,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    backgroundColor: 'rgba(245,166,35,0.1)',
-    borderWidth: 1,
-    borderColor: 'rgba(245,166,35,0.25)',
-  },
-  filterPillActive: {
-    backgroundColor: T.amber,
-    borderColor: T.amber,
-  },
-  filterPillText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: T.amber,
-  },
-  filterPillTextActive: {
-    color: '#1a0a00',
-  },
-  filterHandle: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: '#333',
-    alignSelf: 'center',
-    marginBottom: 4,
-  },
-  filterHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 18,
-    paddingTop: 12,
-    paddingBottom: 14,
-  },
-  filterTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#fff',
-  },
-  filterHeaderRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  filterReset: {
-    fontSize: 13,
-    color: T.amber,
-    fontWeight: '500',
-  },
-  filterClose: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#1a1a1a',
-    borderWidth: 0.5,
-    borderColor: '#2a2a2a',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  filterSection: {
-    paddingHorizontal: 18,
-    marginBottom: 22,
-  },
-  filterSectionRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  filterLabel: {
-    fontSize: 11,
-    color: '#555',
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-    fontWeight: '500',
-    marginBottom: 10,
-  },
-  filterValue: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: T.amber,
-  },
-  sliderLabels: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 2,
-  },
-  sliderLabel: {
-    fontSize: 10,
-    color: '#333',
-  },
-  filterChipRow: {
-    flexDirection: 'row',
-    gap: 7,
-  },
-  filterTimeBtn: {
-    flex: 1,
-    backgroundColor: '#1a1a1a',
-    borderWidth: 0.5,
-    borderColor: '#2a2a2a',
-    borderRadius: 10,
-    paddingVertical: 10,
-    alignItems: 'center',
-    gap: 3,
-  },
-  filterTimeBtnOn: {
-    backgroundColor: '#1f1400',
-    borderColor: T.amber,
-  },
-  filterTimeLbl: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#555',
-  },
-  filterTimeLblOn: {
-    color: T.amber,
-  },
-  filterTimeSub: {
-    fontSize: 9,
-    color: '#2a2a2a',
-  },
-  filterTimeSubOn: {
-    color: T.amber,
-    opacity: 0.6,
-  },
-  filterVibeBtn: {
-    flex: 1,
-    backgroundColor: '#1a1a1a',
-    borderWidth: 0.5,
-    borderColor: '#2a2a2a',
-    borderRadius: 10,
-    paddingVertical: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  filterVibeBtnOn: {
-    backgroundColor: '#1f1400',
-    borderColor: T.amber,
-  },
-  filterVibeLbl: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#555',
-  },
-  filterVibeLblOn: {
-    color: T.amber,
-  },
-  filterToggleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  filterToggleLeft: {
-    flex: 1,
-  },
-  filterToggleLbl: {
-    fontSize: 13,
-    color: '#aaa',
-    fontWeight: '500',
-  },
-  filterToggleSub: {
-    fontSize: 10,
-    color: '#333',
-    marginTop: 2,
-  },
-  filterToggle: {
-    width: 38,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: '#2a2a2a',
-    position: 'relative',
-    flexShrink: 0,
-  },
-  filterToggleOn: {
-    backgroundColor: T.amber,
-  },
-  filterToggleDot: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: '#555',
-    position: 'absolute',
-    top: 2,
-    left: 2,
-  },
-  filterToggleDotOn: {
-    backgroundColor: '#fff',
-    left: 18,
-  },
-  filterApply: {
-    marginHorizontal: 18,
-    marginBottom: 24,
-    backgroundColor: T.amber,
-    borderRadius: 12,
-    padding: 14,
-    alignItems: 'center',
-  },
-  filterApplyText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#1a0a00',
   },
 })

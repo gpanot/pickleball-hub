@@ -402,6 +402,55 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // dupr_update — followees whose DUPR improved in the last 30 days
+  const duprHistoryItems: typeof items = [];
+
+  for (const followeeId of followeeIds) {
+    const history = await prisma.playerDuprHistory.findMany({
+      where: { playerId: followeeId },
+      orderBy: { recordedAt: "desc" },
+      take: 2,
+      include: {
+        player: {
+          select: {
+            userId: true,
+            displayName: true,
+            imageUrl: true,
+            duprDoubles: true,
+          },
+        },
+      },
+    });
+
+    if (history.length < 2) continue;
+
+    const latest = history[0];
+    const previous = history[1];
+
+    if (!latest.duprDoubles || !previous.duprDoubles) continue;
+
+    const newVal = Number(latest.duprDoubles);
+    const oldVal = Number(previous.duprDoubles);
+
+    if (newVal <= oldVal) continue;
+
+    const daysSince =
+      (Date.now() - latest.recordedAt.getTime()) / 86400000;
+    if (daysSince > 30) continue;
+
+    duprHistoryItems.push({
+      id: `dupr_update_${followeeId}_${latest.id}`,
+      type: "dupr_update",
+      player: toPlayerPayload(latest.player),
+      isFollowing: true,
+      timestamp: latest.recordedAt.toISOString(),
+      duprOld: oldVal,
+      duprNew: newVal,
+    });
+  }
+
+  items.push(...duprHistoryItems);
+
   // Sort: you_are_playing first, then joining, then by timestamp desc
   items.sort((a, b) => {
     if (a.type === "you_are_playing") return -1;

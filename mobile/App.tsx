@@ -6,6 +6,7 @@ import { StatusBar } from 'expo-status-bar'
 import Constants from 'expo-constants'
 import { NavBar, type TabId } from './src/components/NavBar'
 import { SwipeScreen } from './src/screens/SwipeScreen'
+import { ExploreSessionsScreen } from './src/screens/ExploreSessionsScreen'
 import { CircleScreen } from './src/screens/CircleScreen'
 import { OnboardingScreen } from './src/screens/OnboardingScreen'
 import { PeopleYouMayKnowScreen } from './src/screens/PeopleYouMayKnowScreen'
@@ -25,7 +26,7 @@ import { registerForPushNotifications, useNotificationListeners } from './src/se
 import { SplashScreen } from './src/screens/SplashScreen'
 import { debugLog } from './src/lib/debug'
 
-type FlowScreen = 'main' | 'onboarding' | 'people' | 'profile' | 'gear'
+type FlowScreen = 'main' | 'onboarding' | 'people' | 'profile' | 'gear' | 'explore'
 
 export default function App() {
   const [showSplash, setShowSplash] = useState(true)
@@ -225,14 +226,22 @@ export default function App() {
                 />
               </View>
               <View style={{ flex: 1, display: activeTab === 'swipe' ? 'flex' : 'none' }}>
-                <SwipeScreen onOpenGearSheet={() => setGearSheetOpen(true)} gearSaved={savedConfirmation} />
+                <SwipeScreen
+                  onOpenGearSheet={() => setGearSheetOpen(true)}
+                  gearSaved={savedConfirmation}
+                  onOpenExplore={() => setFlowScreen('explore')}
+                />
               </View>
-              <NavBar
-                active={activeTab}
-                onChange={setActiveTab}
-              />
+              {flowScreen !== 'explore' && (
+                <NavBar active={activeTab} onChange={setActiveTab} />
+              )}
               <ToastOverlay />
             </View>
+            {flowScreen === 'explore' && (
+              <View style={StyleSheet.absoluteFillObject}>
+                <ExploreSessionsScreen onClose={() => setFlowScreen('main')} />
+              </View>
+            )}
             {flowScreen === 'profile' && (
               <View style={StyleSheet.absoluteFillObject}>
                 <ProfileSheet

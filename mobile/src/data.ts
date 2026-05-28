@@ -68,6 +68,35 @@ export type Session = {
   friendsOverflow: number
 
   eventUrl: string
+  /** Calendar day for this session row (YYYY-MM-DD, Vietnam). */
+  scrapedDate?: string
+}
+
+/** Vietnam calendar date (UTC+7). */
+export function vnCalendarDateString(offsetDays = 0): string {
+  const vn = new Date(Date.now() + 7 * 60 * 60 * 1000)
+  vn.setUTCDate(vn.getUTCDate() + offsetDays)
+  return vn.toISOString().slice(0, 10)
+}
+
+/** Current time in Vietnam as HH:mm — hide sessions that already started today. */
+export function vnCurrentTimeString(): string {
+  const vn = new Date(Date.now() + 7 * 60 * 60 * 1000)
+  const hh = String(vn.getUTCHours()).padStart(2, '0')
+  const mm = String(vn.getUTCMinutes()).padStart(2, '0')
+  return `${hh}:${mm}`
+}
+
+/** True if the session's start is in the past (by scraped date + start time, VN). */
+export function isSessionStarted(session: {
+  startTime: string
+  scrapedDate?: string
+}): boolean {
+  const today = vnCalendarDateString(0)
+  const dateStr = session.scrapedDate ?? today
+  if (dateStr < today) return true
+  if (dateStr > today) return false
+  return session.startTime < vnCurrentTimeString()
 }
 
 // --- Helpers for card display ---

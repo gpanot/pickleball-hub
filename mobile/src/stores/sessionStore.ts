@@ -39,6 +39,7 @@ interface SessionState {
   advanceSkip: () => void
   undo: () => void
   resetDeck: () => void
+  setExploreSessions: (sessions: Session[]) => void
 }
 
 
@@ -254,5 +255,18 @@ export const useSessionStore = create<SessionState>()((set, get) => ({
 
   resetDeck: () => {
     set({ currentIdx: 0, swipeHistory: [] })
+  },
+
+  setExploreSessions: (sessions) => {
+    set({
+      sessions,
+      nextOffset: sessions.length,
+      hasMore: false,
+      totalCount: sessions.length,
+      loading: false,
+      error: null,
+      currentIdx: 0,
+      swipeHistory: [],
+    })
   },
 }))

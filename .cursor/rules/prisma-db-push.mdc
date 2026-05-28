@@ -1,49 +1,19 @@
 ---
-description: Always push Prisma schema changes to BOTH local and production databases
+description: Deprecated — use prisma-migrations.mdc; db push only for throwaway local experiments
 globs:
   - prisma/schema.prisma
-  - src/**/*.ts
-alwaysApply: true
+alwaysApply: false
 ---
 
-# Prisma DB Push — Always Target Production
+# Prisma schema changes — use migrations
 
-When running `prisma db push` or `prisma migrate deploy` after modifying `prisma/schema.prisma`:
+**Canonical rule:** `prisma-migrations.mdc`
 
-## CRITICAL RULE
+For normal work:
 
-**ALWAYS push to BOTH databases — local AND production.**
+1. `npx prisma migrate dev --name <name>`
+2. `npx prisma migrate deploy` on production (Railway) before/after deploy when migrations ship
 
-The production DATABASE_URL is stored in your `.env.production` or Railway environment variables — never hardcode it here.
+`prisma db push` and `npm run db:push:all` are **not** the default path when `prisma/migrations/` exists — they bypass migration history and cause "table does not exist" in other environments.
 
-## Required Commands (in order)
-
-```bash
-# 1. Push to local
-npx prisma db push --skip-generate
-
-# 2. Push to production (NEVER forget this)
-# Load DATABASE_URL from .env.production or your password manager — do NOT hardcode it here
-DATABASE_URL="<from .env.production or Railway dashboard>" npx prisma db push --skip-generate
-
-# 3. Regenerate client
-npx prisma generate
-```
-
-Or use the convenience script:
-```bash
-npm run db:push:all
-```
-
-## Why This Matters
-
-- The Vercel deployment uses the **production** Railway Postgres database
-- If you only push to local, ALL API routes crash with `PrismaClientKnownRequestError`
-- This has broken sign-in, PNS, and other features multiple times
-
-## Never Do This
-
-```bash
-# WRONG — only updates local, production stays out of sync
-npx prisma db push
-```
+Only use `db push` for disposable local experiments, never for changes you will commit.

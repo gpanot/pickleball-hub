@@ -155,11 +155,25 @@ model Player {
   createdAt                DateTime  @default(now()) @map("created_at")
   updatedAt                DateTime  @updatedAt @map("updated_at")
 
-  rosters   SessionRoster[]
-  followers Follow[]        @relation("followers")
-  profile   PlayerProfile?
+  rosters     SessionRoster[]
+  followers   Follow[]              @relation("followers")
+  profile     PlayerProfile?
+  duprHistory PlayerDuprHistory[]
 
   @@map("players")
+}
+
+model PlayerDuprHistory {
+  id          Int      @id @default(autoincrement())
+  playerId    BigInt   @map("player_id")
+  duprDoubles Decimal? @map("dupr_doubles") @db.Decimal(5, 3)
+  recordedAt  DateTime @default(now()) @map("recorded_at")
+  source      String   @default("scraper")
+
+  player Player @relation(fields: [playerId], references: [userId], onDelete: Cascade)
+
+  @@index([playerId, recordedAt])
+  @@map("player_dupr_history")
 }
 
 /// One row per session per user (confirmed roster from Nuxt scrape).

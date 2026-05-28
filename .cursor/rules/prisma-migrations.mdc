@@ -1,0 +1,86 @@
+---
+description: Apply Prisma migrations locally after schema changes; deploy before commit/push when migrations ship
+globs:
+  - prisma/**
+  - src/**/api/**
+alwaysApply: true
+---
+
+# Prisma migrations — apply locally, deploy before ship
+
+This project uses **`prisma migrate`**, not `db push`, for schema changes. Code that queries new models/tables will 500 until migrations are applied (`P2021` table does not exist).
+
+## After any Prisma schema change
+
+Run from `pickleball-hub/`:
+
+```bash
+# Create migration + apply to local DB (development)
+npx prisma migrate dev --name <short_descriptive_name>
+
+# Regenerate client (migrate dev usually does this; safe to repeat)
+npx prisma generate
+```
+
+If a migration folder already exists (e.g. hand-edited SQL), apply locally without creating a new one:
+
+```bash
+npx prisma migrate deploy
+npx prisma generate
+```
+
+**Before telling the user a Prisma task is done**, confirm local DB is current:
+
+```bash
+npx prisma migrate status
+# Must show: "Database schema is up to date!"
+```
+
+Then smoke-test the affected API route (e.g. `GET /api/feed`) or restart `npm run dev` if needed.
+
+## Before commit (agent + human checklist)
+
+If the diff includes **any** of:
+
+- `prisma/schema.prisma`
+- `prisma/migrations/**`
+
+then:
+
+1. `npx prisma migrate status` — no pending migrations locally.
+2. Migration SQL is committed with the schema change (never commit schema-only without the matching `prisma/migrations/` folder).
+3. Tell the user explicitly: **production/staging still needs `migrate deploy`** unless they confirm it already ran.
+
+## Before push / PR (deployment required)
+
+New migrations in the branch **must** be deployed to every database the app uses in that environment (Vercel → **Railway Postgres**), or production APIs will crash like local did.
+
+```bash
+# Production (load URL from Railway dashboard or .env.production — never commit secrets)
+DATABASE_URL="<production-url>" npx prisma migrate deploy
+```
+
+Verify on production:
+
+```bash
+DATABASE_URL="<production-url>" npx prisma migrate status
+```
+
+**Do not** use `prisma db push` for shipped schema changes when migration files exist — it skips migration history and causes local/prod drift.
+
+## Agent responsibilities
+
+| Situation | Required action |
+|-----------|------------------|
+| Added/changed `schema.prisma` | `migrate dev`, `generate`, `migrate status`, test affected routes |
+| Added `prisma/migrations/*` | `migrate deploy` locally before marking task complete |
+| User asks to commit/push | Check diff for `prisma/`; if migrations present, warn that **Railway `migrate deploy` is required** after merge/deploy |
+| `P2021` / table does not exist | Run `npx prisma migrate deploy` locally first; then production if deployed code expects the table |
+
+## Quick diagnosis
+
+```bash
+npx prisma migrate status   # lists pending migrations
+```
+
+Pending migration + deployed code referencing new tables = `PrismaClientKnownRequestError` on API routes.

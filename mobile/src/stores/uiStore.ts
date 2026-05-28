@@ -9,6 +9,14 @@ export type SwipeMaxCards = 5 | 10 | 20
 
 const ALL_SLOTS: TimeSlotKey[] = ['morning', 'afternoon', 'evening']
 
+/** Default Discover filter values (also used by Reset in SwipeScreen). */
+export const SWIPE_FILTER_DEFAULTS = {
+  duprMin: 3.0,
+  timeSlots: [...ALL_SLOTS] as TimeSlotKey[],
+  maxCards: 20 as SwipeMaxCards,
+  rangeKm: 5,
+} as const
+
 export type PendingNewFollower = {
   userId: string
   displayName: string
@@ -52,10 +60,10 @@ export const useUiStore = create<UiState>((set, get) => ({
   shortlistSort: 'match',
   notificationsEnabled: true,
   swipeDateFilter: 'today',
-  swipeDuprMin: 3.0,
-  swipeTimeSlots: [...ALL_SLOTS],
-  swipeMaxCards: 20,
-  swipeRangeKm: null,
+  swipeDuprMin: SWIPE_FILTER_DEFAULTS.duprMin,
+  swipeTimeSlots: [...SWIPE_FILTER_DEFAULTS.timeSlots],
+  swipeMaxCards: SWIPE_FILTER_DEFAULTS.maxCards,
+  swipeRangeKm: SWIPE_FILTER_DEFAULTS.rangeKm,
   hydrated: false,
   pendingNewFollower: null,
   setPendingNewFollower: (follower) => set({ pendingNewFollower: follower }),
@@ -75,10 +83,15 @@ export const useUiStore = create<UiState>((set, get) => ({
           shortlistSort: data.shortlistSort === 'friends' ? 'friends' : 'match',
           notificationsEnabled: data.notificationsEnabled !== false,
           swipeDateFilter: data.swipeDateFilter === 'tomorrow' ? 'tomorrow' : 'today',
-          swipeDuprMin: typeof data.swipeDuprMin === 'number' ? data.swipeDuprMin : 3.0,
-          swipeTimeSlots: savedSlots.length > 0 ? savedSlots : [...ALL_SLOTS],
-          swipeMaxCards: validMaxCards.includes(data.swipeMaxCards as SwipeMaxCards) ? (data.swipeMaxCards as SwipeMaxCards) : 20,
-          swipeRangeKm: typeof data.swipeRangeKm === 'number' ? data.swipeRangeKm : null,
+          swipeDuprMin: typeof data.swipeDuprMin === 'number' ? data.swipeDuprMin : SWIPE_FILTER_DEFAULTS.duprMin,
+          swipeTimeSlots: savedSlots.length > 0 ? savedSlots : [...SWIPE_FILTER_DEFAULTS.timeSlots],
+          swipeMaxCards: validMaxCards.includes(data.swipeMaxCards as SwipeMaxCards) ? (data.swipeMaxCards as SwipeMaxCards) : SWIPE_FILTER_DEFAULTS.maxCards,
+          swipeRangeKm:
+            data.swipeRangeKm === null
+              ? null
+              : typeof data.swipeRangeKm === 'number'
+                ? data.swipeRangeKm
+                : SWIPE_FILTER_DEFAULTS.rangeKm,
           hydrated: true,
         })
         return

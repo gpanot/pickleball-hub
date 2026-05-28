@@ -244,6 +244,32 @@ def extract_dupr(player: dict) -> dict[str, Any]:
     return dupr
 
 
+def record_dupr_history(cur, player_id: int, new_dupr: float | None) -> None:
+    """Insert a history row only if DUPR changed from the last recorded value."""
+    if new_dupr is None:
+        return
+    cur.execute(
+        """
+        SELECT dupr_doubles FROM player_dupr_history
+        WHERE player_id = %s
+        ORDER BY recorded_at DESC
+        LIMIT 1
+        """,
+        (player_id,),
+    )
+    row = cur.fetchone()
+    last_dupr = float(row[0]) if row and row[0] is not None else None
+
+    if last_dupr is None or abs(float(new_dupr) - last_dupr) >= 0.01:
+        cur.execute(
+            """
+            INSERT INTO player_dupr_history (player_id, dupr_doubles, recorded_at)
+            VALUES (%s, %s, NOW())
+            """,
+            (player_id, new_dupr),
+        )
+
+
 def _parse_dupr_updated_at(val: Any) -> Optional[datetime]:
     if val is None:
         return None
@@ -387,6 +413,8 @@ def scrape_session_roster(
                     dupr_ts,
                 ),
             )
+
+            record_dupr_history(cur, uid, dupr["dupr_doubles"])
 
             cur.execute(
                 """

@@ -1,27 +1,31 @@
-import React from 'react'
+import React, { useRef, useEffect } from 'react'
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
   Linking,
+  Animated,
 } from 'react-native'
-import { Clock, Users, ExternalLink } from 'lucide-react-native'
+import { Users, ExternalLink } from 'lucide-react-native'
 import { T } from '../theme'
-import { RING_COLORS } from '../data'
+import { RING_COLORS, type Session } from '../data'
 import { PlayerAvatar } from './PlayerAvatar'
 
 export interface FriendGoingItem {
   sessionId: number
   name: string
+  cleanName?: string
   clubName: string
   venueName: string
+  distanceKm?: number | null
   startTime: string
   scrapedDate?: string
   spotsLeft: number
   totalSpots: number
   eventUrl: string
   matchScore: number
+  fillingFast?: boolean
   friendCount: number
   friends: Array<{
     userId: string
@@ -29,23 +33,126 @@ export interface FriendGoingItem {
     imageUrl: string | null
     duprDoubles: number | null
   }>
+  topDupr?: Array<{
+    userId: string
+    displayName: string | null
+    imageUrl: string | null
+    duprDoubles: number | null
+    isFollowing?: boolean
+  }>
   totalRoster: number
 }
 
 interface Props {
   item: FriendGoingItem
   onFriendsPress?: () => void
+  isTop?: boolean
+  dimLevel?: number
+  /** Opens top-DUPR player list modal (same as swipe card). */
+  onTopDuprPress?: () => void
+}
+
+/* ── Match score: green / yellow / light red ─────────────────── */
+function matchScoreColor(score: number): string {
+  if (score <= 0) return '#666'
+  if (score >= 85) return '#1D9E75'
+  if (score >= 70) return '#f5a623'
+  return '#f87171'
+}
+
+function averageTopDupr(players: FriendGoingItem['topDupr']): number | null {
+  const vals = (players ?? [])
+    .map((p) => p.duprDoubles)
+    .filter((d): d is number => d != null && d > 0)
+  if (vals.length === 0) return null
+  const avg = vals.reduce((a, b) => a + b, 0) / vals.length
+  return Math.round(avg * 100) / 100
 }
 
 /* ── small fill-rate bar ──────────────────────────────────────── */
 function FillBar({ filled, total }: { filled: number; total: number }) {
   const pct = total > 0 ? Math.min(filled / total, 1) : 0
-  const color = pct >= 0.85 ? '#ef4444' : pct >= 0.6 ? T.amber : T.green
   return (
     <View style={fb.track}>
-      <View style={[fb.fill, { width: `${Math.round(pct * 100)}%`, backgroundColor: color }]} />
+      <View
+        style={[
+          fb.fill,
+          { width: `${Math.round(pct * 100)}%`, backgroundColor: T.amber },
+        ]}
+      />
     </View>
   )
+}
+
+function getStartHour(item: FriendGoingItem): number {
+  const d = item.scrapedDate
+    ? new Date(`${item.scrapedDate}T${item.startTime}:00`)
+    : new Date(item.startTime)
+  if (!isNaN(d.getTime())) return d.getHours()
+  return parseInt(item.startTime.split(':')[0] ?? '12', 10)
+}
+
+function getStartMinutes(item: FriendGoingItem): number {
+  const d = item.scrapedDate
+    ? new Date(`${item.scrapedDate}T${item.startTime}:00`)
+    : new Date(item.startTime)
+  if (!isNaN(d.getTime())) return d.getMinutes()
+  return parseInt(item.startTime.split(':')[1] ?? '0', 10)
+}
+
+function periodSocialTitle(h: number): string {
+  if (h < 12) return 'MORNING SOCIAL'
+  if (h < 17) return 'AFTERNOON SOCIAL'
+  return 'EVENING SOCIAL'
+}
+
+function formatStartTimePill(h: number, mins: number): string {
+  const ampm = h >= 12 ? 'PM' : 'AM'
+  const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h
+  return `${h12}${mins > 0 ? `:${String(mins).padStart(2, '0')}` : ''} ${ampm}`
+}
+
+function periodLabel(h: number): string {
+  if (h < 12) return 'Morning'
+  if (h < 17) return 'Afternoon'
+  return 'Evening'
+}
+
+export function sessionToFriendGoingItem(session: Session): FriendGoingItem {
+  const topDupr = session.roster
+    .filter((p) => p.duprDoubles != null && p.duprDoubles > 0)
+    .sort((a, b) => (b.duprDoubles ?? 0) - (a.duprDoubles ?? 0))
+    .slice(0, 6)
+    .map((p) => ({
+      userId: p.userId,
+      displayName: p.displayName,
+      imageUrl: p.imageUrl,
+      duprDoubles: p.duprDoubles,
+      isFollowing: p.isFollowing ?? false,
+    }))
+
+  return {
+    sessionId: session.id,
+    name: session.name,
+    clubName: session.club?.name ?? '',
+    venueName: session.venue?.name ?? session.club?.name ?? '',
+    distanceKm: session.distanceKm,
+    startTime: session.startTime,
+    spotsLeft: session.spotsLeft,
+    totalSpots: session.maxPlayers,
+    eventUrl: session.eventUrl,
+    matchScore: session.matchScore,
+    fillingFast: session.fillingFast,
+    friendCount: session.friendCount,
+    friends: session.friends.map((f) => ({
+      userId: f.userId,
+      displayName: f.displayName,
+      imageUrl: f.imageUrl,
+      duprDoubles: f.duprDoubles ?? null,
+    })),
+    topDupr,
+    totalRoster: session.roster.length,
+  }
 }
 
 const fb = StyleSheet.create({
@@ -63,90 +170,193 @@ const fb = StyleSheet.create({
 })
 
 /* ── FriendGoingCard ──────────────────────────────────────────── */
-export function FriendGoingCard({ item, onFriendsPress }: Props) {
+export function FriendGoingCard({
+  item,
+  onFriendsPress,
+  isTop = false,
+  dimLevel = 0,
+  onTopDuprPress,
+}: Props) {
   const joined = item.totalSpots - item.spotsLeft
-  const fillPct = item.totalSpots > 0 ? Math.round((joined / item.totalSpots) * 100) : 0
-  const mc =
-    item.matchScore === 0
-      ? '#666'
-      : item.matchScore >= 85
-        ? T.amber
-        : item.matchScore >= 70
-          ? 'rgba(255,255,255,0.6)'
-          : 'rgba(255,255,255,0.35)'
+  const pulseAnim = useRef(new Animated.Value(1)).current
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 0.2,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+      ]),
+    )
+    loop.start()
+    return () => loop.stop()
+  }, [pulseAnim])
+
+  const showFillingFast =
+    item.fillingFast ||
+    (item.spotsLeft != null &&
+      item.totalSpots != null &&
+      (item.totalSpots - item.spotsLeft) / item.totalSpots >= 0.75)
 
   const friendLabel =
     item.friendCount === 1
       ? `${item.friends[0]?.displayName ?? 'A friend'} is going`
       : `${item.friends[0]?.displayName ?? 'A friend'} +${item.friendCount - 1} going`
 
+  const startHour = getStartHour(item)
+  const startMins = getStartMinutes(item)
+  const scoreColor = matchScoreColor(item.matchScore)
+  const avgDupr = averageTopDupr(item.topDupr)
+  const showSpotsLeftPill = !showFillingFast && item.spotsLeft > 0 && item.spotsLeft <= 5
+
+  const opacity =
+    dimLevel === 0 ? 1
+    : dimLevel === 1 ? 0.95
+    : dimLevel === 2 ? 0.85
+    : dimLevel === 3 ? 0.75
+    : 0.65
+
   return (
-    <View style={s.card}>
-      {/* ── Top row: club + time pill + match score ── */}
-      <View style={s.topRow}>
-        <View style={s.nameCol}>
-          <View style={s.titleRow}>
-            <Text style={s.clubTitle} numberOfLines={1}>
-              {(item.clubName ?? item.venueName).toUpperCase()}
-            </Text>
-            <View style={s.timePill}>
-              <Clock size={9} color={T.amber} strokeWidth={2.5} />
-              <Text style={s.timePillText}>{item.startTime}</Text>
-            </View>
-          </View>
-          <Text style={s.sessionName} numberOfLines={1}>{item.name}</Text>
+    <View style={[s.card, isTop && s.cardTop, { opacity }]}>
+      {/* ① Header */}
+      <View style={s.fcHeader}>
+        <View style={s.fcHeaderLeft}>
+          <Text style={s.fcVenue} numberOfLines={1}>
+            {item.venueName}
+            {item.distanceKm != null ? ` · ${item.distanceKm.toFixed(1)} km` : ''}
+          </Text>
+          <Text style={s.fcName} numberOfLines={1}>
+            {periodSocialTitle(startHour)}
+          </Text>
         </View>
-        {item.matchScore > 0 && (
-          <View style={s.scoreBox}>
-            <Text style={[s.scorePct, { color: mc }]}>{item.matchScore}%</Text>
-            <Text style={s.scoreLabel}>match</Text>
+        <View style={s.fcScoreBadge}>
+          <Text style={[s.fcScoreNum, { color: scoreColor }]}>
+            {item.matchScore}%
+          </Text>
+          <Text style={s.fcScoreLbl}>match</Text>
+        </View>
+      </View>
+
+      {/* ② Pills row */}
+      <View style={s.pillsRow}>
+        <View style={s.friendTimePill}>
+          <Text style={s.friendTimePillText}>
+            {periodLabel(startHour)} · {formatStartTimePill(startHour, startMins)}
+          </Text>
+        </View>
+        {showFillingFast && (
+          <View style={s.fcFillingBadge}>
+            <Animated.View style={[s.fcFillingDot, { opacity: pulseAnim }]} />
+            <Text style={s.fcFillingText}>Filling fast</Text>
+          </View>
+        )}
+        {showSpotsLeftPill && (
+          <View style={s.fcSpotsBadge}>
+            <View style={s.fcSpotsDot} />
+            <Text style={s.fcSpotsText}>
+              {item.spotsLeft} spot{item.spotsLeft === 1 ? '' : 's'} left
+            </Text>
           </View>
         )}
       </View>
 
-      {/* ── Friends strip ── */}
-      <TouchableOpacity
-        style={s.friendsRow}
-        onPress={() => onFriendsPress?.()}
-        activeOpacity={onFriendsPress ? 0.75 : 1}
-        disabled={!onFriendsPress}
-      >
-        <View style={s.avatarStack}>
-          {item.friends.slice(0, 3).map((f, i) => (
-            <View
-              key={`fg-friend-${f.userId}-${i}`}
-              style={[
-                s.avatarWrap,
-                i > 0 && { marginLeft: -8 },
-                {
-                  borderColor: RING_COLORS[i % RING_COLORS.length],
-                  zIndex: 3 - i,
-                },
-              ]}
-            >
-              <PlayerAvatar
-                userId={f.userId}
-                displayName={f.displayName}
-                imageUrl={f.imageUrl}
-                size={28}
-              />
-            </View>
-          ))}
-        </View>
-        <Text style={s.friendLabel} numberOfLines={1}>{friendLabel}</Text>
-      </TouchableOpacity>
+      {/* ③ Friends row */}
+      {item.friendCount > 0 && (
+        <TouchableOpacity
+          style={s.friendsRow}
+          onPress={() => onFriendsPress?.()}
+          activeOpacity={onFriendsPress ? 0.75 : 1}
+          disabled={!onFriendsPress}
+        >
+          <View style={s.avatarStack}>
+            {item.friends.slice(0, 3).map((f, i) => (
+              <View
+                key={`fg-friend-${f.userId}-${i}`}
+                style={[
+                  s.avatarWrap,
+                  i > 0 && { marginLeft: -8 },
+                  {
+                    borderColor: RING_COLORS[i % RING_COLORS.length],
+                    zIndex: 3 - i,
+                  },
+                ]}
+              >
+                <PlayerAvatar
+                  userId={f.userId}
+                  displayName={f.displayName}
+                  imageUrl={f.imageUrl}
+                  size={28}
+                />
+              </View>
+            ))}
+          </View>
+          <Text style={s.friendLabel} numberOfLines={1}>{friendLabel}</Text>
+        </TouchableOpacity>
+      )}
 
-      {/* ── Capacity strip ── */}
+      {/* ④ Top 6 DUPR */}
+      {item.topDupr && item.topDupr.length > 0 && (
+        <View style={s.duprSection}>
+          <Text style={s.duprRowLabel}>TOP 6</Text>
+          <View style={s.duprRow}>
+            <TouchableOpacity
+              style={s.avatarStack}
+              onPress={() => onTopDuprPress?.()}
+              disabled={!onTopDuprPress}
+              activeOpacity={onTopDuprPress ? 0.75 : 1}
+            >
+              {item.topDupr.map((p, i) => (
+                <View
+                  key={p.userId}
+                  style={[
+                    s.avatarWrap,
+                    s.duprAvatarWrap,
+                    i > 0 && { marginLeft: -8 },
+                    { zIndex: item.topDupr!.length - i },
+                  ]}
+                >
+                  <PlayerAvatar
+                    userId={p.userId}
+                    displayName={p.displayName ?? '?'}
+                    imageUrl={p.imageUrl}
+                    size={28}
+                  />
+                </View>
+              ))}
+            </TouchableOpacity>
+            {avgDupr != null && (
+              <TouchableOpacity
+                style={s.avgDuprTag}
+                onPress={() => onTopDuprPress?.()}
+                disabled={!onTopDuprPress}
+                activeOpacity={onTopDuprPress ? 0.75 : 1}
+              >
+                <Text style={s.avgDuprLbl}>AVG</Text>
+                <Text style={s.avgDuprVal}>{avgDupr.toFixed(2)}</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+      )}
+
+      {/* ⑤ Fill bar */}
       <View style={s.capacityRow}>
         <Users size={11} color="rgba(255,255,255,0.35)" strokeWidth={1.5} />
         <Text style={s.capacityText}>{joined}/{item.totalSpots} joined</Text>
         <FillBar filled={joined} total={item.totalSpots} />
-        <Text style={[s.spotsText, item.spotsLeft <= 3 && { color: '#ef4444' }]}>
+        <Text style={[s.spotsText, item.spotsLeft <= 5 && { color: T.amber }]}>
           {item.spotsLeft} left
         </Text>
       </View>
 
-      {/* ── CTA ── */}
+      {/* ⑥ Join */}
       <TouchableOpacity
         style={s.joinBtn}
         onPress={() => item.eventUrl && Linking.openURL(item.eventUrl)}
@@ -167,75 +377,125 @@ const s = StyleSheet.create({
     borderRadius: 16,
     borderWidth: 1,
     borderColor: 'rgba(245,166,35,0.3)',
-    padding: 14,
+    paddingBottom: 14,
     gap: 10,
   },
-  topRow: {
+  cardTop: {
+    borderColor: 'rgba(245,166,35,0.55)',
+    borderWidth: 1.5,
+  },
+  fcHeader: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: 10,
-  },
-  nameCol: {
-    flex: 1,
-    minWidth: 0,
-    gap: 4,
-  },
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 12,
+    paddingBottom: 6,
     gap: 8,
   },
-  timePill: {
+  fcHeaderLeft: {
+    flex: 1,
+    minWidth: 0,
+  },
+  fcVenue: {
+    fontSize: 9,
+    color: '#555',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    marginBottom: 3,
+  },
+  fcName: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#fff',
+    lineHeight: 18,
+  },
+  fcScoreBadge: {
+    alignItems: 'flex-end',
     flexShrink: 0,
+  },
+  fcScoreNum: {
+    fontSize: 20,
+    fontWeight: '800',
+    lineHeight: 22,
+  },
+  fcScoreLbl: {
+    fontSize: 7,
+    color: '#555',
+    textTransform: 'uppercase',
+    letterSpacing: 0.04,
+  },
+  pillsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingBottom: 4,
+  },
+  fcFillingBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: 'rgba(245,166,35,0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(245,166,35,0.2)',
-    borderRadius: 20,
+    backgroundColor: '#0a1f0a',
+    borderWidth: 0.5,
+    borderColor: '#1D9E75',
+    borderRadius: 7,
     paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingVertical: 4,
   },
-  timePillText: {
+  fcFillingDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: '#1D9E75',
+  },
+  fcFillingText: {
     fontSize: 10,
-    color: T.amber,
-    fontWeight: '600',
+    fontWeight: '500',
+    color: '#1D9E75',
   },
-  clubTitle: {
-    flex: 1,
-    minWidth: 0,
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#fff',
-    lineHeight: 20,
-    textTransform: 'uppercase',
-    letterSpacing: 0.3,
-  },
-  sessionName: {
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.45)',
-    lineHeight: 16,
-  },
-  scoreBox: {
+  fcSpotsBadge: {
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#1f1400',
+    borderWidth: 0.5,
+    borderColor: 'rgba(245,166,35,0.45)',
+    borderRadius: 7,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  fcSpotsDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: T.amber,
+  },
+  fcSpotsText: {
+    fontSize: 10,
+    fontWeight: '500',
+    color: T.amber,
+  },
+  friendTimePill: {
+    backgroundColor: '#111',
+    borderWidth: 0.5,
+    borderColor: '#1e1e1e',
+    borderRadius: 7,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    alignSelf: 'flex-start',
     flexShrink: 0,
   },
-  scorePct: {
-    fontSize: 18,
-    fontWeight: '700',
-    lineHeight: 20,
-  },
-  scoreLabel: {
-    fontSize: 9,
-    color: 'rgba(255,255,255,0.3)',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
+  friendTimePillText: {
+    fontSize: 10,
+    fontWeight: '500',
+    color: '#888',
   },
   friendsRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    paddingHorizontal: 12,
   },
   avatarStack: {
     flexDirection: 'row',
@@ -254,10 +514,57 @@ const s = StyleSheet.create({
     color: '#ccc',
     fontWeight: '500',
   },
+  duprSection: {
+    paddingHorizontal: 12,
+    paddingBottom: 4,
+    gap: 6,
+  },
+  duprRowLabel: {
+    fontSize: 9,
+    fontWeight: '600',
+    color: '#555',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  duprRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  duprAvatarWrap: {
+    borderColor: 'rgba(245,166,35,0.45)',
+  },
+  avgDuprTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#1a1408',
+    borderWidth: 0.5,
+    borderColor: 'rgba(245,166,35,0.35)',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    flexShrink: 0,
+    marginLeft: 'auto',
+  },
+  avgDuprLbl: {
+    fontSize: 8,
+    fontWeight: '600',
+    color: '#666',
+    letterSpacing: 0.4,
+  },
+  avgDuprVal: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: T.amber,
+  },
   capacityRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    flexWrap: 'wrap',
+    paddingHorizontal: 12,
   },
   capacityText: {
     fontSize: 11,
@@ -278,6 +585,7 @@ const s = StyleSheet.create({
     backgroundColor: T.amber,
     borderRadius: 10,
     paddingVertical: 10,
+    marginHorizontal: 12,
   },
   joinBtnText: {
     fontSize: 13,
