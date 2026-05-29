@@ -125,6 +125,7 @@ export function SwipeScreen({
   const [removedSavedIds, setRemovedSavedIds] = useState<Set<number>>(new Set())
   const [top5, setTop5] = useState<FriendGoingItem[]>([])
   const [playLoading, setPlayLoading] = useState(false)
+  const [slotStats, setSlotStats] = useState<{ morning: number | null; afternoon: number | null; evening: number | null }>({ morning: null, afternoon: null, evening: null })
   const [top5FilterVisible, setTop5FilterVisible] = useState(false)
   const [top5FilterKey, setTop5FilterKey] = useState(0)
   const [top5VibeFilter, setTop5VibeFilter] = useState<'social' | 'competitive' | null>(null)
@@ -171,11 +172,8 @@ export function SwipeScreen({
       const mapCards = (cards: PlayApiCard[]) =>
         (cards ?? []).map(playCardToFriendGoingItem)
 
-      ;(data.top5 as PlayApiCard[] ?? []).forEach((c, i) => {
-        debugLog('TOP5[card]', `#${i + 1} ${c.startTime} "${c.name}" score=${c.matchScore}`)
-      })
-
       setTop5(mapCards(data.top5))
+      if (data.slotStats) setSlotStats(data.slotStats)
       debugLog('PERF[TOP5]', `⏱ TOTAL: ${Date.now() - t0}ms ✅`)
     } finally {
       setPlayLoading(false)
@@ -808,6 +806,7 @@ export function SwipeScreen({
         spotsOnly={top5SpotsOnly}
         setSpotsOnly={setTop5SpotsOnly}
         hideSections={{ maxDistance: true, vibe: true, spotsOnly: true }}
+        slotStats={slotStats}
         onApplyCustom={async (filters) => {
           await loadPlayData(filters)
         }}

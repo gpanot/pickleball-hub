@@ -168,9 +168,10 @@ export async function GET(req: NextRequest) {
       if (!timeSlots.includes(slot)) continue;
     }
 
-    // Min DUPR filter
+    // Min DUPR filter — round to 1dp to avoid floating-point mismatches (e.g. 3.7999 < 3.8)
     if (duprMin > 0 && session.duprStat?.avgDuprDoubles != null) {
-      if (Number(session.duprStat.avgDuprDoubles) < duprMin) continue;
+      const avg = Math.round(Number(session.duprStat.avgDuprDoubles) * 10) / 10;
+      if (avg < Math.round(duprMin * 10) / 10) continue;
     }
 
     const fillRate =
@@ -283,18 +284,37 @@ export async function GET(req: NextRequest) {
 
   scored.sort((a, b) => b.card.matchScore - a.card.matchScore);
 
+  // Compute per-slot max avgDupr across ALL eligible sessions (no 5-card cap)
+  const slotStats: Record<"morning" | "afternoon" | "evening", number | null> = {
+    morning: null,
+    afternoon: null,
+    evening: null,
+  };
+  for (const session of sessions) {
+    const avg = session.duprStat?.avgDuprDoubles;
+    if (avg == null) continue;
+    const avgNum = Number(avg);
+    if (avgNum <= 0) continue;
+    const h = parseInt(session.startTime.split(":")[0] ?? "12", 10);
+    const slot: "morning" | "afternoon" | "evening" =
+      h < 12 ? "morning" : h < 17 ? "afternoon" : "evening";
+    if (slotStats[slot] === null || avgNum > slotStats[slot]!) {
+      slotStats[slot] = Math.round(avgNum * 10) / 10;
+    }
+  }
+
   const friendSessionIds = new Set(
     scored.filter((s) => s.card.hasFriends).map((s) => s.sessionId),
   );
 
   const top5 = scored
-    .filter((s) => !friendSessionIds.has(s.sessionId) && s.duprCoverageCount >= 6)
+    .filter((s) => !friendSessionIds.has(s.sessionId) && s.duprCoverageCount >= 2)
     .slice(0, 5)
     .map((s) => s.card)
     .sort((a, b) => a.startTime.localeCompare(b.startTime));
 
   return NextResponse.json(
-    { top5 },
+    { top5, slotStats },
     { headers: { "Cache-Control": CACHE_CONTROL_PRIVATE } },
   );
 }

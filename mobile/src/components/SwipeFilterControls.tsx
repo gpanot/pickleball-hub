@@ -143,6 +143,7 @@ export function SwipeFilterSheet({
   onApplied,
   hideSections,
   onApplyCustom,
+  slotStats,
 }: {
   visible: boolean
   onClose: () => void
@@ -157,6 +158,8 @@ export function SwipeFilterSheet({
   hideSections?: HiddenFilterSections
   /** Override apply handler (e.g. Top 5 uses /api/play instead of fetchSessions) */
   onApplyCustom?: (filters: { duprMin: number; timeSlots: TimeSlotKey[] }) => Promise<void>
+  /** Per-slot max avgDupr from the current Top 5 pool */
+  slotStats?: { morning: number | null; afternoon: number | null; evening: number | null }
 }) {
   const dateFilter = useUiStore((s) => s.swipeDateFilter)
   const swipeDuprMin = useUiStore((s) => s.swipeDuprMin)
@@ -288,6 +291,7 @@ export function SwipeFilterSheet({
                 { key: 'evening' as TimeSlotKey, label: 'Evening', sub: 'After 17h' },
               ]).map((t) => {
                 const on = draftTimeSlots.includes(t.key)
+                const maxDupr = slotStats?.[t.key]
                 return (
                   <TouchableOpacity
                     key={t.key}
@@ -304,6 +308,11 @@ export function SwipeFilterSheet({
                   >
                     <Text style={[sheet.timeLbl, on && sheet.timeLblOn]}>{t.label}</Text>
                     <Text style={[sheet.timeSub, on && sheet.timeSubOn]}>{t.sub}</Text>
+                    {maxDupr != null && (
+                      <Text style={[sheet.timeMax, on && sheet.timeMaxOn]}>
+                        ↑ {maxDupr.toFixed(1)} max
+                      </Text>
+                    )}
                   </TouchableOpacity>
                 )
               })}
@@ -569,6 +578,16 @@ const sheet = StyleSheet.create({
   timeSubOn: {
     color: T.amber,
     opacity: 0.6,
+  },
+  timeMax: {
+    fontSize: 9,
+    color: '#444',
+    marginTop: 3,
+    fontWeight: '600' as const,
+  },
+  timeMaxOn: {
+    color: T.amber,
+    opacity: 0.85,
   },
   vibeBtn: {
     flex: 1,
