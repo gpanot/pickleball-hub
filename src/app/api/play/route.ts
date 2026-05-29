@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { unstable_cache } from "next/cache";
 import { prisma } from "@/lib/db";
 import { getMobileUser } from "@/lib/mobile-auth";
 import {
@@ -12,6 +13,62 @@ import { CACHE_CONTROL_PRIVATE } from "@/lib/http-cache-headers";
 import { calculateMatchScore } from "@/lib/match-score";
 
 const RANGE_KM = 10;
+
+// Cached session query — TTL 10 min. Does NOT include minTime (applied in-memory
+// post-retrieval) so all users hitting the same date+geo bucket share one DB hit.
+// Geo bounds are rounded to 2dp before being used as cache key args to avoid
+// cache thrashing from minor GPS jitter between requests.
+const getCachedSessions = unstable_cache(
+  async (
+    dateStr: string,
+    minLat: number,
+    maxLat: number,
+    minLng: number,
+    maxLng: number,
+  ) => {
+    const geoFilter =
+      minLat !== 0 || maxLat !== 0
+        ? {
+            venue: {
+              latitude: { gte: minLat, lte: maxLat },
+              longitude: { gte: minLng, lte: maxLng },
+            },
+          }
+        : {};
+    return prisma.session.findMany({
+      where: {
+        scrapedDate: dateStr,
+        status: "active",
+        ...geoFilter,
+      },
+      include: {
+        club: { select: { name: true, slug: true } },
+        venue: { select: { name: true, latitude: true, longitude: true } },
+        duprStat: true,
+        snapshots: { orderBy: { scrapedAt: "desc" }, take: 2 },
+        rosters: {
+          where: { isConfirmed: true },
+          include: {
+            player: {
+              select: {
+                userId: true,
+                displayName: true,
+                imageUrl: true,
+                duprDoubles: true,
+              },
+            },
+          },
+          orderBy: { player: { duprDoubles: "desc" } },
+          take: 10,
+        },
+        _count: { select: { rosters: true } },
+      },
+      orderBy: { startTime: "asc" },
+    });
+  },
+  ["play-sessions"],
+  { revalidate: 600 },
+);
 
 type PlayCard = {
   sessionId: number;
@@ -53,7 +110,10 @@ type PlayCard = {
  * Explore sessions are loaded separately via /api/sessions/swipe-deck.
  */
 export async function GET(req: NextRequest) {
+  const t0 = Date.now();
   const user = await getMobileUser(req);
+  const t1 = Date.now();
+  console.log(`[play] auth: ${t1 - t0}ms`);
 
   const { searchParams } = new URL(req.url);
   const lat = parseFloat(searchParams.get("lat") ?? "");
@@ -73,56 +133,22 @@ export async function GET(req: NextRequest) {
   const userLat = Number.isFinite(lat) ? lat : null;
   const userLng = Number.isFinite(lng) ? lng : null;
 
-  // Bounding-box pre-filter: reduces rows Postgres returns before the precise
-  // JS haversine check. Uses @@index([latitude, longitude]) on the Venue model.
-  // Only applied when we have a real GPS fix (lat and lng are both non-zero).
-  // Sessions without a venue relation are NOT excluded — the Prisma nullable-
-  // relation filter only matches rows where venue IS set and within bounds, so
-  // venueId-null sessions pass through and are handled by the JS distance wall.
+  // Bounding-box pre-filter: reduces rows returned before the precise JS haversine check.
+  // Rounded to 2dp so nearby users share the same cache bucket (avoids GPS jitter misses).
+  // venueId-null sessions still pass through — the geo filter only constrains rows where
+  // venue IS set, and those without a venue are handled by the JS distance wall.
   const hasPreciseLocation = lat !== 0 && lng !== 0 && Number.isFinite(lat) && Number.isFinite(lng);
   const GEO_KM = 5;
   const latDelta = GEO_KM / 111;
   const lngDelta = GEO_KM / (111 * Math.cos((lat * Math.PI) / 180));
-  const geoFilter = hasPreciseLocation
-    ? {
-        venue: {
-          latitude: { gte: lat - latDelta, lte: lat + latDelta },
-          longitude: { gte: lng - lngDelta, lte: lng + lngDelta },
-        },
-      }
-    : {};
+  const round2 = (n: number) => Math.round(n * 100) / 100;
+  const cacheMinLat = hasPreciseLocation ? round2(lat - latDelta) : 0;
+  const cacheMaxLat = hasPreciseLocation ? round2(lat + latDelta) : 0;
+  const cacheMinLng = hasPreciseLocation ? round2(lng - lngDelta) : 0;
+  const cacheMaxLng = hasPreciseLocation ? round2(lng + lngDelta) : 0;
 
-  const sessionWhere = {
-    scrapedDate: dateStr,
-    status: "active" as const,
-    ...(minTime ? { startTime: { gte: minTime } } : {}),
-    ...geoFilter,
-  };
-
-  const sessionInclude = {
-    club: { select: { name: true, slug: true } },
-    venue: { select: { name: true, latitude: true, longitude: true } },
-    duprStat: true,
-    snapshots: { orderBy: { scrapedAt: "desc" as const }, take: 2 },
-    rosters: {
-      where: { isConfirmed: true },
-      include: {
-        player: {
-          select: {
-            userId: true,
-            displayName: true,
-            imageUrl: true,
-            duprDoubles: true,
-          },
-        },
-      },
-      orderBy: { player: { duprDoubles: "desc" as const } },
-      take: 10,
-    },
-    _count: { select: { rosters: true } },
-  } as const;
-
-  const [userProfile, follows, sessions] = await Promise.all([
+  const t2 = Date.now();
+  const [userProfile, follows, allSessions] = await Promise.all([
     user?.reclubUserId
       ? prisma.player.findUnique({
           where: { userId: user.reclubUserId },
@@ -135,12 +161,16 @@ export async function GET(req: NextRequest) {
           select: { followeeId: true },
         })
       : Promise.resolve([]),
-    prisma.session.findMany({
-      where: sessionWhere,
-      include: sessionInclude,
-      orderBy: { startTime: "asc" },
-    }),
+    getCachedSessions(dateStr, cacheMinLat, cacheMaxLat, cacheMinLng, cacheMaxLng),
   ]);
+  const t3 = Date.now();
+  console.log(`[play] parallel queries (profile+follows+sessions): ${t3 - t2}ms`);
+
+  // Apply minTime filter in-memory (not in DB query so cache is shared across all request times)
+  const sessions = minTime
+    ? allSessions.filter((s) => s.startTime >= minTime)
+    : allSessions;
+
   const followeeIds = new Set(follows.map((f) => f.followeeId.toString()));
 
   type Scored = {
@@ -282,6 +312,9 @@ export async function GET(req: NextRequest) {
     scored.push({ card, sessionId: session.id, duprCoverageCount });
   }
 
+  const t4 = Date.now();
+  console.log(`[play] scoring loop: ${t4 - t3}ms`);
+
   scored.sort((a, b) => b.card.matchScore - a.card.matchScore);
 
   // Compute per-slot max avgDupr across ALL eligible sessions (no 5-card cap)
@@ -313,6 +346,7 @@ export async function GET(req: NextRequest) {
     .map((s) => s.card)
     .sort((a, b) => a.startTime.localeCompare(b.startTime));
 
+  console.log(`[play] total: ${Date.now() - t0}ms`);
   return NextResponse.json(
     { top5, slotStats },
     { headers: { "Cache-Control": CACHE_CONTROL_PRIVATE } },

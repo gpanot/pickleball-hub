@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { unstable_cache } from 'next/cache'
 import { prisma } from '@/lib/db'
 import { getMobileUser } from '@/lib/mobile-auth'
 import {
@@ -10,6 +11,89 @@ import {
 } from '@/lib/utils'
 import { CACHE_CONTROL_PRIVATE } from '@/lib/http-cache-headers'
 import { calculateMatchScore } from '@/lib/match-score'
+
+// Cached roster query — fetches ALL confirmed rosters for today+tomorrow.
+// Followee filtering happens in-memory after retrieval so this cache is shared
+// across all users. TTL 10 min — roster changes on the same cadence as the scraper.
+const getCachedRosterRows = unstable_cache(
+  async (todayStr: string, tomorrowStr: string) => {
+    return prisma.sessionRoster.findMany({
+      where: {
+        isConfirmed: true,
+        session: {
+          scrapedDate: { in: [todayStr, tomorrowStr] },
+          status: 'active',
+        },
+      },
+      select: {
+        userId: true,
+        session: {
+          select: {
+            id: true,
+            name: true,
+            startTime: true,
+            maxPlayers: true,
+            eventUrl: true,
+            scrapedDate: true,
+            club: { select: { name: true } },
+            venue: { select: { name: true, latitude: true, longitude: true } },
+            duprStat: true,
+            snapshots: { orderBy: { scrapedAt: 'desc' }, take: 2 },
+            _count: { select: { rosters: true } },
+          },
+        },
+        player: {
+          select: {
+            userId: true,
+            displayName: true,
+            imageUrl: true,
+            duprDoubles: true,
+          },
+        },
+      },
+      orderBy: { session: { startTime: 'asc' } },
+    })
+  },
+  ['friend-rosters'],
+  { revalidate: 600 },
+)
+
+// Cached per-session DUPR enrichment — top roster rows + counts for a given date.
+// Keyed on date strings; session IDs are derived in-memory from the roster cache above.
+const getCachedSessionDuprData = unstable_cache(
+  async (sessionIds: number[]) => {
+    return Promise.all([
+      prisma.sessionRoster.findMany({
+        where: {
+          sessionId: { in: sessionIds },
+          player: { duprDoubles: { not: null } },
+        },
+        select: {
+          sessionId: true,
+          player: {
+            select: {
+              userId: true,
+              displayName: true,
+              imageUrl: true,
+              duprDoubles: true,
+            },
+          },
+        },
+        orderBy: { player: { duprDoubles: 'desc' } },
+      }),
+      prisma.sessionRoster.groupBy({
+        by: ['sessionId'],
+        where: {
+          sessionId: { in: sessionIds },
+          player: { duprDoubles: { not: null } },
+        },
+        _count: { sessionId: true },
+      }),
+    ])
+  },
+  ['friend-rosters-dupr'],
+  { revalidate: 600 },
+)
 
 /**
  * GET /api/feed/friends-going?filter=today|tomorrow|both|all
@@ -67,51 +151,21 @@ export async function GET(req: NextRequest) {
     )
   }
 
-  // ── Build date filter ───────────────────────────────────────────────────────
-  // filter=both queries both dates in one roster scan; minTime only applies to today rows.
-  const scrapedDateFilter =
-    filter === 'both'
-      ? { scrapedDate: { in: [today, tomorrow] } }
-      : filter === 'today'
-        ? { scrapedDate: today, startTime: { gte: minTime } }
-        : filter === 'tomorrow'
-          ? { scrapedDate: tomorrow }
-          : { scrapedDate: { gte: today } }
+  // ── Main roster query — cached, all users share one DB hit per 10 min ───────
+  // The cache returns ALL confirmed rosters for today+tomorrow; we filter by
+  // followee IDs in-memory below. The scrapedDateFilter for single-date views
+  // (today/tomorrow/all) is also applied in-memory so the cache key stays stable.
+  const allRosterRows = await getCachedRosterRows(today, tomorrow)
 
-  // ── Main roster query — one scan for all dates ──────────────────────────────
-  const rosterRows = await prisma.sessionRoster.findMany({
-    where: {
-      userId: { in: followeeIds },
-      isConfirmed: true,
-      session: { ...scrapedDateFilter, status: 'active' },
-    },
-    select: {
-      userId: true,
-      session: {
-        select: {
-          id: true,
-          name: true,
-          startTime: true,
-          maxPlayers: true,
-          eventUrl: true,
-          scrapedDate: true,
-          club: { select: { name: true } },
-          venue: { select: { name: true, latitude: true, longitude: true } },
-          duprStat: true,
-          snapshots: { orderBy: { scrapedAt: 'desc' }, take: 2 },
-          _count: { select: { rosters: true } },
-        },
-      },
-      player: {
-        select: {
-          userId: true,
-          displayName: true,
-          imageUrl: true,
-          duprDoubles: true,
-        },
-      },
-    },
-    orderBy: { session: { startTime: 'asc' } },
+  // Apply date + followee filter in-memory
+  const rosterRows = allRosterRows.filter((r) => {
+    if (!followeeIdSet.has(r.userId.toString())) return false
+    const sd = r.session.scrapedDate
+    if (filter === 'today') return sd === today && r.session.startTime >= minTime
+    if (filter === 'tomorrow') return sd === tomorrow
+    if (filter === 'both') return sd === today || sd === tomorrow
+    // filter === 'all'
+    return sd >= today
   })
 
   console.log(`[friends-going] rosterRows=${rosterRows.length}`)
@@ -162,38 +216,10 @@ export async function GET(req: NextRequest) {
     )
   }
 
-  // ── Batch top-DUPR + count across ALL sessions in 2 queries (Fix 2) ─────────
-  // Previously: 2 queries × S sessions (N+1). Now: 2 queries total, grouped in memory.
+  // ── Batch top-DUPR + count across ALL sessions — cached per date ────────────
   const allSessionIds = Array.from(sessionMap.keys())
 
-  const [allTopRosterRows, allDuprCounts] = await Promise.all([
-    prisma.sessionRoster.findMany({
-      where: {
-        sessionId: { in: allSessionIds },
-        player: { duprDoubles: { not: null } },
-      },
-      select: {
-        sessionId: true,
-        player: {
-          select: {
-            userId: true,
-            displayName: true,
-            imageUrl: true,
-            duprDoubles: true,
-          },
-        },
-      },
-      orderBy: { player: { duprDoubles: 'desc' } },
-    }),
-    prisma.sessionRoster.groupBy({
-      by: ['sessionId'],
-      where: {
-        sessionId: { in: allSessionIds },
-        player: { duprDoubles: { not: null } },
-      },
-      _count: { sessionId: true },
-    }),
-  ])
+  const [allTopRosterRows, allDuprCounts] = await getCachedSessionDuprData(allSessionIds)
 
   // Build per-session lookup maps from the batched results
   const topRosterBySession = new Map<number, typeof allTopRosterRows>()

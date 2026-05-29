@@ -31,10 +31,12 @@ function toPlayerPayload(p: {
  * Sorted strictly newest-first by timestamp. Max 2 items per player, 20 total.
  */
 export async function GET(req: NextRequest) {
+  const t0 = Date.now();
   const user = await getMobileUser(req);
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  console.log(`[feed] auth: ${Date.now() - t0}ms`);
 
   const { searchParams } = new URL(req.url);
   const before = searchParams.get("before");
@@ -82,6 +84,7 @@ export async function GET(req: NextRequest) {
   } as const;
 
   // Fire all three roster queries + follow-event queries in parallel
+  const tParallel0 = Date.now();
   const [upcomingRosters, recentRosters, todayCompletedRosters, recentFollowing, recentFollowers] =
     await Promise.all([
       // "joining" — followees on upcoming sessions
@@ -182,6 +185,9 @@ export async function GET(req: NextRequest) {
         : Promise.resolve([]),
     ]);
 
+  console.log(`[feed] parallel queries (rosters+follows): ${Date.now() - tParallel0}ms`);
+
+  const tAssembly0 = Date.now();
   for (const r of upcomingRosters) {
     const joined = r.session.snapshots[0]?.joined ?? 0;
     const spotsLeft = Math.max(0, r.session.maxPlayers - joined);
@@ -526,10 +532,12 @@ export async function GET(req: NextRequest) {
   });
 
   liveItems = filtered.slice(0, 20);
+  console.log(`[feed] item assembly + streaks + dupr: ${Date.now() - tAssembly0}ms`);
 
-  // Persist live items so they survive future unfollows (upsert — safe to re-run)
+  // Persist live items so they survive future unfollows — fire and forget, don't block the response
+  const tUpsert0 = Date.now();
   if (liveItems.length > 0) {
-    await Promise.all(
+    void Promise.all(
       liveItems.map((item) =>
         prisma.feedItem.upsert({
           where: { id: item.id },
@@ -547,8 +555,9 @@ export async function GET(req: NextRequest) {
           },
         })
       )
-    );
+    ).catch((err) => console.error("[feed] upsert error:", err));
   }
+  console.log(`[feed] upsert queued (non-blocking): ${Date.now() - tUpsert0}ms`);
   } // end if (!isPaginating)
 
   // Merge live items with historical persisted items (items no longer in live query)
@@ -610,6 +619,7 @@ export async function GET(req: NextRequest) {
     },
   }));
 
+  console.log(`[feed] total: ${Date.now() - t0}ms`);
   return NextResponse.json({
     items: itemsWithKudos,
     hasFollows: true,

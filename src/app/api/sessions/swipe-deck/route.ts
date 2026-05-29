@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { unstable_cache } from "next/cache";
 import { prisma } from "@/lib/db";
 import {
   vnCalendarDateString,
@@ -14,6 +15,39 @@ import { calculateMatchScore } from "@/lib/match-score";
 
 const ROSTER_CAP = 10;
 const REGULARS_CAP = 5;
+
+// Cached session query for swipe-deck — TTL 10 min.
+// Does NOT include minTime (applied in-memory post-retrieval) so the cache is
+// shared across all users hitting the same date. Keyed as ['swipe-deck-sessions', date].
+const getCachedSwipeSessions = unstable_cache(
+  async (date: string) => {
+    return prisma.session.findMany({
+      where: { scrapedDate: date, status: "active" },
+      include: {
+        club: { select: { name: true, slug: true } },
+        venue: { select: { name: true, latitude: true, longitude: true } },
+        duprStat: true,
+        snapshots: { orderBy: { scrapedAt: "desc" }, take: 2 },
+        rosters: {
+          where: { isConfirmed: true },
+          include: {
+            player: {
+              select: {
+                userId: true,
+                displayName: true,
+                imageUrl: true,
+                duprDoubles: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: { startTime: "asc" },
+    });
+  },
+  ["swipe-deck-sessions"],
+  { revalidate: 600 },
+);
 
 /**
  * GET /api/sessions/swipe-deck?date=YYYY-MM-DD&lat=10.78&lng=106.69
@@ -79,9 +113,31 @@ export async function GET(req: NextRequest) {
       userProfile = profile;
     }
 
+    // Fetch all active sessions for the date from cache, then apply minTime in-memory.
+    // This way the 10-min cache is shared across all users regardless of request time.
+    const allSessions = await getCachedSwipeSessions(date);
+    const sessions = minTime
+      ? allSessions.filter((s) => s.startTime >= minTime)
+      : allSessions;
+
+    const totalCount = sessions.length;
+
+    if (sessions.length === 0) {
+      return NextResponse.json(
+        { sessions: [], count: 0, total: 0, offset, hasMore: false },
+        { headers: { "Cache-Control": CACHE_CONTROL_PRIVATE } },
+      );
+    }
+
+    // Apply pagination slice when no filters active (filters require seeing full set)
+    const dbFetchLimit = filtersActive ? FILTER_BATCH : (limit ?? null);
+    const pagedSessions = (!filtersActive && dbFetchLimit !== null)
+      ? sessions.slice(offset, offset + dbFetchLimit)
+      : sessions;
+
     const sessionWhere = {
       scrapedDate: date,
-      status: "active",
+      status: "active" as const,
       ...(minTime ? { startTime: { gte: minTime } } : {}),
     };
 
@@ -122,31 +178,9 @@ export async function GET(req: NextRequest) {
 
     const friendSessionIds = [...friendsBySessionId.keys()];
 
-    const sessionInclude = {
-      club: { select: { name: true, slug: true } },
-      venue: { select: { name: true, latitude: true, longitude: true } },
-      duprStat: true,
-      snapshots: { orderBy: { scrapedAt: "desc" } as const, take: 2 },
-      rosters: {
-        where: { isConfirmed: true },
-        include: {
-          player: {
-            select: {
-              userId: true,
-              displayName: true,
-              imageUrl: true,
-              duprDoubles: true,
-            },
-          },
-        },
-      },
-    } as const;
-
-    const dbFetchLimit = filtersActive ? FILTER_BATCH : (limit ?? null);
-
     console.log(
       `\n[swipe-deck] ────────────────────────────────` +
-      `\n  date        : ${date}  offset=${offset}  limit=${limit}  dbFetch=${dbFetchLimit ?? "all"}` +
+      `\n  date        : ${date}  offset=${offset}  limit=${limit}  cached=${allSessions.length}  afterMinTime=${sessions.length}` +
       `\n  FILTERS` +
       `\n  duprMin     : ${duprMin != null ? duprMin + "+" : "any"}` +
       `\n  timeSlots   : ${timeSlots?.join(", ") ?? "all"}` +
@@ -155,25 +189,8 @@ export async function GET(req: NextRequest) {
       `\n────────────────────────────────────────────`
     );
 
-    const [totalCount, sessions] = await Promise.all([
-      prisma.session.count({ where: sessionWhere }),
-      prisma.session.findMany({
-        where: sessionWhere,
-        include: sessionInclude,
-        orderBy: { startTime: "asc" },
-        ...(dbFetchLimit !== null ? { skip: offset, take: dbFetchLimit } : {}),
-      }),
-    ]);
-
-    if (sessions.length === 0) {
-      return NextResponse.json(
-        { sessions: [], count: 0, total: totalCount, offset, hasMore: false },
-        { headers: { "Cache-Control": CACHE_CONTROL_PRIVATE } },
-      );
-    }
-
     // --- Regulars: players with >= 3 sessions at the same club in past 60 days ---
-    const clubIds = [...new Set(sessions.map((s) => s.clubId))];
+    const clubIds = [...new Set(pagedSessions.map((s) => s.clubId))];
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - 60);
     const cutoffStr = cutoffDate.toISOString().slice(0, 10);
@@ -213,7 +230,7 @@ export async function GET(req: NextRequest) {
     }
 
     // --- Map each session ---
-    const mapped = sessions.map((s) => {
+    const mapped = pagedSessions.map((s) => {
       const snap0 = s.snapshots[0];
       const snap1 = s.snapshots[1];
       const joined = snap0?.joined ?? 0;
@@ -369,13 +386,21 @@ export async function GET(req: NextRequest) {
       return true;
     });
 
+    // Early exit — no results after filtering, skip sort and response assembly
+    if (filtered.length === 0) {
+      return NextResponse.json(
+        { sessions: [], count: 0, total: totalCount, filteredTotal: 0, offset, hasMore: false },
+        { headers: { "Cache-Control": CACHE_CONTROL_PRIVATE } },
+      );
+    }
+
     // When filters are active, return all matching sessions so users can swipe through the full set.
     // When no filters, honour the page limit for lazy-loading.
     const trimLimit = filtersActive ? filtered.length : (limit ?? filtered.length);
 
     const sorted = [...filtered].sort((a, b) => b.matchScore - a.matchScore).slice(0, trimLimit);
 
-    const hasMore = !filtersActive && limit !== null ? offset + sessions.length < totalCount : false;
+    const hasMore = !filtersActive && limit !== null ? offset + pagedSessions.length < totalCount : false;
 
     const friendSessionsLogged = sorted.filter((s) => s.friendCount > 0);
     console.log(
