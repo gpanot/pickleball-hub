@@ -1,8 +1,9 @@
 """
 Roster + DUPR scrape for a single session row (sessions.id).
 
-Fetches meet page Nuxt payload, confirmed participants, batch player profiles,
-then upserts players, session_rosters, session_dupr_stats.
+Fetches confirmed participants via the public /meets/by-ref/{ref} API endpoint,
+then batch-fetches player profiles and upserts players, session_rosters,
+session_dupr_stats.
 
 Each public entrypoint uses its own DB connection + commit so failures never
 roll back the main ingest transaction.
@@ -12,7 +13,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import time
 import urllib.error
 import urllib.parse
@@ -23,7 +23,6 @@ from typing import Any, Optional
 import psycopg2
 
 API = "https://api.reclub.co"
-NUXT_BASE = "https://reclub.co/m"
 
 HEADERS_JSON = {
     "User-Agent": "Mozilla/5.0 (compatible; pickleball-hub/1.0)",
@@ -31,13 +30,9 @@ HEADERS_JSON = {
     "Accept": "application/json",
 }
 
-HEADERS_HTML = {
-    "User-Agent": "Mozilla/5.0 (compatible; pickleball-hub/1.0)",
-    "Accept": "text/html",
-}
-
 PICKLEBALL_SPORT_ID = 36
-VALID_REFERENCE_TYPES = {9, 10, 30}
+# referenceType=1 = real user; 9, 10, 30 were legacy Nuxt SSR values — kept for safety
+VALID_REFERENCE_TYPES = {1, 9, 10, 30}
 CONFIRMED_STATUSES = {0, 1}
 PROFILE_CHUNK = 30
 PROFILE_SLEEP_S = 0.5
@@ -58,139 +53,49 @@ def api_get(path: str, params: Optional[dict] = None) -> Any:
         return json.loads(r.read().decode())
 
 
-def fetch_nuxt_page(reference_code: str) -> Optional[str]:
-    url = f"{NUXT_BASE}/{reference_code}"
-    req = urllib.request.Request(url, headers=HEADERS_HTML)
+def fetch_participants_by_ref(reference_code: str) -> Optional[list[dict]]:
+    """
+    Fetch confirmed participants for a meet using the public /meets/by-ref/{ref} endpoint.
+
+    Reclub's Nuxt SSR no longer renders participant data server-side (returns HTTP 500
+    with empty meet payload for all sessions). The /meets/by-ref/{ref} REST endpoint
+    is publicly accessible without authentication and returns the full participants array.
+
+    Returns a list of dicts with keys: userId (int), isHost (bool).
+    Returns None on fetch/parse error so the caller can write an empty stats row.
+    """
     try:
-        with urllib.request.urlopen(req, timeout=25) as r:
-            return r.read().decode("utf-8", errors="replace")
+        data = api_get(f"/meets/by-ref/{reference_code}")
     except Exception as e:
-        print(f"[roster] Failed to fetch {url}: {e}")
+        print(f"[roster] Failed to fetch /meets/by-ref/{reference_code}: {e}")
         return None
 
-
-def parse_nuxt_data(html: str) -> Optional[list]:
-    match = re.search(
-        r'<script[^>]+id="__NUXT_DATA__"[^>]*>(.*?)</script>',
-        html,
-        re.DOTALL,
-    )
-    if not match:
+    raw_participants = data.get("participants") if isinstance(data, dict) else None
+    if not isinstance(raw_participants, list):
+        print(f"[roster] No participants array in /meets/by-ref/{reference_code} response")
         return None
-    try:
-        return json.loads(match.group(1))
-    except Exception as e:
-        print(f"[roster] Failed to parse __NUXT_DATA__: {e}")
-        return None
-
-
-def resolve(raw: list, val: Any) -> Any:
-    seen = set()
-    while isinstance(val, int) and val not in seen:
-        if val < 0 or val >= len(raw):
-            break
-        seen.add(val)
-        val = raw[val]
-    return val
-
-
-def extract_participants(raw: list) -> list[dict]:
-    """Walk Nuxt raw array for meet participant entries (confirmed)."""
-    participants: list[dict] = []
-    for item in raw:
-        if not isinstance(item, dict):
-            continue
-        if "referenceId" not in item or "status" not in item:
-            continue
-        ref_type = item.get("referenceType")  # literal int, not an index reference
-        if not isinstance(ref_type, int) or ref_type not in VALID_REFERENCE_TYPES:
-            continue
-        status_raw = item["status"]
-        # status field is an index into raw; resolve one level only
-        if isinstance(status_raw, int) and 0 <= status_raw < len(raw):
-            status = raw[status_raw]
-        else:
-            status = status_raw
-        # if still a list/dict after one resolve, skip
-        if not isinstance(status, int) or status not in CONFIRMED_STATUSES:
-            continue
-        user_id = resolve(raw, item["referenceId"])
-        if not isinstance(user_id, int):
-            continue
-        is_host = resolve(raw, item.get("isHost", False))
-        if not isinstance(is_host, bool):
-            is_host = is_host is True or is_host == 1
-        participants.append({"userId": user_id, "isHost": is_host, "status": status})
 
     seen: dict[int, dict] = {}
-    for p in participants:
-        uid = p["userId"]
+    for entry in raw_participants:
+        if not isinstance(entry, dict):
+            continue
+        # Only referenceType=1 entries are real users (not guests/externals)
+        if entry.get("referenceType") not in VALID_REFERENCE_TYPES:
+            continue
+        if entry.get("status") not in CONFIRMED_STATUSES:
+            continue
+        uid = entry.get("referenceId")
+        if not isinstance(uid, int):
+            continue
+        is_host = bool(entry.get("isHost", False))
         if uid not in seen:
-            seen[uid] = p
+            seen[uid] = {"userId": uid, "isHost": is_host}
         else:
-            seen[uid]["isHost"] = seen[uid]["isHost"] or p["isHost"]
-    print(f"[roster] extract_participants found {len(participants)} raw, {len(seen)} unique")
-    return list(seen.values())
+            seen[uid]["isHost"] = seen[uid]["isHost"] or is_host
 
-
-def extract_participants_structured(raw: list, reference_code: str) -> list[dict]:
-    """
-    Fallback: navigate meet-{code} → participants like repo root scraper.py.
-    Returns same shape as extract_participants (userId int, isHost bool, status).
-    """
-    try:
-        root = raw[1]
-        data_wrapper = raw[root["data"]]
-        if isinstance(data_wrapper, list) and data_wrapper[0] in ("ShallowReactive", "Reactive"):
-            data_dict = raw[data_wrapper[1]]
-        else:
-            data_dict = data_wrapper
-
-        meet_key = f"meet-{reference_code}"
-        if meet_key not in data_dict:
-            return []
-
-        meet_container = raw[data_dict[meet_key]]
-        meet_ref = raw[meet_container["meet"]]
-        if isinstance(meet_ref, list) and meet_ref[0] in ("Reactive", "ShallowReactive"):
-            meet_obj = raw[meet_ref[1]]
-        else:
-            meet_obj = meet_ref
-
-        part_ref = raw[meet_obj["participants"]]
-        if isinstance(part_ref, list) and part_ref[0] in ("Reactive", "ShallowReactive"):
-            part_list = raw[part_ref[1]]
-        else:
-            part_list = part_ref
-
-        out: list[dict] = []
-        for pidx in part_list:
-            entry = raw[pidx]
-            if not isinstance(entry, dict):
-                continue
-            if "referenceId" not in entry or "status" not in entry:
-                continue
-            status = resolve(raw, entry["status"])
-            if not isinstance(status, int) or status not in CONFIRMED_STATUSES:
-                continue
-            rid = resolve(raw, entry["referenceId"])
-            if not isinstance(rid, int):
-                continue
-            is_host = resolve(raw, entry.get("isHost", False))
-            if not isinstance(is_host, bool):
-                is_host = is_host is True or is_host == 1
-            out.append({"userId": rid, "isHost": is_host, "status": status})
-        seen: dict[int, dict] = {}
-        for p in out:
-            uid = p["userId"]
-            if uid not in seen:
-                seen[uid] = p
-            else:
-                seen[uid]["isHost"] = seen[uid]["isHost"] or p["isHost"]
-        return list(seen.values())
-    except Exception as e:
-        print(f"[roster] structured extract failed for {reference_code}: {e}")
-        return []
+    result = list(seen.values())
+    print(f"[roster] fetch_participants_by_ref({reference_code}): {len(raw_participants)} raw → {len(result)} unique confirmed")
+    return result
 
 
 def fetch_player_profiles(user_ids: list[int]) -> list[dict]:
@@ -299,18 +204,7 @@ def scrape_session_roster(
     """
     print(f"[roster] Scraping session_id={session_id} ref={reference_code}")
 
-    html = fetch_nuxt_page(reference_code)
-    if not html:
-        return None
-
-    raw = parse_nuxt_data(html)
-    if not raw:
-        print(f"[roster] No __NUXT_DATA__ for {reference_code}")
-        return None
-
-    participants = extract_participants(raw)
-    if not participants:
-        participants = extract_participants_structured(raw, reference_code)
+    participants = fetch_participants_by_ref(reference_code)
     if not participants:
         print(f"[roster] No confirmed participants for {reference_code} — writing empty stats row")
         # Write a zero-participant stats row so the swipe-deck duprRange fallback
