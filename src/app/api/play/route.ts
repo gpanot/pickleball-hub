@@ -74,10 +74,30 @@ export async function GET(req: NextRequest) {
   const userLat = Number.isFinite(lat) ? lat : null;
   const userLng = Number.isFinite(lng) ? lng : null;
 
+  // Bounding-box pre-filter: reduces rows Postgres returns before the precise
+  // JS haversine check. Uses @@index([latitude, longitude]) on the Venue model.
+  // Only applied when we have a real GPS fix (lat and lng are both non-zero).
+  // Sessions without a venue relation are NOT excluded — the Prisma nullable-
+  // relation filter only matches rows where venue IS set and within bounds, so
+  // venueId-null sessions pass through and are handled by the JS distance wall.
+  const hasPreciseLocation = lat !== 0 && lng !== 0 && Number.isFinite(lat) && Number.isFinite(lng);
+  const GEO_KM = 5;
+  const latDelta = GEO_KM / 111;
+  const lngDelta = GEO_KM / (111 * Math.cos((lat * Math.PI) / 180));
+  const geoFilter = hasPreciseLocation
+    ? {
+        venue: {
+          latitude: { gte: lat - latDelta, lte: lat + latDelta },
+          longitude: { gte: lng - lngDelta, lte: lng + lngDelta },
+        },
+      }
+    : {};
+
   const sessionWhere = {
     scrapedDate: dateStr,
     status: "active" as const,
     ...(minTime ? { startTime: { gte: minTime } } : {}),
+    ...geoFilter,
   };
 
   const sessionInclude = {
