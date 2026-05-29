@@ -36,18 +36,35 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const { searchParams } = new URL(req.url);
+  const before = searchParams.get("before");
+  const isPaginating = !!before;
+
   const follows = await prisma.follow.findMany({
     where: { followerId: user.profileId },
     select: { followeeId: true },
   });
 
   if (follows.length === 0) {
-    return NextResponse.json({ items: [], hasFollows: false });
+    return NextResponse.json({ items: [], hasFollows: false, hasMore: false });
   }
 
   const followeeIds = follows.map((f) => f.followeeId);
   const items: any[] = [];
 
+  // Read persisted feed items — cursor-paginated when `before` is supplied
+  const persistedItems = await prisma.feedItem.findMany({
+    where: {
+      profileId: user.profileId,
+      ...(before ? { timestamp: { lt: new Date(before) } } : {}),
+    },
+    orderBy: { timestamp: "desc" },
+    take: 30,
+  });
+
+  let liveItems: any[] = [];
+
+  if (!isPaginating) {
   const today = new Date();
   const todayStr = today.toISOString().slice(0, 10);
 
@@ -508,7 +525,44 @@ export async function GET(req: NextRequest) {
     return true;
   });
 
-  const finalItems = filtered.slice(0, 20);
+  liveItems = filtered.slice(0, 20);
+
+  // Persist live items so they survive future unfollows (upsert — safe to re-run)
+  if (liveItems.length > 0) {
+    await Promise.all(
+      liveItems.map((item) =>
+        prisma.feedItem.upsert({
+          where: { id: item.id },
+          create: {
+            id: item.id,
+            profileId: user.profileId,
+            type: item.type,
+            playerUserId: item.player?.userId ?? null,
+            payload: item,
+            timestamp: new Date(item.timestamp),
+          },
+          update: {
+            payload: item,
+            timestamp: new Date(item.timestamp),
+          },
+        })
+      )
+    );
+  }
+  } // end if (!isPaginating)
+
+  // Merge live items with historical persisted items (items no longer in live query)
+  const liveItemIds = new Set(liveItems.map((i) => i.id));
+  const historicalItems = persistedItems
+    .filter((i) => !liveItemIds.has(i.id))
+    .map((i) => i.payload as any);
+
+  const mergedItems = [...liveItems, ...historicalItems].sort(
+    (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+  );
+
+  const finalItems = isPaginating ? mergedItems.slice(0, 30) : mergedItems.slice(0, 200);
+  const hasMore = persistedItems.length === 30;
 
   // Fetch kudos counts for all feed items in one batch
   const feedItemIds = finalItems.map((i) => i.id);
@@ -559,5 +613,6 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     items: itemsWithKudos,
     hasFollows: true,
+    hasMore,
   });
 }

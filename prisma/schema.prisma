@@ -220,6 +220,7 @@ model PlayerProfile {
   notificationsReceived NotificationSent[] @relation("recipient")
   notificationsSent     NotificationSent[] @relation("sender")
   gear         PlayerGear?
+  feedItems    FeedItem[]
 
   @@map("player_profiles")
 }
@@ -415,6 +416,23 @@ model Kudos {
   @@index([toPlayerId, type])
   @@index([fromPlayerId, createdAt])
   @@map("kudos")
+}
+
+/// Persisted feed item for a user's feed — survives unfollow so history is retained.
+model FeedItem {
+  id           String   @id
+  profileId    String   @map("profile_id")
+  type         String
+  playerUserId String?  @map("player_user_id")
+  payload      Json
+  timestamp    DateTime
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  profile      PlayerProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@index([profileId, timestamp(sort: Desc)])
+  @@index([profileId, type])
+  @@map("feed_items")
 }
 
 /// Aggregated DUPR participation for a session row (keyed by sessions.id).

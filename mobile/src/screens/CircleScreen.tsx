@@ -17,6 +17,7 @@ import {
   Dimensions,
 } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
+import { debugLog } from '../lib/debug'
 import { Rss, Users, Search, ArrowLeft, Sparkles, X } from 'lucide-react-native'
 import { TopBar } from '../components/CardBody'
 import { SquaddLoader } from '../components/SquaddLoader'
@@ -126,6 +127,8 @@ export function CircleScreen({ onOpenGear, gearSaved, gearSetupComplete }: { onO
   const [feedLoading, setFeedLoading] = useState(false)
   const [feedRefreshing, setFeedRefreshing] = useState(false)
   const [hasFollows, setHasFollows] = useState(true)
+  const [hasMore, setHasMore] = useState(false)
+  const [loadingMore, setLoadingMore] = useState(false)
   const [suggestions, setSuggestions] = useState<CoPlayerSuggestion[]>([])
   const [suggestionsLoading, setSuggestionsLoading] = useState(false)
   const [followedSuggestionIds, setFollowedSuggestionIds] = useState<Set<string>>(new Set())
@@ -179,12 +182,18 @@ export function CircleScreen({ onOpenGear, gearSaved, gearSetupComplete }: { onO
       const res = await authedFetch(`/api/sessions/${sessionId}/roster`)
       if (res.ok) {
         const data = await res.json()
+        debugLog('ROSTER', `session=${sessionId} "${data.sessionName}" club="${data.venueName}" players=${data.players?.length ?? 0}`)
+        ;(data.players as { userId: string; displayName: string; duprDoubles: number | null; isHost: boolean }[] ?? [])
+          .forEach((p, i) => debugLog('ROSTER', `  #${i + 1} uid=${p.userId} "${p.displayName}" dupr=${p.duprDoubles ?? '-'} host=${p.isHost}`))
         setRosterModal({ visible: true, sessionName: data.sessionName, venueName: data.venueName, players: data.players, loadingId: null })
         const followed = new Set<string>((data.players as { userId: string; isFollowing: boolean }[])
           .filter(p => p.isFollowing).map(p => p.userId))
         setFollowingSet(followed)
+      } else {
+        debugLog('ROSTER', `session=${sessionId} → HTTP ${res.status}`)
       }
-    } catch {
+    } catch (e) {
+      debugLog('ROSTER', `session=${sessionId} → error: ${e}`)
       setRosterModal(prev => ({ ...prev, loadingId: null }))
     }
   }, [authedFetch])
@@ -238,6 +247,7 @@ export function CircleScreen({ onOpenGear, gearSaved, gearSetupComplete }: { onO
           return deduped
         })
         setHasFollows(data.hasFollows ?? true)
+        setHasMore(data.hasMore ?? false)
       }
     } catch (e) {
       if (__DEV__) console.warn('[Feed] loadFeed', e)
@@ -245,6 +255,30 @@ export function CircleScreen({ onOpenGear, gearSaved, gearSetupComplete }: { onO
       setFeedLoading(false)
     }
   }, [authedFetch, jwt, ensureServerAuth])
+
+  const loadMore = useCallback(async () => {
+    if (loadingMore || !hasMore || feedItems.length === 0) return
+    setLoadingMore(true)
+    try {
+      const oldest = feedItems[feedItems.length - 1]
+      const res = await authedFetch(
+        `/api/feed?before=${encodeURIComponent(oldest.timestamp)}`
+      )
+      if (!res.ok) return
+      const data = await res.json()
+      const newItems = (data.items ?? []) as FeedItem[]
+      setFeedItems((prev) => {
+        const existingIds = new Set(prev.map((i) => i.id))
+        const deduped = newItems.filter((i) => !existingIds.has(i.id))
+        return [...prev, ...deduped]
+      })
+      setHasMore(data.hasMore ?? false)
+    } catch (e) {
+      if (__DEV__) console.warn('[Feed] loadMore', e)
+    } finally {
+      setLoadingMore(false)
+    }
+  }, [feedItems, hasMore, loadingMore, authedFetch])
 
   const loadSuggestions = useCallback(async () => {
     if (!reclubUserId) return
@@ -416,7 +450,6 @@ export function CircleScreen({ onOpenGear, gearSaved, gearSetupComplete }: { onO
         })
         if (!res.ok) throw new Error('Unfollow failed')
         toast(`Unfollowed ${player?.displayName ?? 'player'}`, 'info')
-        feedLoadedRef.current = false
       } catch {
         loadFriends()
         toast('Failed to unfollow. Try again.', 'error')
@@ -826,6 +859,19 @@ export function CircleScreen({ onOpenGear, gearSaved, gearSetupComplete }: { onO
               />
             ))
           })()}
+
+          {!feedLoading && hasMore && (
+            <TouchableOpacity
+              style={styles.loadMoreBtn}
+              onPress={loadMore}
+              disabled={loadingMore}
+            >
+              {loadingMore
+                ? <ActivityIndicator size="small" color="#f5a623" />
+                : <Text style={styles.loadMoreText}>Load more</Text>
+              }
+            </TouchableOpacity>
+          )}
         </ScrollView>
       )}
 
@@ -1736,6 +1782,14 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
   rosterFollowBtnTextDone: {
+    color: '#555',
+  },
+  loadMoreBtn: {
+    padding: 16,
+    alignItems: 'center',
+  },
+  loadMoreText: {
+    fontSize: 13,
     color: '#555',
   },
 })

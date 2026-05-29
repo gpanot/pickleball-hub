@@ -103,6 +103,23 @@ def _run_tomorrow_roster_refresh(db_url: str) -> None:
             os.environ["ROSTER_MAX_SESSIONS"] = old_cap
 
 
+def cleanup_old_feed_items(db_url: str) -> None:
+    """Remove feed_items older than 90 days to prevent unbounded table growth."""
+    url = db_url.split("?")[0] if "?" in db_url else db_url
+    try:
+        conn = psycopg2.connect(url)
+        cur = conn.cursor()
+        cur.execute("DELETE FROM feed_items WHERE created_at < NOW() - INTERVAL '90 days'")
+        deleted = cur.rowcount
+        conn.commit()
+        cur.close()
+        conn.close()
+        if deleted:
+            print(f"  [feed_cleanup] Removed {deleted} old feed items", flush=True)
+    except Exception as e:
+        print(f"  [feed_cleanup] ERROR (non-fatal): {e}", flush=True)
+
+
 def run_cmd(cmd: list[str]) -> int:
     print(f"  >> {' '.join(cmd)}", flush=True)
     result = subprocess.run(cmd)
@@ -202,6 +219,12 @@ def run_scrape() -> dict:
         # 3pm VN (UTC 08:00): competitive tonight post
         # Both runs also dispatch any approved/post_now posts.
         # Token refresh runs on the 1st of each month at 6am/8am VN.
+        if hour == 6:
+            db_url = os.environ.get("DATABASE_URL", "")
+            if db_url:
+                print("\n=== Daily feed cleanup ===", flush=True)
+                cleanup_old_feed_items(db_url)
+
         if hour in (6, 15):
             print(f"\n=== Promotion — hour={hour} VN ===", flush=True)
             _try_run_promotion()

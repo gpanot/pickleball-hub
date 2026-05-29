@@ -67,6 +67,15 @@ export async function GET(
     }))
     .sort((a, b) => (b.duprDoubles ?? 0) - (a.duprDoubles ?? 0));
 
+  console.log(`[roster] sessionId=${sessionId} "${session?.name}" club="${session?.club.name}" db_rows=${rosters.length} returned=${players.length}`);
+  players.forEach((p, i) =>
+    console.log(`[roster]   #${i + 1} uid=${p.userId} "${p.displayName}" dupr=${p.duprDoubles ?? '-'} host=${p.isHost} hasPlayer=${rosters[i]?.player != null}`)
+  );
+  // Log any roster rows with no linked player profile
+  const orphans = rosters.filter(r => r.player == null);
+  if (orphans.length > 0)
+    console.log(`[roster]   ⚠ ${orphans.length} orphan row(s) with no player profile: userIds=[${orphans.map(r => r.userId.toString()).join(', ')}]`);
+
   return NextResponse.json(
     {
       sessionId,
