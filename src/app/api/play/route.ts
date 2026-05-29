@@ -35,7 +35,7 @@ const getCachedSessions = unstable_cache(
             },
           }
         : {};
-    return prisma.session.findMany({
+    const sessions = await prisma.session.findMany({
       where: {
         scrapedDate: dateStr,
         status: "active",
@@ -65,6 +65,37 @@ const getCachedSessions = unstable_cache(
       },
       orderBy: { startTime: "asc" },
     });
+    // Serialize BigInt/Decimal before caching — JSON.stringify cannot handle them.
+    return sessions.map((s) => ({
+      ...s,
+      duprStat: s.duprStat
+        ? {
+            ...s.duprStat,
+            avgDuprDoubles: s.duprStat.avgDuprDoubles != null
+              ? Number(s.duprStat.avgDuprDoubles)
+              : null,
+            returningPlayerPct: s.duprStat.returningPlayerPct != null
+              ? Number(s.duprStat.returningPlayerPct)
+              : null,
+            duprParticipationPct: s.duprStat.duprParticipationPct != null
+              ? Number(s.duprStat.duprParticipationPct)
+              : null,
+          }
+        : null,
+      rosters: s.rosters.map((r) => ({
+        ...r,
+        userId: r.userId.toString(),
+        player: r.player
+          ? {
+              ...r.player,
+              userId: r.player.userId.toString(),
+              duprDoubles: r.player.duprDoubles != null
+                ? Number(r.player.duprDoubles)
+                : null,
+            }
+          : null,
+      })),
+    }));
   },
   ["play-sessions"],
   { revalidate: 600 },

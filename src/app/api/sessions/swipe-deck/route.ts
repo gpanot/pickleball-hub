@@ -21,7 +21,7 @@ const REGULARS_CAP = 5;
 // shared across all users hitting the same date. Keyed as ['swipe-deck-sessions', date].
 const getCachedSwipeSessions = unstable_cache(
   async (date: string) => {
-    return prisma.session.findMany({
+    const sessions = await prisma.session.findMany({
       where: { scrapedDate: date, status: "active" },
       include: {
         club: { select: { name: true, slug: true } },
@@ -44,6 +44,37 @@ const getCachedSwipeSessions = unstable_cache(
       },
       orderBy: { startTime: "asc" },
     });
+    // Serialize BigInt/Decimal before caching — JSON.stringify cannot handle them.
+    return sessions.map((s) => ({
+      ...s,
+      duprStat: s.duprStat
+        ? {
+            ...s.duprStat,
+            avgDuprDoubles: s.duprStat.avgDuprDoubles != null
+              ? Number(s.duprStat.avgDuprDoubles)
+              : null,
+            returningPlayerPct: s.duprStat.returningPlayerPct != null
+              ? Number(s.duprStat.returningPlayerPct)
+              : null,
+            duprParticipationPct: s.duprStat.duprParticipationPct != null
+              ? Number(s.duprStat.duprParticipationPct)
+              : null,
+          }
+        : null,
+      rosters: s.rosters.map((r) => ({
+        ...r,
+        userId: r.userId.toString(),
+        player: r.player
+          ? {
+              ...r.player,
+              userId: r.player.userId.toString(),
+              duprDoubles: r.player.duprDoubles != null
+                ? Number(r.player.duprDoubles)
+                : null,
+            }
+          : null,
+      })),
+    }));
   },
   ["swipe-deck-sessions"],
   { revalidate: 600 },

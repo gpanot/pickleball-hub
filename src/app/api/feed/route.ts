@@ -65,6 +65,7 @@ export async function GET(req: NextRequest) {
   });
 
   let liveItems: any[] = [];
+  let kudosResult: Array<{ feedItemId: string | null; type: string; _count: { type: number } }> = [];
 
   if (!isPaginating) {
   const today = new Date();
@@ -83,9 +84,9 @@ export async function GET(req: NextRequest) {
     duprDoubles: true,
   } as const;
 
-  // Fire all three roster queries + follow-event queries in parallel
+  // Fire all queries in parallel — roster queries, follow events, persisted feed, and live roster
   const tParallel0 = Date.now();
-  const [upcomingRosters, recentRosters, todayCompletedRosters, recentFollowing, recentFollowers] =
+  const [upcomingRosters, recentRosters, todayCompletedRosters, recentFollowing, recentFollowers, myLiveRoster] =
     await Promise.all([
       // "joining" — followees on upcoming sessions
       prisma.sessionRoster.findMany({
@@ -183,11 +184,41 @@ export async function GET(req: NextRequest) {
             take: 10,
           })
         : Promise.resolve([]),
+      // "you_are_playing" — current user on a live session right now
+      user.reclubUserId
+        ? prisma.sessionRoster.findFirst({
+            where: {
+              userId: user.reclubUserId,
+              session: {
+                scrapedDate: todayStr,
+                startTime: { lte: nowTimeVN },
+              },
+            },
+            include: {
+              session: {
+                select: {
+                  id: true,
+                  name: true,
+                  eventUrl: true,
+                  startTime: true,
+                  endTime: true,
+                  durationMin: true,
+                  club: { select: { name: true } },
+                  snapshots: { orderBy: { scrapedAt: "desc" }, take: 1 },
+                },
+              },
+            },
+            orderBy: { session: { startTime: "desc" } },
+          })
+        : Promise.resolve(null),
     ]);
 
   console.log(`[feed] parallel queries (rosters+follows): ${Date.now() - tParallel0}ms`);
 
   const tAssembly0 = Date.now();
+
+  // ── Joining items ────────────────────────────────────────────────────────────
+  const tb0 = Date.now();
   for (const r of upcomingRosters) {
     const joined = r.session.snapshots[0]?.joined ?? 0;
     const spotsLeft = Math.max(0, r.session.maxPlayers - joined);
@@ -207,8 +238,10 @@ export async function GET(req: NextRequest) {
       eventUrl: r.session.eventUrl,
     });
   }
+  console.log(`[feed] joining items only: ${Date.now() - tb0}ms`);
 
-  // played_today: distinct item per (followee, session) for sessions finished today
+  // ── Played_today items ───────────────────────────────────────────────────────
+  const tb2 = Date.now();
   const seenTodayKeys = new Set<string>();
   for (const r of todayCompletedRosters) {
     const key = `${r.userId}_${r.sessionId}`;
@@ -225,8 +258,10 @@ export async function GET(req: NextRequest) {
       sessionId: r.session.id,
     });
   }
+  console.log(`[feed] played_today items only: ${Date.now() - tb2}ms`);
 
-  // Group past sessions (not today) by player+club for "played" aggregated items
+  // ── Played items (past sessions grouped by player+club) ──────────────────────
+  const tb1 = Date.now();
   const playedMap = new Map<
     string,
     {
@@ -264,82 +299,60 @@ export async function GET(req: NextRequest) {
       sessionCount: v.count,
     });
   }
+  console.log(`[feed] played items only: ${Date.now() - tb1}ms`);
 
-  // "you_are_playing": current user is on a live session right now.
+  // ── You are playing ──────────────────────────────────────────────────────────
+  // myLiveRoster was fetched in the top-level Promise.all above.
   // Primary check: startTime <= now < endTime (exact window).
   // Fallback: session started today and durationMin covers the current time,
   // to handle sessions with a missing or stale endTime string.
-  if (user.reclubUserId) {
-    const myLiveRoster = await prisma.sessionRoster.findFirst({
-      where: {
-        userId: user.reclubUserId,
-        session: {
-          scrapedDate: todayStr,
-          startTime: { lte: nowTimeVN },
-        },
-      },
-      include: {
-        session: {
-          select: {
-            id: true,
-            name: true,
-            eventUrl: true,
-            startTime: true,
-            endTime: true,
-            durationMin: true,
-            club: { select: { name: true } },
-            snapshots: { orderBy: { scrapedAt: "desc" }, take: 1 },
-          },
-        },
-      },
-      orderBy: { session: { startTime: "desc" } },
-    });
+  const tb3 = Date.now();
+  if (myLiveRoster) {
+    const sess = myLiveRoster.session;
+    // Derive effective endTime: prefer DB value, fall back to startTime + durationMin
+    let isLive = false;
+    if (sess.endTime) {
+      isLive = sess.endTime > nowTimeVN;
+    } else if (sess.durationMin) {
+      const [sh, sm] = sess.startTime.split(":").map(Number);
+      const startMinutes = (sh ?? 0) * 60 + (sm ?? 0);
+      const [nh, nm] = nowTimeVN.split(":").map(Number);
+      const nowMinutes = (nh ?? 0) * 60 + (nm ?? 0);
+      isLive = nowMinutes < startMinutes + sess.durationMin;
+    } else {
+      // No end info — treat as live for 2 hours after start
+      const [sh, sm] = sess.startTime.split(":").map(Number);
+      const startMinutes = (sh ?? 0) * 60 + (sm ?? 0);
+      const [nh, nm] = nowTimeVN.split(":").map(Number);
+      const nowMinutes = (nh ?? 0) * 60 + (nm ?? 0);
+      isLive = nowMinutes < startMinutes + 120;
+    }
 
-    if (myLiveRoster) {
-      const sess = myLiveRoster.session;
-      // Derive effective endTime: prefer DB value, fall back to startTime + durationMin
-      let isLive = false;
-      if (sess.endTime) {
-        isLive = sess.endTime > nowTimeVN;
-      } else if (sess.durationMin) {
-        const [sh, sm] = sess.startTime.split(":").map(Number);
-        const startMinutes = (sh ?? 0) * 60 + (sm ?? 0);
-        const [nh, nm] = nowTimeVN.split(":").map(Number);
-        const nowMinutes = (nh ?? 0) * 60 + (nm ?? 0);
-        isLive = nowMinutes < startMinutes + sess.durationMin;
-      } else {
-        // No end info — treat as live for 2 hours after start
-        const [sh, sm] = sess.startTime.split(":").map(Number);
-        const startMinutes = (sh ?? 0) * 60 + (sm ?? 0);
-        const [nh, nm] = nowTimeVN.split(":").map(Number);
-        const nowMinutes = (nh ?? 0) * 60 + (nm ?? 0);
-        isLive = nowMinutes < startMinutes + 120;
-      }
-
-      if (isLive) {
-        const myProfile = await prisma.player.findUnique({
-          where: { userId: user.reclubUserId },
-          select: { userId: true, displayName: true, imageUrl: true, duprDoubles: true },
+    if (isLive) {
+      const myProfile = await prisma.player.findUnique({
+        where: { userId: user.reclubUserId! },
+        select: { userId: true, displayName: true, imageUrl: true, duprDoubles: true },
+      });
+      if (myProfile) {
+        items.push({
+          id: `you_are_playing_${myLiveRoster.sessionId}`,
+          type: "you_are_playing",
+          player: toPlayerPayload(myProfile),
+          isFollowing: false,
+          timestamp: sess.snapshots?.[0]?.scrapedAt?.toISOString()
+            ?? `${todayStr}T${sess.startTime}:00+07:00`,
+          sessionId: sess.id,
+          sessionName: sess.name,
+          venueName: sess.club.name,
+          eventUrl: sess.eventUrl,
         });
-        if (myProfile) {
-          items.push({
-            id: `you_are_playing_${myLiveRoster.sessionId}`,
-            type: "you_are_playing",
-            player: toPlayerPayload(myProfile),
-            isFollowing: false,
-            timestamp: sess.snapshots?.[0]?.scrapedAt?.toISOString()
-              ?? `${todayStr}T${sess.startTime}:00+07:00`,
-            sessionId: sess.id,
-            sessionName: sess.name,
-            venueName: sess.club.name,
-            eventUrl: sess.eventUrl,
-          });
-        }
       }
     }
   }
+  console.log(`[feed] you_are_playing only: ${Date.now() - tb3}ms`);
 
-  // Streak milestones — single batched query for all followees instead of N+1
+  // ── Streaks, DUPR history, and follow events — run in parallel ───────────────
+  // These three are completely independent: no shared mutable state, different tables.
   const MILESTONE_WEEKS = [4, 8, 12, 26, 52];
 
   function getWeekKey(date: Date): string {
@@ -355,99 +368,155 @@ export async function GET(req: NextRequest) {
 
   const now = new Date();
 
-  // ~90 days covers 12 weeks of history needed for streak computation
-  const streakCutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
-  const streakCutoffStr = streakCutoff.toISOString().slice(0, 10);
+  // Hard cap: skip streak computation if user follows too many people — too slow
+  const streakFollowees = followeeIds.slice(0, 10);
+  const shouldComputeStreaks = followeeIds.length <= 30;
 
-  const allStreakRosters = await prisma.sessionRoster.findMany({
-    where: {
-      userId: { in: followeeIds },
-      session: { scrapedDate: { gte: streakCutoffStr, lt: todayStr } },
-    },
-    select: {
-      userId: true,
-      session: {
-        select: {
-          startTime: true,
-          scrapedDate: true,
-          snapshots: { orderBy: { scrapedAt: "desc" }, take: 1 },
-        },
+  async function computeStreaks() {
+    if (!shouldComputeStreaks || streakFollowees.length === 0) return [];
+    const streakCutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+    const streakCutoffStr = streakCutoff.toISOString().slice(0, 10);
+
+    const allStreakRosters = await prisma.sessionRoster.findMany({
+      where: {
+        userId: { in: streakFollowees },
+        session: { scrapedDate: { gte: streakCutoffStr, lt: todayStr } },
       },
-    },
-    orderBy: { session: { startTime: "desc" } },
-  });
+      select: {
+        userId: true,
+        session: { select: { startTime: true, scrapedDate: true } },
+      },
+      orderBy: { session: { startTime: "desc" } },
+    });
 
-  // Group roster rows by followee
-  const rostersByFollowee = new Map<bigint, typeof allStreakRosters>();
-  for (const r of allStreakRosters) {
-    const list = rostersByFollowee.get(r.userId) ?? [];
-    list.push(r);
-    rostersByFollowee.set(r.userId, list);
-  }
+    const rostersByFollowee = new Map<bigint, typeof allStreakRosters>();
+    for (const r of allStreakRosters) {
+      const list = rostersByFollowee.get(r.userId) ?? [];
+      list.push(r);
+      rostersByFollowee.set(r.userId, list);
+    }
 
-  // Compute streaks per followee from the grouped data
-  const milestoneFolloweeIds: bigint[] = [];
-  const milestoneData = new Map<bigint, { streak: number; weeklyPlayed: boolean[]; sessions: typeof allStreakRosters }>();
+    const milestoneFolloweeIds: bigint[] = [];
+    const milestoneData = new Map<bigint, { streak: number; weeklyPlayed: boolean[]; sessions: typeof allStreakRosters }>();
 
-  for (const followeeId of followeeIds) {
-    const sessions = rostersByFollowee.get(followeeId) ?? [];
-    const weeksWithSessions = new Set(
-      sessions.map((s) =>
-        getWeekKey(new Date(`${s.session.scrapedDate}T12:00:00`))
-      )
-    );
+    for (const followeeId of streakFollowees) {
+      const sessions = rostersByFollowee.get(followeeId) ?? [];
+      const weeksWithSessions = new Set(
+        sessions.map((s) => getWeekKey(new Date(`${s.session.scrapedDate}T12:00:00`)))
+      );
 
-    let streak = 0;
-    let missedWeeks = 0;
-    const weeklyPlayed: boolean[] = [];
+      let streak = 0;
+      let missedWeeks = 0;
+      const weeklyPlayed: boolean[] = [];
 
-    for (let i = 0; i < 12; i++) {
-      const checkDate = new Date(now);
-      checkDate.setDate(checkDate.getDate() - i * 7);
-      const played = weeksWithSessions.has(getWeekKey(checkDate));
-      if (i < 6) weeklyPlayed.push(played);
-      if (played) {
-        streak++;
-        missedWeeks = 0;
-      } else {
-        missedWeeks++;
-        if (i > 0 && missedWeeks > 1) break;
+      for (let i = 0; i < 12; i++) {
+        const checkDate = new Date(now);
+        checkDate.setDate(checkDate.getDate() - i * 7);
+        const played = weeksWithSessions.has(getWeekKey(checkDate));
+        if (i < 6) weeklyPlayed.push(played);
+        if (played) {
+          streak++;
+          missedWeeks = 0;
+        } else {
+          missedWeeks++;
+          if (i > 0 && missedWeeks > 1) break;
+        }
+      }
+
+      const isCurrentWeekPlayed = weeksWithSessions.has(getWeekKey(now));
+      if (isCurrentWeekPlayed && MILESTONE_WEEKS.includes(streak)) {
+        milestoneFolloweeIds.push(followeeId);
+        milestoneData.set(followeeId, { streak, weeklyPlayed, sessions });
       }
     }
 
-    const isCurrentWeekPlayed = weeksWithSessions.has(getWeekKey(now));
-    if (isCurrentWeekPlayed && MILESTONE_WEEKS.includes(streak)) {
-      milestoneFolloweeIds.push(followeeId);
-      milestoneData.set(followeeId, { streak, weeklyPlayed, sessions });
-    }
-  }
+    if (milestoneFolloweeIds.length === 0) return [];
 
-  // Single batch query for player profiles of milestone holders
-  if (milestoneFolloweeIds.length > 0) {
     const milestonePlayers = await prisma.player.findMany({
       where: { userId: { in: milestoneFolloweeIds } },
       select: playerSelect,
     });
     const playerMap = new Map(milestonePlayers.map((p) => [p.userId, p]));
 
+    const result: any[] = [];
     for (const followeeId of milestoneFolloweeIds) {
       const player = playerMap.get(followeeId);
       const data = milestoneData.get(followeeId)!;
       if (player) {
         const latestSession = data.sessions[0];
-        items.push({
+        result.push({
           id: `streak_${followeeId}_${data.streak}`,
           type: "streak_milestone",
           player: toPlayerPayload(player),
           isFollowing: true,
-          timestamp: latestSession?.session.snapshots?.[0]?.scrapedAt?.toISOString()
-            ?? `${latestSession?.session.scrapedDate}T${latestSession?.session.startTime}:00+07:00`,
+          timestamp: `${latestSession?.session.scrapedDate}T${latestSession?.session.startTime}:00+07:00`,
           streakCount: data.streak,
           weeklyPlayed: data.weeklyPlayed.reverse(),
         });
       }
     }
+    return result;
   }
+
+  async function computeDuprHistory() {
+    const duprCutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const allDuprHistory = await prisma.playerDuprHistory.findMany({
+      where: {
+        playerId: { in: followeeIds },
+        recordedAt: { gte: duprCutoff },
+      },
+      orderBy: { recordedAt: "desc" },
+      include: { player: { select: playerSelect } },
+    });
+
+    const duprByPlayer = new Map<bigint, typeof allDuprHistory>();
+    for (const row of allDuprHistory) {
+      const list = duprByPlayer.get(row.playerId) ?? [];
+      if (list.length < 2) {
+        list.push(row);
+        duprByPlayer.set(row.playerId, list);
+      }
+    }
+
+    const result: any[] = [];
+    for (const [followeeId, history] of duprByPlayer) {
+      if (history.length < 2) continue;
+      const latest = history[0];
+      const previous = history[1];
+      if (!latest.duprDoubles || !previous.duprDoubles) continue;
+      const newVal = Number(latest.duprDoubles);
+      const oldVal = Number(previous.duprDoubles);
+      if (newVal <= oldVal) continue;
+      result.push({
+        id: `dupr_update_${followeeId}_${latest.id}`,
+        type: "dupr_update",
+        player: toPlayerPayload(latest.player),
+        isFollowing: true,
+        timestamp: latest.recordedAt.toISOString(),
+        duprOld: oldVal,
+        duprNew: newVal,
+      });
+    }
+    return result;
+  }
+
+  const ta1 = Date.now();
+  const [streakItems, duprItems, kudosResultInner] = await Promise.all([
+    computeStreaks(),
+    computeDuprHistory(),
+    // Kudos for live items — items are fully built at this point (joining, played, you_are_playing)
+    items.length > 0
+      ? prisma.kudos.groupBy({
+          by: ["feedItemId", "type"],
+          where: { feedItemId: { in: items.map((i) => i.id) } },
+          _count: { type: true },
+        })
+      : Promise.resolve([]),
+  ]);
+  kudosResult = kudosResultInner;
+  console.log(`[feed] streaks+dupr+kudos parallel: ${Date.now() - ta1}ms`);
+
+  items.push(...streakItems, ...duprItems);
 
   for (const f of recentFollowing) {
     items.push({
@@ -471,49 +540,6 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  // dupr_update — batch-fetch recent DUPR history for all followees at once
-  const duprCutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-  const allDuprHistory = await prisma.playerDuprHistory.findMany({
-    where: {
-      playerId: { in: followeeIds },
-      recordedAt: { gte: duprCutoff },
-    },
-    orderBy: { recordedAt: "desc" },
-    include: {
-      player: { select: playerSelect },
-    },
-  });
-
-  // Group by playerId and keep only the 2 most recent per player
-  const duprByPlayer = new Map<bigint, typeof allDuprHistory>();
-  for (const row of allDuprHistory) {
-    const list = duprByPlayer.get(row.playerId) ?? [];
-    if (list.length < 2) {
-      list.push(row);
-      duprByPlayer.set(row.playerId, list);
-    }
-  }
-
-  for (const [followeeId, history] of duprByPlayer) {
-    if (history.length < 2) continue;
-    const latest = history[0];
-    const previous = history[1];
-    if (!latest.duprDoubles || !previous.duprDoubles) continue;
-    const newVal = Number(latest.duprDoubles);
-    const oldVal = Number(previous.duprDoubles);
-    if (newVal <= oldVal) continue;
-
-    items.push({
-      id: `dupr_update_${followeeId}_${latest.id}`,
-      type: "dupr_update",
-      player: toPlayerPayload(latest.player),
-      isFollowing: true,
-      timestamp: latest.recordedAt.toISOString(),
-      duprOld: oldVal,
-      duprNew: newVal,
-    });
-  }
-
   // Strict chronological: newest timestamp first.
   items.sort((a, b) =>
     new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
@@ -532,7 +558,7 @@ export async function GET(req: NextRequest) {
   });
 
   liveItems = filtered.slice(0, 20);
-  console.log(`[feed] item assembly + streaks + dupr: ${Date.now() - tAssembly0}ms`);
+  console.log(`[feed] item assembly total: ${Date.now() - tAssembly0}ms`);
 
   // Persist live items so they survive future unfollows — fire and forget, don't block the response
   const tUpsert0 = Date.now();
@@ -560,6 +586,7 @@ export async function GET(req: NextRequest) {
   console.log(`[feed] upsert queued (non-blocking): ${Date.now() - tUpsert0}ms`);
   } // end if (!isPaginating)
 
+  const ta4 = Date.now();
   // Merge live items with historical persisted items (items no longer in live query)
   const liveItemIds = new Set(liveItems.map((i) => i.id));
   const historicalItems = persistedItems
@@ -573,14 +600,22 @@ export async function GET(req: NextRequest) {
   const finalItems = isPaginating ? mergedItems.slice(0, 30) : mergedItems.slice(0, 200);
   const hasMore = persistedItems.length === 30;
 
-  // Fetch kudos counts for all feed items in one batch
+  console.log(`[feed] persist read+merge: ${Date.now() - ta4}ms`);
+
+  const ta3 = Date.now();
+  // kudosCounts was fetched in parallel with streaks+dupr above (live items only).
+  // myKudos requires finalItems (includes historical persisted items) so is fetched here.
   const feedItemIds = finalItems.map((i) => i.id);
   const [kudosCounts, myKudos] = await Promise.all([
-    prisma.kudos.groupBy({
-      by: ["feedItemId", "type"],
-      where: { feedItemId: { in: feedItemIds } },
-      _count: { type: true },
-    }),
+    // For paginating requests, kudosResult is empty — fetch counts fresh for the full finalItems set.
+    // For live (non-paginating) requests, kudosResult already covers the live items; extend to historicals.
+    isPaginating
+      ? prisma.kudos.groupBy({
+          by: ["feedItemId", "type"],
+          where: { feedItemId: { in: feedItemIds } },
+          _count: { type: true },
+        })
+      : Promise.resolve(kudosResult),
     prisma.kudos.findMany({
       where: {
         fromPlayerId: user.profileId,
@@ -619,6 +654,7 @@ export async function GET(req: NextRequest) {
     },
   }));
 
+  console.log(`[feed] kudos: ${Date.now() - ta3}ms`);
   console.log(`[feed] total: ${Date.now() - t0}ms`);
   return NextResponse.json({
     items: itemsWithKudos,

@@ -563,16 +563,16 @@ export function SwipeScreen({
               </TouchableOpacity>
             )}
 
-            <TouchableOpacity
-              style={s.exploreBtn}
-              onPress={() => onOpenExplore?.()}
-              activeOpacity={0.85}
-            >
-              <Text style={s.exploreBtnText}>
-                {signedIn ? 'Explore more sessions' : 'Browse all sessions'}
-              </Text>
-              <ChevronRight size={18} color={T.amber} strokeWidth={2.5} />
-            </TouchableOpacity>
+            {!signedIn && (
+              <TouchableOpacity
+                style={s.exploreBtn}
+                onPress={() => onOpenExplore?.()}
+                activeOpacity={0.85}
+              >
+                <Text style={s.exploreBtnText}>Browse all sessions</Text>
+                <ChevronRight size={18} color={T.amber} strokeWidth={2.5} />
+              </TouchableOpacity>
+            )}
           </ScrollView>
         </>
       )}
@@ -597,7 +597,7 @@ export function SwipeScreen({
         >
           {/* Today / Tomorrow — same pattern as Discover */}
           <View style={s.goingDateFilterRow}>
-            {(['today', 'tomorrow', 'saved'] as const).map((key) => {
+            {(['today', 'tomorrow'] as const).map((key) => {
               const on = goingTabFilter === key
               const count =
                 key === 'today'
@@ -606,7 +606,7 @@ export function SwipeScreen({
                     ? friendsGoingTomorrowUpcoming.length
                     : shortlistItems.length
               const label =
-                key === 'today' ? 'Today' : key === 'tomorrow' ? 'Tomorrow' : 'Saved'
+                key === 'today' ? `Today (${count})` : key === 'tomorrow' ? `Tomorrow (${count})` : 'Saved'
               return (
                 <TouchableOpacity
                   key={key}
@@ -620,7 +620,7 @@ export function SwipeScreen({
                       color: on ? '#fff' : T.muted,
                     }}
                   >
-                    {label} ({count})
+                    {label}
                   </Text>
                 </TouchableOpacity>
               )
@@ -715,12 +715,6 @@ export function SwipeScreen({
                   <Text style={s.emptyFriendsSub}>
                     Press and hold a saved card to remove it
                   </Text>
-                  <TouchableOpacity
-                    style={s.emptyShortlistBtn}
-                    onPress={() => setPlayTab('discover')}
-                  >
-                    <Text style={s.emptyShortlistBtnText}>Start swiping</Text>
-                  </TouchableOpacity>
                 </View>
               )}
 
@@ -732,12 +726,6 @@ export function SwipeScreen({
                   <Text style={s.emptyShortlistText}>
                     Swipe sessions in TOP 5 to save them here
                   </Text>
-                  <TouchableOpacity
-                    style={s.emptyShortlistBtn}
-                    onPress={() => setPlayTab('discover')}
-                  >
-                    <Text style={s.emptyShortlistBtnText}>Start swiping</Text>
-                  </TouchableOpacity>
                 </View>
               )}
             </>
