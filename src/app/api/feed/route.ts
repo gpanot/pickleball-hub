@@ -31,12 +31,10 @@ function toPlayerPayload(p: {
  * Sorted strictly newest-first by timestamp. Max 2 items per player, 20 total.
  */
 export async function GET(req: NextRequest) {
-  const t0 = Date.now();
   const user = await getMobileUser(req);
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  console.log(`[feed] auth: ${Date.now() - t0}ms`);
 
   const { searchParams } = new URL(req.url);
   const before = searchParams.get("before");
@@ -85,7 +83,6 @@ export async function GET(req: NextRequest) {
   } as const;
 
   // Fire all queries in parallel — roster queries, follow events, persisted feed, and live roster
-  const tParallel0 = Date.now();
   const [upcomingRosters, recentRosters, todayCompletedRosters, recentFollowing, recentFollowers, myLiveRoster] =
     await Promise.all([
       // "joining" — followees on upcoming sessions
@@ -213,12 +210,7 @@ export async function GET(req: NextRequest) {
         : Promise.resolve(null),
     ]);
 
-  console.log(`[feed] parallel queries (rosters+follows): ${Date.now() - tParallel0}ms`);
-
-  const tAssembly0 = Date.now();
-
   // ── Joining items ────────────────────────────────────────────────────────────
-  const tb0 = Date.now();
   for (const r of upcomingRosters) {
     const joined = r.session.snapshots[0]?.joined ?? 0;
     const spotsLeft = Math.max(0, r.session.maxPlayers - joined);
@@ -238,10 +230,8 @@ export async function GET(req: NextRequest) {
       eventUrl: r.session.eventUrl,
     });
   }
-  console.log(`[feed] joining items only: ${Date.now() - tb0}ms`);
 
   // ── Played_today items ───────────────────────────────────────────────────────
-  const tb2 = Date.now();
   const seenTodayKeys = new Set<string>();
   for (const r of todayCompletedRosters) {
     const key = `${r.userId}_${r.sessionId}`;
@@ -258,10 +248,8 @@ export async function GET(req: NextRequest) {
       sessionId: r.session.id,
     });
   }
-  console.log(`[feed] played_today items only: ${Date.now() - tb2}ms`);
 
   // ── Played items (past sessions grouped by player+club) ──────────────────────
-  const tb1 = Date.now();
   const playedMap = new Map<
     string,
     {
@@ -299,14 +287,12 @@ export async function GET(req: NextRequest) {
       sessionCount: v.count,
     });
   }
-  console.log(`[feed] played items only: ${Date.now() - tb1}ms`);
 
   // ── You are playing ──────────────────────────────────────────────────────────
   // myLiveRoster was fetched in the top-level Promise.all above.
   // Primary check: startTime <= now < endTime (exact window).
   // Fallback: session started today and durationMin covers the current time,
   // to handle sessions with a missing or stale endTime string.
-  const tb3 = Date.now();
   if (myLiveRoster) {
     const sess = myLiveRoster.session;
     // Derive effective endTime: prefer DB value, fall back to startTime + durationMin
@@ -349,7 +335,6 @@ export async function GET(req: NextRequest) {
       }
     }
   }
-  console.log(`[feed] you_are_playing only: ${Date.now() - tb3}ms`);
 
   // ── Streaks, DUPR history, and follow events — run in parallel ───────────────
   // These three are completely independent: no shared mutable state, different tables.
@@ -500,7 +485,6 @@ export async function GET(req: NextRequest) {
     return result;
   }
 
-  const ta1 = Date.now();
   const [streakItems, duprItems, kudosResultInner] = await Promise.all([
     computeStreaks(),
     computeDuprHistory(),
@@ -514,7 +498,6 @@ export async function GET(req: NextRequest) {
       : Promise.resolve([]),
   ]);
   kudosResult = kudosResultInner;
-  console.log(`[feed] streaks+dupr+kudos parallel: ${Date.now() - ta1}ms`);
 
   items.push(...streakItems, ...duprItems);
 
@@ -558,10 +541,8 @@ export async function GET(req: NextRequest) {
   });
 
   liveItems = filtered.slice(0, 20);
-  console.log(`[feed] item assembly total: ${Date.now() - tAssembly0}ms`);
 
   // Persist live items so they survive future unfollows — fire and forget, don't block the response
-  const tUpsert0 = Date.now();
   if (liveItems.length > 0) {
     void Promise.all(
       liveItems.map((item) =>
@@ -583,10 +564,8 @@ export async function GET(req: NextRequest) {
       )
     ).catch((err) => console.error("[feed] upsert error:", err));
   }
-  console.log(`[feed] upsert queued (non-blocking): ${Date.now() - tUpsert0}ms`);
   } // end if (!isPaginating)
 
-  const ta4 = Date.now();
   // Merge live items with historical persisted items (items no longer in live query)
   const liveItemIds = new Set(liveItems.map((i) => i.id));
   const historicalItems = persistedItems
@@ -600,9 +579,6 @@ export async function GET(req: NextRequest) {
   const finalItems = isPaginating ? mergedItems.slice(0, 30) : mergedItems.slice(0, 200);
   const hasMore = persistedItems.length === 30;
 
-  console.log(`[feed] persist read+merge: ${Date.now() - ta4}ms`);
-
-  const ta3 = Date.now();
   // kudosCounts was fetched in parallel with streaks+dupr above (live items only).
   // myKudos requires finalItems (includes historical persisted items) so is fetched here.
   const feedItemIds = finalItems.map((i) => i.id);
@@ -654,8 +630,6 @@ export async function GET(req: NextRequest) {
     },
   }));
 
-  console.log(`[feed] kudos: ${Date.now() - ta3}ms`);
-  console.log(`[feed] total: ${Date.now() - t0}ms`);
   return NextResponse.json({
     items: itemsWithKudos,
     hasFollows: true,

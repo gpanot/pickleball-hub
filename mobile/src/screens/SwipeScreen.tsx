@@ -10,7 +10,7 @@ import {
   Linking,
   Pressable,
 } from 'react-native'
-import { RefreshCw, Bookmark, ChevronRight } from 'lucide-react-native'
+import { RefreshCw, ChevronRight } from 'lucide-react-native'
 import * as Location from 'expo-location'
 import * as Haptics from 'expo-haptics'
 import { T } from '../theme'
@@ -706,28 +706,6 @@ export function SwipeScreen({
                 </>
               )}
 
-              {goingTabFilter === 'saved' && shortlistItems.length === 0 && (
-                <View style={s.emptyShortlist}>
-                  <Bookmark size={44} color="#1e1e1e" />
-                  <Text style={s.emptyShortlistText}>
-                    Swipe sessions in TOP 5 to save them here
-                  </Text>
-                  <Text style={s.emptyFriendsSub}>
-                    Press and hold a saved card to remove it
-                  </Text>
-                </View>
-              )}
-
-              {goingTabFilter !== 'saved' &&
-                friendsGoingForDay.length === 0 &&
-                shortlistItems.length === 0 && (
-                <View style={s.emptyShortlist}>
-                  <Bookmark size={44} color="#1e1e1e" />
-                  <Text style={s.emptyShortlistText}>
-                    Swipe sessions in TOP 5 to save them here
-                  </Text>
-                </View>
-              )}
             </>
           )}
         </ScrollView>

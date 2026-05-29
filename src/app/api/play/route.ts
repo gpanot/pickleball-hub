@@ -141,10 +141,7 @@ type PlayCard = {
  * Explore sessions are loaded separately via /api/sessions/swipe-deck.
  */
 export async function GET(req: NextRequest) {
-  const t0 = Date.now();
   const user = await getMobileUser(req);
-  const t1 = Date.now();
-  console.log(`[play] auth: ${t1 - t0}ms`);
 
   const { searchParams } = new URL(req.url);
   const lat = parseFloat(searchParams.get("lat") ?? "");
@@ -178,7 +175,6 @@ export async function GET(req: NextRequest) {
   const cacheMinLng = hasPreciseLocation ? round2(lng - lngDelta) : 0;
   const cacheMaxLng = hasPreciseLocation ? round2(lng + lngDelta) : 0;
 
-  const t2 = Date.now();
   const [userProfile, follows, allSessions] = await Promise.all([
     user?.reclubUserId
       ? prisma.player.findUnique({
@@ -194,8 +190,6 @@ export async function GET(req: NextRequest) {
       : Promise.resolve([]),
     getCachedSessions(dateStr, cacheMinLat, cacheMaxLat, cacheMinLng, cacheMaxLng),
   ]);
-  const t3 = Date.now();
-  console.log(`[play] parallel queries (profile+follows+sessions): ${t3 - t2}ms`);
 
   // Apply minTime filter in-memory (not in DB query so cache is shared across all request times)
   const sessions = minTime
@@ -269,7 +263,7 @@ export async function GET(req: NextRequest) {
       return {
         userId: uid.toString(),
         displayName: r.player?.displayName ?? "Player",
-        imageUrl: r.player?.imageUrl ?? reclubAvatarUrl(uid),
+        imageUrl: r.player?.imageUrl ?? reclubAvatarUrl(BigInt(uid)),
         duprDoubles:
           r.player?.duprDoubles != null ? Number(r.player.duprDoubles) : null,
       };
@@ -288,7 +282,7 @@ export async function GET(req: NextRequest) {
           userId: uid,
           displayName: r.player?.displayName ?? null,
           imageUrl:
-            r.player?.imageUrl ?? reclubAvatarUrl(r.player?.userId ?? r.userId),
+            r.player?.imageUrl ?? reclubAvatarUrl(BigInt(r.player?.userId ?? r.userId)),
           duprDoubles: Number(r.player!.duprDoubles),
           isFollowing: followeeIds.has(uid),
         };
@@ -343,9 +337,6 @@ export async function GET(req: NextRequest) {
     scored.push({ card, sessionId: session.id, duprCoverageCount });
   }
 
-  const t4 = Date.now();
-  console.log(`[play] scoring loop: ${t4 - t3}ms`);
-
   scored.sort((a, b) => b.card.matchScore - a.card.matchScore);
 
   // Compute per-slot max avgDupr across ALL eligible sessions (no 5-card cap)
@@ -377,7 +368,6 @@ export async function GET(req: NextRequest) {
     .map((s) => s.card)
     .sort((a, b) => a.startTime.localeCompare(b.startTime));
 
-  console.log(`[play] total: ${Date.now() - t0}ms`);
   return NextResponse.json(
     { top5, slotStats },
     { headers: { "Cache-Control": CACHE_CONTROL_PRIVATE } },

@@ -325,7 +325,7 @@ export async function GET(req: NextRequest) {
           userId: uid,
           displayName: r.player?.displayName ?? "Player",
           imageUrl:
-            r.player?.imageUrl ?? reclubAvatarUrl(r.player?.userId ?? r.userId),
+            r.player?.imageUrl ?? reclubAvatarUrl(BigInt(r.player?.userId ?? r.userId)),
           duprDoubles:
             r.player?.duprDoubles != null ? Number(r.player.duprDoubles) : null,
           isHost: r.isHost,
@@ -334,12 +334,12 @@ export async function GET(req: NextRequest) {
       });
 
       const regulars = s.rosters
-        .filter((r) => !r.isHost && clubRegulars.has(r.userId))
+        .filter((r) => !r.isHost && clubRegulars.has(BigInt(r.userId)))
         .slice(0, REGULARS_CAP)
         .map((r) => ({
           displayName: r.player?.displayName ?? "Player",
           imageUrl:
-            r.player?.imageUrl ?? reclubAvatarUrl(r.player?.userId ?? r.userId),
+            r.player?.imageUrl ?? reclubAvatarUrl(BigInt(r.player?.userId ?? r.userId)),
         }));
 
       const friendsInSession = friendsBySessionId.get(s.id) ?? [];
