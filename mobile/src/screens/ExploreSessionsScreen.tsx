@@ -6,7 +6,6 @@ import {
   ScrollView,
   RefreshControl,
   StyleSheet,
-  ActivityIndicator,
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import {
@@ -31,6 +30,7 @@ import { useAuthStore } from '../stores/authStore'
 import { useSessionStore } from '../stores/sessionStore'
 import { useUiStore } from '../stores/uiStore'
 import { SwipeFilterBar, SwipeFilterSheet } from '../components/SwipeFilterControls'
+import { SquaddLoader } from '../components/SquaddLoader'
 
 function vnDateString(offsetDays: number): string {
   const now = new Date()
@@ -268,12 +268,12 @@ export function ExploreSessionsScreen({ onClose }: Props) {
 
       {loading && total === 0 && !error ? (
         <View style={styles.centered}>
-          <ActivityIndicator size="large" color={T.amber} />
+          <SquaddLoader />
           <Text style={styles.loadingText}>Loading sessions...</Text>
         </View>
       ) : loading && total > 0 ? (
         <View style={styles.centered}>
-          <ActivityIndicator size="large" color={T.amber} />
+          <SquaddLoader />
           <Text style={styles.loadingText}>Updating sessions...</Text>
         </View>
       ) : error && total === 0 ? (

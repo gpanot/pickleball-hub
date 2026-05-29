@@ -19,6 +19,7 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { Rss, Users, Search, ArrowLeft, Sparkles, X } from 'lucide-react-native'
 import { TopBar } from '../components/CardBody'
+import { SquaddLoader } from '../components/SquaddLoader'
 import { T } from '../theme'
 import { useAuthStore } from '../stores/authStore'
 import { SignInPrompt } from '../components/SignInPrompt'
@@ -620,9 +621,7 @@ export function CircleScreen({ onOpenGear, gearSaved, gearSetupComplete }: { onO
           )}
 
           {/* Feed loading */}
-          {feedLoading && (
-            <ActivityIndicator color={T.amber} style={{ marginTop: 40 }} />
-          )}
+          {feedLoading && <SquaddLoader />}
 
           {/* Presence banners — 70/30 header row + full-width expanded content below */}
           {presence && (presence.totalLive > 0 || (presence.upcomingVenues?.length ?? 0) > 0) && (
@@ -992,11 +991,7 @@ export function CircleScreen({ onOpenGear, gearSaved, gearSetupComplete }: { onO
               )}
 
               {loadingFriends ? (
-                <ActivityIndicator
-                  size="large"
-                  color={T.amber}
-                  style={{ marginTop: 40 }}
-                />
+                <SquaddLoader />
               ) : friends.length === 0 ? (
                 <View style={{ alignItems: 'center', marginTop: 60 }}>
                   <Users size={40} color="#444" strokeWidth={1.5} />

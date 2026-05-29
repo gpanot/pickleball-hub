@@ -65,7 +65,6 @@ export async function GET(req: NextRequest) {
   const timeSlots = timeSlotsParam
     ? timeSlotsParam.split(",").filter((s) => ["morning", "afternoon", "evening"].includes(s))
     : ["morning", "afternoon", "evening"];
-
   const today = vnCalendarDateString(0);
   const tomorrow = vnCalendarDateString(1);
   const dateStr = filter === "tomorrow" ? tomorrow : today;
@@ -161,12 +160,13 @@ export async function GET(req: NextRequest) {
     const spotsLeft = Math.max(0, session.maxPlayers - joined);
     if (spotsLeft <= 0) continue;
 
-    // Time-slot filter
-    const startHour = parseInt(session.startTime.split(":")[0] ?? "12", 10);
-    const slot =
-      startHour < 12 ? "morning" : startHour < 17 ? "afternoon" : "evening";
-    if (timeSlots.length > 0 && timeSlots.length < 3 && !timeSlots.includes(slot))
-      continue;
+    // Time-slot filter — only applied when user explicitly excluded some slots
+    if (timeSlots.length < 3) {
+      const startHour = parseInt(session.startTime.split(":")[0] ?? "12", 10);
+      const slot =
+        startHour < 12 ? "morning" : startHour < 17 ? "afternoon" : "evening";
+      if (!timeSlots.includes(slot)) continue;
+    }
 
     // Min DUPR filter
     if (duprMin > 0 && session.duprStat?.avgDuprDoubles != null) {
@@ -290,7 +290,8 @@ export async function GET(req: NextRequest) {
   const top5 = scored
     .filter((s) => !friendSessionIds.has(s.sessionId) && s.duprCoverageCount >= 6)
     .slice(0, 5)
-    .map((s) => s.card);
+    .map((s) => s.card)
+    .sort((a, b) => a.startTime.localeCompare(b.startTime));
 
   return NextResponse.json(
     { top5 },

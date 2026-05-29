@@ -7,7 +7,6 @@ import {
   RefreshControl,
   StyleSheet,
   Dimensions,
-  ActivityIndicator,
   Linking,
   Pressable,
 } from 'react-native'
@@ -17,6 +16,7 @@ import * as Haptics from 'expo-haptics'
 import { T } from '../theme'
 import { type Session, averageDupr, isSessionStarted } from '../data'
 import { TopBar, CardBody, CARD_HEIGHT } from '../components/CardBody'
+import { SquaddLoader } from '../components/SquaddLoader'
 import { useSignUpModal } from '../contexts/SignUpModalContext'
 import { GearTeaserCard } from '../components/GearTeaserCard'
 import { SignInPrompt } from '../components/SignInPrompt'
@@ -170,6 +170,10 @@ export function SwipeScreen({
 
       const mapCards = (cards: PlayApiCard[]) =>
         (cards ?? []).map(playCardToFriendGoingItem)
+
+      ;(data.top5 as PlayApiCard[] ?? []).forEach((c, i) => {
+        debugLog('TOP5[card]', `#${i + 1} ${c.startTime} "${c.name}" score=${c.matchScore}`)
+      })
 
       setTop5(mapCards(data.top5))
       debugLog('PERF[TOP5]', `⏱ TOTAL: ${Date.now() - t0}ms ✅`)
@@ -371,12 +375,14 @@ export function SwipeScreen({
     [auth],
   )
 
-  // Boot: resolve location, load saved IDs, then do the initial data fetch.
+  // Boot: load data immediately with default location, resolve location in background.
   useEffect(() => {
     if (bootedRef.current) return
     bootedRef.current = true
     debugLog('PERF[TOP5]', '⏱ screen mounted — starting boot load')
     loadSavedIds()
+    playDataLoadedRef.current = true
+    loadPlayData()
     ;(async () => {
       try {
         const tLoc = Date.now()
@@ -385,16 +391,18 @@ export function SwipeScreen({
           const loc = await Location.getCurrentPositionAsync({
             accuracy: Location.Accuracy.Balanced,
           })
+          const prev = locationRef.current
           locationRef.current = { lat: loc.coords.latitude, lng: loc.coords.longitude }
           debugLog('PERF[TOP5]', `⏱ location resolved: ${Date.now() - tLoc}ms`)
+          if (prev.lat !== locationRef.current.lat || prev.lng !== locationRef.current.lng) {
+            loadPlayData()
+          }
         } else {
           debugLog('PERF[TOP5]', `⏱ location skipped (status=${status}): ${Date.now() - tLoc}ms — using HCMC default`)
         }
       } catch {
         // fallback to HCMC
       }
-      playDataLoadedRef.current = true
-      await loadPlayData()
     })()
   }, [])
 
@@ -502,9 +510,7 @@ export function SwipeScreen({
               />
             }
           >
-            {playLoading && top5.length === 0 && (
-              <ActivityIndicator color={T.amber} style={{ marginTop: 40 }} />
-            )}
+            {playLoading && top5.length === 0 && <SquaddLoader />}
 
             {top5.length === 0 && !playLoading && (
               <View style={s.emptyTop5}>
@@ -631,7 +637,7 @@ export function SwipeScreen({
           />
 
           {goingLoading ? (
-            <ActivityIndicator color={T.amber} style={{ marginTop: 40 }} />
+            <SquaddLoader />
           ) : (
             <>
               {goingTabFilter !== 'saved' && friendsGoingForDay.length > 0 && (

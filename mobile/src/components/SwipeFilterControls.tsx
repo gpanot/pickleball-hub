@@ -53,19 +53,17 @@ export function FilterPill({
     activeCount += swipeRangeKm !== SWIPE_FILTER_DEFAULTS.rangeKm ? 1 : 0
   }
 
-  const hasDuprFilter = swipeDuprMin !== SWIPE_FILTER_DEFAULTS.duprMin
   const primaryLabel = `⚡ Filters${activeCount > 0 ? ` · ${activeCount}` : ''}`
-  const secondaryLabel = hasDuprFilter ? `Min ${swipeDuprMin.toFixed(1)}+` : null
+  const secondaryLabel = `Min ${swipeDuprMin.toFixed(1)}+`
 
   const phase = useSharedValue(0)
 
   useEffect(() => {
-    if (!secondaryLabel) return
     const timer = setInterval(() => {
       phase.value = withTiming(phase.value === 0 ? 1 : 0, { duration: 450 })
     }, 3200)
     return () => clearInterval(timer)
-  }, [phase, !!secondaryLabel])
+  }, [phase])
 
   const primaryStyle = useAnimatedStyle(() => ({
     opacity: 1 - phase.value,
@@ -83,20 +81,14 @@ export function FilterPill({
       style={[bar.filterPill, activeCount > 0 && bar.filterPillActive]}
       activeOpacity={0.8}
     >
-      {secondaryLabel ? (
-        <View style={{ height: 16, minWidth: 70, alignItems: 'center', justifyContent: 'center' }}>
-          <Animated.Text style={[bar.filterPillText, activeCount > 0 && bar.filterPillTextActive, primaryStyle]}>
-            {primaryLabel}
-          </Animated.Text>
-          <Animated.Text style={[bar.filterPillText, activeCount > 0 && bar.filterPillTextActive, secondaryStyle]}>
-            {secondaryLabel}
-          </Animated.Text>
-        </View>
-      ) : (
-        <Text style={[bar.filterPillText, activeCount > 0 && bar.filterPillTextActive]}>
+      <View style={{ height: 16, minWidth: 70, alignItems: 'center', justifyContent: 'center' }}>
+        <Animated.Text style={[bar.filterPillText, activeCount > 0 && bar.filterPillTextActive, primaryStyle]}>
           {primaryLabel}
-        </Text>
-      )}
+        </Animated.Text>
+        <Animated.Text style={[bar.filterPillText, activeCount > 0 && bar.filterPillTextActive, secondaryStyle]}>
+          {secondaryLabel}
+        </Animated.Text>
+      </View>
     </TouchableOpacity>
   )
 }

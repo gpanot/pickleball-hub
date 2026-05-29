@@ -28,7 +28,7 @@
         <key>CFBundleURLSchemes</key>
         <array>
           <string>com.squadd.thehub.app</string>
-          <string>exp+the-hub</string>
+          <string>com.squadd.thehub.app</string>
         </array>
       </dict>
     </array>
