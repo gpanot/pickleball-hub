@@ -276,14 +276,10 @@ export async function GET(req: NextRequest) {
       sessionAvgDupr: session.duprStat?.avgDuprDoubles
         ? Number(session.duprStat.avgDuprDoubles)
         : null,
-      distanceKm,
-      fillRate,
-      joinedRecently,
-      fillingFast,
+      fillRate: Math.min(1, joined / Math.max(session.maxPlayers, 1)),
       returningPlayerPct: session.duprStat?.returningPlayerPct
         ? Number(session.duprStat.returningPlayerPct)
         : null,
-      friendCount,
     })
 
     const topRosterRows = (topRosterBySession.get(session.id) ?? []).slice(0, 8)

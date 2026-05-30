@@ -348,12 +348,8 @@ export async function GET(req: NextRequest) {
       const matchScore = calculateMatchScore({
         userDupr: userProfile?.duprDoubles ? Number(userProfile.duprDoubles) : null,
         sessionAvgDupr: s.duprStat?.avgDuprDoubles ? Number(s.duprStat.avgDuprDoubles) : null,
-        distanceKm,
-        fillRate,
-        joinedRecently,
-        fillingFast,
+        fillRate: Math.min(1, joined / Math.max(s.maxPlayers, 1)),
         returningPlayerPct: s.duprStat?.returningPlayerPct ? Number(s.duprStat.returningPlayerPct) : null,
-        friendCount,
       });
 
       return {

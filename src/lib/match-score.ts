@@ -1,57 +1,39 @@
-export function calculateMatchScore(params: {
-  userDupr: number | null;
-  sessionAvgDupr: number | null;
-  distanceKm: number | null;
-  fillRate: number;
-  joinedRecently: number;
-  fillingFast: boolean;
-  returningPlayerPct: number | null;
-  friendCount: number;
-}): number {
-  const {
-    userDupr,
-    sessionAvgDupr,
-    distanceKm,
-    fillRate,
-    joinedRecently,
-    fillingFast,
-    returningPlayerPct,
-    friendCount,
-  } = params;
+export interface MatchScoreParams {
+  userDupr: number | null
+  sessionAvgDupr: number | null
+  fillRate: number          // 0-1 e.g. 0.75 = 75% full
+  returningPlayerPct: number | null  // 0-1, null if unknown
+}
 
-  let dupr = 20;
-  if (userDupr && sessionAvgDupr) {
-    const diff = Math.abs(userDupr - sessionAvgDupr);
-    if (diff <= 0.2) dupr = 40;
-    else if (diff <= 0.4) dupr = 32;
-    else if (diff <= 0.6) dupr = 22;
-    else if (diff <= 1.0) dupr = 10;
-    else dupr = 0;
+export function calculateMatchScore(params: MatchScoreParams): number {
+  const { userDupr, sessionAvgDupr, fillRate, returningPlayerPct } = params
+
+  // Signal 1 — DUPR compatibility (55 pts)
+  let duprScore = 28 // neutral when data missing
+  if (userDupr !== null && sessionAvgDupr !== null) {
+    const diff = Math.abs(userDupr - sessionAvgDupr)
+    if (diff <= 0.2)      duprScore = 55
+    else if (diff <= 0.4) duprScore = 44
+    else if (diff <= 0.6) duprScore = 33
+    else if (diff <= 1.0) duprScore = 18
+    else                  duprScore = 5
   }
 
-  let dist = 12;
-  if (distanceKm !== null) {
-    if (distanceKm <= 1.5) dist = 25;
-    else if (distanceKm <= 3.0) dist = 20;
-    else if (distanceKm <= 5.0) dist = 14;
-    else dist = 0;
-  }
+  // Signal 2 — Fill momentum (30 pts) — 4 levels by % filled
+  let fillScore: number
+  if (fillRate >= 0.75)      fillScore = 30
+  else if (fillRate >= 0.50) fillScore = 22
+  else if (fillRate >= 0.25) fillScore = 12
+  else                       fillScore = 5
 
-  let momentum = 2;
-  if (fillingFast) momentum = 20;
-  else if (joinedRecently >= 2) momentum = 15;
-  else if (fillRate >= 0.5) momentum = 10;
-  else if (fillRate >= 0.3) momentum = 6;
-
-  let community = 5;
+  // Signal 3 — Community quality (15 pts)
+  let communityScore = 7 // neutral when null
   if (returningPlayerPct !== null) {
-    if (returningPlayerPct >= 0.7) community = 10;
-    else if (returningPlayerPct >= 0.5) community = 7;
-    else if (returningPlayerPct >= 0.3) community = 4;
-    else community = 2;
+    if (returningPlayerPct >= 0.6)      communityScore = 15
+    else if (returningPlayerPct >= 0.4) communityScore = 10
+    else if (returningPlayerPct >= 0.2) communityScore = 5
+    else                                communityScore = 3
   }
 
-  const friends = friendCount >= 3 ? 5 : friendCount >= 1 ? 3 : 0;
-
-  return Math.min(100, dupr + dist + momentum + community + friends);
+  return Math.min(100, duprScore + fillScore + communityScore)
 }

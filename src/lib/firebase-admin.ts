@@ -21,23 +21,40 @@ function credentialFingerprint(cred: ServiceAccountJson): string {
 function loadServiceAccount(): ServiceAccountJson {
   const rawJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON?.trim();
   if (rawJson) {
-    let parsed: ServiceAccountJson;
-    try {
-      parsed = JSON.parse(rawJson) as ServiceAccountJson;
-    } catch (e) {
-      console.error("[firebase-admin] FIREBASE_SERVICE_ACCOUNT_JSON is not valid JSON");
-      throw e;
-    }
-    if (!parsed.project_id || !parsed.client_email || !parsed.private_key) {
-      throw new Error(
-        "FIREBASE_SERVICE_ACCOUNT_JSON missing project_id, client_email, or private_key"
+    // Only attempt JSON parse if the value looks like a JSON object.
+    // Some hosts accidentally store the raw PEM private key in this variable —
+    // in that case we skip JSON parsing and fall through to the split-vars path.
+    if (rawJson.startsWith("{")) {
+      let parsed: ServiceAccountJson;
+      try {
+        parsed = JSON.parse(rawJson) as ServiceAccountJson;
+      } catch (e) {
+        console.error(
+          "[firebase-admin] FIREBASE_SERVICE_ACCOUNT_JSON starts with '{' but is not valid JSON — falling through to split env vars"
+        );
+        // fall through below
+        parsed = {} as ServiceAccountJson;
+      }
+      if (parsed.project_id && parsed.client_email && parsed.private_key) {
+        // JSON.parse already turns \n in the file into real newlines; fix double-escaped keys from some hosts
+        if (parsed.private_key.includes("\\n")) {
+          parsed.private_key = parsed.private_key.replace(/\\n/g, "\n");
+        }
+        console.log(
+          "[firebase-admin] loaded credentials from FIREBASE_SERVICE_ACCOUNT_JSON | project:", parsed.project_id
+        );
+        return parsed;
+      }
+      console.warn(
+        "[firebase-admin] FIREBASE_SERVICE_ACCOUNT_JSON parsed but missing fields — falling through to split env vars"
+      );
+    } else {
+      console.warn(
+        "[firebase-admin] FIREBASE_SERVICE_ACCOUNT_JSON does not start with '{' (got:",
+        rawJson.slice(0, 20),
+        "...) — ignoring and falling through to split env vars"
       );
     }
-    // JSON.parse already turns \n in the file into real newlines; fix double-escaped keys from some hosts
-    if (parsed.private_key.includes("\\n")) {
-      parsed.private_key = parsed.private_key.replace(/\\n/g, "\n");
-    }
-    return parsed;
   }
 
   const projectId = process.env.FIREBASE_PROJECT_ID;

@@ -295,14 +295,10 @@ export async function GET(req: NextRequest) {
       sessionAvgDupr: session.duprStat?.avgDuprDoubles
         ? Number(session.duprStat.avgDuprDoubles)
         : null,
-      distanceKm,
-      fillRate,
-      joinedRecently,
-      fillingFast,
+      fillRate: Math.min(1, joined / Math.max(session.maxPlayers, 1)),
       returningPlayerPct: session.duprStat?.returningPlayerPct
         ? Number(session.duprStat.returningPlayerPct)
         : null,
-      friendCount,
     });
 
     const venueName = session.venue?.name ?? session.club.name;
