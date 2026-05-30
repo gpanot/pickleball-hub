@@ -2,9 +2,7 @@ import { getSessions, getSessionsLastScrapedAt } from "@/lib/queries";
 import { vnCalendarDateString } from "@/lib/utils";
 import { HomeClient } from "@/components/HomeClient";
 
-// ISR: rely on on-demand revalidation from scraper (POST /api/revalidate).
-// Long interval avoids unnecessary ISR writes between scrapes.
-export const revalidate = false;
+export const dynamic = "force-dynamic";
 
 function toIsoStringOrNull(d: Date | null | undefined): string | null {
   if (d == null) return null;

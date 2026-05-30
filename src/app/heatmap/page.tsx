@@ -3,9 +3,7 @@ import { getSessions } from "@/lib/queries";
 import { vnCalendarDateString } from "@/lib/utils";
 import { HeatmapClient } from "./HeatmapClient";
 
-// ISR: rely on on-demand revalidation from scraper (POST /api/revalidate).
-// Long interval avoids unnecessary ISR writes between scrapes.
-export const revalidate = false;
+export const dynamic = "force-dynamic";
 
 export default async function HeatmapPage() {
   const todayStr = vnCalendarDateString(0);
