@@ -40,16 +40,37 @@ export async function GET(req: NextRequest) {
   const before = searchParams.get("before");
   const isPaginating = !!before;
 
-  const follows = await prisma.follow.findMany({
-    where: { followerId: user.profileId },
-    select: { followeeId: true },
-  });
+  const [follows, blockingRaw, blockedByRaw] = await Promise.all([
+    prisma.follow.findMany({
+      where: { followerId: user.profileId },
+      select: { followeeId: true },
+    }),
+    prisma.block.findMany({
+      where: { blockerId: user.profileId },
+      select: { blocked: { select: { reclubUserId: true } } },
+    }),
+    user.reclubUserId
+      ? prisma.block.findMany({
+          where: { blockedId: user.profileId },
+          select: { blocker: { select: { reclubUserId: true } } },
+        })
+      : Promise.resolve([]),
+  ]);
 
   if (follows.length === 0) {
     return NextResponse.json({ items: [], hasFollows: false, hasMore: false });
   }
 
-  const followeeIds = follows.map((f) => f.followeeId);
+  const blockedReclubIds = new Set<string>([
+    ...blockingRaw.flatMap((b) => (b.blocked.reclubUserId ? [b.blocked.reclubUserId.toString()] : [])),
+    ...(blockedByRaw as Array<{ blocker: { reclubUserId: bigint | null } }>).flatMap((b) =>
+      b.blocker.reclubUserId ? [b.blocker.reclubUserId.toString()] : [],
+    ),
+  ]);
+
+  const followeeIds = follows
+    .map((f) => f.followeeId)
+    .filter((id) => !blockedReclubIds.has(id.toString()));
   const items: any[] = [];
 
   // Read persisted feed items — cursor-paginated when `before` is supplied

@@ -52,10 +52,12 @@ export interface AuthState {
   displayName: string | null
   imageUrl: string | null
   duprRating: number | null
+  gender: string | null
   hasCompletedOnboarding: boolean
 
   isSignedIn: () => boolean
   setDuprRating: (rating: number | null) => void
+  setGender: (gender: string | null) => void
   signIn: (idToken: string) => Promise<boolean>
   signOut: () => void
   deleteAccount: () => Promise<void>
@@ -76,9 +78,12 @@ export const useAuthStore = create<AuthState>()(
       displayName: null,
       imageUrl: null,
       duprRating: null,
+      gender: null,
       hasCompletedOnboarding: false,
 
       setDuprRating: (duprRating) => set({ duprRating }),
+
+      setGender: (gender) => set({ gender }),
 
       isSignedIn: () => get().jwt !== null,
 
@@ -100,6 +105,7 @@ export const useAuthStore = create<AuthState>()(
             imageUrl: data.imageUrl,
             reclubUserId: data.reclubUserId,
             duprRating: data.duprRating ?? null,
+            gender: data.gender ?? null,
             hasCompletedOnboarding: data.hasCompletedOnboarding ?? false,
           })
           debugLog('auth', `ensureServerAuth OK, profileId=${data.profileId}`)
@@ -137,6 +143,7 @@ export const useAuthStore = create<AuthState>()(
             // Server is authoritative — use its values directly
             reclubUserId: data.reclubUserId,
             duprRating: data.duprRating ?? null,
+            gender: data.gender ?? null,
             hasCompletedOnboarding: data.hasCompletedOnboarding ?? false,
           })
           return true
@@ -155,6 +162,7 @@ export const useAuthStore = create<AuthState>()(
           displayName: null,
           imageUrl: null,
           duprRating: null,
+          gender: null,
         })
       },
 

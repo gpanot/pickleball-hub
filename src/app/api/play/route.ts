@@ -175,7 +175,7 @@ export async function GET(req: NextRequest) {
   const cacheMinLng = hasPreciseLocation ? round2(lng - lngDelta) : 0;
   const cacheMaxLng = hasPreciseLocation ? round2(lng + lngDelta) : 0;
 
-  const [userProfile, follows, allSessions] = await Promise.all([
+  const [userProfile, follows, allSessions, blockingRaw, blockedByRaw] = await Promise.all([
     user?.reclubUserId
       ? prisma.player.findUnique({
           where: { userId: user.reclubUserId },
@@ -189,6 +189,27 @@ export async function GET(req: NextRequest) {
         })
       : Promise.resolve([]),
     getCachedSessions(dateStr, cacheMinLat, cacheMaxLat, cacheMinLng, cacheMaxLng),
+    user?.profileId
+      ? prisma.block.findMany({
+          where: { blockerId: user.profileId },
+          select: { blocked: { select: { reclubUserId: true } } },
+        })
+      : Promise.resolve([]),
+    user?.profileId && user?.reclubUserId
+      ? prisma.block.findMany({
+          where: { blockedId: user.profileId },
+          select: { blocker: { select: { reclubUserId: true } } },
+        })
+      : Promise.resolve([]),
+  ]);
+
+  const blockedReclubIds = new Set<string>([
+    ...(blockingRaw as Array<{ blocked: { reclubUserId: bigint | null } }>).flatMap((b) =>
+      b.blocked.reclubUserId ? [b.blocked.reclubUserId.toString()] : [],
+    ),
+    ...(blockedByRaw as Array<{ blocker: { reclubUserId: bigint | null } }>).flatMap((b) =>
+      b.blocker.reclubUserId ? [b.blocker.reclubUserId.toString()] : [],
+    ),
   ]);
 
   // Apply minTime filter in-memory (not in DB query so cache is shared across all request times)
@@ -196,7 +217,11 @@ export async function GET(req: NextRequest) {
     ? allSessions.filter((s) => s.startTime >= minTime)
     : allSessions;
 
-  const followeeIds = new Set(follows.map((f) => f.followeeId.toString()));
+  const followeeIds = new Set(
+    follows
+      .map((f) => f.followeeId.toString())
+      .filter((id) => !blockedReclubIds.has(id)),
+  );
 
   type Scored = {
     card: PlayCard;

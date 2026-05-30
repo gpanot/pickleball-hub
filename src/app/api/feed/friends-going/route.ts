@@ -83,8 +83,8 @@ export async function GET(req: NextRequest) {
   const tomorrow = vnCalendarDateString(1)
   const minTime = vnCurrentTimeString()
 
-  // ── Fetch follow graph + user DUPR in parallel ──────────────────────────────
-  const [follows, userProfile] = await Promise.all([
+  // ── Fetch follow graph, blocks, and user DUPR in parallel ───────────────────
+  const [follows, userProfile, blocking, blockedBy] = await Promise.all([
     prisma.follow.findMany({
       where: { followerId: user.profileId },
       select: { followeeId: true },
@@ -95,9 +95,28 @@ export async function GET(req: NextRequest) {
           select: { duprDoubles: true },
         })
       : Promise.resolve(null),
+    prisma.block.findMany({
+      where: { blockerId: user.profileId },
+      select: { blocked: { select: { reclubUserId: true } } },
+    }),
+    user.reclubUserId
+      ? prisma.block.findMany({
+          where: { blockedId: user.profileId },
+          select: { blocker: { select: { reclubUserId: true } } },
+        })
+      : Promise.resolve([]),
   ])
 
-  const followeeIds = follows.map((f) => f.followeeId)
+  // Resolve blocked profile IDs → reclubUserIds (BigInt) to filter followeeIds
+  const blockedReclubIds = new Set<string>([
+    ...blocking.flatMap((b) => (b.blocked.reclubUserId ? [b.blocked.reclubUserId.toString()] : [])),
+    ...(blockedBy as Array<{ blocker: { reclubUserId: bigint | null } }>).flatMap((b) =>
+      b.blocker.reclubUserId ? [b.blocker.reclubUserId.toString()] : [],
+    ),
+  ])
+
+  const allFolloweeIds = follows.map((f) => f.followeeId)
+  const followeeIds = allFolloweeIds.filter((id) => !blockedReclubIds.has(id.toString()))
   const followeeIdSet = new Set(followeeIds.map((id) => id.toString()))
   const userDupr = userProfile?.duprDoubles != null ? Number(userProfile.duprDoubles) : null
 

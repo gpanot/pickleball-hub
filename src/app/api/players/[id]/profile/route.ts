@@ -59,7 +59,7 @@ export async function GET(
     }),
     prisma.playerProfile.findUnique({
       where: { reclubUserId: targetId },
-      select: { _count: { select: { following: true } } }
+      select: { id: true, _count: { select: { following: true } } }
     }),
     prisma.kudos.groupBy({
       by: ['type'],
@@ -287,6 +287,7 @@ export async function GET(
 
   return NextResponse.json({
     userId: player.userId.toString(),
+    profileId: playerProfile?.id ?? null,
     displayName: player.displayName,
     imageUrl: player.imageUrl ?? reclubAvatarUrl(player.userId),
     duprDoubles: player.duprDoubles ? Number(player.duprDoubles) : null,

@@ -10,6 +10,7 @@ export interface MobileUser {
   userId: string;
   profileId: string;
   reclubUserId: bigint | null;
+  suspended: boolean;
 }
 
 export async function signMobileJwt(payload: {
@@ -37,13 +38,18 @@ export async function getMobileUser(
 
     const profile = await prisma.playerProfile.findUnique({
       where: { id: profileId },
-      select: { reclubUserId: true },
+      select: { reclubUserId: true, banned: true, suspended: true },
     });
+
+    if (profile?.banned) {
+      return null;
+    }
 
     return {
       userId,
       profileId,
       reclubUserId: profile?.reclubUserId ?? null,
+      suspended: profile?.suspended ?? false,
     };
   } catch {
     return null;

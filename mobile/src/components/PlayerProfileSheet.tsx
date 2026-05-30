@@ -2,10 +2,10 @@ import React, { useEffect, useState, useCallback, useRef } from 'react'
 import {
   View, Text, ScrollView, TouchableOpacity,
   StyleSheet, Modal, Pressable, Dimensions, Image, Linking, Alert,
-  Animated as RNAnimated,
+  Animated as RNAnimated, Platform, ActionSheetIOS, TextInput,
 } from 'react-native'
 import * as Location from 'expo-location'
-import { X, MapPin } from 'lucide-react-native'
+import { X, MapPin, MoreHorizontal } from 'lucide-react-native'
 import { useAuthStore } from '../stores/authStore'
 import { T } from '../theme'
 import { formatDistance } from '../data'
@@ -66,6 +66,7 @@ interface ReclubKudo {
 
 interface PlayerProfile {
   userId: string
+  profileId: string | null
   displayName: string | null
   imageUrl: string | null
   duprDoubles: number | null
@@ -118,6 +119,12 @@ export function PlayerProfileSheet({ userId, onClose, stub }: Props) {
   const locationRef = useRef({ lat: HCMC_LAT, lng: HCMC_LNG })
   const locationReadyRef = useRef(false)
   const [avatarExpanded, setAvatarExpanded] = useState(false)
+
+  // Report / Block state
+  const [reportModalVisible, setReportModalVisible] = useState(false)
+  const [reportReason, setReportReason] = useState('')
+  const [reportDetail, setReportDetail] = useState('')
+  const [reportSubmitting, setReportSubmitting] = useState(false)
   const avatarScale = useRef(new RNAnimated.Value(1)).current
   // Shift the avatar down when expanding so it grows toward content, not into the modal top edge.
   // Avatar height = 156px. At scale 2 the extra height = 156px, half = 78px shift down.
@@ -235,9 +242,81 @@ export function PlayerProfileSheet({ userId, onClose, stub }: Props) {
     )
   }
 
+  const handleMoreMenu = useCallback(() => {
+    const targetProfileId = profile?.profileId
+    const name = profile?.displayName ?? 'this player'
+    if (!targetProfileId) return
+
+    const options = [`Report ${name}`, `Block ${name}`, 'Cancel']
+
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options,
+          cancelButtonIndex: options.length - 1,
+          destructiveButtonIndex: options.indexOf(`Block ${name}`),
+        },
+        (idx) => {
+          if (idx === 0) setReportModalVisible(true)
+          if (idx === 1) handleBlock(targetProfileId, name)
+        },
+      )
+    } else {
+      Alert.alert(name, undefined, [
+        { text: `Report ${name}`, onPress: () => setReportModalVisible(true) },
+        { text: `Block ${name}`, style: 'destructive', onPress: () => handleBlock(targetProfileId, name) },
+        { text: 'Cancel', style: 'cancel' },
+      ])
+    }
+  }, [profile])
+
+  const handleBlock = useCallback((targetProfileId: string, name: string) => {
+    Alert.alert(
+      `Block ${name}?`,
+      "They won't see your profile or activity.",
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Block',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await authedFetch(`/api/users/${targetProfileId}/block`, { method: 'POST' })
+              Alert.alert('Blocked.')
+              onClose()
+            } catch {
+              Alert.alert('Error', 'Could not block. Please try again.')
+            }
+          },
+        },
+      ],
+    )
+  }, [authedFetch, onClose])
+
+  const handleSubmitReport = useCallback(async () => {
+    const targetProfileId = profile?.profileId
+    if (!targetProfileId || !reportReason) return
+    setReportSubmitting(true)
+    try {
+      await authedFetch(`/api/users/${targetProfileId}/report`, {
+        method: 'POST',
+        body: JSON.stringify({ reason: reportReason, detail: reportDetail || null }),
+      })
+      setReportModalVisible(false)
+      setReportReason('')
+      setReportDetail('')
+      Alert.alert('Report submitted.', 'We review all reports.')
+    } catch {
+      Alert.alert('Error', 'Could not submit report. Please try again.')
+    } finally {
+      setReportSubmitting(false)
+    }
+  }, [authedFetch, profile, reportReason, reportDetail])
+
   if (!userId) return null
 
   return (
+    <>
     <Modal
       visible={!!userId}
       transparent
@@ -257,6 +336,17 @@ export function PlayerProfileSheet({ userId, onClose, stub }: Props) {
             accessibilityLabel="Close profile">
             <X size={18} color="#999" />
           </TouchableOpacity>
+
+          {profile?.profileId && (
+            <TouchableOpacity
+              style={s.moreBtn}
+              onPress={handleMoreMenu}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              accessibilityRole="button"
+              accessibilityLabel="More options">
+              <MoreHorizontal size={18} color="#999" />
+            </TouchableOpacity>
+          )}
 
           <ScrollView
             style={s.scroll}
@@ -497,6 +587,65 @@ export function PlayerProfileSheet({ userId, onClose, stub }: Props) {
         </View>
       </View>
     </Modal>
+
+    {/* Report reason picker modal */}
+    <Modal
+      visible={reportModalVisible}
+      transparent
+      animationType="fade"
+      onRequestClose={() => setReportModalVisible(false)}>
+      <View style={s.reportBackdrop}>
+        <View style={s.reportSheet}>
+          <Text style={s.reportTitle}>Report player</Text>
+
+          {[
+            { key: 'fake_account', label: 'Fake account' },
+            { key: 'inappropriate', label: 'Inappropriate' },
+            { key: 'harassment', label: 'Harassment' },
+            { key: 'other', label: 'Other' },
+          ].map(({ key, label }) => (
+            <TouchableOpacity
+              key={key}
+              style={[s.reportOption, reportReason === key && s.reportOptionActive]}
+              onPress={() => setReportReason(key)}
+            >
+              <Text style={[s.reportOptionText, reportReason === key && s.reportOptionTextActive]}>
+                {label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+
+          <TextInput
+            style={s.reportInput}
+            value={reportDetail}
+            onChangeText={setReportDetail}
+            placeholder="Additional details (optional)"
+            placeholderTextColor="#555"
+            multiline
+            numberOfLines={3}
+          />
+
+          <View style={s.reportActions}>
+            <TouchableOpacity
+              style={s.reportCancelBtn}
+              onPress={() => {
+                setReportModalVisible(false)
+                setReportReason('')
+                setReportDetail('')
+              }}>
+              <Text style={s.reportCancelText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[s.reportSubmitBtn, (!reportReason || reportSubmitting) && { opacity: 0.5 }]}
+              onPress={handleSubmitReport}
+              disabled={!reportReason || reportSubmitting}>
+              <Text style={s.reportSubmitText}>Submit</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+    </>
   )
 }
 
@@ -895,5 +1044,92 @@ const s = StyleSheet.create({
     color: '#333',
     fontStyle: 'italic',
     paddingVertical: 8,
+  },
+  moreBtn: {
+    position: 'absolute',
+    top: 16,
+    right: 48,
+    zIndex: 10,
+    padding: 4,
+  },
+  reportBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  reportSheet: {
+    backgroundColor: '#141414',
+    borderRadius: 16,
+    padding: 20,
+    width: '100%',
+  },
+  reportTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#fff',
+    marginBottom: 16,
+  },
+  reportOption: {
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#2a2a2a',
+    marginBottom: 8,
+  },
+  reportOptionActive: {
+    borderColor: '#ef4444',
+    backgroundColor: 'rgba(239,68,68,0.08)',
+  },
+  reportOptionText: {
+    fontSize: 14,
+    color: '#aaa',
+  },
+  reportOptionTextActive: {
+    color: '#ef4444',
+    fontWeight: '600',
+  },
+  reportInput: {
+    backgroundColor: '#1a1a1a',
+    borderRadius: 10,
+    padding: 12,
+    fontSize: 13,
+    color: '#fff',
+    borderWidth: 1,
+    borderColor: '#2a2a2a',
+    marginTop: 8,
+    minHeight: 72,
+    textAlignVertical: 'top',
+  },
+  reportActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 16,
+  },
+  reportCancelBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#333',
+    alignItems: 'center',
+  },
+  reportCancelText: {
+    fontSize: 14,
+    color: '#888',
+  },
+  reportSubmitBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 10,
+    backgroundColor: '#ef4444',
+    alignItems: 'center',
+  },
+  reportSubmitText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#fff',
   },
 })

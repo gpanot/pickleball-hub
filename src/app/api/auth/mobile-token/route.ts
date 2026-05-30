@@ -56,6 +56,7 @@ export async function GET(req: NextRequest) {
       : null,
     hasCompletedOnboarding: profile.onboardingCompleted,
     duprRating,
+    gender: profile.gender ?? null,
   });
 }
 
@@ -160,6 +161,7 @@ export async function POST(req: NextRequest) {
         : null,
       hasCompletedOnboarding: profile.onboardingCompleted,
       duprRating,
+      gender: profile.gender ?? null,
     });
   } catch (err) {
     console.error("[POST /api/auth/mobile-token]", err);

@@ -36,6 +36,7 @@ import { PeopleYouMayKnowScreen } from './PeopleYouMayKnowScreen'
 import type { FeedItem, FeedItemType, CoPlayerSuggestion } from '../data'
 import { useProfileMenu } from '../contexts/ProfileMenuContext'
 import { useUiStore } from '../stores/uiStore'
+import { NotificationPermissionSheet } from '../components/NotificationPermissionSheet'
 
 type CircleSubTab = 'feed' | 'players'
 
@@ -143,6 +144,7 @@ export function CircleScreen({ onOpenGear, gearSaved, gearSetupComplete }: { onO
     new Set()
   )
   const [showAvatarTip, setShowAvatarTip] = useState(false)
+  const [showNotifSheet, setShowNotifSheet] = useState(false)
 
   useEffect(() => {
     if (feedItems.length > 0 && !showAvatarTip) {
@@ -151,6 +153,23 @@ export function CircleScreen({ onOpenGear, gearSaved, gearSetupComplete }: { onO
       })
     }
   }, [feedItems.length])
+
+  // Mark that the user has seen the feed (used by location permission logic)
+  useEffect(() => {
+    if (jwt) {
+      AsyncStorage.setItem('squadd_has_seen_feed', '1')
+    }
+  }, [jwt])
+
+  // Show notification permission sheet once after onboarding
+  useEffect(() => {
+    if (!jwt) return
+    AsyncStorage.getItem('squadd_notif_permission_asked').then((val) => {
+      if (!val) {
+        setTimeout(() => setShowNotifSheet(true), 1500)
+      }
+    })
+  }, [jwt])
 
   // When a pn4 notification is tapped, prepend a new_follower feed item
   useEffect(() => {
@@ -856,7 +875,7 @@ export function CircleScreen({ onOpenGear, gearSaved, gearSetupComplete }: { onO
           {/* Feed items */}
           {!feedLoading && (() => {
             const livePlayerIds = new Set(
-              presence?.liveVenues.flatMap((v: any) => v.players.map((p: any) => p.userId)) ?? []
+              presence?.liveVenues?.flatMap((v: any) => v.players.map((p: any) => p.userId)) ?? []
             )
             return feedItems.map((item, index) => (
               <FeedItemRow
@@ -1179,6 +1198,10 @@ export function CircleScreen({ onOpenGear, gearSaved, gearSetupComplete }: { onO
           )}
         </View>
       </Modal>
+      <NotificationPermissionSheet
+        visible={showNotifSheet}
+        onClose={() => setShowNotifSheet(false)}
+      />
     </View>
   )
 }

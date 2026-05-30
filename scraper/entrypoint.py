@@ -104,18 +104,20 @@ def _run_tomorrow_roster_refresh(db_url: str) -> None:
 
 
 def cleanup_old_feed_items(db_url: str) -> None:
-    """Remove feed_items older than 90 days to prevent unbounded table growth."""
+    """Remove feed_items older than 90 days and expired play_intents."""
     url = db_url.split("?")[0] if "?" in db_url else db_url
     try:
         conn = psycopg2.connect(url)
         cur = conn.cursor()
         cur.execute("DELETE FROM feed_items WHERE created_at < NOW() - INTERVAL '90 days'")
         deleted = cur.rowcount
+        if deleted:
+            print(f"  [feed_cleanup] Removed {deleted} old feed items", flush=True)
+        cur.execute("DELETE FROM play_intents WHERE expires_at < NOW()")
+        print(f"  [cleanup] Removed expired play intents: {cur.rowcount}", flush=True)
         conn.commit()
         cur.close()
         conn.close()
-        if deleted:
-            print(f"  [feed_cleanup] Removed {deleted} old feed items", flush=True)
     except Exception as e:
         print(f"  [feed_cleanup] ERROR (non-fatal): {e}", flush=True)
 

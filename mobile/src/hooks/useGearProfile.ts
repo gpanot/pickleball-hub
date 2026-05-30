@@ -7,7 +7,11 @@ const EMPTY_GEAR: GearProfile = { gender: null, cap: null, shirt: null, paddle: 
 
 type AuthedFetch = (path: string, options?: RequestInit) => Promise<Response>
 
-export function useGearProfile(profileId: string | null, authedFetch: AuthedFetch) {
+export function useGearProfile(
+  profileId: string | null,
+  authedFetch: AuthedFetch,
+  onGenderChange?: (gender: string) => void,
+) {
   const [gear, setGear]               = useState<GearProfile>(EMPTY_GEAR)
   const [loading, setLoading]         = useState(true)
   const [saving, setSaving]           = useState(false)
@@ -65,20 +69,40 @@ export function useGearProfile(profileId: string | null, authedFetch: AuthedFetc
       try {
         await AsyncStorage.setItem(cacheKey, JSON.stringify(updated))
         setGear(updated)
-        const res = await authedFetch(`/api/players/${profileId}/gear`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(updated),
-        })
+
+        const ops: Promise<Response>[] = [
+          authedFetch(`/api/players/${profileId}/gear`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(updated),
+          }),
+        ]
+
+        // Persist gender to PlayerProfile if it changed
+        if (updated.gender) {
+          ops.push(
+            authedFetch('/api/profile', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ profileId, gender: updated.gender }),
+            }),
+          )
+        }
+
+        const [res] = await Promise.all(ops)
         if (!res.ok) throw new Error('save failed')
         const saved: GearProfile = await res.json()
+
+        if (updated.gender) onGenderChange?.(updated.gender)
+
         if (saved.setupComplete) {
           setGearSetupComplete(true)
           await AsyncStorage.setItem('hasSeenGearPrompt', 'done')
         }
-        // Update cache with server response (includes setupComplete)
-        await AsyncStorage.setItem(cacheKey, JSON.stringify(saved))
-        setGear(saved)
+        // Preserve gender client-side since gear API no longer stores it
+        const merged = { ...saved, gender: updated.gender }
+        await AsyncStorage.setItem(cacheKey, JSON.stringify(merged))
+        setGear(merged)
         setSavedConfirmation(true)
         setTimeout(() => setSavedConfirmation(false), 2000)
         return true
@@ -89,7 +113,7 @@ export function useGearProfile(profileId: string | null, authedFetch: AuthedFetc
         setSaving(false)
       }
     },
-    [profileId, cacheKey, authedFetch],
+    [profileId, cacheKey, authedFetch, onGenderChange],
   )
 
   return { gear, loading, saving, error, saveGear, savedConfirmation, gearSetupComplete }

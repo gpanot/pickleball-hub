@@ -6,7 +6,7 @@ export async function POST(req: NextRequest) {
   try {
     const user = await getMobileUser(req);
     const body = await req.json();
-    const { profileId, zaloId, displayName, preferences, reclubUserId } = body;
+    const { profileId, zaloId, displayName, preferences, reclubUserId, gender } = body;
 
     // Use authenticated profileId if available, fall back to body for legacy callers
     const resolvedProfileId = user?.profileId ?? profileId;
@@ -32,20 +32,29 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    // Merge gender into preferences JSON if provided
+    const mergedPreferences = preferences != null
+      ? { ...(typeof preferences === 'object' ? preferences : {}), ...(gender ? { gender } : {}) }
+      : undefined;
+
+    const genderValue = typeof gender === 'string' && gender.trim() ? gender.trim() : undefined;
+
     const profile = await prisma.playerProfile.upsert({
       where: { id: resolvedProfileId },
       create: {
         id: resolvedProfileId,
         zaloId: zaloId ?? null,
         displayName: displayName ?? null,
-        preferences: preferences ?? {},
+        gender: genderValue ?? null,
+        preferences: mergedPreferences ?? {},
         reclubUserId: reclubId ?? null,
         onboardingCompleted: markOnboardingComplete,
       },
       update: {
         zaloId: zaloId ?? undefined,
         displayName: displayName ?? undefined,
-        preferences: preferences ?? undefined,
+        preferences: mergedPreferences ?? undefined,
+        ...(genderValue !== undefined ? { gender: genderValue } : {}),
         ...(reclubId !== undefined ? { reclubUserId: reclubId } : {}),
         ...(markOnboardingComplete ? { onboardingCompleted: true } : {}),
       },

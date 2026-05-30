@@ -204,6 +204,7 @@ model PlayerProfile {
   zaloId                String?   @unique @map("zalo_id")
   reclubUserId          BigInt?   @unique @map("reclub_user_id")
   displayName           String?   @map("display_name")
+  gender                String?
   preferences           Json      @default("{}")
   onboardingCompleted   Boolean   @default(false) @map("onboarding_completed")
   pushToken             String?   @map("push_token")
@@ -211,6 +212,9 @@ model PlayerProfile {
   lastActiveAt          DateTime? @map("last_active_at")
   streakData            Json?     @map("streak_data")
   streakComputedAt      DateTime? @map("streak_computed_at")
+  reportFlaggedAt       DateTime? @map("report_flagged_at")
+  suspended             Boolean   @default(false)
+  banned                Boolean   @default(false)
   createdAt             DateTime  @default(now()) @map("created_at")
   lastSeen              DateTime  @updatedAt @map("last_seen")
 
@@ -221,6 +225,11 @@ model PlayerProfile {
   notificationsSent     NotificationSent[] @relation("sender")
   gear         PlayerGear?
   feedItems    FeedItem[]
+  playIntent        PlayIntent?
+  blocking          Block[]   @relation("Blocker")
+  blockedBy         Block[]   @relation("Blocked")
+  reportsMade       Report[]  @relation("Reporter")
+  reportsReceived   Report[]  @relation("Reported")
 
   @@map("player_profiles")
 }
@@ -228,7 +237,6 @@ model PlayerProfile {
 model PlayerGear {
   id                String    @id @default(cuid())
   profileId         String    @unique @map("profile_id")
-  gender            String?
   cap               String?
   shirt             String?
   paddle            String?
@@ -433,6 +441,54 @@ model FeedItem {
   @@index([profileId, timestamp(sort: Desc)])
   @@index([profileId, type])
   @@map("feed_items")
+}
+
+model PlayIntent {
+  id          String        @id @default(cuid())
+  profileId   String        @unique @map("profile_id")
+  timeSlot    String        @map("time_slot")
+  date        String
+  zaloNumber  String?       @map("zalo_number")
+  expiresAt   DateTime      @map("expires_at")
+  createdAt   DateTime      @default(now()) @map("created_at")
+
+  profile     PlayerProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt])
+  @@map("play_intents")
+}
+
+model Block {
+  id          String        @id @default(cuid())
+  blockerId   String        @map("blocker_id")
+  blockedId   String        @map("blocked_id")
+  createdAt   DateTime      @default(now()) @map("created_at")
+
+  blocker     PlayerProfile @relation("Blocker", fields: [blockerId], references: [id], onDelete: Cascade)
+  blocked     PlayerProfile @relation("Blocked", fields: [blockedId], references: [id], onDelete: Cascade)
+
+  @@unique([blockerId, blockedId])
+  @@index([blockerId])
+  @@index([blockedId])
+  @@map("blocks")
+}
+
+model Report {
+  id           String        @id @default(cuid())
+  reporterId   String        @map("reporter_id")
+  reportedId   String        @map("reported_id")
+  reason       String
+  detail       String?
+  status       String        @default("pending")
+  createdAt    DateTime      @default(now()) @map("created_at")
+
+  reporter     PlayerProfile @relation("Reporter", fields: [reporterId], references: [id], onDelete: Cascade)
+  reported     PlayerProfile @relation("Reported", fields: [reportedId], references: [id], onDelete: Cascade)
+
+  @@unique([reporterId, reportedId])
+  @@index([reportedId])
+  @@index([status])
+  @@map("reports")
 }
 
 /// Aggregated DUPR participation for a session row (keyed by sessions.id).

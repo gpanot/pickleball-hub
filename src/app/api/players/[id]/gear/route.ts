@@ -3,7 +3,7 @@ import { prisma } from '@/lib/db'
 import { getMobileUser } from '@/lib/mobile-auth'
 
 const EMPTY_GEAR = { gender: null, cap: null, shirt: null, paddle: null, shoes: null, setupComplete: false }
-const VALID_KEYS = ['gender', 'cap', 'shirt', 'paddle', 'shoes'] as const
+const VALID_GEAR_KEYS = ['cap', 'shirt', 'paddle', 'shoes'] as const
 
 export async function GET(
   req: NextRequest,
@@ -18,17 +18,25 @@ export async function GET(
   }
 
   try {
-    const gear = await prisma.playerGear.findUnique({
-      where: { profileId: id },
-      select: { gender: true, cap: true, shirt: true, paddle: true, shoes: true, setupCompletedAt: true },
-    })
-    if (!gear) return NextResponse.json(EMPTY_GEAR)
+    const [gear, profile] = await Promise.all([
+      prisma.playerGear.findUnique({
+        where: { profileId: id },
+        select: { cap: true, shirt: true, paddle: true, shoes: true, setupCompletedAt: true },
+      }),
+      prisma.playerProfile.findUnique({ where: { id }, select: { gender: true } }),
+    ])
+
+    const gender = profile?.gender ?? null
+
+    if (!gear) {
+      return NextResponse.json({ ...EMPTY_GEAR, gender })
+    }
 
     const setupComplete =
       gear.setupCompletedAt != null ||
       (gear.cap != null && gear.shirt != null && gear.paddle != null && gear.shoes != null)
 
-    return NextResponse.json({ ...gear, setupCompletedAt: undefined, setupComplete })
+    return NextResponse.json({ ...gear, gender, setupComplete })
   } catch (err) {
     console.error('[GET /api/players/[id]/gear]', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
@@ -49,31 +57,46 @@ export async function PUT(
 
   try {
     const body = await req.json()
+
+    // gender lives on PlayerProfile, not PlayerGear — update it separately if provided
+    const genderValue = typeof body.gender === 'string' && body.gender.trim() ? body.gender.trim() : undefined
+
     const data: Record<string, string | null> = {}
-    for (const key of VALID_KEYS) {
+    for (const key of VALID_GEAR_KEYS) {
       const val = body[key]
       data[key] = typeof val === 'string' && val.trim() ? val.trim() : null
     }
 
     const allFilled = data.cap != null && data.shirt != null && data.paddle != null && data.shoes != null
 
-    const gear = await prisma.playerGear.upsert({
-      where: { profileId: id },
-      update: {
-        ...data,
-        ...(allFilled ? { setupCompletedAt: new Date() } : {}),
-      },
-      create: {
-        profileId: id,
-        ...data,
-        ...(allFilled ? { setupCompletedAt: new Date() } : {}),
-      },
-      select: { gender: true, cap: true, shirt: true, paddle: true, shoes: true, setupCompletedAt: true },
-    })
+    const ops: Promise<unknown>[] = [
+      prisma.playerGear.upsert({
+        where: { profileId: id },
+        update: {
+          ...data,
+          ...(allFilled ? { setupCompletedAt: new Date() } : {}),
+        },
+        create: {
+          profileId: id,
+          ...data,
+          ...(allFilled ? { setupCompletedAt: new Date() } : {}),
+        },
+        select: { cap: true, shirt: true, paddle: true, shoes: true, setupCompletedAt: true },
+      }),
+    ]
+
+    if (genderValue) {
+      ops.push(prisma.playerProfile.update({ where: { id }, data: { gender: genderValue } }))
+    }
+
+    const [gear] = (await Promise.all(ops)) as [
+      { cap: string | null; shirt: string | null; paddle: string | null; shoes: string | null; setupCompletedAt: Date | null },
+      ...unknown[]
+    ]
 
     const setupComplete = gear.setupCompletedAt != null || allFilled
 
-    return NextResponse.json({ ...gear, setupCompletedAt: undefined, setupComplete })
+    return NextResponse.json({ ...gear, gender: genderValue ?? null, setupComplete })
   } catch (err) {
     console.error('[PUT /api/players/[id]/gear]', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

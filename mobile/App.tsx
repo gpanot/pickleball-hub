@@ -47,10 +47,13 @@ export default function App() {
   const jwt = useAuthStore((s) => s.jwt)
   const authStore = useAuthStore()
   const profileId = useAuthStore((s) => s.profileId)
+  const storedGender = useAuthStore((s) => s.gender)
   const pushTokenRegistered = useRef(false)
 
+  const setGenderInStore = useAuthStore((s) => s.setGender)
+
   const { gear, loading: gearLoading, saving: gearSaving, error: gearError, saveGear, savedConfirmation, gearSetupComplete } =
-    useGearProfile(profileId ?? null, authStore.authedFetch)
+    useGearProfile(profileId ?? null, authStore.authedFetch, setGenderInStore)
 
   const handleGearSave = async (updated: GearProfile) => {
     const ok = await saveGear(updated)
@@ -314,7 +317,7 @@ export default function App() {
             />
             <View style={styles.gearSheet} pointerEvents="auto">
               <GearSetupScreen
-                gender={gear.gender ? playerGenderFromStored(gear.gender) : null}
+                gender={playerGenderFromStored(storedGender ?? gear.gender)}
                 initialGear={gear}
                 saving={gearSaving}
                 error={gearError}

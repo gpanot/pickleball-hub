@@ -10,6 +10,8 @@ import {
   Dimensions,
   Linking,
   Pressable,
+  Image,
+  Animated,
 } from 'react-native'
 import { RefreshCw, Trophy, Users } from 'lucide-react-native'
 import * as Location from 'expo-location'
@@ -34,8 +36,27 @@ import {
   getStartHour,
 } from '../components/FriendGoingCard'
 import type { FriendGoingItem } from '../components/FriendGoingCard'
+import { IntentSheet } from '../components/IntentSheet'
 
 type GoingTabFilter = SwipeDateFilter | 'saved'
+
+type PlayIntent = {
+  profileId: string
+  displayName: string
+  imageUrl: string | null
+  timeSlot: string
+  date: string
+  distanceKm: number | null
+  zaloNumber: string | null
+  expiresAt: string
+}
+
+type MyActiveIntent = {
+  timeSlot: string
+  date: string
+  zaloNumber: string | null
+  expiresAt: string
+} | null
 
 type PlayApiCard = {
   sessionId: number
@@ -83,6 +104,8 @@ function playCardToFriendGoingItem(c: PlayApiCard): FriendGoingItem {
   }
 }
 import { debugLog } from '../lib/debug'
+import AsyncStorage from '@react-native-async-storage/async-storage'
+import { LocationPermissionSheet } from '../components/LocationPermissionSheet'
 
 const { height: H } = Dimensions.get('window')
 
@@ -132,6 +155,23 @@ export function SwipeScreen({
   const [top5FilterKey, setTop5FilterKey] = useState(0)
   const [top5VibeFilter, setTop5VibeFilter] = useState<'social' | 'competitive' | null>(null)
   const [top5SpotsOnly, setTop5SpotsOnly] = useState(false)
+
+  const [playIntents, setPlayIntents] = useState<PlayIntent[]>([])
+  const [intentSheetOpen, setIntentSheetOpen] = useState(false)
+  const [myActiveIntent, setMyActiveIntent] = useState<MyActiveIntent>(null)
+
+  const currentUserGender = useAuthStore((s) => s.gender)
+  const [showLocationSheet, setShowLocationSheet] = useState(false)
+
+  const pulseAnim = useRef(new Animated.Value(1)).current
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, { toValue: 0.2, duration: 800, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1, duration: 800, useNativeDriver: true }),
+      ]),
+    ).start()
+  }, [pulseAnim])
 
   const auth = useAuthStore.getState()
 
@@ -190,15 +230,23 @@ export function SwipeScreen({
       const { lat, lng } = locationRef.current
       const locQs = `&lat=${lat}&lng=${lng}`
       const tFetch = Date.now()
-      const res = await auth.authedFetch(`/api/feed/friends-going?filter=both${locQs}`)
-      debugLog('PERF[FRIENDS]', `⏱ network: ${Date.now() - tFetch}ms → HTTP ${res.status}`)
-      if (res.ok) {
-        const data = await res.json()
+      const [friendsRes, intentRes] = await Promise.all([
+        auth.authedFetch(`/api/feed/friends-going?filter=both${locQs}`),
+        auth.authedFetch('/api/play-intent/feed'),
+      ])
+      debugLog('PERF[FRIENDS]', `⏱ network: ${Date.now() - tFetch}ms → HTTP ${friendsRes.status}`)
+      if (friendsRes.ok) {
+        const data = await friendsRes.json()
         const todayItems: FriendGoingItem[] = data.today ?? []
         const tomorrowItems: FriendGoingItem[] = data.tomorrow ?? []
         setFriendsGoingToday(todayItems)
         setFriendsGoingTomorrow(tomorrowItems)
         debugLog('PERF[FRIENDS]', `⏱ parsed: today=${todayItems.length} tomorrow=${tomorrowItems.length}`)
+      }
+      if (intentRes.ok) {
+        const intentData = await intentRes.json()
+        setPlayIntents(intentData.items ?? [])
+        setMyActiveIntent(intentData.myActiveIntent ?? null)
       }
       debugLog('PERF[FRIENDS]', `⏱ TOTAL: ${Date.now() - t0}ms ✅`)
     } finally {
@@ -390,7 +438,7 @@ export function SwipeScreen({
     ;(async () => {
       try {
         const tLoc = Date.now()
-        const { status } = await Location.requestForegroundPermissionsAsync()
+        const { status } = await Location.getForegroundPermissionsAsync()
         if (status === 'granted') {
           const loc = await Location.getCurrentPositionAsync({
             accuracy: Location.Accuracy.Balanced,
@@ -402,7 +450,18 @@ export function SwipeScreen({
             loadPlayData()
           }
         } else {
-          debugLog('PERF[TOP5]', `⏱ location skipped (status=${status}): ${Date.now() - tLoc}ms — using HCMC default`)
+          debugLog('PERF[TOP5]', `⏱ location not granted (status=${status}): ${Date.now() - tLoc}ms — using HCMC default`)
+          // Show location permission sheet only on the 2nd+ visit to Top 5
+          const alreadyAsked = await AsyncStorage.getItem('squadd_location_permission_asked')
+          if (!alreadyAsked) {
+            const visitKey = 'squadd_top5_visit_count'
+            const prev = parseInt(await AsyncStorage.getItem(visitKey) ?? '0', 10)
+            const count = prev + 1
+            await AsyncStorage.setItem(visitKey, String(count))
+            if (count >= 2) {
+              setShowLocationSheet(true)
+            }
+          }
         }
       } catch {
         // fallback to HCMC
@@ -660,6 +719,56 @@ export function SwipeScreen({
             <SquaddLoader />
           ) : (
             <>
+              {currentUserGender === 'female' && (
+                <View style={s.intentStrip}>
+                  <View style={s.intentStripHeader}>
+                    <View style={s.intentStripLeft}>
+                      <Animated.View style={[s.intentDot, { opacity: pulseAnim }]} />
+                      <Text style={s.intentStripTitle}>LOOKING TO PLAY</Text>
+                    </View>
+                    {playIntents.length > 0 && (
+                      <View style={s.intentCount}>
+                        <Text style={s.intentCountText}>{playIntents.length} women</Text>
+                      </View>
+                    )}
+                  </View>
+
+                  {playIntents.map((intent) => (
+                    <View key={intent.profileId} style={s.intentRow}>
+                      <Image
+                        source={{ uri: intent.imageUrl ?? undefined }}
+                        style={s.intentAv}
+                      />
+                      <View style={s.intentInfo}>
+                        <Text style={s.intentName}>{intent.displayName}</Text>
+                        <Text style={s.intentMeta}>
+                          {capitalize(intent.timeSlot)} · {intent.date}
+                          {intent.distanceKm ? ` · ~${intent.distanceKm}km` : ''}
+                        </Text>
+                        {intent.zaloNumber && (
+                          <TouchableOpacity
+                            onPress={() =>
+                              Linking.openURL(`zalo://chat?phone=${intent.zaloNumber}`)
+                            }
+                          >
+                            <Text style={s.intentZalo}>Zalo: {intent.zaloNumber}</Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    </View>
+                  ))}
+
+                  <TouchableOpacity
+                    style={s.intentAddBtn}
+                    onPress={() => setIntentSheetOpen(true)}
+                  >
+                    <Text style={s.intentAddText}>
+                      {myActiveIntent ? 'Update my availability' : "+ I'm looking to play"}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
               {goingTabFilter !== 'saved' && friendsGoingForDay.length > 0 && (
                 <>
                   <View style={s.goingSectionHeader}>
@@ -733,6 +842,23 @@ export function SwipeScreen({
         </ScrollView>
       )}
 
+      <IntentSheet
+        visible={intentSheetOpen}
+        myActiveIntent={myActiveIntent}
+        onClose={() => setIntentSheetOpen(false)}
+        onSaved={(intent) => {
+          setMyActiveIntent(intent)
+          setIntentSheetOpen(false)
+          loadGoing()
+        }}
+        onDeleted={() => {
+          setMyActiveIntent(null)
+          setIntentSheetOpen(false)
+          setPlayIntents((prev) => prev)
+          loadGoing()
+        }}
+      />
+
       {/* Expanded shortlist card — root-level overlay (same pattern as SignUpModal) */}
       {expandedSession && (
         <View style={s.expandedHost} pointerEvents="box-none">
@@ -797,6 +923,15 @@ export function SwipeScreen({
         slotStats={slotStats}
         onApplyCustom={async (filters) => {
           await loadPlayData(filters)
+        }}
+      />
+
+      <LocationPermissionSheet
+        visible={showLocationSheet}
+        onClose={() => setShowLocationSheet(false)}
+        onGranted={(coords) => {
+          locationRef.current = coords
+          loadPlayData()
         }}
       />
 
@@ -1079,4 +1214,91 @@ const s = StyleSheet.create({
     lineHeight: 17,
     marginTop: 2,
   },
+  intentStrip: {
+    backgroundColor: '#0d1a0d',
+    borderWidth: 0.5,
+    borderColor: '#1D9E75',
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 20,
+    marginHorizontal: 12,
+  },
+  intentStripHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  intentStripLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  intentDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#1D9E75',
+  },
+  intentStripTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#1D9E75',
+    letterSpacing: 0.8,
+  },
+  intentCount: {
+    backgroundColor: '#0a2a0a',
+    borderWidth: 0.5,
+    borderColor: '#1D9E75',
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  intentCountText: {
+    fontSize: 11,
+    color: '#1D9E75',
+  },
+  intentRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 8,
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#122012',
+  },
+  intentAv: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1.5,
+    borderColor: '#1D9E75',
+    backgroundColor: '#1a2a1a',
+  },
+  intentInfo: { flex: 1 },
+  intentName: { fontSize: 14, fontWeight: '600', color: '#fff' },
+  intentMeta: { fontSize: 11, color: '#666', marginTop: 1 },
+  intentZalo: {
+    fontSize: 11,
+    color: '#1D9E75',
+    fontWeight: '500',
+    marginTop: 3,
+  },
+  intentAddBtn: {
+    marginTop: 12,
+    borderWidth: 0.5,
+    borderStyle: 'dashed',
+    borderColor: '#1D9E75',
+    borderRadius: 10,
+    padding: 10,
+    alignItems: 'center',
+  },
+  intentAddText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#1D9E75',
+  },
 })
+
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1)
+}
