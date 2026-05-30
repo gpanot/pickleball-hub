@@ -5,7 +5,7 @@ import Constants from 'expo-constants'
 import { fetchWithTimeout } from '../lib/fetchWithTimeout'
 import { debugLog, debugWarn, debugError } from '../lib/debug'
 
-const PROD_API_URL = 'https://hub.thecourtflow.com'
+const PROD_API_URL = 'https://pickleball-hub-mobile-i9ag-production.up.railway.app'
 
 export function resolveApiBase(): string {
   const envUrl = process.env.EXPO_PUBLIC_API_URL

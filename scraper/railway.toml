@@ -1,3 +1,7 @@
+# This config is for the scraper service only.
+# The Next.js API (pickleball-hub-mobile) is configured via Railway dashboard.
+# Do not add Next.js config here.
+
 [build]
 builder = "dockerfile"
 # Image CMD is scraper/Dockerfile: `python entrypoint.py` (not ingest.py directly).

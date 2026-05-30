@@ -10,7 +10,7 @@
     "preview": {
       "distribution": "internal",
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://hub.thecourtflow.com",
+        "EXPO_PUBLIC_API_URL": "https://pickleball-hub-mobile-i9ag-production.up.railway.app",
         "EXPO_PUBLIC_GOOGLE_CLIENT_ID": "140906288105-0do1cdl3ldk2ceblnu56f6oguh3u5odb.apps.googleusercontent.com"
       }
     },
@@ -19,7 +19,7 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://hub.thecourtflow.com",
+        "EXPO_PUBLIC_API_URL": "https://pickleball-hub-mobile-i9ag-production.up.railway.app",
         "EXPO_PUBLIC_GOOGLE_CLIENT_ID": "140906288105-0do1cdl3ldk2ceblnu56f6oguh3u5odb.apps.googleusercontent.com"
       }
     }

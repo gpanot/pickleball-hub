@@ -21,7 +21,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const url = `${HUB_SITE_ORIGIN}/sessions/${encodeURIComponent(session.referenceCode)}`;
   return {
     title: session.name,
-    description: `${session.club.name} · ${price} · pickleball-hub-gules.vercel.app`,
+    description: `${session.club.name} · ${price} · thecourtflow.com`,
     openGraph: {
       title: session.name,
       description: `${sched} · ${price} · Book on Reclub`,
