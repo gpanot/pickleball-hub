@@ -1,7 +1,7 @@
 import { getClubs, getClubsLastUpdatedAt } from "@/lib/queries";
 import { ClubsClient } from "@/components/ClubsClient";
 
-export const revalidate = false;
+export const dynamic = "force-dynamic";
 
 function toIsoStringOrNull(d: Date | null | undefined): string | null {
   if (d == null) return null;
