@@ -164,9 +164,15 @@ export function CircleScreen({ onOpenGear, gearSaved, gearSetupComplete }: { onO
   // Show notification permission sheet once after onboarding
   useEffect(() => {
     if (!jwt) return
+    console.log('[FREEZE_DEBUG] notif sheet check — jwt present')
     AsyncStorage.getItem('squadd_notif_permission_asked').then((val) => {
+      console.log('[FREEZE_DEBUG] notif sheet check — key:', val)
       if (!val) {
-        setTimeout(() => setShowNotifSheet(true), 1500)
+        console.log('[FREEZE_DEBUG] notif sheet — scheduling show in 3000ms')
+        setTimeout(() => {
+          console.log('[FREEZE_DEBUG] notif sheet — setShowNotifSheet(true)')
+          setShowNotifSheet(true)
+        }, 3000)
       }
     })
   }, [jwt])
@@ -242,12 +248,17 @@ export function CircleScreen({ onOpenGear, gearSaved, gearSetupComplete }: { onO
 
   const loadFeed = useCallback(async () => {
     if (!jwt) return
+    console.log('[FREEZE_DEBUG] loadFeed — start')
     await ensureServerAuth()
+    console.log('[FREEZE_DEBUG] loadFeed — ensureServerAuth done')
     setFeedLoading(true)
+    console.log('[FREEZE_DEBUG] loadFeed — setFeedLoading(true) called')
     try {
       const res = await authedFetch('/api/feed')
+      console.log('[FREEZE_DEBUG] loadFeed — fetch done, status:', res.status)
       if (res.ok) {
         const data = await res.json()
+        console.log('[FREEZE_DEBUG] feed data received, items:', data.items?.length)
         setFeedItems((prev) => {
           const apiItems: FeedItem[] = data.items ?? []
           const apiPlayerIds = new Set(apiItems.map((i) => i.player.userId))
@@ -279,15 +290,20 @@ export function CircleScreen({ onOpenGear, gearSaved, gearSetupComplete }: { onO
               new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
           )
 
+          console.log('[FREEZE_DEBUG] merge complete, finalItems:', deduped.length)
           return deduped
         })
+        console.log('[FREEZE_DEBUG] setFeedItems called')
         setHasFollows(data.hasFollows ?? true)
+        console.log('[FREEZE_DEBUG] setHasFollows called')
         setHasMore(data.hasMore ?? false)
+        console.log('[FREEZE_DEBUG] setHasMore called')
       }
     } catch (e) {
       if (__DEV__) console.warn('[Feed] loadFeed', e)
     } finally {
       setFeedLoading(false)
+      console.log('[FREEZE_DEBUG] loadFeed — setFeedLoading(false) called — done')
     }
   }, [authedFetch, jwt, ensureServerAuth])
 
@@ -348,15 +364,19 @@ export function CircleScreen({ onOpenGear, gearSaved, gearSetupComplete }: { onO
 
   const loadPresence = useCallback(async () => {
     if (!jwt) return
+    console.log('[FREEZE_DEBUG] loadPresence — start')
     try {
       const res = await authedFetch('/api/feed/presence')
       const data = await res.json()
+      console.log('[FREEZE_DEBUG] loadPresence — data received, setting state')
       setPresence(data)
+      console.log('[FREEZE_DEBUG] loadPresence — setPresence called')
     } catch {}
   }, [jwt, authedFetch])
 
   useEffect(() => {
     if (jwt && subTab === 'feed' && !feedLoadedRef.current) {
+      console.log('[FREEZE_DEBUG] initial loadFeed trigger — jwt+feed tab ready')
       feedLoadedRef.current = true
       loadFeed()
     }
@@ -577,6 +597,8 @@ export function CircleScreen({ onOpenGear, gearSaved, gearSetupComplete }: { onO
     setShowSuggested(false)
     loadFriends()
   }, [loadFriends])
+
+  console.log('[FREEZE_DEBUG] CircleScreen render — feedItems:', feedItems.length, 'feedLoading:', feedLoading, 'subTab:', subTab, 'showNotifSheet:', showNotifSheet)
 
   return (
     <View style={{ flex: 1, backgroundColor: '#0a0a0a' }}>

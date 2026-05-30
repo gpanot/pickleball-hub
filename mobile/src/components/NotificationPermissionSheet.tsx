@@ -1,5 +1,5 @@
 import React from 'react'
-import { Modal, View, Text, TouchableOpacity, StyleSheet } from 'react-native'
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native'
 import * as Notifications from 'expo-notifications'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { registerForPushNotifications } from '../services/notifications'
@@ -14,6 +14,8 @@ export function NotificationPermissionSheet({
   visible: boolean
   onClose: () => void
 }) {
+  if (!visible) return null
+
   const handleAllow = async () => {
     onClose()
     await AsyncStorage.setItem(STORAGE_KEY, '1')
@@ -38,78 +40,72 @@ export function NotificationPermissionSheet({
   }
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="slide"
-      onRequestClose={handleSkip}
-    >
-      <View style={s.backdrop}>
-        <View style={s.sheet}>
-          <View style={s.handle} />
+    <View style={s.backdrop}>
+      <View style={s.sheet}>
+        <View style={s.handle} />
 
-          <View style={s.iconWrap}>
-            <Text style={s.iconEmoji}>🔔</Text>
-          </View>
-
-          <View style={s.badge}>
-            <Text style={s.badgeText}>Stay in the loop</Text>
-          </View>
-
-          <Text style={s.title}>Never miss your circle</Text>
-          <Text style={s.sub}>
-            Know the moment a friend joins a session — so you can join too.
-          </Text>
-
-          {[
-            {
-              icon: '⚡',
-              bg: '#1f1400',
-              title: 'Friend just booked',
-              sub: 'Get notified when someone you follow joins a session today',
-            },
-            {
-              icon: '🏆',
-              bg: '#0a1f0a',
-              title: 'DUPR improvements',
-              sub: 'Know when your circle hits a new rating milestone',
-            },
-            {
-              icon: '🎯',
-              bg: '#140a2a',
-              title: 'Sessions filling fast',
-              sub: 'Last spots at sessions that match your level',
-            },
-          ].map((item, i) => (
-            <View key={i} style={s.benefitRow}>
-              <View style={[s.benefitIcon, { backgroundColor: item.bg }]}>
-                <Text style={s.benefitEmoji}>{item.icon}</Text>
-              </View>
-              <View style={s.benefitText}>
-                <Text style={s.benefitTitle}>{item.title}</Text>
-                <Text style={s.benefitSub}>{item.sub}</Text>
-              </View>
-            </View>
-          ))}
-
-          <TouchableOpacity style={s.btnPrimary} onPress={handleAllow}>
-            <Text style={s.btnPrimaryText}>Allow notifications</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={s.btnSecondary} onPress={handleSkip}>
-            <Text style={s.btnSecondaryText}>Not now</Text>
-          </TouchableOpacity>
+        <View style={s.iconWrap}>
+          <Text style={s.iconEmoji}>🔔</Text>
         </View>
+
+        <View style={s.badge}>
+          <Text style={s.badgeText}>Stay in the loop</Text>
+        </View>
+
+        <Text style={s.title}>Never miss your circle</Text>
+        <Text style={s.sub}>
+          Know the moment a friend joins a session — so you can join too.
+        </Text>
+
+        {[
+          {
+            icon: '⚡',
+            bg: '#1f1400',
+            title: 'Friend just booked',
+            sub: 'Get notified when someone you follow joins a session today',
+          },
+          {
+            icon: '🏆',
+            bg: '#0a1f0a',
+            title: 'DUPR improvements',
+            sub: 'Know when your circle hits a new rating milestone',
+          },
+          {
+            icon: '🎯',
+            bg: '#140a2a',
+            title: 'Sessions filling fast',
+            sub: 'Last spots at sessions that match your level',
+          },
+        ].map((item, i) => (
+          <View key={i} style={s.benefitRow}>
+            <View style={[s.benefitIcon, { backgroundColor: item.bg }]}>
+              <Text style={s.benefitEmoji}>{item.icon}</Text>
+            </View>
+            <View style={s.benefitText}>
+              <Text style={s.benefitTitle}>{item.title}</Text>
+              <Text style={s.benefitSub}>{item.sub}</Text>
+            </View>
+          </View>
+        ))}
+
+        <TouchableOpacity style={s.btnPrimary} onPress={handleAllow}>
+          <Text style={s.btnPrimaryText}>Allow notifications</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={s.btnSecondary} onPress={handleSkip}>
+          <Text style={s.btnSecondaryText}>Not now</Text>
+        </TouchableOpacity>
       </View>
-    </Modal>
+    </View>
   )
 }
 
 const s = StyleSheet.create({
   backdrop: {
-    flex: 1,
+    ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.7)',
     justifyContent: 'flex-end',
+    zIndex: 999,
   },
   sheet: {
     backgroundColor: '#111',

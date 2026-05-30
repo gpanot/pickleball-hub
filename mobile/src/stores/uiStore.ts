@@ -11,7 +11,7 @@ const ALL_SLOTS: TimeSlotKey[] = ['morning', 'afternoon', 'evening']
 
 /** Default Discover filter values (also used by Reset in SwipeScreen). */
 export const SWIPE_FILTER_DEFAULTS = {
-  duprMin: 3.0,
+  duprMin: 2.9,
   timeSlots: [...ALL_SLOTS] as TimeSlotKey[],
   maxCards: 20 as SwipeMaxCards,
   rangeKm: 5,

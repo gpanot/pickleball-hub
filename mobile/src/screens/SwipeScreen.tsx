@@ -105,7 +105,7 @@ function playCardToFriendGoingItem(c: PlayApiCard): FriendGoingItem {
 }
 import { debugLog } from '../lib/debug'
 import AsyncStorage from '@react-native-async-storage/async-storage'
-import { LocationPermissionSheet } from '../components/LocationPermissionSheet'
+import { LocationPermissionPopup } from '../components/LocationPermissionPopup'
 
 const { height: H } = Dimensions.get('window')
 
@@ -161,7 +161,8 @@ export function SwipeScreen({
   const [myActiveIntent, setMyActiveIntent] = useState<MyActiveIntent>(null)
 
   const currentUserGender = useAuthStore((s) => s.gender)
-  const [showLocationSheet, setShowLocationSheet] = useState(false)
+  const [showLocationPopup, setShowLocationPopup] = useState(false)
+  const locationPopupShownRef = useRef(false)
 
   const pulseAnim = useRef(new Animated.Value(1)).current
   useEffect(() => {
@@ -451,22 +452,30 @@ export function SwipeScreen({
           }
         } else {
           debugLog('PERF[TOP5]', `⏱ location not granted (status=${status}): ${Date.now() - tLoc}ms — using HCMC default`)
-          // Show location permission sheet only on the 2nd+ visit to Top 5
-          const alreadyAsked = await AsyncStorage.getItem('squadd_location_permission_asked')
-          if (!alreadyAsked) {
-            const visitKey = 'squadd_top5_visit_count'
-            const prev = parseInt(await AsyncStorage.getItem(visitKey) ?? '0', 10)
-            const count = prev + 1
-            await AsyncStorage.setItem(visitKey, String(count))
-            if (count >= 2) {
-              setShowLocationSheet(true)
-            }
-          }
         }
       } catch {
         // fallback to HCMC
       }
     })()
+  }, [])
+
+  useEffect(() => {
+    if (locationPopupShownRef.current) return
+
+    const check = async () => {
+      const alreadyAsked = await AsyncStorage.getItem('squadd_location_permission_asked')
+      if (alreadyAsked) return
+
+      const { status } = await Location.getForegroundPermissionsAsync()
+      if (status !== 'granted') {
+        locationPopupShownRef.current = true
+        setShowLocationPopup(true)
+      }
+    }
+
+    AsyncStorage.getItem('squadd_has_seen_feed').then((seen) => {
+      if (seen) check()
+    })
   }, [])
 
   // Re-fetch when date filter changes or jwt arrives after boot.
@@ -926,13 +935,9 @@ export function SwipeScreen({
         }}
       />
 
-      <LocationPermissionSheet
-        visible={showLocationSheet}
-        onClose={() => setShowLocationSheet(false)}
-        onGranted={(coords) => {
-          locationRef.current = coords
-          loadPlayData()
-        }}
+      <LocationPermissionPopup
+        visible={showLocationPopup}
+        onClose={() => setShowLocationPopup(false)}
       />
 
     </View>
