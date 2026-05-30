@@ -49,6 +49,9 @@ interface UiState extends Stored {
   setSwipeRangeKm: (v: number | null) => void
   pendingNewFollower: PendingNewFollower | null
   setPendingNewFollower: (follower: PendingNewFollower | null) => void
+  // PN6: userId of a player who just finished — Circle scrolls to them for kudos
+  pendingKudosTarget: string | null
+  setPendingKudosTarget: (userId: string | null) => void
 }
 
 async function persist(prefs: Stored) {
@@ -67,6 +70,8 @@ export const useUiStore = create<UiState>((set, get) => ({
   hydrated: false,
   pendingNewFollower: null,
   setPendingNewFollower: (follower) => set({ pendingNewFollower: follower }),
+  pendingKudosTarget: null,
+  setPendingKudosTarget: (userId) => set({ pendingKudosTarget: userId }),
 
   hydrate: async () => {
     try {

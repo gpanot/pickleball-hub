@@ -4,13 +4,14 @@ import {
   Text,
   TouchableOpacity,
   ScrollView,
+  SectionList,
   RefreshControl,
   StyleSheet,
   Dimensions,
   Linking,
   Pressable,
 } from 'react-native'
-import { RefreshCw, ChevronRight } from 'lucide-react-native'
+import { RefreshCw, Trophy, Users } from 'lucide-react-native'
 import * as Location from 'expo-location'
 import * as Haptics from 'expo-haptics'
 import { T } from '../theme'
@@ -30,6 +31,7 @@ import type { FriendListItem } from '../components/FriendListRow'
 import {
   FriendGoingCard,
   sessionToFriendGoingItem,
+  getStartHour,
 } from '../components/FriendGoingCard'
 import type { FriendGoingItem } from '../components/FriendGoingCard'
 
@@ -359,7 +361,11 @@ export function SwipeScreen({
   const handleFollowFromTopDupr = useCallback(
     async (userId: string) => {
       try {
-        await auth.authedFetch(`/api/players/${userId}/follow`, { method: 'POST' })
+        const res = await auth.authedFetch('/api/follows', {
+          method: 'POST',
+          body: JSON.stringify({ followeeId: userId }),
+        })
+        if (!res.ok) throw new Error('Follow failed')
         setFriendsModal((m) => ({
           ...m,
           friends: m.friends.map((f) =>
@@ -420,41 +426,42 @@ export function SwipeScreen({
   return (
     <View style={{ flex: 1, backgroundColor: T.bg }}>
       <TopBar
-        title="Where to play?"
+        title="WHERE TO PLAY?"
         counter={undefined}
       />
 
-      {/* Sub-tab switcher */}
+      {/* Sub-tab switcher — matches Circle screen style */}
       <View style={s.tabRow}>
-        <TouchableOpacity
-          style={[s.tab, playTab === 'discover' && s.tabActive]}
-          onPress={() => {
-            debugLog('PERF[TOP5]', '⏱ tab tapped by user')
-            setPlayTab('discover')
-          }}
-        >
-          <Text style={[s.tabText, playTab === 'discover' && s.tabTextActive]}>
-            TOP 5
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[s.tab, playTab === 'shortlist' && s.tabActive]}
-          onPress={() => {
-            debugLog('PERF[FRIENDS]', '⏱ tab tapped by user')
-            setPlayTab('shortlist')
-          }}
-        >
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-            <Text style={[s.tabText, playTab === 'shortlist' && s.tabTextActive]}>
-              FRIENDS
-            </Text>
-            {shortlistCount > 0 && (
-              <View style={s.tabBadge}>
-                <Text style={s.tabBadgeText}>{shortlistCount}</Text>
+        {([
+          { key: 'discover' as const, label: 'Top 5', Icon: Trophy },
+          { key: 'shortlist' as const, label: 'Friends', Icon: Users },
+        ] as const).map(({ key, label, Icon }) => {
+          const active = playTab === key
+          return (
+            <TouchableOpacity
+              key={key}
+              style={[s.tab, active && s.tabActive]}
+              onPress={() => {
+                debugLog(key === 'discover' ? 'PERF[TOP5]' : 'PERF[FRIENDS]', '⏱ tab tapped by user')
+                setPlayTab(key)
+              }}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: active }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Icon size={14} color={active ? T.amber : '#555'} strokeWidth={2} />
+                <Text style={[s.tabText, active && s.tabTextActive]}>
+                  {label}
+                </Text>
+                {key === 'shortlist' && shortlistCount > 0 && (
+                  <View style={s.tabBadge}>
+                    <Text style={s.tabBadgeText}>{shortlistCount}</Text>
+                  </View>
+                )}
               </View>
-            )}
-          </View>
-        </TouchableOpacity>
+            </TouchableOpacity>
+          )
+        })}
       </View>
 
       {/* ── TOP 5 tab ─────────────────────────────────────────── */}
@@ -497,83 +504,98 @@ export function SwipeScreen({
             />
           </View>
 
-          <ScrollView
-            style={{ flex: 1 }}
-            showsVerticalScrollIndicator={false}
-            refreshControl={
-              <RefreshControl
-                refreshing={playLoading || refreshing}
-                onRefresh={handleRefresh}
-                tintColor={T.amber}
-              />
+          {(() => {
+            type Period = 'MORNING' | 'AFTERNOON' | 'EVENING'
+            const getPeriod = (item: FriendGoingItem): Period => {
+              const h = getStartHour(item)
+              if (h < 12) return 'MORNING'
+              if (h < 17) return 'AFTERNOON'
+              return 'EVENING'
             }
-          >
-            {playLoading && top5.length === 0 && <SquaddLoader />}
 
-            {top5.length === 0 && !playLoading && (
-              <View style={s.emptyTop5}>
-                <Text style={s.emptyTop5Text}>
-                  No sessions found · try changing the date
-                </Text>
-              </View>
-            )}
+            const sections: { title: Period; data: FriendGoingItem[] }[] = []
+            for (const item of top5) {
+              const period = getPeriod(item)
+              const last = sections[sections.length - 1]
+              if (last && last.title === period) {
+                last.data.push(item)
+              } else {
+                sections.push({ title: period, data: [item] })
+              }
+            }
 
-            {top5.map((item, index) =>
-              signedIn ? (
-                <FriendGoingCard
-                  key={item.sessionId}
-                  item={item}
-                  isTop={index === 0}
-                  dimLevel={index}
-                  onFriendsPress={
-                    item.friendCount > 0
-                      ? () => openGoingFriends(item)
-                      : undefined
-                  }
-                  onTopDuprPress={
-                    item.topDupr && item.topDupr.length > 0
-                      ? () => openTopDuprFromItem(item)
-                      : undefined
-                  }
-                />
-              ) : (
-                <TouchableOpacity
-                  key={item.sessionId}
-                  onPress={() => openSignUp()}
-                  activeOpacity={1}
-                >
-                  <FriendGoingCard
-                    item={item}
-                    isTop={index === 0}
-                    dimLevel={index}
+            return (
+              <SectionList
+                style={{ flex: 1 }}
+                sections={sections}
+                keyExtractor={(item) => String(item.sessionId)}
+                stickySectionHeadersEnabled
+                showsVerticalScrollIndicator={false}
+                refreshControl={
+                  <RefreshControl
+                    refreshing={playLoading || refreshing}
+                    onRefresh={handleRefresh}
+                    tintColor={T.amber}
                   />
-                </TouchableOpacity>
-              ),
-            )}
-
-            {!signedIn && top5.length > 0 && (
-              <TouchableOpacity
-                style={s.signInBanner}
-                onPress={() => openSignUp()}
-                activeOpacity={0.85}
-              >
-                <Text style={s.signInBannerText}>
-                  Sign in for personalised matches
-                </Text>
-              </TouchableOpacity>
-            )}
-
-            {!signedIn && (
-              <TouchableOpacity
-                style={s.exploreBtn}
-                onPress={() => onOpenExplore?.()}
-                activeOpacity={0.85}
-              >
-                <Text style={s.exploreBtnText}>Browse all sessions</Text>
-                <ChevronRight size={18} color={T.amber} strokeWidth={2.5} />
-              </TouchableOpacity>
-            )}
-          </ScrollView>
+                }
+                renderSectionHeader={({ section }) => (
+                  <View style={s.periodHeader}>
+                    <View style={s.periodPill}>
+                      <Text style={s.periodPillText}>{section.title}</Text>
+                    </View>
+                  </View>
+                )}
+                renderItem={({ item }) =>
+                  signedIn ? (
+                    <FriendGoingCard
+                      item={item}
+                      onFriendsPress={
+                        item.friendCount > 0
+                          ? () => openGoingFriends(item)
+                          : undefined
+                      }
+                      onTopDuprPress={
+                        item.topDupr && item.topDupr.length > 0
+                          ? () => openTopDuprFromItem(item)
+                          : undefined
+                      }
+                    />
+                  ) : (
+                    <TouchableOpacity
+                      onPress={() => openSignUp()}
+                      activeOpacity={1}
+                    >
+                      <FriendGoingCard item={item} />
+                    </TouchableOpacity>
+                  )
+                }
+                ListEmptyComponent={
+                  playLoading ? (
+                    <SquaddLoader />
+                  ) : (
+                    <View style={s.emptyTop5}>
+                      <Text style={s.emptyTop5Text}>
+                        No sessions found · try changing the date
+                      </Text>
+                    </View>
+                  )
+                }
+                ListFooterComponent={
+                  !signedIn && top5.length > 0 ? (
+                    <TouchableOpacity
+                      style={s.signInBanner}
+                      onPress={() => openSignUp()}
+                      activeOpacity={0.85}
+                    >
+                      <Text style={s.signInBannerText}>
+                        Sign in for personalised matches
+                      </Text>
+                    </TouchableOpacity>
+                  ) : null
+                }
+              />
+            )
+          })()}
         </>
       )}
 
@@ -788,26 +810,29 @@ const s = StyleSheet.create({
     marginHorizontal: 12,
     marginBottom: 10,
     backgroundColor: '#141414',
-    borderRadius: 9,
+    borderRadius: 10,
     padding: 3,
   },
   tab: {
     flex: 1,
+    flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 6,
-    borderRadius: 7,
+    justifyContent: 'center',
+    paddingVertical: 10,
+    borderRadius: 8,
   },
   tabActive: {
     backgroundColor: '#1e1e1e',
   },
   tabText: {
-    fontSize: 12,
+    fontSize: 13,
     color: '#555',
+    fontWeight: '400',
   },
   tabTextActive: {
-    fontSize: 12,
+    fontSize: 13,
     color: '#f5a623',
-    fontWeight: '500',
+    fontWeight: '600',
   },
   tabBadge: {
     backgroundColor: '#f5a623',
@@ -976,6 +1001,27 @@ const s = StyleSheet.create({
     color: '#333',
     textAlign: 'center',
   },
+  periodHeader: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 6,
+    backgroundColor: T.bg,
+  },
+  periodPill: {
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(34,197,94,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(34,197,94,0.35)',
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+  },
+  periodPillText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#22c55e',
+    letterSpacing: 1,
+  },
   signInBanner: {
     marginHorizontal: 16,
     marginTop: 4,
@@ -991,27 +1037,6 @@ const s = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: T.amber,
-  },
-  exploreBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    marginHorizontal: 16,
-    marginTop: 8,
-    marginBottom: 28,
-    backgroundColor: 'rgba(245,166,35,0.14)',
-    borderWidth: 1,
-    borderColor: 'rgba(245,166,35,0.5)',
-    borderRadius: 14,
-    paddingVertical: 14,
-    paddingHorizontal: 18,
-  },
-  exploreBtnText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: T.amber,
-    letterSpacing: 0.2,
   },
   goingSectionHeader: {
     flexDirection: 'row',

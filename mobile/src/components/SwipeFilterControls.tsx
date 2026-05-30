@@ -60,8 +60,8 @@ export function FilterPill({
 
   useEffect(() => {
     const timer = setInterval(() => {
-      phase.value = withTiming(phase.value === 0 ? 1 : 0, { duration: 450 })
-    }, 3200)
+      phase.value = withTiming(phase.value === 0 ? 1 : 0, { duration: 270 })
+    }, 1920)
     return () => clearInterval(timer)
   }, [phase])
 

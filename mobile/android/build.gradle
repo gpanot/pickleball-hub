@@ -39,4 +39,12 @@ allprojects {
         mavenCentral()
         maven { url 'https://www.jitpack.io' }
     }
+    configurations.all {
+        resolutionStrategy {
+            def kv = rootProject.ext.has('kotlinVersion') ? rootProject.ext.get('kotlinVersion') : '1.9.25'
+            force "org.jetbrains.kotlin:kotlin-stdlib:$kv"
+            force "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kv"
+            force "org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kv"
+        }
+    }
 }

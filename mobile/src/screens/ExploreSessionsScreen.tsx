@@ -210,7 +210,11 @@ export function ExploreSessionsScreen({ onClose }: Props) {
   const handleFollowFromTopDupr = useCallback(
     async (userId: string) => {
       try {
-        await auth.authedFetch(`/api/players/${userId}/follow`, { method: 'POST' })
+        const res = await auth.authedFetch('/api/follows', {
+          method: 'POST',
+          body: JSON.stringify({ followeeId: userId }),
+        })
+        if (!res.ok) throw new Error('Follow failed')
         setFriendsModal((m) => ({
           ...m,
           friends: m.friends.map((f) =>

@@ -7,7 +7,7 @@ import {
   Linking,
   Animated,
 } from 'react-native'
-import { Users, ExternalLink } from 'lucide-react-native'
+import { Users, ExternalLink, Clock } from 'lucide-react-native'
 import { T } from '../theme'
 import { RING_COLORS, type Session } from '../data'
 import { PlayerAvatar } from './PlayerAvatar'
@@ -57,10 +57,13 @@ interface Props {
 
 /* ── Match score: green / yellow / light red ─────────────────── */
 function matchScoreColor(score: number): string {
-  if (score <= 0) return '#666'
-  if (score >= 85) return '#1D9E75'
-  if (score >= 70) return '#f5a623'
-  return '#f87171'
+  if (score <= 0 || score < 50) return '#f87171'
+  // Interpolate amber → green for 50–100
+  const t = (score - 50) / 50
+  const r = Math.round(0xf5 + t * (0x1D - 0xf5))
+  const g = Math.round(0xa6 + t * (0x9E - 0xa6))
+  const b = Math.round(0x23 + t * (0x75 - 0x23))
+  return `rgb(${r},${g},${b})`
 }
 
 function averageTopDupr(players: FriendGoingItem['topDupr']): number | null {
@@ -87,7 +90,7 @@ function FillBar({ filled, total }: { filled: number; total: number }) {
   )
 }
 
-function getStartHour(item: FriendGoingItem): number {
+export function getStartHour(item: FriendGoingItem): number {
   const d = item.scrapedDate
     ? new Date(`${item.scrapedDate}T${item.startTime}:00`)
     : new Date(item.startTime)
@@ -225,13 +228,6 @@ export function FriendGoingCard({
   const avgDupr = averageTopDupr(item.topDupr)
   const showSpotsLeftPill = !showFillingFast && item.spotsLeft > 0 && item.spotsLeft <= 5
 
-  const opacity =
-    dimLevel === 0 ? 1
-    : dimLevel === 1 ? 0.95
-    : dimLevel === 2 ? 0.85
-    : dimLevel === 3 ? 0.75
-    : 0.65
-
   const cardTappable = !!(onCardPress || onTopDuprPress)
   const handleCardPress = onCardPress ?? onTopDuprPress
 
@@ -240,16 +236,13 @@ export function FriendGoingCard({
       activeOpacity={cardTappable ? 0.85 : 1}
       onPress={handleCardPress}
       disabled={!cardTappable}
-      style={[s.card, isTop && s.cardTop, { opacity }]}
+      style={s.card}
     >
       {/* ① Header */}
       <View style={s.fcHeader}>
         <View style={s.fcHeaderLeft}>
           <Text style={s.fcVenue} numberOfLines={1}>
             {item.clubName}
-          </Text>
-          <Text style={s.fcName} numberOfLines={1}>
-            {periodSocialTitle(startHour)}
           </Text>
         </View>
         <View style={s.fcScoreBadge}>
@@ -262,8 +255,10 @@ export function FriendGoingCard({
 
       {/* ② Pills row */}
       <View style={s.pillsRow}>
-        <View style={s.friendTimePill}>
-          <Text style={s.friendTimePillText}>
+        {/* Time pill with clock icon replaces spots-left pill */}
+        <View style={s.fcTimePill}>
+          <Clock size={10} color={T.amber} strokeWidth={2} />
+          <Text style={s.fcTimePillText}>
             {formatStartTimePill(startHour, startMins)}
             {item.distanceKm != null ? ` · ${item.distanceKm.toFixed(1)} km` : ''}
           </Text>
@@ -272,14 +267,6 @@ export function FriendGoingCard({
           <View style={s.fcFillingBadge}>
             <Animated.View style={[s.fcFillingDot, { opacity: pulseAnim }]} />
             <Text style={s.fcFillingText}>Filling fast</Text>
-          </View>
-        )}
-        {showSpotsLeftPill && (
-          <View style={s.fcSpotsBadge}>
-            <View style={s.fcSpotsDot} />
-            <Text style={s.fcSpotsText}>
-              {item.spotsLeft} spot{item.spotsLeft === 1 ? '' : 's'} left
-            </Text>
           </View>
         )}
       </View>
@@ -391,35 +378,31 @@ const s = StyleSheet.create({
     marginBottom: 10,
     backgroundColor: '#140f00',
     borderRadius: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(245,166,35,0.3)',
-    paddingBottom: 14,
-    gap: 10,
-  },
-  cardTop: {
-    borderColor: 'rgba(245,166,35,0.55)',
     borderWidth: 1.5,
+    borderColor: 'rgba(245,166,35,0.55)',
+    paddingBottom: 14,
+    gap: 6,
   },
   fcHeader: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     justifyContent: 'space-between',
     padding: 12,
-    paddingBottom: 6,
+    paddingBottom: 2,
     gap: 8,
   },
   fcHeaderLeft: {
     flex: 1,
     minWidth: 0,
   },
-  fcVenue: {
+  fcSocialName: {
     fontSize: 9,
     color: '#999',
     textTransform: 'uppercase',
     letterSpacing: 0.6,
     marginBottom: 3,
   },
-  fcName: {
+  fcVenue: {
     fontSize: 14,
     fontWeight: '700',
     color: '#fff',
@@ -470,7 +453,7 @@ const s = StyleSheet.create({
     fontWeight: '500',
     color: '#1D9E75',
   },
-  fcSpotsBadge: {
+  fcTimePill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
@@ -480,32 +463,13 @@ const s = StyleSheet.create({
     borderRadius: 7,
     paddingHorizontal: 8,
     paddingVertical: 4,
-  },
-  fcSpotsDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 3,
-    backgroundColor: T.amber,
-  },
-  fcSpotsText: {
-    fontSize: 10,
-    fontWeight: '500',
-    color: T.amber,
-  },
-  friendTimePill: {
-    backgroundColor: '#111',
-    borderWidth: 0.5,
-    borderColor: '#1e1e1e',
-    borderRadius: 7,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
     alignSelf: 'flex-start',
     flexShrink: 0,
   },
-  friendTimePillText: {
+  fcTimePillText: {
     fontSize: 10,
     fontWeight: '500',
-    color: '#888',
+    color: T.amber,
   },
   friendsRow: {
     flexDirection: 'row',

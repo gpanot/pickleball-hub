@@ -25,8 +25,16 @@ import { useAvatarCacheStore } from './src/stores/avatarCacheStore'
 import { registerForPushNotifications, useNotificationListeners } from './src/services/notifications'
 import { SplashScreen } from './src/screens/SplashScreen'
 import { debugLog } from './src/lib/debug'
+let RNUxcam: any = null
+try {
+  RNUxcam = require('react-native-ux-cam').default
+} catch {}
+import { PostHogProvider, PostHogMaskView } from 'posthog-react-native'
 
 type FlowScreen = 'main' | 'onboarding' | 'people' | 'profile' | 'gear' | 'explore'
+
+const POSTHOG_API_KEY = 'phc_uZqiFnt6NpnpjL3QPbD4RmpJZaByiJChD5pcrcySXjGJ'
+const POSTHOG_HOST = 'https://us.i.posthog.com'
 
 export default function App() {
   const [showSplash, setShowSplash] = useState(true)
@@ -63,6 +71,22 @@ export default function App() {
     debugLog('App', `expoConfig.extra.apiUrl: ${Constants.expoConfig?.extra?.apiUrl ?? '<not set>'}`)
     debugLog('App', `EXPO_PUBLIC_GOOGLE_CLIENT_ID env: ${process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID ? 'set' : '<not set>'}`)
     debugLog('App', '================================')
+
+    if (RNUxcam) {
+      try {
+        RNUxcam.optIntoSchematicRecordings()
+        RNUxcam.startWithConfiguration({
+          userAppKey: 'fex34xqkmrtg0cv-us',
+          enableAutomaticScreenNameTagging: false,
+          enableImprovedScreenCapture: true,
+        })
+        debugLog('App', 'UXCam initialized')
+      } catch {
+        debugLog('App', 'UXCam init failed — skipping')
+      }
+    } else {
+      debugLog('App', 'UXCam not available (Expo Go) — skipping')
+    }
   }, [])
 
   useEffect(() => {
@@ -129,6 +153,10 @@ export default function App() {
               imageUrl: data.followerImageUrl || null,
             }
             useUiStore.getState().setPendingNewFollower(follower)
+          }
+          if (data?.type === 'pn6' && data.followeeUserId) {
+            // Scroll Circle feed to the player who just finished so user can give kudos
+            useUiStore.getState().setPendingKudosTarget(data.followeeUserId)
           }
         }
       }
@@ -207,6 +235,21 @@ export default function App() {
   }
 
   return (
+    <PostHogProvider
+      apiKey={POSTHOG_API_KEY}
+      options={{
+        host: POSTHOG_HOST,
+        enableSessionReplay: true,
+        sessionReplayConfig: {
+          maskAllTextInputs: true,
+          maskAllImages: false,
+          captureLog: true,
+          androidDebouncerDelayMs: 500,
+          iOSDebouncerDelayMs: 500,
+        },
+      }}
+      autocapture
+    >
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <StatusBar style="light" />
@@ -245,7 +288,7 @@ export default function App() {
               </View>
             )}
             {flowScreen === 'profile' && (
-              <View style={StyleSheet.absoluteFillObject}>
+              <PostHogMaskView style={StyleSheet.absoluteFillObject}>
                 <ProfileSheet
                   onClose={() => setFlowScreen('main')}
                   onLinkReclub={startLinkReclub}
@@ -255,13 +298,13 @@ export default function App() {
                     setFlowScreen('gear')
                   }}
                 />
-              </View>
+              </PostHogMaskView>
             )}
           </ProfileMenuProvider>
         </SignUpModalProvider>
 
         {(flowScreen === 'gear' || gearSheetOpen) && (
-          <View style={styles.gearOverlay} pointerEvents="box-none">
+          <PostHogMaskView style={styles.gearOverlay} pointerEvents="box-none">
             <Pressable
               style={styles.gearBackdrop}
               onPress={() => {
@@ -285,10 +328,11 @@ export default function App() {
                 embedded
               />
             </View>
-          </View>
+          </PostHogMaskView>
         )}
       </SafeAreaProvider>
     </GestureHandlerRootView>
+    </PostHogProvider>
   )
 }
 

@@ -1,7 +1,8 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react'
 import {
   View, Text, ScrollView, TouchableOpacity,
-  StyleSheet, Modal, Pressable, Dimensions, Image, Linking, Alert
+  StyleSheet, Modal, Pressable, Dimensions, Image, Linking, Alert,
+  Animated as RNAnimated,
 } from 'react-native'
 import * as Location from 'expo-location'
 import { X, MapPin } from 'lucide-react-native'
@@ -116,6 +117,28 @@ export function PlayerProfileSheet({ userId, onClose, stub }: Props) {
   const [error, setError] = useState(false)
   const locationRef = useRef({ lat: HCMC_LAT, lng: HCMC_LNG })
   const locationReadyRef = useRef(false)
+  const [avatarExpanded, setAvatarExpanded] = useState(false)
+  const avatarScale = useRef(new RNAnimated.Value(1)).current
+  // Shift the avatar down when expanding so it grows toward content, not into the modal top edge.
+  // Avatar height = 156px. At scale 2 the extra height = 156px, half = 78px shift down.
+  const avatarTranslateY = useRef(new RNAnimated.Value(0)).current
+
+  const toggleAvatarExpand = useCallback(() => {
+    const next = !avatarExpanded
+    setAvatarExpanded(next)
+    RNAnimated.spring(avatarScale, {
+      toValue: next ? 2 : 1,
+      friction: 6,
+      tension: 80,
+      useNativeDriver: true,
+    }).start()
+    RNAnimated.spring(avatarTranslateY, {
+      toValue: next ? 78 : 0,
+      friction: 6,
+      tension: 80,
+      useNativeDriver: true,
+    }).start()
+  }, [avatarExpanded, avatarScale, avatarTranslateY])
 
   // Start resolving location in background immediately — doesn't block anything
   const resolveLocation = useCallback(async () => {
@@ -174,6 +197,9 @@ export function PlayerProfileSheet({ userId, onClose, stub }: Props) {
     setProfile(null)
     setError(false)
     setVenuesLoading(false)
+    setAvatarExpanded(false)
+    avatarScale.setValue(1)
+    avatarTranslateY.setValue(0)
 
     // Fire location + fast profile in parallel, then venues after fast resolves
     void resolveLocation()
@@ -241,18 +267,26 @@ export function PlayerProfileSheet({ userId, onClose, stub }: Props) {
             {!profile && !error && stub ? (
               <>
                 <View style={s.header}>
-                  <View style={s.avatarWrap}>
-                    {stub.imageUrl ? (
-                      <Image source={{ uri: stub.imageUrl }} style={s.avatar} resizeMode="cover" />
-                    ) : (
-                      <View style={[s.avatar, s.avatarFallback]}>
-                        <Text style={s.avatarInitial}>
-                          {(stub.displayName ?? '?')[0].toUpperCase()}
-                        </Text>
-                      </View>
-                    )}
-                  </View>
-                  <Text style={s.displayName}>{stub.displayName ?? 'Player'}</Text>
+                  <TouchableOpacity
+                    activeOpacity={0.9}
+                    onPress={toggleAvatarExpand}
+                    style={[s.avatarTouchable, avatarExpanded && s.avatarTouchableExpanded]}
+                  >
+                    <RNAnimated.View style={[s.avatarWrap, { transform: [{ scale: avatarScale }, { translateY: avatarTranslateY }] }]}>
+                      {stub.imageUrl ? (
+                        <Image source={{ uri: stub.imageUrl }} style={s.avatar} resizeMode="cover" />
+                      ) : (
+                        <View style={[s.avatar, s.avatarFallback]}>
+                          <Text style={s.avatarInitial}>
+                            {(stub.displayName ?? '?')[0].toUpperCase()}
+                          </Text>
+                        </View>
+                      )}
+                    </RNAnimated.View>
+                  </TouchableOpacity>
+                  <RNAnimated.View style={{ transform: [{ translateY: avatarTranslateY }] }}>
+                    <Text style={s.displayName}>{stub.displayName ?? 'Player'}</Text>
+                  </RNAnimated.View>
                 </View>
                 <View style={s.skeletonWrap}>
                   <SkeletonBox width="100%" height={52} borderRadius={12} style={{ marginTop: 0 }} />
@@ -277,26 +311,34 @@ export function PlayerProfileSheet({ userId, onClose, stub }: Props) {
               <>
 
               <View style={s.header}>
-                <View style={s.avatarWrap}>
-                  {profile.imageUrl ? (
-                    <Image
-                      source={{ uri: profile.imageUrl }}
-                      style={s.avatar}
-                      resizeMode="cover" />
-                  ) : (
-                    <View style={[s.avatar, s.avatarFallback]}>
-                      <Text style={s.avatarInitial}>
-                        {(profile.displayName ?? '?')[0].toUpperCase()}
-                      </Text>
-                    </View>
+                <TouchableOpacity
+                  activeOpacity={0.9}
+                  onPress={toggleAvatarExpand}
+                  style={[s.avatarTouchable, avatarExpanded && s.avatarTouchableExpanded]}
+                >
+                  <RNAnimated.View style={[s.avatarWrap, { transform: [{ scale: avatarScale }, { translateY: avatarTranslateY }] }]}>
+                    {profile.imageUrl ? (
+                      <Image
+                        source={{ uri: profile.imageUrl }}
+                        style={s.avatar}
+                        resizeMode="cover" />
+                    ) : (
+                      <View style={[s.avatar, s.avatarFallback]}>
+                        <Text style={s.avatarInitial}>
+                          {(profile.displayName ?? '?')[0].toUpperCase()}
+                        </Text>
+                      </View>
+                    )}
+                  </RNAnimated.View>
+                </TouchableOpacity>
+                <RNAnimated.View style={{ transform: [{ translateY: avatarTranslateY }] }}>
+                  <Text style={s.displayName}>
+                    {profile.displayName ?? 'Player'}
+                  </Text>
+                  {profile.reclubId != null && (
+                    <Text style={s.reclubId}>{profile.reclubId}</Text>
                   )}
-                </View>
-                <Text style={s.displayName}>
-                  {profile.displayName ?? 'Player'}
-                </Text>
-                {profile.reclubId != null && (
-                  <Text style={s.reclubId}>{profile.reclubId}</Text>
-                )}
+                </RNAnimated.View>
               </View>
 
               {profile.duprDoubles != null && (
@@ -472,9 +514,11 @@ const s = StyleSheet.create({
     borderTopRightRadius: 24,
     height: SHEET_HEIGHT,
     paddingTop: 8,
+    overflow: 'visible',
   },
   scroll: {
     flex: 1,
+    overflow: 'visible',
   },
   handle: {
     width: 32, height: 3,
@@ -534,9 +578,19 @@ const s = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingBottom: 16,
+    overflow: 'visible',
+  },
+  avatarTouchable: {
+    overflow: 'visible',
+    zIndex: 1,
+  },
+  avatarTouchableExpanded: {
+    zIndex: 100,
+    elevation: 100,
   },
   avatarWrap: {
     marginBottom: 10,
+    overflow: 'visible',
   },
   avatar: {
     width: 156,

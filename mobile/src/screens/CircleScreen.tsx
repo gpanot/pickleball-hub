@@ -200,10 +200,26 @@ export function CircleScreen({ onOpenGear, gearSaved, gearSetupComplete }: { onO
 
   const handleFollowFromRoster = useCallback(async (userId: string) => {
     try {
-      await authedFetch(`/api/players/${userId}/follow`, { method: 'POST' })
+      const res = await authedFetch('/api/follows', {
+        method: 'POST',
+        body: JSON.stringify({ followeeId: userId }),
+      })
+      if (!res.ok) throw new Error('Follow failed')
       setFollowingSet(prev => new Set([...prev, userId]))
-    } catch {}
-  }, [authedFetch])
+      const player = rosterModal.players.find(p => p.userId === userId)
+      prependJustFollowedFeedItem(
+        userId,
+        player?.displayName ?? null,
+        player?.imageUrl ?? null,
+        player?.duprDoubles ?? null,
+      )
+      toast('Followed!', 'success')
+      friendsLoadedRef.current = false
+      loadFriends()
+    } catch {
+      toast('Failed to follow. Try again.', 'error')
+    }
+  }, [authedFetch, toast, loadFriends, prependJustFollowedFeedItem, rosterModal.players])
 
   const loadFeed = useCallback(async () => {
     if (!jwt) return
@@ -1737,9 +1753,9 @@ const styles = StyleSheet.create({
     marginHorizontal: 4,
   },
   rosterAvatar: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
+    width: 91,
+    height: 91,
+    borderRadius: 46,
     backgroundColor: '#222',
     marginBottom: 6,
   },
