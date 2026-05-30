@@ -202,6 +202,7 @@ export async function GET(req: NextRequest) {
     card: PlayCard;
     sessionId: number;
     duprCoverageCount: number;
+    avgDupr: number;
   };
 
   const scored: Scored[] = [];
@@ -221,12 +222,6 @@ export async function GET(req: NextRequest) {
       const slot =
         startHour < 12 ? "morning" : startHour < 17 ? "afternoon" : "evening";
       if (!timeSlots.includes(slot)) continue;
-    }
-
-    // Min DUPR filter — round to 1dp to avoid floating-point mismatches (e.g. 3.7999 < 3.8)
-    if (duprMin > 0 && session.duprStat?.avgDuprDoubles != null) {
-      const avg = Math.round(Number(session.duprStat.avgDuprDoubles) * 10) / 10;
-      if (avg < Math.round(duprMin * 10) / 10) continue;
     }
 
     const fillRate =
@@ -330,36 +325,46 @@ export async function GET(req: NextRequest) {
       (r) => r.player?.duprDoubles != null && Number(r.player.duprDoubles) > 0,
     ).length;
 
-    scored.push({ card, sessionId: session.id, duprCoverageCount });
+    const avgDupr = session.duprStat?.avgDuprDoubles != null
+      ? Math.round(Number(session.duprStat.avgDuprDoubles) * 10) / 10
+      : 0;
+
+    scored.push({ card, sessionId: session.id, duprCoverageCount, avgDupr });
   }
 
   scored.sort((a, b) => b.card.matchScore - a.card.matchScore);
-
-  // Compute per-slot max avgDupr across ALL eligible sessions (no 5-card cap)
-  const slotStats: Record<"morning" | "afternoon" | "evening", number | null> = {
-    morning: null,
-    afternoon: null,
-    evening: null,
-  };
-  for (const session of sessions) {
-    const avg = session.duprStat?.avgDuprDoubles;
-    if (avg == null) continue;
-    const avgNum = Number(avg);
-    if (avgNum <= 0) continue;
-    const h = parseInt(session.startTime.split(":")[0] ?? "12", 10);
-    const slot: "morning" | "afternoon" | "evening" =
-      h < 12 ? "morning" : h < 17 ? "afternoon" : "evening";
-    if (slotStats[slot] === null || avgNum > slotStats[slot]!) {
-      slotStats[slot] = Math.round(avgNum * 10) / 10;
-    }
-  }
 
   const friendSessionIds = new Set(
     scored.filter((s) => s.card.hasFriends).map((s) => s.sessionId),
   );
 
-  const top5 = scored
-    .filter((s) => !friendSessionIds.has(s.sessionId) && s.duprCoverageCount >= 2)
+  const eligible = scored.filter(
+    (s) => !friendSessionIds.has(s.sessionId) && s.duprCoverageCount >= 2,
+  );
+
+  // Compute per-slot max avg DUPR from eligible sessions (ignores duprMin so
+  // the user can see the ceiling available when adjusting the slider)
+  const slotStats: Record<"morning" | "afternoon" | "evening", number | null> = {
+    morning: null,
+    afternoon: null,
+    evening: null,
+  };
+  for (const s of eligible) {
+    if (s.avgDupr <= 0) continue;
+    const h = parseInt(s.card.startTime.split(":")[0] ?? "12", 10);
+    const slot: "morning" | "afternoon" | "evening" =
+      h < 12 ? "morning" : h < 17 ? "afternoon" : "evening";
+    if (slotStats[slot] === null || s.avgDupr > slotStats[slot]!) {
+      slotStats[slot] = s.avgDupr;
+    }
+  }
+
+  // Apply duprMin filter for the final top 5 selection
+  const duprFiltered = duprMin > 0
+    ? eligible.filter((s) => s.avgDupr >= Math.round(duprMin * 10) / 10)
+    : eligible;
+
+  const top5 = duprFiltered
     .slice(0, 5)
     .map((s) => s.card)
     .sort((a, b) => a.startTime.localeCompare(b.startTime));
