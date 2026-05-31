@@ -12,6 +12,7 @@ import {
 import Svg, { Path } from 'react-native-svg'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import Constants from 'expo-constants'
+import * as AppleAuthentication from 'expo-apple-authentication'
 import { T } from '../theme'
 import { useAuthStore, resolveApiBase } from '../stores/authStore'
 import { fetchWithTimeout } from '../lib/fetchWithTimeout'
@@ -149,11 +150,68 @@ export function SignUpModalOverlay({
     }
   }
 
-  const handlePress = () => {
+  const handleGooglePress = () => {
     if (__DEV__ || isExpoGo || !GoogleSignin) {
       handleDevSignIn()
     } else {
       handleRealSignIn()
+    }
+  }
+
+  const handleAppleSignIn = async () => {
+    setLoading(true)
+    try {
+      const credential = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
+      })
+
+      const idToken = credential.identityToken
+      if (!idToken) {
+        Alert.alert('Sign-in failed', 'No identity token from Apple. Please try again.')
+        return
+      }
+
+      debugLog('signIn', 'Apple sign-in got identityToken, calling server...')
+      const base = resolveApiBase()
+      const res = await fetchWithTimeout(
+        `${base}/api/auth/mobile-token`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ idToken, provider: 'apple' }),
+        },
+        15000
+      )
+
+      if (!res.ok) {
+        const err = await res.text()
+        debugWarn('signIn', `Apple server sign-in failed: ${res.status}`, err)
+        Alert.alert('Sign-in failed', 'Could not verify your Apple account. Please try again.')
+        return
+      }
+
+      const data = await res.json()
+      debugLog('signIn', `Apple sign-in OK, userId=${data.userId}`)
+      useAuthStore.setState({
+        jwt: data.jwt,
+        userId: data.userId,
+        profileId: data.profileId,
+        displayName: data.displayName,
+        imageUrl: data.imageUrl,
+        reclubUserId: data.reclubUserId,
+        duprRating: data.duprRating ?? null,
+        hasCompletedOnboarding: data.hasCompletedOnboarding ?? false,
+      })
+      onSignedIn(!(data.hasCompletedOnboarding ?? false))
+    } catch (e: any) {
+      if (e?.code === 'ERR_REQUEST_CANCELED') return
+      debugError('signIn', 'Apple sign-in error', e)
+      Alert.alert('Sign-in failed', 'Something went wrong. Please try again.')
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -178,7 +236,7 @@ export function SignUpModalOverlay({
         <TouchableOpacity
           style={[styles.googleBtn, loading && styles.disabled]}
           disabled={loading}
-          onPress={handlePress}
+          onPress={handleGooglePress}
           activeOpacity={0.8}
           accessibilityLabel={__DEV__ ? 'Dev Sign-in' : 'Sign in with Google'}
           accessibilityRole="button"
@@ -194,6 +252,16 @@ export function SignUpModalOverlay({
             </>
           )}
         </TouchableOpacity>
+
+        {Platform.OS === 'ios' && !isExpoGo && (
+          <AppleAuthentication.AppleAuthenticationButton
+            buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
+            buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.WHITE}
+            cornerRadius={12}
+            style={[styles.appleBtn, loading && styles.disabled]}
+            onPress={handleAppleSignIn}
+          />
+        )}
 
         <TouchableOpacity onPress={onClose} style={styles.skipBtn}>
           <Text style={styles.skipLabel}>Maybe later</Text>
@@ -257,6 +325,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#1a1a1a',
+  },
+  appleBtn: {
+    width: '100%',
+    height: 50,
+    marginTop: 12,
+    borderRadius: 12,
   },
   skipBtn: {
     marginTop: 16,

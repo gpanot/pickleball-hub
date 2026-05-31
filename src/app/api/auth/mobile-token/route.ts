@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { signMobileJwt } from "@/lib/mobile-auth";
+import * as jose from "jose";
 
 const GOOGLE_TOKEN_INFO = "https://oauth2.googleapis.com/tokeninfo";
+const APPLE_KEYS_URL = "https://appleid.apple.com/auth/keys";
+const APPLE_ISSUER = "https://appleid.apple.com";
 const DEV_EMAIL = "dev@thehub.local";
 
 /**
@@ -60,26 +63,124 @@ export async function GET(req: NextRequest) {
   });
 }
 
+/** Shared helper: find-or-create user + profile and return a JWT response. */
+async function buildAuthResponse(params: {
+  email: string | null | undefined;
+  name: string | null | undefined;
+  image: string | null | undefined;
+  provider: string;
+  providerAccountId: string;
+  idToken: string;
+  emailVerified?: boolean;
+}) {
+  const { email, name, image, provider, providerAccountId, idToken, emailVerified } = params;
+
+  let user = email
+    ? await prisma.user.findUnique({ where: { email } })
+    : await prisma.account
+        .findUnique({ where: { provider_providerAccountId: { provider, providerAccountId } } })
+        .then((a) => (a ? prisma.user.findUnique({ where: { id: a.userId } }) : null));
+
+  if (!user) {
+    user = await prisma.user.create({
+      data: {
+        email: email ?? null,
+        name: name ?? null,
+        image: image ?? null,
+        emailVerified: emailVerified ? new Date() : null,
+      },
+    });
+    await prisma.account.create({
+      data: {
+        userId: user.id,
+        type: "oauth",
+        provider,
+        providerAccountId,
+        id_token: idToken,
+      },
+    });
+  }
+
+  let profile = await prisma.playerProfile.findUnique({ where: { userId: user.id } });
+  if (!profile) {
+    profile = await prisma.playerProfile.create({
+      data: { userId: user.id, displayName: user.name },
+    });
+  }
+
+  const jwt = await signMobileJwt({ sub: user.id, profileId: profile.id });
+  const prefs = (profile.preferences as Record<string, unknown>) ?? {};
+  const rawDupr = prefs.dupr;
+  const duprRating =
+    typeof rawDupr === "number" ? rawDupr :
+    typeof rawDupr === "string" && rawDupr !== "" ? parseFloat(rawDupr) || null :
+    null;
+
+  return NextResponse.json({
+    jwt,
+    userId: user.id,
+    profileId: profile.id,
+    displayName: user.name,
+    imageUrl: user.image,
+    reclubUserId: profile.reclubUserId ? profile.reclubUserId.toString() : null,
+    hasCompletedOnboarding: profile.onboardingCompleted,
+    duprRating,
+    gender: profile.gender ?? null,
+  });
+}
+
 /**
  * POST /api/auth/mobile-token
- * Body: { idToken: string }
+ * Body: { idToken: string, provider?: "google" | "apple" }
  *
- * Verifies a Google idToken, creates/retrieves the User + PlayerProfile,
+ * Verifies a Google or Apple idToken, creates/retrieves the User + PlayerProfile,
  * and returns a lightweight JWT the mobile app uses for all subsequent calls.
  */
 export async function POST(req: NextRequest) {
   try {
-    const { idToken } = (await req.json()) as { idToken?: string };
+    const body = (await req.json()) as { idToken?: string; provider?: string };
+    const { idToken, provider = "google" } = body;
+
     if (!idToken) {
       return NextResponse.json({ error: "idToken required" }, { status: 400 });
     }
 
+    // ── Apple Sign-In ─────────────────────────────────────────────────────────
+    if (provider === "apple") {
+      const JWKS = jose.createRemoteJWKSet(new URL(APPLE_KEYS_URL));
+      const bundleId = process.env.APPLE_APP_BUNDLE_ID ?? "com.squadd.thehub.app";
+
+      let payload: jose.JWTPayload;
+      try {
+        const { payload: p } = await jose.jwtVerify(idToken, JWKS, {
+          issuer: APPLE_ISSUER,
+          audience: bundleId,
+        });
+        payload = p;
+      } catch (err) {
+        console.error("[POST /api/auth/mobile-token] Apple token invalid", err);
+        return NextResponse.json({ error: "Invalid Apple token" }, { status: 401 });
+      }
+
+      const sub = payload.sub as string;
+      const email = payload.email as string | undefined;
+      const emailVerified = payload.email_verified === true || payload.email_verified === "true";
+
+      return buildAuthResponse({
+        email,
+        name: null,
+        image: null,
+        provider: "apple",
+        providerAccountId: sub,
+        idToken,
+        emailVerified,
+      });
+    }
+
+    // ── Google Sign-In ────────────────────────────────────────────────────────
     const res = await fetch(`${GOOGLE_TOKEN_INFO}?id_token=${idToken}`);
     if (!res.ok) {
-      return NextResponse.json(
-        { error: "Invalid Google token" },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: "Invalid Google token" }, { status: 401 });
     }
 
     const goog = (await res.json()) as {
@@ -90,84 +191,17 @@ export async function POST(req: NextRequest) {
       email_verified?: string;
     };
 
-    const expectedClientId =
-      process.env.GOOGLE_CLIENT_ID ?? process.env.AUTH_GOOGLE_ID;
-    if (expectedClientId && goog.sub && !goog.email) {
-      return NextResponse.json(
-        { error: "Token missing email" },
-        { status: 401 }
-      );
-    }
-
-    // Find or create the User (same as NextAuth would)
-    let user = goog.email
-      ? await prisma.user.findUnique({ where: { email: goog.email } })
-      : null;
-
-    if (!user) {
-      user = await prisma.user.create({
-        data: {
-          email: goog.email,
-          name: goog.name ?? null,
-          image: goog.picture ?? null,
-          emailVerified: goog.email_verified === "true" ? new Date() : null,
-        },
-      });
-
-      // Also create Account row so NextAuth recognises this user later
-      await prisma.account.create({
-        data: {
-          userId: user.id,
-          type: "oauth",
-          provider: "google",
-          providerAccountId: goog.sub,
-          id_token: idToken,
-        },
-      });
-    }
-
-    // Ensure PlayerProfile exists
-    let profile = await prisma.playerProfile.findUnique({
-      where: { userId: user.id },
-    });
-
-    if (!profile) {
-      profile = await prisma.playerProfile.create({
-        data: { userId: user.id, displayName: user.name },
-      });
-    }
-
-    const jwt = await signMobileJwt({
-      sub: user.id,
-      profileId: profile.id,
-    });
-
-    const prefs = (profile.preferences as Record<string, unknown>) ?? {};
-    // Coerce string values saved before type enforcement was added
-    const rawDupr = prefs.dupr;
-    const duprRating =
-      typeof rawDupr === 'number' ? rawDupr :
-      typeof rawDupr === 'string' && rawDupr !== '' ? parseFloat(rawDupr) || null :
-      null;
-
-    return NextResponse.json({
-      jwt,
-      userId: user.id,
-      profileId: profile.id,
-      displayName: user.name,
-      imageUrl: user.image,
-      reclubUserId: profile.reclubUserId
-        ? profile.reclubUserId.toString()
-        : null,
-      hasCompletedOnboarding: profile.onboardingCompleted,
-      duprRating,
-      gender: profile.gender ?? null,
+    return buildAuthResponse({
+      email: goog.email,
+      name: goog.name,
+      image: goog.picture,
+      provider: "google",
+      providerAccountId: goog.sub,
+      idToken,
+      emailVerified: goog.email_verified === "true",
     });
   } catch (err) {
     console.error("[POST /api/auth/mobile-token]", err);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

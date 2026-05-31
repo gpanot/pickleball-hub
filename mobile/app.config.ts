@@ -25,6 +25,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   ios: {
     ...(config.ios ?? {}),
     bundleIdentifier: "com.squadd.thehub.app",
+    usesAppleSignIn: true,
     infoPlist: {
       ...(config.ios?.infoPlist ?? {}),
       CFBundleURLTypes: [
@@ -49,6 +50,11 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       backgroundColor: "#0a0a0a",
     },
   },
+  plugins: [
+    ...(Array.isArray(config.plugins) ? config.plugins : []),
+    "expo-apple-authentication",
+    "./scripts/with-google-service-info",
+  ],
   extra: {
     apiUrl: process.env.EXPO_PUBLIC_API_URL ?? "",
     googleClientId: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID ?? "",
