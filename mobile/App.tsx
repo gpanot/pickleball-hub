@@ -22,9 +22,18 @@ import { useAuthStore, resolveApiBase } from './src/stores/authStore'
 import { useSessionStore } from './src/stores/sessionStore'
 import { useUiStore, type PendingNewFollower } from './src/stores/uiStore'
 import { useAvatarCacheStore } from './src/stores/avatarCacheStore'
+import * as Notifications from 'expo-notifications'
 import { registerForPushNotifications, useNotificationListeners, uploadPushToken } from './src/services/notifications'
 import { SplashScreen } from './src/screens/SplashScreen'
 import { debugLog } from './src/lib/debug'
+
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+})
 let RNUxcam: any = null
 try {
   RNUxcam = require('react-native-ux-cam').default
@@ -64,6 +73,18 @@ export default function App() {
     const ok = await saveGear(updated)
     if (ok) setGearSheetOpen(false)
   }
+
+  useEffect(() => {
+    if (Platform.OS === 'android') {
+      Notifications.setNotificationChannelAsync('default', {
+        name: 'Default',
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: '#f5a623',
+        sound: 'default',
+      })
+    }
+  }, [])
 
   useEffect(() => {
     debugLog('App', '=== SQUADD Boot Diagnostics ===')
