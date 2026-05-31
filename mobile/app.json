@@ -14,7 +14,8 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.squadd.thehub.app",
-      "appleTeamId": "F8VE3HCR27"
+      "appleTeamId": "F8VE3HCR27",
+      "googleServicesFile": "./GoogleService-Info.plist"
     },
     "newArchEnabled": true,
     "android": {
@@ -27,6 +28,8 @@
     },
     "scheme": "com.squadd.thehub.app",
     "plugins": [
+      "@react-native-firebase/app",
+      "@react-native-firebase/messaging",
       "expo-asset",
       "expo-font",
       "expo-secure-store",

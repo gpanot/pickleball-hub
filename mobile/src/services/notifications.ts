@@ -17,15 +17,44 @@ Notifications.setNotificationHandler({
 })
 
 /**
- * Registers for push notifications and returns the native FCM/APNs device token.
- * Uses getDevicePushTokenAsync (not getExpoPushTokenAsync) because the backend
- * sends via Firebase Admin SDK which requires native FCM tokens.
- * Includes retry logic for transient FCM SERVICE_NOT_AVAILABLE errors.
+ * On iOS, getDevicePushTokenAsync returns a raw APNs token (hex string)
+ * which is NOT a valid FCM registration token. We need @react-native-firebase/messaging
+ * to convert it to an FCM token that Firebase Admin SDK can use.
+ */
+async function getIosFcmToken(): Promise<string | null> {
+  try {
+    const messaging = (await import('@react-native-firebase/messaging')).default
+    const authStatus = await messaging().requestPermission()
+    const enabled =
+      authStatus === 1 || // AuthorizationStatus.AUTHORIZED
+      authStatus === 2    // AuthorizationStatus.PROVISIONAL
+
+    if (!enabled) {
+      console.warn('[push] iOS Firebase messaging permission not granted:', authStatus)
+      return null
+    }
+
+    if (!messaging().isDeviceRegisteredForRemoteMessages) {
+      await messaging().registerDeviceForRemoteMessages()
+    }
+
+    const fcmToken = await messaging().getToken()
+    console.log('[push] iOS FCM token obtained — prefix:', fcmToken.slice(0, 30) + '...')
+    return fcmToken
+  } catch (err: any) {
+    console.error('[push] iOS FCM getToken failed:', err?.message)
+    return null
+  }
+}
+
+/**
+ * Registers for push notifications and returns a valid FCM registration token.
+ * - Android: uses expo-notifications getDevicePushTokenAsync (returns FCM token directly)
+ * - iOS: uses @react-native-firebase/messaging to get a proper FCM token
  */
 export async function registerForPushNotifications(): Promise<string | null> {
   console.log('[push] registerForPushNotifications called')
   console.log('[push] Platform:', Platform.OS, '| isDevice:', Device.isDevice, '| isExpoGo:', IS_EXPO_GO)
-  console.log('[push] Device brand:', Device.brand, '| modelName:', Device.modelName, '| osVersion:', Device.osVersion)
 
   if (IS_EXPO_GO) {
     console.warn('[push] Expo Go does not support FCM. Use a dev client or standalone build.')
@@ -65,6 +94,12 @@ export async function registerForPushNotifications(): Promise<string | null> {
     console.log('[push] Android channel set.')
   }
 
+  // iOS: use Firebase messaging to get proper FCM token
+  if (Platform.OS === 'ios') {
+    return getIosFcmToken()
+  }
+
+  // Android: getDevicePushTokenAsync returns FCM token directly
   for (let attempt = 1; attempt <= MAX_TOKEN_RETRIES; attempt++) {
     try {
       console.log(`[push] getDevicePushTokenAsync attempt ${attempt}/${MAX_TOKEN_RETRIES}...`)
@@ -93,10 +128,6 @@ export async function registerForPushNotifications(): Promise<string | null> {
   return null
 }
 
-/**
- * Checks the current push notification registration state.
- * Returns a diagnostic object for debugging.
- */
 export async function getPushDiagnostics(): Promise<{
   isDevice: boolean
   isExpoGo: boolean
@@ -118,9 +149,17 @@ export async function getPushDiagnostics(): Promise<{
     diag.permissionStatus = status
 
     if (!IS_EXPO_GO && Device.isDevice && status === 'granted') {
-      const deviceToken = await Notifications.getDevicePushTokenAsync()
-      diag.tokenType = deviceToken.type
-      diag.tokenPrefix = (deviceToken.data as string).slice(0, 30)
+      if (Platform.OS === 'ios') {
+        const fcmToken = await getIosFcmToken()
+        if (fcmToken) {
+          diag.tokenType = 'fcm'
+          diag.tokenPrefix = fcmToken.slice(0, 30)
+        }
+      } else {
+        const deviceToken = await Notifications.getDevicePushTokenAsync()
+        diag.tokenType = deviceToken.type
+        diag.tokenPrefix = (deviceToken.data as string).slice(0, 30)
+      }
     }
   } catch (err: any) {
     diag.error = err?.message ?? String(err)
