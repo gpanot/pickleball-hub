@@ -24,7 +24,11 @@ Notifications.setNotificationHandler({
 async function getIosFcmToken(): Promise<string | null> {
   try {
     const messaging = (await import('@react-native-firebase/messaging')).default
-    const authStatus = await messaging().requestPermission()
+
+    // Do NOT call messaging().requestPermission() here — expo-notifications already
+    // requested permission above. Calling it again causes a crash on iOS when the
+    // system dialog fires a second time. Just check the current status.
+    const authStatus = await messaging().hasPermission()
     const enabled =
       authStatus === 1 || // AuthorizationStatus.AUTHORIZED
       authStatus === 2    // AuthorizationStatus.PROVISIONAL
