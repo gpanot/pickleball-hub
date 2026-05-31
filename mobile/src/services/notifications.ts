@@ -23,11 +23,11 @@ Notifications.setNotificationHandler({
  */
 async function getIosFcmToken(): Promise<string | null> {
   try {
-    const messaging = (await import('@react-native-firebase/messaging')).default
+    const messagingModule = await import('@react-native-firebase/messaging')
+    const messaging = messagingModule.default
 
-    // Do NOT call messaging().requestPermission() here — expo-notifications already
-    // requested permission above. Calling it again causes a crash on iOS when the
-    // system dialog fires a second time. Just check the current status.
+    // Do NOT call requestPermission() — expo-notifications already requested
+    // the system permission above. Calling it again crashes on iOS.
     const authStatus = await messaging().hasPermission()
     const enabled =
       authStatus === 1 || // AuthorizationStatus.AUTHORIZED
@@ -38,11 +38,21 @@ async function getIosFcmToken(): Promise<string | null> {
       return null
     }
 
-    if (!messaging().isDeviceRegisteredForRemoteMessages) {
-      await messaging().registerDeviceForRemoteMessages()
+    // registerDeviceForRemoteMessages can throw if APNs isn't ready yet —
+    // wrap in try/catch and continue regardless (getToken will fail gracefully)
+    try {
+      if (!messaging().isDeviceRegisteredForRemoteMessages) {
+        await messaging().registerDeviceForRemoteMessages()
+      }
+    } catch (regErr: any) {
+      console.warn('[push] registerDeviceForRemoteMessages failed (non-fatal):', regErr?.message)
     }
 
     const fcmToken = await messaging().getToken()
+    if (!fcmToken) {
+      console.warn('[push] iOS FCM getToken returned empty token')
+      return null
+    }
     console.log('[push] iOS FCM token obtained — prefix:', fcmToken.slice(0, 30) + '...')
     return fcmToken
   } catch (err: any) {
@@ -170,6 +180,22 @@ export async function getPushDiagnostics(): Promise<{
   }
 
   return diag
+}
+
+/**
+ * Upload a push token to the backend. Call this after getting a new token
+ * or when the FCM token refreshes.
+ */
+export async function uploadPushToken(token: string, platform: string, authedFetch: (url: string, opts?: RequestInit) => Promise<Response>): Promise<void> {
+  try {
+    const res = await authedFetch('/api/players/push-token', {
+      method: 'POST',
+      body: JSON.stringify({ token, platform }),
+    })
+    console.log('[push] token upload response:', res.status, '| platform:', platform, '| prefix:', token.slice(0, 20))
+  } catch (err) {
+    console.warn('[push] token upload failed', err)
+  }
 }
 
 export function useNotificationListeners(

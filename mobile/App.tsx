@@ -22,7 +22,7 @@ import { useAuthStore, resolveApiBase } from './src/stores/authStore'
 import { useSessionStore } from './src/stores/sessionStore'
 import { useUiStore, type PendingNewFollower } from './src/stores/uiStore'
 import { useAvatarCacheStore } from './src/stores/avatarCacheStore'
-import { registerForPushNotifications, useNotificationListeners } from './src/services/notifications'
+import { registerForPushNotifications, useNotificationListeners, uploadPushToken } from './src/services/notifications'
 import { SplashScreen } from './src/screens/SplashScreen'
 import { debugLog } from './src/lib/debug'
 let RNUxcam: any = null
@@ -112,31 +112,35 @@ export default function App() {
     )
   }, [jwt])
 
-  // Register push token after authentication
-  // Re-registers on every app launch (FCM tokens can rotate)
+  // Register push token after authentication + listen for FCM token rotation
   useEffect(() => {
     if (!jwt || pushTokenRegistered.current) return
+
+    const { authedFetch } = useAuthStore.getState()
 
     registerForPushNotifications().then(async (token) => {
       if (token) {
         pushTokenRegistered.current = true
         console.log('[push] token obtained, uploading to backend. Prefix:', token.slice(0, 30))
-        const { authedFetch } = useAuthStore.getState()
-        try {
-          const res = await authedFetch('/api/players/push-token', {
-            method: 'POST',
-            body: JSON.stringify({ token, platform: Platform.OS }),
-          })
-          const body = await res.text()
-          console.log('[push] token upload response:', res.status, '| platform:', Platform.OS, '| body:', body)
-        } catch (err) {
-          pushTokenRegistered.current = false
-          console.warn('[push] token upload failed', err)
-        }
+        await uploadPushToken(token, Platform.OS, authedFetch)
       } else {
         console.warn('[push] no token returned — permission denied or not a physical device')
       }
     })
+
+    // Listen for FCM token rotation (Android token can change after app update,
+    // Google Play Services update, or cache clear)
+    let unsubscribeTokenRefresh: (() => void) | undefined
+    try {
+      const messagingModule = require('@react-native-firebase/messaging')
+      const messaging = messagingModule.default
+      unsubscribeTokenRefresh = messaging().onTokenRefresh(async (newToken: string) => {
+        console.log('[push] FCM token refreshed — uploading new token, prefix:', newToken.slice(0, 20))
+        await uploadPushToken(newToken, Platform.OS, authedFetch)
+      })
+    } catch {}
+
+    return () => { unsubscribeTokenRefresh?.() }
   }, [jwt])
 
   // Handle notification taps — navigate to the correct screen
