@@ -48,3 +48,7 @@ __pycache__/
 mobile/node_modules/
 mobile/.expo/
 .env.local
+
+# Firebase config — contains API key, do not commit
+GoogleService-Info.plist
+mobile/ios/SQUADD/GoogleService-Info.plist
