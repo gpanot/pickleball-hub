@@ -28,7 +28,14 @@
         <key>CFBundleURLSchemes</key>
         <array>
           <string>com.squadd.thehub.app</string>
-          <string>com.squadd.thehub.app</string>
+        </array>
+      </dict>
+      <dict>
+        <key>CFBundleTypeRole</key>
+        <string>Editor</string>
+        <key>CFBundleURLSchemes</key>
+        <array>
+          <string>com.googleusercontent.apps.140906288105-oa9csuarionhlcsksjjeakcrqob2auvn</string>
         </array>
       </dict>
     </array>

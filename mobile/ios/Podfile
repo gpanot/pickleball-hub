@@ -62,5 +62,32 @@ target 'SQUADD' do
         end
       end
     end
+
+    # Fix Hermes dSYM missing UUID error on Xcode 26
+    installer.pods_project.targets.each do |target|
+      if target.name == 'hermes-engine'
+        target.build_configurations.each do |config|
+          config.build_settings['DEBUG_INFORMATION_FORMAT'] = 'dwarf-with-dsym'
+          config.build_settings['STRIP_INSTALLED_PRODUCT'] = 'NO'
+        end
+      end
+    end
+
+    # Fix space-in-path: patch shell scripts in Pods.xcodeproj that use unquoted paths
+    pbxproj_path = installer.pods_project.path.to_s + "/project.pbxproj"
+    content = File.read(pbxproj_path)
+    patched = content
+      .gsub(
+        '/bin/sh -c \\"$WITH_ENVIRONMENT $SCRIPT_PHASES_SCRIPT\\"',
+        '/bin/sh \\"$WITH_ENVIRONMENT\\" \\"$SCRIPT_PHASES_SCRIPT\\"'
+      )
+      .gsub(
+        'bash -l -c \\"$PODS_TARGET_SRCROOT/../scripts/get-app-config-ios.sh\\"',
+        'bash -l \\"$PODS_TARGET_SRCROOT/../scripts/get-app-config-ios.sh\\"'
+      )
+    if patched != content
+      File.write(pbxproj_path, patched)
+      puts "✅ Applied space-in-path patches to Pods.xcodeproj"
+    end
   end
 end

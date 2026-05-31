@@ -42,12 +42,17 @@ function GoogleLogo({ size = 20 }: { size?: number }) {
 }
 
 const WEB_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID || '140906288105-0do1cdl3ldk2ceblnu56f6oguh3u5odb.apps.googleusercontent.com'
+const IOS_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || ''
 
 if (GoogleSignin) {
-  GoogleSignin.configure({
+  const config: any = {
     webClientId: WEB_CLIENT_ID,
     offlineAccess: false,
-  })
+  }
+  if (Platform.OS === 'ios' && IOS_CLIENT_ID) {
+    config.iosClientId = IOS_CLIENT_ID
+  }
+  GoogleSignin.configure(config)
 }
 
 /** Root-level overlay (not RN Modal) — avoids Android layout glitches inside Expo Go. */
