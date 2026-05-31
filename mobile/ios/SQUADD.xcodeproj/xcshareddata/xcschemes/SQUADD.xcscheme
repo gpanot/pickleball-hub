@@ -5,6 +5,24 @@
    <BuildAction
       parallelizeBuildables = "YES"
       buildImplicitDependencies = "YES">
+      <PreActions>
+         <ExecutionAction
+            ActionType = "Xcode.IDEStandardExecutionActionsCore.ExecutionActionType.ShellScriptExecutionAction">
+            <ActionContent
+               title = "Patch Pods for spaces in path"
+               scriptText = "cd &quot;$SRCROOT/..&quot; &amp;&amp; sh scripts/patch-pods-space.sh 2&gt;&amp;1 || true&#10;">
+               <EnvironmentBuildable>
+                  <BuildableReference
+                     BuildableIdentifier = "primary"
+                     BlueprintIdentifier = "13B07F861A680F5B00A75B9A"
+                     BuildableName = "SQUADD.app"
+                     BlueprintName = "SQUADD"
+                     ReferencedContainer = "container:SQUADD.xcodeproj">
+                  </BuildableReference>
+               </EnvironmentBuildable>
+            </ActionContent>
+         </ExecutionAction>
+      </PreActions>
       <BuildActionEntries>
          <BuildActionEntry
             buildForTesting = "YES"
