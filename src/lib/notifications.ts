@@ -1,24 +1,15 @@
 import { getMessaging } from "@/lib/firebase-admin";
 import { prisma } from "@/lib/db";
 
+type PushResult = { success: boolean; error?: string; message?: string };
+
 /**
- * Send a push notification via Firebase Admin SDK.
- *
- * Uses data-only messages (no top-level `notification` key) so that
- * Expo's ExpoFirebaseMessagingService handles presentation on Android.
- * Including a `notification` key would bypass the Expo JS layer entirely.
+ * Send a push notification to a single FCM/APNs token.
  */
-export async function sendPushNotification({
-  token,
-  title,
-  body,
-  data = {},
-}: {
-  token: string;
-  title: string;
-  body: string;
-  data?: Record<string, string>;
-}): Promise<{ success: boolean; error?: string; message?: string }> {
+async function sendToToken(
+  token: string,
+  payload: { title: string; body: string; data?: Record<string, string> },
+): Promise<PushResult> {
   if (token.startsWith("ExponentPushToken")) {
     console.error(
       "Push notification failed: received Expo push token instead of native FCM token.",
@@ -30,16 +21,13 @@ export async function sendPushNotification({
   try {
     const messageId = await getMessaging().send({
       token,
-      // Data-only message — all values must be strings.
-      // Expo's ExpoFirebaseMessagingService reads title/body/channelId/sound
-      // from data and presents the notification through the JS layer.
       data: {
-        title,
-        message: body,
-        body,
+        title: payload.title,
+        message: payload.body,
+        body: payload.body,
         channelId: "default",
         sound: "default",
-        ...data,
+        ...(payload.data ?? {}),
       },
       android: { priority: "high" },
       apns: {
@@ -59,16 +47,52 @@ export async function sendPushNotification({
     const firebaseErr = err as { code?: string; message?: string; errorInfo?: { code?: string; message?: string } };
     const code = firebaseErr.code ?? firebaseErr.errorInfo?.code ?? "unknown";
     const message = firebaseErr.message ?? firebaseErr.errorInfo?.message ?? "no message";
-    console.error("[push] FCM send failed — code:", code, "| message:", message);
+    console.error("[push] FCM send failed — code:", code, "| message:", message, "| token prefix:", token.slice(0, 20));
     if (
       code === "messaging/registration-token-not-registered" ||
-      code === "messaging/invalid-registration-token"
+      code === "messaging/invalid-registration-token" ||
+      code === "messaging/invalid-argument"
     ) {
+      console.warn("[push] Clearing invalid token from DB — prefix:", token.slice(0, 20));
       await prisma.playerProfile.updateMany({
         where: { pushToken: token },
         data: { pushToken: null },
       });
+      await prisma.playerProfile.updateMany({
+        where: { pushTokenIos: token },
+        data: { pushTokenIos: null },
+      });
     }
     return { success: false, error: code, message };
   }
+}
+
+/**
+ * Send a push notification to all registered devices for a profile.
+ * Looks up both pushToken (Android) and pushTokenIos from the profile.
+ */
+export async function sendPushNotification(
+  profileId: string,
+  payload: { title: string; body: string; data?: Record<string, string> },
+): Promise<PushResult> {
+  const profile = await prisma.playerProfile.findUnique({
+    where: { id: profileId },
+    select: { pushToken: true, pushTokenIos: true },
+  });
+
+  const tokens = [profile?.pushToken, profile?.pushTokenIos].filter(
+    Boolean,
+  ) as string[];
+
+  if (tokens.length === 0) {
+    return { success: false, error: "no_token" };
+  }
+
+  const results = await Promise.all(
+    tokens.map((t) => sendToToken(t, payload)),
+  );
+
+  return results.some((r) => r.success)
+    ? { success: true }
+    : results[0];
 }

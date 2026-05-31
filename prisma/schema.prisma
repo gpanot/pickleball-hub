@@ -208,6 +208,7 @@ model PlayerProfile {
   preferences           Json      @default("{}")
   onboardingCompleted   Boolean   @default(false) @map("onboarding_completed")
   pushToken             String?   @map("push_token")
+  pushTokenIos          String?   @map("push_token_ios")
   pushTokenUpdatedAt    DateTime? @map("push_token_updated_at")
   lastActiveAt          DateTime? @map("last_active_at")
   streakData            Json?     @map("streak_data")

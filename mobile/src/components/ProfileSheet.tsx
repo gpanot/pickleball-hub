@@ -7,6 +7,7 @@ import {
   Alert,
   StyleSheet,
   ScrollView,
+  Platform,
 } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -388,7 +389,7 @@ export function ProfileSheet({
                   console.log('[push-debug] Got token, uploading:', token.slice(0, 20))
                   await authedFetch('/api/players/push-token', {
                     method: 'POST',
-                    body: JSON.stringify({ token }),
+                    body: JSON.stringify({ token, platform: Platform.OS }),
                   })
                 }
               }

@@ -32,7 +32,6 @@ export async function notifyCircleOfJoining({
 
   const name = profile.displayName || "Someone in your circle";
 
-  // Find all profiles that follow this player (via reclubUserId)
   const followers = await prisma.follow.findMany({
     where: { followeeId: profile.reclubUserId },
     select: {
@@ -40,15 +39,15 @@ export async function notifyCircleOfJoining({
         select: {
           id: true,
           pushToken: true,
+          pushTokenIos: true,
         },
       },
     },
   });
 
   for (const { follower } of followers) {
-    if (!follower.pushToken) continue;
+    if (!follower.pushToken && !follower.pushTokenIos) continue;
 
-    // Throttle: max 3 PN1 per 24h per recipient
     const sentToday = await prisma.notificationSent.count({
       where: {
         recipientId: follower.id,
@@ -58,8 +57,7 @@ export async function notifyCircleOfJoining({
     });
     if (sentToday >= 3) continue;
 
-    await sendPushNotification({
-      token: follower.pushToken,
+    await sendPushNotification(follower.id, {
       title: `${name} is joining tonight`,
       body: `${sessionName} · ${sessionTime} · ${spotsLeft} spots left`,
       data: { type: "pn1", sessionId, screen: "Shortlist" },

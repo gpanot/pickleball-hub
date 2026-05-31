@@ -1,6 +1,7 @@
 import React from 'react'
 import { TouchableOpacity, View, Text, StyleSheet } from 'react-native'
 import { GearZoneConfig } from './gearTypes'
+import { NO_BRAND_KEY } from './gearConstants'
 
 type Props = {
   zone: GearZoneConfig
@@ -20,7 +21,7 @@ export function GearBubble({ zone, value, onPress }: Props) {
         <Text style={styles.emoji}>{zone.emoji}</Text>
       </View>
       <Text style={[styles.label, selected && styles.labelSelected]} numberOfLines={1}>
-        {value ?? zone.label}
+        {value === NO_BRAND_KEY ? "None" : (value ?? zone.label)}
       </Text>
     </TouchableOpacity>
   )

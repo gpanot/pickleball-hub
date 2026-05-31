@@ -8,6 +8,7 @@ import {
   vnCurrentTimeString,
   haversineKm,
   isFillingFast,
+  deriveVibeTag,
 } from '@/lib/utils'
 import { CACHE_CONTROL_PRIVATE } from '@/lib/http-cache-headers'
 import { calculateMatchScore } from '@/lib/match-score'
@@ -164,6 +165,7 @@ export async function GET(req: NextRequest) {
           maxPlayers: true,
           eventUrl: true,
           scrapedDate: true,
+          skillLevelMin: true,
           club: { select: { name: true } },
           venue: { select: { name: true, latitude: true, longitude: true } },
           snapshots: {
@@ -328,6 +330,21 @@ export async function GET(req: NextRequest) {
         duprDoubles: r.player.duprDoubles ? Number(r.player.duprDoubles) : null,
         isFollowing: followeeIdSet.has(String(r.player.userId)),
       })),
+      duprRange: (() => {
+        const vals = topRosterRows
+          .map((r) => r.player.duprDoubles ? Number(r.player.duprDoubles) : null)
+          .filter((v): v is number => v !== null && v > 0)
+        if (vals.length >= 2) return { min: Math.round(Math.min(...vals) * 10) / 10, max: Math.round(Math.max(...vals) * 10) / 10 }
+        return null
+      })(),
+      returningPlayerPct: session.duprStat?.returningPlayerPct != null
+        ? Number(session.duprStat.returningPlayerPct)
+        : null,
+      vibeTag: deriveVibeTag(
+        session.name,
+        session.skillLevelMin,
+        session.duprStat?.duprParticipationPct != null ? Number(session.duprStat.duprParticipationPct) : null,
+      ),
     }
   }
 

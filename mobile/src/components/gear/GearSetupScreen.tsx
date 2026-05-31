@@ -13,7 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { ChevronLeft, CheckCircle, X } from 'lucide-react-native'
 import { GearBubble, GearDot } from './GearBubble'
 import { GearBrandSheet } from './GearBrandSheet'
-import { GEAR_ZONES, GEAR_AVATAR, playerGenderFromStored } from './gearConstants'
+import { GEAR_ZONES, GEAR_AVATAR, playerGenderFromStored, NO_BRAND_KEY } from './gearConstants'
 import { GearProfile, GearZoneConfig, GearZoneKey, PlayerGender } from './gearTypes'
 
 type BubblePosition = {

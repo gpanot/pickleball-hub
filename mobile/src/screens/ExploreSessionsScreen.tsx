@@ -188,10 +188,13 @@ export function ExploreSessionsScreen({ onClose }: Props) {
       session.roster.length > 0
         ? Math.round((duprCount / session.roster.length) * 100)
         : null
-    const subtitle =
-      duprPct != null
-        ? `${duprPct}% of the players have a DUPR rating`
-        : undefined
+
+    const lines: string[] = []
+    if (duprPct != null) lines.push(`${duprPct}% of the players have a DUPR rating`)
+    if (session.duprRange) lines.push(`DUPR : ${session.duprRange.min.toFixed(1)} – ${session.duprRange.max.toFixed(1)}`)
+    if (session.vibeTag) lines.push(`Vibe : ${session.vibeTag.charAt(0).toUpperCase() + session.vibeTag.slice(1)}`)
+    const subtitle = lines.length > 0 ? lines.join('\n') : undefined
+
     setFriendsModal({
       visible: true,
       title,

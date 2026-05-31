@@ -13,7 +13,7 @@ import {
   Animated,
 } from 'react-native'
 import { GearZoneConfig } from './gearTypes'
-import { GEAR_BRANDS, OTHER_BRAND_KEY } from './gearConstants'
+import { GEAR_BRANDS, OTHER_BRAND_KEY, NO_BRAND_KEY } from './gearConstants'
 
 const AUTO_CONFIRM_MS = 500
 
@@ -33,8 +33,9 @@ export function GearBrandSheet({ zone, currentValue, onConfirm, onClose }: Props
   useEffect(() => {
     if (zone) {
       const brands = GEAR_BRANDS[zone.key]
-      const isOther = currentValue && !brands.includes(currentValue)
-      setTempPick(isOther ? OTHER_BRAND_KEY : (currentValue ?? null))
+      const isNone = currentValue === NO_BRAND_KEY
+      const isOther = currentValue && !isNone && !brands.includes(currentValue)
+      setTempPick(isNone ? NO_BRAND_KEY : isOther ? OTHER_BRAND_KEY : (currentValue ?? null))
       setOtherText(isOther ? currentValue! : '')
       Animated.spring(slideAnim, {
         toValue: 0,
@@ -72,18 +73,23 @@ export function GearBrandSheet({ zone, currentValue, onConfirm, onClose }: Props
     [clearConfirmTimer, onConfirm],
   )
 
-  const brands = zone ? [...GEAR_BRANDS[zone.key], OTHER_BRAND_KEY] : []
+  const brands = zone ? [...GEAR_BRANDS[zone.key], OTHER_BRAND_KEY, NO_BRAND_KEY] : []
 
   const renderItem = useCallback(
     ({ item }: { item: string }) => {
       const isOtherBtn = item === OTHER_BRAND_KEY
+      const isNoneBtn = item === NO_BRAND_KEY
       const picked = tempPick === item
+      const label = isNoneBtn ? "I don't have" : isOtherBtn ? 'Another brand' : item
       return (
         <TouchableOpacity
-          style={[styles.brandBtn, picked && styles.brandBtnPicked]}
+          style={[styles.brandBtn, picked && styles.brandBtnPicked, isNoneBtn && styles.brandBtnNone]}
           onPress={() => {
             setTempPick(item)
-            if (!isOtherBtn) {
+            if (isNoneBtn) {
+              setOtherText('')
+              scheduleConfirm(NO_BRAND_KEY)
+            } else if (!isOtherBtn) {
               setOtherText('')
               scheduleConfirm(item)
             } else {
@@ -93,8 +99,8 @@ export function GearBrandSheet({ zone, currentValue, onConfirm, onClose }: Props
           }}
           activeOpacity={0.7}
         >
-          <Text style={[styles.brandName, picked && styles.brandNamePicked]}>
-            {isOtherBtn ? 'Another brand' : item}
+          <Text style={[styles.brandName, picked && styles.brandNamePicked, isNoneBtn && !picked && styles.brandNameNone]}>
+            {label}
           </Text>
           {picked && <Text style={styles.checkmark}>✓</Text>}
         </TouchableOpacity>
@@ -237,8 +243,10 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   brandBtnPicked: { borderColor: '#f5a623', backgroundColor: '#1f1400' },
+  brandBtnNone: { borderStyle: 'dashed' as const, borderColor: '#444' },
   brandName: { fontSize: 14, fontWeight: '500', color: '#ccc' },
   brandNamePicked: { color: '#f5a623' },
+  brandNameNone: { color: '#888' },
   checkmark: { fontSize: 12, color: '#f5a623' },
   otherRow: {
     flexDirection: 'row',

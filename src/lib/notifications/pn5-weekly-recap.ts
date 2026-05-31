@@ -11,7 +11,7 @@ export async function sendWeeklyRecaps() {
 
   const eligibleProfiles = await prisma.playerProfile.findMany({
     where: {
-      pushToken: { not: null },
+      OR: [{ pushToken: { not: null } }, { pushTokenIos: { not: null } }],
       lastActiveAt: { lt: cutoff48h },
       notificationsReceived: {
         none: {
@@ -22,7 +22,6 @@ export async function sendWeeklyRecaps() {
     },
     select: {
       id: true,
-      pushToken: true,
       displayName: true,
     },
   });
@@ -30,9 +29,6 @@ export async function sendWeeklyRecaps() {
   let sent = 0;
 
   for (const profile of eligibleProfiles) {
-    if (!profile.pushToken) continue;
-
-    // Count sessions played by the people this profile follows in the past 7 days
     const follows = await prisma.follow.findMany({
       where: { followerId: profile.id },
       select: { followeeId: true },
@@ -51,8 +47,7 @@ export async function sendWeeklyRecaps() {
 
     if (sessionCount === 0) continue;
 
-    await sendPushNotification({
-      token: profile.pushToken,
+    await sendPushNotification(profile.id, {
       title: "Your circle this week",
       body: `${sessionCount} sessions played across your circle · See where they went`,
       data: { type: "pn5", screen: "Circle" },

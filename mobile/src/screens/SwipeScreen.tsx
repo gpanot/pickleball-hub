@@ -352,6 +352,11 @@ export function SwipeScreen({
       }>,
       duprCount: number,
       totalRoster: number,
+      extra?: {
+        duprRange?: { min: number; max: number } | null
+        returningPlayerPct?: number | null
+        vibeTag?: string
+      },
     ) => {
       if (!signedIn || topPlayers.length === 0) return
       const avg = averageDupr(topPlayers)
@@ -362,10 +367,14 @@ export function SwipeScreen({
 
       const duprPct =
         totalRoster > 0 ? Math.round((duprCount / totalRoster) * 100) : null
-      const subtitle =
-        duprPct != null
-          ? `${duprPct}% of the players have a DUPR rating`
-          : undefined
+
+      const lines: string[] = []
+      if (duprPct != null) lines.push(`${duprPct}% of the players have a DUPR rating`)
+      if (extra?.duprRange) lines.push(`DUPR : ${extra.duprRange.min.toFixed(1)} – ${extra.duprRange.max.toFixed(1)}`)
+      if (extra?.returningPlayerPct != null) lines.push(`${Math.round(extra.returningPlayerPct)}% are regulars`)
+      if (extra?.vibeTag) lines.push(`Vibe : ${extra.vibeTag.charAt(0).toUpperCase() + extra.vibeTag.slice(1)}`)
+
+      const subtitle = lines.length > 0 ? lines.join('\n') : undefined
 
       setFriendsModal({
         visible: true,
@@ -393,7 +402,10 @@ export function SwipeScreen({
       const duprCount = session.roster.filter(
         (p) => p.duprDoubles != null && p.duprDoubles > 0,
       ).length
-      openTopDuprModal(topPlayers, duprCount, session.roster.length)
+      openTopDuprModal(topPlayers, duprCount, session.roster.length, {
+        duprRange: session.duprRange,
+        vibeTag: session.vibeTag,
+      })
     },
     [openTopDuprModal],
   )
@@ -404,7 +416,11 @@ export function SwipeScreen({
       const dc = item.duprCount ?? item.topDupr.filter(
         (p) => p.duprDoubles != null && p.duprDoubles > 0,
       ).length
-      openTopDuprModal(item.topDupr, dc, item.totalRoster)
+      openTopDuprModal(item.topDupr, dc, item.totalRoster, {
+        duprRange: item.duprRange,
+        returningPlayerPct: item.returningPlayerPct,
+        vibeTag: item.vibeTag,
+      })
     },
     [openTopDuprModal],
   )

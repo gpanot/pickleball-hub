@@ -13,7 +13,8 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.squadd.thehub.app"
+      "bundleIdentifier": "com.squadd.thehub.app",
+      "appleTeamId": "F8VE3HCR27"
     },
     "newArchEnabled": true,
     "android": {

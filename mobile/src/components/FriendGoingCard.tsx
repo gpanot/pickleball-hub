@@ -7,7 +7,7 @@ import {
   Linking,
   Animated,
 } from 'react-native'
-import { Users, ExternalLink, Clock } from 'lucide-react-native'
+import { Users, Clock } from 'lucide-react-native'
 import { T } from '../theme'
 import { RING_COLORS, type Session } from '../data'
 import { PlayerAvatar } from './PlayerAvatar'
@@ -42,6 +42,9 @@ export interface FriendGoingItem {
   }>
   totalRoster: number
   duprCount?: number
+  duprRange?: { min: number; max: number } | null
+  returningPlayerPct?: number | null
+  vibeTag?: string
 }
 
 interface Props {
@@ -365,7 +368,6 @@ export function FriendGoingCard({
         onPress={() => item.eventUrl && Linking.openURL(item.eventUrl)}
         activeOpacity={0.85}
       >
-        <ExternalLink size={13} color="#1a0a00" strokeWidth={2.5} />
         <Text style={s.joinBtnText}>Join on Reclub</Text>
       </TouchableOpacity>
     </TouchableOpacity>
@@ -551,14 +553,14 @@ const s = StyleSheet.create({
     textAlign: 'right',
   },
   joinBtn: {
-    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
     backgroundColor: T.amber,
     borderRadius: 10,
     paddingVertical: 10,
+    paddingHorizontal: 16,
     marginHorizontal: 12,
+    alignSelf: 'flex-end',
   },
   joinBtnText: {
     fontSize: 13,

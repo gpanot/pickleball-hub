@@ -21,6 +21,7 @@ export const GEAR_BRANDS: Record<GearZoneKey, string[]> = {
 }
 
 export const OTHER_BRAND_KEY = '__other__'
+export const NO_BRAND_KEY = '__none__'
 export const GEAR_CACHE_KEY  = 'squadd_gear_profile'
 
 export const GEAR_AVATAR: Record<PlayerGender, any> = {

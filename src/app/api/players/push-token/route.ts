@@ -8,7 +8,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { token } = (await req.json()) as { token?: string };
+  const { token, platform } = (await req.json()) as {
+    token?: string;
+    platform?: string;
+  };
   if (!token) {
     return NextResponse.json({ error: "token required" }, { status: 400 });
   }
@@ -21,16 +24,19 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const isIos = platform === "ios";
+
   console.log(
     "[push-token] Saving token for profile", user.profileId,
-    "— type:", token.startsWith("ExponentPushToken") ? "expo" : "native",
-    "prefix:", token.slice(0, 20)
+    "— platform:", platform ?? "unknown",
+    "| field:", isIos ? "pushTokenIos" : "pushToken",
+    "| prefix:", token.slice(0, 20)
   );
 
   await prisma.playerProfile.update({
     where: { id: user.profileId },
     data: {
-      pushToken: token,
+      ...(isIos ? { pushTokenIos: token } : { pushToken: token }),
       pushTokenUpdatedAt: new Date(),
       lastActiveAt: new Date(),
     },

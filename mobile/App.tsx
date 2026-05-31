@@ -125,10 +125,10 @@ export default function App() {
         try {
           const res = await authedFetch('/api/players/push-token', {
             method: 'POST',
-            body: JSON.stringify({ token }),
+            body: JSON.stringify({ token, platform: Platform.OS }),
           })
           const body = await res.text()
-          console.log('[push] token upload response:', res.status, '| body:', body)
+          console.log('[push] token upload response:', res.status, '| platform:', Platform.OS, '| body:', body)
         } catch (err) {
           pushTokenRegistered.current = false
           console.warn('[push] token upload failed', err)

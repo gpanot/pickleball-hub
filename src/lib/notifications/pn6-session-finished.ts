@@ -20,19 +20,14 @@ export async function sendSessionFinishedKudosNotifications(): Promise<{
     return { sent: 0, skipped: 0, sessions: 0 };
   }
 
-  // VN "today" date string
   const vnNow = new Date(Date.now() + 7 * 60 * 60 * 1000);
   const todayStr = vnNow.toISOString().slice(0, 10);
-  // Current time in ICT as HH:mm
   const nowTimeVN = vnNow.toISOString().slice(11, 16);
 
-  // Window: sessions that ended between 65 min ago and now (catches a 60-min cron + buffer)
   const windowMins = 65;
   const windowStart = new Date(vnNow.getTime() - windowMins * 60 * 1000);
   const windowStartTime = windowStart.toISOString().slice(11, 16);
 
-  // Find sessions that finished in the cron window today
-  // endTime is stored as HH:mm string; filter sessions where endTime is in (windowStartTime, nowTimeVN]
   const finishedRosters = await prisma.sessionRoster.findMany({
     where: {
       session: {
@@ -41,7 +36,7 @@ export async function sendSessionFinishedKudosNotifications(): Promise<{
       },
     },
     select: {
-      userId: true, // Reclub Player.userId (BigInt) = the player who finished
+      userId: true,
       session: {
         select: {
           id: true,
@@ -58,53 +53,44 @@ export async function sendSessionFinishedKudosNotifications(): Promise<{
   let skipped = 0;
 
   for (const roster of finishedRosters) {
-    const playerId = roster.userId; // BigInt
+    const playerId = roster.userId;
     const session = roster.session;
 
-    // Find the Player record for display name
     const player = await prisma.player.findUnique({
       where: { userId: playerId },
       select: { userId: true, displayName: true },
     });
     const playerName = player?.displayName || "Someone in your circle";
 
-    // Find all app followers of this player
     const followers = await prisma.follow.findMany({
       where: { followeeId: playerId },
       select: {
         follower: {
-          select: { id: true, pushToken: true },
+          select: { id: true, pushToken: true, pushTokenIos: true },
         },
       },
     });
 
     for (const { follower } of followers) {
-      if (!follower.pushToken) {
+      if (!follower.pushToken && !follower.pushTokenIos) {
         skipped++;
         continue;
       }
 
-      // Throttle: max 1 PN6 per (recipient, followee) per day
-      // We encode followee as senderId (stored as PlayerProfile.id when available,
-      // or skip dedup if no profile — BigInt players without app accounts can't be senderId)
       const alreadySentToday = await prisma.notificationSent.count({
         where: {
           recipientId: follower.id,
           type: "pn6",
           sentAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
-          // Dedup per session: we store sessionId encoded as a prefix in a dedicated
-          // query rather than adding a new column — check by session context below
         },
       });
-      // Allow max 2 PN6 per day per recipient (could see multiple friends finish)
       if (alreadySentToday >= 2) {
         skipped++;
         continue;
       }
 
       const venueName = session.venue?.name ?? "their session";
-      const result = await sendPushNotification({
-        token: follower.pushToken,
+      const result = await sendPushNotification(follower.id, {
         title: `${playerName} just finished playing 🏓`,
         body: `Give them a fist bump for their session at ${venueName}`,
         data: {

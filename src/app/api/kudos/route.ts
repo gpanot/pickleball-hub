@@ -109,14 +109,13 @@ async function sendKudosNotification(fromProfileId: string, toPlayerId: string, 
       }),
       prisma.playerProfile.findFirst({
         where: { reclubUserId: BigInt(toPlayerId) },
-        select: { pushToken: true },
+        select: { id: true, pushToken: true, pushTokenIos: true },
       }),
     ])
 
-    if (!target?.pushToken) return
+    if (!target?.pushToken && !target?.pushTokenIos) return
 
-    await sendPushNotification({
-      token: target.pushToken,
+    await sendPushNotification(target.id, {
       title: `${emojiMap[type] ?? '👏'} ${sender?.displayName ?? 'Someone'} ${labelMap[type] ?? 'sent you kudos'}`,
       body: 'Open Squadd to see your kudos',
       data: { type: 'kudos', screen: 'Circle' },

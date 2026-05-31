@@ -5,8 +5,7 @@ import { sendPushNotification } from "@/lib/notifications";
 
 /**
  * POST /api/notifications/test
- * Sends a test push notification to the calling user's registered device.
- * Used for debugging PNS setup.
+ * Sends a test push notification to the calling user's registered device(s).
  */
 export async function POST(req: NextRequest) {
   const user = await getMobileUser(req);
@@ -16,18 +15,17 @@ export async function POST(req: NextRequest) {
 
   const profile = await prisma.playerProfile.findUnique({
     where: { id: user.profileId },
-    select: { pushToken: true, displayName: true },
+    select: { pushToken: true, pushTokenIos: true, displayName: true },
   });
 
-  if (!profile?.pushToken) {
+  if (!profile?.pushToken && !profile?.pushTokenIos) {
     return NextResponse.json(
       { error: "No push token registered", registered: false },
       { status: 400 }
     );
   }
 
-  const result = await sendPushNotification({
-    token: profile.pushToken,
+  const result = await sendPushNotification(user.profileId, {
     title: "Test notification",
     body: `Hey ${profile.displayName ?? "there"}! Push notifications are working.`,
     data: { type: "test", screen: "Circle" },
@@ -39,7 +37,8 @@ export async function POST(req: NextRequest) {
         error: "Push send failed",
         code: result.error,
         message: result.message,
-        tokenPrefix: profile.pushToken.slice(0, 20),
+        tokenPrefix: profile.pushToken?.slice(0, 20) ?? null,
+        tokenIosPrefix: profile.pushTokenIos?.slice(0, 20) ?? null,
         registered: true,
       },
       { status: 502 }
@@ -61,12 +60,13 @@ export async function GET(req: NextRequest) {
 
   const profile = await prisma.playerProfile.findUnique({
     where: { id: user.profileId },
-    select: { pushToken: true, pushTokenUpdatedAt: true },
+    select: { pushToken: true, pushTokenIos: true, pushTokenUpdatedAt: true },
   });
 
   return NextResponse.json({
-    registered: !!profile?.pushToken,
+    registered: !!(profile?.pushToken || profile?.pushTokenIos),
     tokenPrefix: profile?.pushToken?.slice(0, 20) ?? null,
+    tokenIosPrefix: profile?.pushTokenIos?.slice(0, 20) ?? null,
     updatedAt: profile?.pushTokenUpdatedAt?.toISOString() ?? null,
   });
 }

@@ -1,5 +1,5 @@
 import React from 'react'
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native'
+import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native'
 import * as Notifications from 'expo-notifications'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { registerForPushNotifications } from '../services/notifications'
@@ -27,7 +27,7 @@ export function NotificationPermissionSheet({
         try {
           await authedFetch('/api/players/push-token', {
             method: 'POST',
-            body: JSON.stringify({ token }),
+            body: JSON.stringify({ token, platform: Platform.OS }),
           })
         } catch {}
       }
