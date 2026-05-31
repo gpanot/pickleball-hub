@@ -118,11 +118,13 @@ export function SwipeScreen({
   gearSaved,
   gearSetupComplete,
   onOpenExplore,
+  isActive,
 }: {
   onOpenGearSheet?: () => void
   gearSaved?: boolean
   gearSetupComplete?: boolean
   onOpenExplore?: () => void
+  isActive?: boolean
 }) {
   const { openSignUp } = useSignUpModal()
   const signedIn = useAuthStore((s) => s.isSignedIn)()
@@ -459,24 +461,33 @@ export function SwipeScreen({
     })()
   }, [])
 
+  const swipeTabVisitCount = useRef(0)
+
   useEffect(() => {
+    if (!isActive) return
     if (locationPopupShownRef.current) return
+
+    swipeTabVisitCount.current += 1
+    console.log('[LOCATION_DEBUG] swipe tab activated, visit #', swipeTabVisitCount.current)
+
+    if (swipeTabVisitCount.current < 2) return
 
     const check = async () => {
       const alreadyAsked = await AsyncStorage.getItem('squadd_location_permission_asked')
+      console.log('[LOCATION_DEBUG] alreadyAsked:', alreadyAsked)
       if (alreadyAsked) return
 
       const { status } = await Location.getForegroundPermissionsAsync()
-      if (status !== 'granted') {
-        locationPopupShownRef.current = true
-        setShowLocationPopup(true)
-      }
+      console.log('[LOCATION_DEBUG] current permission status:', status)
+      if (status === 'granted') return
+
+      console.log('[LOCATION_DEBUG] showing location popup!')
+      locationPopupShownRef.current = true
+      setShowLocationPopup(true)
     }
 
-    AsyncStorage.getItem('squadd_has_seen_feed').then((seen) => {
-      if (seen) check()
-    })
-  }, [])
+    check()
+  }, [isActive])
 
   // Re-fetch when date filter changes or jwt arrives after boot.
   // Skip the very first render (boot effect handles that).

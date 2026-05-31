@@ -13,9 +13,9 @@ export function LocationPermissionPopup({
   if (!visible) return null
 
   const handleAllow = async () => {
-    onClose()
     await AsyncStorage.setItem('squadd_location_permission_asked', '1')
     await Location.requestForegroundPermissionsAsync()
+    onClose()
   }
 
   const handleSkip = async () => {

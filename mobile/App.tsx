@@ -278,6 +278,7 @@ export default function App() {
                   gearSaved={savedConfirmation}
                   gearSetupComplete={gearSetupComplete}
                   onOpenExplore={() => setFlowScreen('explore')}
+                  isActive={activeTab === 'swipe'}
                 />
               </View>
               {flowScreen !== 'explore' && (

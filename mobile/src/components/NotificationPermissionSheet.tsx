@@ -17,9 +17,9 @@ export function NotificationPermissionSheet({
   if (!visible) return null
 
   const handleAllow = async () => {
-    onClose()
     await AsyncStorage.setItem(STORAGE_KEY, '1')
     const { status } = await Notifications.requestPermissionsAsync()
+    onClose()
     if (status === 'granted') {
       const token = await registerForPushNotifications()
       if (token) {
@@ -41,8 +41,7 @@ export function NotificationPermissionSheet({
 
   return (
     <View style={s.backdrop}>
-      <View style={s.sheet}>
-        <View style={s.handle} />
+      <View style={s.popup}>
 
         <View style={s.iconWrap}>
           <Text style={s.iconEmoji}>🔔</Text>
@@ -58,33 +57,15 @@ export function NotificationPermissionSheet({
         </Text>
 
         {[
-          {
-            icon: '⚡',
-            bg: '#1f1400',
-            title: 'Friend just booked',
-            sub: 'Get notified when someone you follow joins a session today',
-          },
-          {
-            icon: '🏆',
-            bg: '#0a1f0a',
-            title: 'DUPR improvements',
-            sub: 'Know when your circle hits a new rating milestone',
-          },
-          {
-            icon: '🎯',
-            bg: '#140a2a',
-            title: 'Sessions filling fast',
-            sub: 'Last spots at sessions that match your level',
-          },
+          { icon: '⚡', label: 'Friend just booked' },
+          { icon: '🏆', label: 'DUPR improvements' },
+          { icon: '🎯', label: 'Sessions filling fast' },
         ].map((item, i) => (
           <View key={i} style={s.benefitRow}>
-            <View style={[s.benefitIcon, { backgroundColor: item.bg }]}>
+            <View style={s.benefitIcon}>
               <Text style={s.benefitEmoji}>{item.icon}</Text>
             </View>
-            <View style={s.benefitText}>
-              <Text style={s.benefitTitle}>{item.title}</Text>
-              <Text style={s.benefitSub}>{item.sub}</Text>
-            </View>
+            <Text style={s.benefitLabel}>{item.label}</Text>
           </View>
         ))}
 
@@ -95,6 +76,7 @@ export function NotificationPermissionSheet({
         <TouchableOpacity style={s.btnSecondary} onPress={handleSkip}>
           <Text style={s.btnSecondaryText}>Not now</Text>
         </TouchableOpacity>
+
       </View>
     </View>
   )
@@ -103,36 +85,30 @@ export function NotificationPermissionSheet({
 const s = StyleSheet.create({
   backdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.75)',
+    justifyContent: 'center',
+    alignItems: 'center',
     zIndex: 999,
+    paddingHorizontal: 24,
   },
-  sheet: {
+  popup: {
     backgroundColor: '#111',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    borderRadius: 20,
     padding: 24,
-    paddingBottom: 40,
-  },
-  handle: {
-    width: 36,
-    height: 4,
-    backgroundColor: '#333',
-    borderRadius: 2,
-    alignSelf: 'center',
-    marginBottom: 20,
+    width: '100%',
+    alignItems: 'center',
+    borderWidth: 0.5,
+    borderColor: '#2a2a2a',
   },
   iconWrap: {
-    width: 64,
-    height: 64,
+    width: 64, height: 64,
     backgroundColor: '#1a1000',
     borderRadius: 20,
     borderWidth: 1,
     borderColor: '#f5a623',
     alignItems: 'center',
     justifyContent: 'center',
-    alignSelf: 'center',
-    marginBottom: 16,
+    marginBottom: 14,
   },
   iconEmoji: { fontSize: 28 },
   badge: {
@@ -142,10 +118,13 @@ const s = StyleSheet.create({
     borderRadius: 6,
     paddingHorizontal: 8,
     paddingVertical: 3,
-    alignSelf: 'center',
     marginBottom: 12,
   },
-  badgeText: { fontSize: 10, fontWeight: '700', color: '#f5a623' },
+  badgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#f5a623',
+  },
   title: {
     fontSize: 20,
     fontWeight: '700',
@@ -162,37 +141,47 @@ const s = StyleSheet.create({
   },
   benefitRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
-    paddingVertical: 8,
+    alignItems: 'center',
+    gap: 12,
+    width: '100%',
+    paddingVertical: 9,
     borderBottomWidth: 0.5,
     borderBottomColor: '#1a1a1a',
   },
   benefitIcon: {
-    width: 32,
-    height: 32,
+    width: 34, height: 34,
+    backgroundColor: '#1f1400',
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    flexShrink: 0,
   },
-  benefitEmoji: { fontSize: 14 },
-  benefitText: { flex: 1 },
-  benefitTitle: {
-    fontSize: 13,
+  benefitEmoji: { fontSize: 16 },
+  benefitLabel: {
+    fontSize: 14,
     fontWeight: '600',
     color: '#ddd',
-    marginBottom: 2,
   },
-  benefitSub: { fontSize: 11, color: '#555', lineHeight: 16 },
   btnPrimary: {
     backgroundColor: '#f5a623',
-    borderRadius: 14,
-    padding: 14,
+    borderRadius: 12,
+    padding: 13,
+    width: '100%',
     alignItems: 'center',
     marginTop: 20,
+    marginBottom: 8,
   },
-  btnPrimaryText: { fontSize: 15, fontWeight: '700', color: '#0a0a0a' },
-  btnSecondary: { padding: 10, alignItems: 'center', marginTop: 4 },
-  btnSecondaryText: { fontSize: 13, color: '#444' },
+  btnPrimaryText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#0a0a0a',
+  },
+  btnSecondary: {
+    padding: 10,
+    width: '100%',
+    alignItems: 'center',
+  },
+  btnSecondaryText: {
+    fontSize: 13,
+    color: '#444',
+  },
 })
