@@ -6,6 +6,24 @@
       parallelizeBuildables = "YES"
       buildImplicitDependencies = "YES"
       buildArchitectures = "Automatic">
+      <PreActions>
+         <ExecutionAction
+            ActionType = "Xcode.IDEStandardExecutionActionsCore.ExecutionActionType.ShellScriptExecutionAction">
+            <ActionContent
+               title = "Patch Pods for spaces in path"
+               scriptText = "cd &quot;$SRCROOT/..&quot; &amp;&amp; sh scripts/patch-pods-space.sh 2&gt;&amp;1 || true&#10;">
+               <EnvironmentBuildable>
+                  <BuildableReference
+                     BuildableIdentifier = "primary"
+                     BlueprintIdentifier = "13B07F861A680F5B00A75B9A"
+                     BuildableName = "SQUADD.app"
+                     BlueprintName = "SQUADD"
+                     ReferencedContainer = "container:SQUADD.xcodeproj">
+                  </BuildableReference>
+               </EnvironmentBuildable>
+            </ActionContent>
+         </ExecutionAction>
+      </PreActions>
       <BuildActionEntries>
          <BuildActionEntry
             buildForTesting = "YES"
@@ -41,6 +59,24 @@
       debugServiceExtension = "internal"
       allowLocationSimulation = "YES"
       queueDebuggingEnableBacktraceRecording = "Yes">
+      <PreActions>
+         <ExecutionAction
+            ActionType = "Xcode.IDEStandardExecutionActionsCore.ExecutionActionType.ShellScriptExecutionAction">
+            <ActionContent
+               title = "Start Metro Bundler"
+               scriptText = "#!/bin/sh&#10;# Start Metro only for Debug builds (not Archive/Release)&#10;if [ &quot;$CONFIGURATION&quot; != &quot;Release&quot; ]; then&#10;  export PATH=&quot;/opt/homebrew/bin:/usr/local/bin:$PATH&quot;&#10;  # Kill any stale Metro on 8081&#10;  lsof -ti:8081 | xargs kill -9 2&gt;/dev/null || true&#10;  # Recreate space-safe symlink&#10;  ln -sf &quot;$SRCROOT/..&quot; /tmp/squadd 2&gt;/dev/null || true&#10;  # Start Metro in background&#10;  cd /tmp/squadd &amp;&amp; NODE_ENV=development nohup node_modules/.bin/react-native start --port 8081 --reset-cache &gt; /tmp/metro.log 2&gt;&amp;1 &amp;&#10;  # Give Metro 3 seconds to boot&#10;  sleep 3&#10;fi&#10;">
+               <EnvironmentBuildable>
+                  <BuildableReference
+                     BuildableIdentifier = "primary"
+                     BlueprintIdentifier = "13B07F861A680F5B00A75B9A"
+                     BuildableName = "SQUADD.app"
+                     BlueprintName = "SQUADD"
+                     ReferencedContainer = "container:SQUADD.xcodeproj">
+                  </BuildableReference>
+               </EnvironmentBuildable>
+            </ActionContent>
+         </ExecutionAction>
+      </PreActions>
       <BuildableProductRunnable
          runnableDebuggingMode = "0">
          <BuildableReference
