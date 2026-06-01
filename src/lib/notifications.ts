@@ -21,15 +21,25 @@ async function sendToToken(
   try {
     const messageId = await getMessaging().send({
       token,
+      notification: {
+        title: payload.title,
+        body: payload.body,
+      },
       data: {
         title: payload.title,
         message: payload.body,
         body: payload.body,
-        channelId: "default",
         sound: "default",
         ...(payload.data ?? {}),
       },
-      android: { priority: "high" },
+      android: {
+        priority: "high",
+        notification: {
+          channelId: "default",
+          sound: "default",
+          priority: "max",
+        },
+      },
       apns: {
         payload: {
           aps: {
