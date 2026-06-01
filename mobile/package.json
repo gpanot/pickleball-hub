@@ -13,6 +13,7 @@
     "patch:pods": "sh scripts/patch-pods-space.sh"
   },
   "dependencies": {
+    "@expo/config-plugins": "~9.0.0",
     "@posthog/core": "^1.29.13",
     "@react-native-async-storage/async-storage": "1.23.1",
     "@react-native-community/slider": "4.5.5",

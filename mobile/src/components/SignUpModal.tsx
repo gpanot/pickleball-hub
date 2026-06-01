@@ -56,6 +56,11 @@ if (GoogleSignin) {
   GoogleSignin.configure(config)
 }
 
+function clientIdHint(id: string) {
+  if (!id) return '<empty>'
+  return id.length > 24 ? `${id.slice(0, 24)}...` : id
+}
+
 /** Root-level overlay (not RN Modal) — avoids Android layout glitches inside Expo Go. */
 export function SignUpModalOverlay({
   visible,
@@ -134,17 +139,33 @@ export function SignUpModalOverlay({
         Alert.alert('Sign-in failed', 'Could not verify your Google account. Please try again.')
       } else {
         debugWarn('signIn', `Sign-in cancelled or no idToken`, response)
+        Alert.alert(
+          'Google sign-in missing token',
+          `Google returned no idToken. type=${response?.type ?? 'unknown'}, webClientId=${clientIdHint(WEB_CLIENT_ID)}`
+        )
       }
     } catch (e) {
+      let nativeCode = 'UNKNOWN'
+      let nativeMessage = ''
       if (isErrorWithCode(e)) {
+        nativeCode = e.code ?? 'UNKNOWN'
+        nativeMessage = e.message ?? ''
         debugError('signIn', `Google error code=${e.code}`, e)
         if (e.code === statusCodes.SIGN_IN_CANCELLED) {
           return
         }
       } else {
         debugError('signIn', 'Google sign-in error', e)
+        if (e instanceof Error) {
+          nativeMessage = e.message
+        }
       }
-      Alert.alert('Sign-in failed', 'Something went wrong. Please check your connection and try again.')
+      const detail = nativeMessage ? `${nativeCode}: ${nativeMessage}` : nativeCode
+      debugError('signIn', `Google native failure detail=${detail}, webClientId=${WEB_CLIENT_ID}`, e)
+      Alert.alert(
+        'Sign-in failed',
+        `Google sign-in native error: ${detail}. webClientId=${clientIdHint(WEB_CLIENT_ID)}. Please share this code.`
+      )
     } finally {
       setLoading(false)
     }

@@ -22,29 +22,38 @@ import { useAuthStore, resolveApiBase } from './src/stores/authStore'
 import { useSessionStore } from './src/stores/sessionStore'
 import { useUiStore, type PendingNewFollower } from './src/stores/uiStore'
 import { useAvatarCacheStore } from './src/stores/avatarCacheStore'
-import * as Notifications from 'expo-notifications'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import { registerForPushNotifications, useNotificationListeners, uploadPushToken } from './src/services/notifications'
+import { PushDebugScreen } from './src/screens/PushDebugScreen'
 import { SplashScreen } from './src/screens/SplashScreen'
 import { debugLog } from './src/lib/debug'
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
-})
+const IS_EXPO_GO = Constants.appOwnership === 'expo'
+const Notifications = IS_EXPO_GO ? null : require('expo-notifications')
 
-if (Platform.OS === 'android') {
-  Notifications.setNotificationChannelAsync('default', {
-    name: 'Default',
-    importance: Notifications.AndroidImportance.MAX,
-    vibrationPattern: [0, 250, 250, 250],
-    lightColor: '#f5a623',
-    sound: 'default',
+if (!IS_EXPO_GO) {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => {
+      const enabled = useUiStore.getState().notificationsEnabled
+      return {
+        shouldShowAlert: enabled,
+        shouldPlaySound: enabled,
+        shouldSetBadge: enabled,
+        shouldShowBanner: enabled,
+        shouldShowList: enabled,
+      }
+    },
   })
+
+  if (Platform.OS === 'android') {
+    Notifications.setNotificationChannelAsync('default', {
+      name: 'Default',
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 250, 250, 250],
+      lightColor: '#f5a623',
+      sound: 'default',
+    })
+  }
 }
 
 // FCM debug listeners — log every message event regardless of app state
@@ -54,6 +63,20 @@ try {
 
   messaging().onMessage(async (remoteMessage: any) => {
     console.log('[FCM_DEBUG] foreground message received:', JSON.stringify(remoteMessage, null, 2))
+    const notificationsEnabled = useUiStore.getState().notificationsEnabled
+    if (!notificationsEnabled) {
+      console.log('[FCM_DEBUG] notifications disabled by user — skipping display')
+      return
+    }
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: remoteMessage.notification?.title ?? remoteMessage.data?.title ?? '',
+        body: remoteMessage.notification?.body ?? remoteMessage.data?.body ?? remoteMessage.data?.message ?? '',
+        data: remoteMessage.data ?? {},
+        sound: 'default',
+      },
+      trigger: null,
+    })
   })
 
   messaging().onNotificationOpenedApp((remoteMessage: any) => {
@@ -68,18 +91,28 @@ try {
 
   messaging().setBackgroundMessageHandler(async (remoteMessage: any) => {
     console.log('[FCM_DEBUG] background message received:', JSON.stringify(remoteMessage, null, 2))
+    const ts = new Date().toISOString().substring(11, 23)
+    const log = `[${ts}] 🔴 BACKGROUND: title="${remoteMessage.notification?.title}" data=${JSON.stringify(remoteMessage.data)}`
+    try {
+      const existing = await AsyncStorage.getItem('pns_debug_logs')
+      const stored: string[] = existing ? JSON.parse(existing) : []
+      stored.push(log)
+      await AsyncStorage.setItem('pns_debug_logs', JSON.stringify(stored.slice(-100)))
+    } catch {}
   })
 } catch (err: any) {
   console.warn('[FCM_DEBUG] could not attach FCM debug listeners:', err?.message)
 }
 
-Notifications.addNotificationReceivedListener((notification) => {
-  console.log('[EXPO_DEBUG] notification received:', JSON.stringify(notification, null, 2))
-})
+if (!IS_EXPO_GO) {
+  Notifications.addNotificationReceivedListener((notification) => {
+    console.log('[EXPO_DEBUG] notification received:', JSON.stringify(notification, null, 2))
+  })
 
-Notifications.addNotificationResponseReceivedListener((response) => {
-  console.log('[EXPO_DEBUG] notification tapped:', JSON.stringify(response, null, 2))
-})
+  Notifications.addNotificationResponseReceivedListener((response) => {
+    console.log('[EXPO_DEBUG] notification tapped:', JSON.stringify(response, null, 2))
+  })
+}
 
 let RNUxcam: any = null
 try {
@@ -87,11 +120,10 @@ try {
 } catch {}
 import { PostHogProvider, PostHogMaskView } from 'posthog-react-native'
 
-type FlowScreen = 'main' | 'onboarding' | 'people' | 'profile' | 'gear' | 'explore'
+type FlowScreen = 'main' | 'onboarding' | 'people' | 'profile' | 'gear' | 'explore' | 'pushDebug'
 
 const POSTHOG_API_KEY = 'phc_uZqiFnt6NpnpjL3QPbD4RmpJZaByiJChD5pcrcySXjGJ'
 const POSTHOG_HOST = 'https://us.i.posthog.com'
-const IS_EXPO_GO = Constants.appOwnership === 'expo'
 
 export default function App() {
   const [showSplash, setShowSplash] = useState(true)
@@ -304,6 +336,17 @@ export default function App() {
     )
   }
 
+  if (flowScreen === 'pushDebug') {
+    return (
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <SafeAreaProvider>
+          <StatusBar style="light" />
+          <PushDebugScreen onClose={() => setFlowScreen('profile')} />
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
+    )
+  }
+
   return (
     <PostHogProvider
       apiKey={POSTHOG_API_KEY}
@@ -368,6 +411,7 @@ export default function App() {
                     setGearReturnTo('profile')
                     setFlowScreen('gear')
                   }}
+                  onOpenPushDebug={() => setFlowScreen('pushDebug')}
                 />
               </PostHogMaskView>
             )}

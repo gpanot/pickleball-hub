@@ -49,7 +49,6 @@
     "scheme": "com.squadd.thehub.app",
     "plugins": [
       "@react-native-firebase/app",
-      "@react-native-firebase/messaging",
       "expo-asset",
       "expo-font",
       "expo-secure-store",

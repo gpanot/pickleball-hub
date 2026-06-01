@@ -140,6 +140,15 @@ export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as { idToken?: string; provider?: string };
     const { idToken, provider = "google" } = body;
+    const ua = req.headers.get("user-agent") ?? "<unknown>";
+    const xff = req.headers.get("x-forwarded-for") ?? "<unknown>";
+    console.log("[POST /api/auth/mobile-token] incoming", {
+      provider,
+      hasIdToken: Boolean(idToken),
+      idTokenLength: idToken?.length ?? 0,
+      userAgent: ua,
+      forwardedFor: xff,
+    });
 
     if (!idToken) {
       return NextResponse.json({ error: "idToken required" }, { status: 400 });
@@ -179,7 +188,16 @@ export async function POST(req: NextRequest) {
 
     // ── Google Sign-In ────────────────────────────────────────────────────────
     const res = await fetch(`${GOOGLE_TOKEN_INFO}?id_token=${idToken}`);
+    console.log("[POST /api/auth/mobile-token] google tokeninfo status", {
+      status: res.status,
+      ok: res.ok,
+    });
     if (!res.ok) {
+      const tokenInfoBody = await res.text().catch(() => "<unreadable>");
+      console.warn("[POST /api/auth/mobile-token] Invalid Google token", {
+        status: res.status,
+        body: tokenInfoBody,
+      });
       return NextResponse.json({ error: "Invalid Google token" }, { status: 401 });
     }
 
@@ -189,7 +207,18 @@ export async function POST(req: NextRequest) {
       name?: string;
       picture?: string;
       email_verified?: string;
+      aud?: string;
+      azp?: string;
+      iss?: string;
     };
+    console.log("[POST /api/auth/mobile-token] google tokeninfo payload", {
+      sub: goog.sub ? `${goog.sub.slice(0, 6)}...` : "<missing>",
+      email: goog.email ?? null,
+      aud: goog.aud ?? null,
+      azp: goog.azp ?? null,
+      iss: goog.iss ?? null,
+      email_verified: goog.email_verified ?? null,
+    });
 
     return buildAuthResponse({
       email: goog.email,

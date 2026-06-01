@@ -1,9 +1,9 @@
-import * as Notifications from 'expo-notifications'
 import * as Device from 'expo-device'
 import Constants from 'expo-constants'
 import { Platform } from 'react-native'
 
 const IS_EXPO_GO = Constants.appOwnership === 'expo'
+const Notifications: any = IS_EXPO_GO ? null : require('expo-notifications')
 const MAX_TOKEN_RETRIES = 5
 
 /**
@@ -149,6 +149,10 @@ export async function getPushDiagnostics(): Promise<{
   }
 
   try {
+    if (!Notifications) {
+      diag.permissionStatus = 'unavailable (Expo Go)'
+      return diag
+    }
     const { status } = await Notifications.getPermissionsAsync()
     diag.permissionStatus = status
 
@@ -189,9 +193,12 @@ export async function uploadPushToken(token: string, platform: string, authedFet
 }
 
 export function useNotificationListeners(
-  onNotification: (n: Notifications.Notification) => void,
-  onResponse: (r: Notifications.NotificationResponse) => void
+  onNotification: (n: any) => void,
+  onResponse: (r: any) => void
 ) {
+  if (!Notifications) {
+    return () => {}
+  }
   const notifListener = Notifications.addNotificationReceivedListener(onNotification)
   const responseListener = Notifications.addNotificationResponseReceivedListener(onResponse)
   return () => {

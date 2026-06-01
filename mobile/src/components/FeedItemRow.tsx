@@ -123,12 +123,11 @@ export function FeedItemRow({
 
   const handleKudos = async (type: 'fistbump' | 'flame' | 'star') => {
     const isActive = kudos.myReactions.includes(type)
+    if (isActive) return
     setKudos(prev => ({
       ...prev,
-      [type]: isActive ? prev[type] - 1 : prev[type] + 1,
-      myReactions: isActive
-        ? prev.myReactions.filter(r => r !== type)
-        : [...prev.myReactions, type]
+      [type]: prev[type] + 1,
+      myReactions: [...prev.myReactions, type],
     }))
     try {
       await auth.authedFetch('/api/kudos', {
@@ -339,6 +338,7 @@ export function FeedItemRow({
                   <TouchableOpacity
                     key={type}
                     style={[s.kudosBtn, isActive && s.kudosBtnActive, showKudosTip && type === 'fistbump' && s.kudosBtnHighlight]}
+                    disabled={isActive}
                     onPress={() => {
                       if (showKudosTip) onDismissKudosTip?.()
                       handleKudos(type)

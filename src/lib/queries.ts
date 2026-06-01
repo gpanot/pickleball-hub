@@ -864,10 +864,12 @@ function computeMedian(values: number[]): number | null {
  * using coordinate snapping. No player names are returned.
  */
 export async function getHeatmapData(): Promise<HeatmapData> {
+  const t0 = Date.now();
   const cutoffDate = new Date();
   cutoffDate.setDate(cutoffDate.getDate() - 90);
   const cutoffStr = cutoffDate.toISOString().slice(0, 10);
 
+  console.log(`[getHeatmapData] start, cutoff=${cutoffStr}`);
   const rosters = await prisma.sessionRoster.findMany({
     where: {
       session: {
@@ -891,6 +893,8 @@ export async function getHeatmapData(): Promise<HeatmapData> {
       },
     },
   });
+
+  console.log(`[getHeatmapData] DB query done in ${Date.now() - t0}ms, rosters=${rosters.length}`);
 
   // Step 1: Aggregate per venue_id (raw, before coordinate merge)
   const rawMap = new Map<
@@ -1082,6 +1086,7 @@ export async function getHeatmapData(): Promise<HeatmapData> {
     medianDupr = Math.round(medianDupr * 10) / 10;
   }
 
+  console.log(`[getHeatmapData] done in ${Date.now() - t0}ms, venues=${venues.length}, players=${uniquePlayersWithDupr.size}`);
   return {
     venues,
     duprRange: { min: duprMin, max: duprMax },

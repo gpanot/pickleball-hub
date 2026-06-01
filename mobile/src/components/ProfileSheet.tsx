@@ -32,11 +32,13 @@ export function ProfileSheet({
   onLinkReclub,
   onRedoOnboarding,
   onOpenGear,
+  onOpenPushDebug,
 }: {
   onClose: () => void
   onLinkReclub?: () => void
   onRedoOnboarding?: () => void
   onOpenGear?: () => void
+  onOpenPushDebug?: () => void
 }) {
   const insets = useSafeAreaInsets()
   const {
@@ -527,6 +529,19 @@ export function ProfileSheet({
           <Bell size={20} color="#555" strokeWidth={2} />
           <Text style={styles.settingsLabel}>Test Push Notification</Text>
         </TouchableOpacity>
+
+        {onOpenPushDebug && (
+          <TouchableOpacity
+            style={styles.settingsRow}
+            onPress={() => {
+              onClose()
+              onOpenPushDebug()
+            }}
+          >
+            <Bell size={20} color="#f5a623" strokeWidth={2} />
+            <Text style={[styles.settingsLabel, { color: '#f5a623' }]}>FCM Debug Screen</Text>
+          </TouchableOpacity>
+        )}
       </View>
       </ScrollView>
 
@@ -875,7 +890,7 @@ const styles = StyleSheet.create({
   },
   weekDotText: {
     fontSize: 9,
-    color: '#333',
+    color: '#666',
     fontWeight: '500',
   },
   weekDotTextPlayed: {

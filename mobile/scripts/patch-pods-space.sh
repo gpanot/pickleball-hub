@@ -18,29 +18,27 @@ path = sys.argv[1]
 with open(path, 'r') as f:
     content = f.read()
 
-patches = [
-    (
-        '/bin/sh -c \\"$WITH_ENVIRONMENT $SCRIPT_PHASES_SCRIPT\\"',
-        '/bin/sh \\"$WITH_ENVIRONMENT\\" \\"$SCRIPT_PHASES_SCRIPT\\"',
-    ),
-    (
-        'bash -l -c \\"$PODS_TARGET_SRCROOT/../scripts/get-app-config-ios.sh\\"',
-        'bash -l \\"$PODS_TARGET_SRCROOT/../scripts/get-app-config-ios.sh\\"',
-    ),
-]
+original = content
 
-changed = 0
-for old, new in patches:
-    count = content.count(old)
-    if count:
-        content = content.replace(old, new)
-        changed += count
-        print(f'[patch-pods-space] Applied: {old[:60]}... ({count}x)')
+# Fix: /bin/sh -c \"$X $Y\" → /bin/sh \"$X\" \"$Y\"
+content = content.replace(
+    '/bin/sh -c \\"$WITH_ENVIRONMENT $SCRIPT_PHASES_SCRIPT\\"',
+    '/bin/sh \\"$WITH_ENVIRONMENT\\" \\"$SCRIPT_PHASES_SCRIPT\\"'
+)
 
-if changed:
+# Fix: bash -l -c \"$PATH/script\" → bash -l \"$PATH/script\"
+# Match all bash -l -c patterns (not just specific script names)
+import re
+content = re.sub(
+    r'bash -l -c (\\"[^"]*\\")',
+    r'bash -l \1',
+    content
+)
+
+if content != original:
     with open(path, 'w') as f:
         f.write(content)
-    print(f'[patch-pods-space] ✅ {changed} patch(es) applied.')
+    print('[patch-pods-space] ✅ Fixed shell script phases with unquoted paths.')
 else:
     print('[patch-pods-space] ✅ Already patched, nothing to do.')
 PYEOF

@@ -1074,7 +1074,10 @@ export function CircleScreen({ onOpenGear, gearSaved, gearSetupComplete }: { onO
                               <X size={10} color="#2a2a2a" />
                             </TouchableOpacity>
                             <TouchableOpacity
-                              onPress={() => setSelectedPlayerId(s.userId)}
+                              onPress={() => {
+                                setSelectedPlayerStub({ userId: s.userId, displayName: s.displayName, imageUrl: s.imageUrl })
+                                setSelectedPlayerId(s.userId)
+                              }}
                             >
                               <PlayerAvatar
                                 userId={s.userId}

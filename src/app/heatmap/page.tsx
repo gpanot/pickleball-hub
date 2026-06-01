@@ -9,10 +9,13 @@ export default async function HeatmapPage() {
   const todayStr = vnCalendarDateString(0);
   const tomorrowStr = vnCalendarDateString(1);
 
+  const t0 = Date.now();
+  console.log("[heatmap] page start");
+
   const [heatmapData, todayData, tomorrowData] = await Promise.all([
-    getHeatmapData(),
-    getSessions({ date: todayStr }),
-    getSessions({ date: tomorrowStr }),
+    getHeatmapData().then((d) => { console.log(`[heatmap] getHeatmapData done in ${Date.now() - t0}ms, venues=${d.venues.length}`); return d; }),
+    getSessions({ date: todayStr }).then((d) => { console.log(`[heatmap] getSessions(today) done in ${Date.now() - t0}ms, sessions=${d.sessions.length}`); return d; }),
+    getSessions({ date: tomorrowStr }).then((d) => { console.log(`[heatmap] getSessions(tomorrow) done in ${Date.now() - t0}ms, sessions=${d.sessions.length}`); return d; }),
   ]);
 
   const allSessions = [
@@ -22,6 +25,8 @@ export default async function HeatmapPage() {
 
   const hcmMedian =
     todayData.hcmMedianCostPerHour || tomorrowData.hcmMedianCostPerHour;
+
+  console.log(`[heatmap] page total ${Date.now() - t0}ms`);
 
   return (
     <HeatmapClient

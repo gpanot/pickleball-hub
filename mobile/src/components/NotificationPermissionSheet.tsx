@@ -1,6 +1,7 @@
 import React from 'react'
 import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native'
-import * as Notifications from 'expo-notifications'
+import Constants from 'expo-constants'
+const Notifications: any = Constants.appOwnership === 'expo' ? null : require('expo-notifications')
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { registerForPushNotifications } from '../services/notifications'
 import { useAuthStore } from '../stores/authStore'
@@ -18,7 +19,7 @@ export function NotificationPermissionSheet({
 
   const handleAllow = async () => {
     await AsyncStorage.setItem(STORAGE_KEY, '1')
-    const { status } = await Notifications.requestPermissionsAsync()
+    const { status } = Notifications ? await Notifications.requestPermissionsAsync() : { status: 'denied' }
     onClose()
     if (status === 'granted') {
       const token = await registerForPushNotifications()

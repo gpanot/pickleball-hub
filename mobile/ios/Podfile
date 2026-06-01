@@ -66,31 +66,47 @@ target 'SQUADD' do
       end
     end
 
-    # Fix Hermes dSYM missing UUID error on Xcode 26
+    # Xcode 26: disable explicit modules (causes cascading "unable to resolve module dependency")
+    installer.pods_project.build_configurations.each do |bc|
+      bc.build_settings['CLANG_ENABLE_EXPLICIT_MODULES'] = 'NO'
+      bc.build_settings['SWIFT_ENABLE_EXPLICIT_MODULES'] = 'NO'
+    end
     installer.pods_project.targets.each do |target|
-      if target.name == 'hermes-engine'
-        target.build_configurations.each do |config|
-          config.build_settings['DEBUG_INFORMATION_FORMAT'] = 'dwarf-with-dsym'
-          config.build_settings['STRIP_INSTALLED_PRODUCT'] = 'NO'
+      target.build_configurations.each do |bc|
+        bc.build_settings['CLANG_ENABLE_EXPLICIT_MODULES'] = 'NO'
+        bc.build_settings['SWIFT_ENABLE_EXPLICIT_MODULES'] = 'NO'
+        if target.name == 'hermes-engine'
+          bc.build_settings['DEBUG_INFORMATION_FORMAT'] = 'dwarf-with-dsym'
+          bc.build_settings['STRIP_INSTALLED_PRODUCT'] = 'NO'
         end
       end
     end
 
-    # Fix space-in-path: patch shell scripts in Pods.xcodeproj that use unquoted paths
-    pbxproj_path = installer.pods_project.path.to_s + "/project.pbxproj"
-    content = File.read(pbxproj_path)
-    patched = content
-      .gsub(
-        '/bin/sh -c \\"$WITH_ENVIRONMENT $SCRIPT_PHASES_SCRIPT\\"',
-        '/bin/sh \\"$WITH_ENVIRONMENT\\" \\"$SCRIPT_PHASES_SCRIPT\\"'
-      )
-      .gsub(
-        'bash -l -c \\"$PODS_TARGET_SRCROOT/../scripts/get-app-config-ios.sh\\"',
-        'bash -l \\"$PODS_TARGET_SRCROOT/../scripts/get-app-config-ios.sh\\"'
-      )
-    if patched != content
-      File.write(pbxproj_path, patched)
-      puts "✅ Applied space-in-path patches to Pods.xcodeproj"
+    # Fix with-environment.sh unquoted $1 (breaks on paths with spaces)
+    with_env = File.join(config[:reactNativePath], 'scripts', 'xcode', 'with-environment.sh')
+    if File.exist?(with_env)
+      env_content = File.read(with_env)
+      if env_content.include?("  $1\n") && !env_content.include?("  \"$1\"\n")
+        env_content.gsub!("  $1\n", "  \"$1\"\n")
+        File.write(with_env, env_content)
+      end
+    end
+
+    # Fix Hermes replace_hermes_version.js unquoted tar paths
+    hermes_js = File.join(config[:reactNativePath], 'sdks', 'hermes-engine', 'utils', 'replace_hermes_version.js')
+    if File.exist?(hermes_js)
+      hermes_content = File.read(hermes_js)
+      if hermes_content.include?('tar -xf ${tarballURLPath} -C ${finalLocation}')
+        hermes_content.gsub!('tar -xf ${tarballURLPath} -C ${finalLocation}',
+                             'tar -xf "${tarballURLPath}" -C "${finalLocation}"')
+        File.write(hermes_js, hermes_content)
+      end
     end
   end
+end
+
+# Fix space-in-path: runs AFTER CocoaPods writes project.pbxproj to disk
+post_integrate do |installer|
+  patch_script = File.join(__dir__, '..', 'scripts', 'patch-pods-space.sh')
+  system("sh", patch_script) if File.exist?(patch_script)
 end

@@ -28,6 +28,3 @@ project.xcworkspace
 
 # CocoaPods
 /Pods/
-
-# Firebase config — contains API key, do not commit
-GoogleService-Info.plist
