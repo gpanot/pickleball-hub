@@ -86,18 +86,6 @@ export async function registerForPushNotifications(): Promise<string | null> {
     return null
   }
 
-  if (Platform.OS === 'android') {
-    console.log('[push] Setting Android notification channel...')
-    await Notifications.setNotificationChannelAsync('default', {
-      name: 'default',
-      importance: Notifications.AndroidImportance.HIGH,
-      sound: 'default',
-      vibrationPattern: [0, 250, 250, 250],
-      lightColor: '#f5a623',
-    })
-    console.log('[push] Android channel set.')
-  }
-
   // iOS: use Firebase messaging to get proper FCM token
   if (Platform.OS === 'ios') {
     return getIosFcmToken()
@@ -110,6 +98,18 @@ export async function registerForPushNotifications(): Promise<string | null> {
       const deviceToken = await Notifications.getDevicePushTokenAsync()
       const tokenStr = deviceToken.data as string
       console.log('[push] native device token obtained — type:', deviceToken.type, '| prefix:', tokenStr.slice(0, 30) + '...')
+      console.log('[FCM_DEBUG] FCM token obtained:', tokenStr.substring(0, 40))
+      console.log('[FCM_DEBUG] FCM token length:', tokenStr.length)
+      try {
+        const messagingModule = await import('@react-native-firebase/messaging')
+        const messaging = messagingModule.default
+        const isRegistered = messaging().isDeviceRegisteredForRemoteMessages
+        console.log('[FCM_DEBUG] device registered for remote messages:', isRegistered)
+        const authStatus = await messaging().hasPermission()
+        console.log('[FCM_DEBUG] FCM auth status:', authStatus)
+      } catch (debugErr: any) {
+        console.warn('[FCM_DEBUG] could not read Firebase messaging state:', debugErr?.message)
+      }
       return tokenStr
     } catch (err: any) {
       const isTransient =

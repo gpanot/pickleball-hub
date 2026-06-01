@@ -36,6 +36,51 @@ Notifications.setNotificationHandler({
     shouldShowList: true,
   }),
 })
+
+if (Platform.OS === 'android') {
+  Notifications.setNotificationChannelAsync('default', {
+    name: 'Default',
+    importance: Notifications.AndroidImportance.MAX,
+    vibrationPattern: [0, 250, 250, 250],
+    lightColor: '#f5a623',
+    sound: 'default',
+  })
+}
+
+// FCM debug listeners — log every message event regardless of app state
+try {
+  const messagingModule = require('@react-native-firebase/messaging')
+  const messaging = messagingModule.default
+
+  messaging().onMessage(async (remoteMessage: any) => {
+    console.log('[FCM_DEBUG] foreground message received:', JSON.stringify(remoteMessage, null, 2))
+  })
+
+  messaging().onNotificationOpenedApp((remoteMessage: any) => {
+    console.log('[FCM_DEBUG] notification opened app:', JSON.stringify(remoteMessage, null, 2))
+  })
+
+  messaging().getInitialNotification().then((remoteMessage: any) => {
+    if (remoteMessage) {
+      console.log('[FCM_DEBUG] app opened from quit state:', JSON.stringify(remoteMessage, null, 2))
+    }
+  })
+
+  messaging().setBackgroundMessageHandler(async (remoteMessage: any) => {
+    console.log('[FCM_DEBUG] background message received:', JSON.stringify(remoteMessage, null, 2))
+  })
+} catch (err: any) {
+  console.warn('[FCM_DEBUG] could not attach FCM debug listeners:', err?.message)
+}
+
+Notifications.addNotificationReceivedListener((notification) => {
+  console.log('[EXPO_DEBUG] notification received:', JSON.stringify(notification, null, 2))
+})
+
+Notifications.addNotificationResponseReceivedListener((response) => {
+  console.log('[EXPO_DEBUG] notification tapped:', JSON.stringify(response, null, 2))
+})
+
 let RNUxcam: any = null
 try {
   RNUxcam = require('react-native-ux-cam').default
@@ -76,18 +121,6 @@ export default function App() {
     const ok = await saveGear(updated)
     if (ok) setGearSheetOpen(false)
   }
-
-  useEffect(() => {
-    if (Platform.OS === 'android') {
-      Notifications.setNotificationChannelAsync('default', {
-        name: 'Default',
-        importance: Notifications.AndroidImportance.MAX,
-        vibrationPattern: [0, 250, 250, 250],
-        lightColor: '#f5a623',
-        sound: 'default',
-      })
-    }
-  }, [])
 
   useEffect(() => {
     debugLog('App', '=== SQUADD Boot Diagnostics ===')
