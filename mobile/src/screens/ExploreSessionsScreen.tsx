@@ -31,6 +31,7 @@ import { useSessionStore } from '../stores/sessionStore'
 import { useUiStore } from '../stores/uiStore'
 import { SwipeFilterBar, SwipeFilterSheet } from '../components/SwipeFilterControls'
 import { SquaddLoader } from '../components/SquaddLoader'
+import { PlayerProfileSheet } from '../components/PlayerProfileSheet'
 
 function vnDateString(offsetDays: number): string {
   const now = new Date()
@@ -75,6 +76,7 @@ export function ExploreSessionsScreen({ onClose }: Props) {
     overflowNote?: string
     showFollow?: boolean
   }>({ visible: false, title: '', friends: [] })
+  const [profilePlayerId, setProfilePlayerId] = useState<string | null>(null)
 
   const deck = useMemo(
     () => allSessions.filter((s) => !savedIds.has(s.id)),
@@ -192,6 +194,7 @@ export function ExploreSessionsScreen({ onClose }: Props) {
     const lines: string[] = []
     if (duprPct != null) lines.push(`${duprPct}% of the players have a DUPR rating`)
     if (session.duprRange) lines.push(`DUPR : ${session.duprRange.min.toFixed(1)} – ${session.duprRange.max.toFixed(1)}`)
+    if (session.returningPlayerPct != null) lines.push(`${Math.round(session.returningPlayerPct)}% are regulars`)
     if (session.vibeTag) lines.push(`Vibe : ${session.vibeTag.charAt(0).toUpperCase() + session.vibeTag.slice(1)}`)
     const subtitle = lines.length > 0 ? lines.join('\n') : undefined
 
@@ -378,8 +381,13 @@ export function ExploreSessionsScreen({ onClose }: Props) {
         subtitle={friendsModal.subtitle}
         friends={friendsModal.friends}
         overflowNote={friendsModal.overflowNote}
-        showFollow={friendsModal.showFollow}
         onFollow={friendsModal.showFollow ? handleFollowFromTopDupr : undefined}
+        onAvatarPress={(userId) => setProfilePlayerId(userId)}
+      />
+
+      <PlayerProfileSheet
+        userId={profilePlayerId}
+        onClose={() => setProfilePlayerId(null)}
       />
 
       <SwipeFilterSheet

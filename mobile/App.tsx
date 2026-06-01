@@ -31,7 +31,9 @@ Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
     shouldPlaySound: true,
-    shouldSetBadge: false,
+    shouldSetBadge: true,
+    shouldShowBanner: true,
+    shouldShowList: true,
   }),
 })
 let RNUxcam: any = null
@@ -44,6 +46,7 @@ type FlowScreen = 'main' | 'onboarding' | 'people' | 'profile' | 'gear' | 'explo
 
 const POSTHOG_API_KEY = 'phc_uZqiFnt6NpnpjL3QPbD4RmpJZaByiJChD5pcrcySXjGJ'
 const POSTHOG_HOST = 'https://us.i.posthog.com'
+const IS_EXPO_GO = Constants.appOwnership === 'expo'
 
 export default function App() {
   const [showSplash, setShowSplash] = useState(true)
@@ -152,14 +155,20 @@ export default function App() {
     // Listen for FCM token rotation (Android token can change after app update,
     // Google Play Services update, or cache clear)
     let unsubscribeTokenRefresh: (() => void) | undefined
-    try {
-      const messagingModule = require('@react-native-firebase/messaging')
-      const messaging = messagingModule.default
-      unsubscribeTokenRefresh = messaging().onTokenRefresh(async (newToken: string) => {
-        console.log('[push] FCM token refreshed — uploading new token, prefix:', newToken.slice(0, 20))
-        await uploadPushToken(newToken, Platform.OS, authedFetch)
-      })
-    } catch {}
+    if (!IS_EXPO_GO) {
+      try {
+        const messagingModule = require('@react-native-firebase/messaging')
+        const messaging = messagingModule.default
+        unsubscribeTokenRefresh = messaging().onTokenRefresh(async (newToken: string) => {
+          console.log('[push] FCM token refreshed — uploading new token, prefix:', newToken.slice(0, 20))
+          await uploadPushToken(newToken, Platform.OS, authedFetch)
+        })
+      } catch (err: any) {
+        console.warn('[push] RN Firebase messaging unavailable for token refresh:', err?.message)
+      }
+    } else {
+      console.log('[push] skipping RN Firebase token refresh listener in Expo Go')
+    }
 
     return () => { unsubscribeTokenRefresh?.() }
   }, [jwt])

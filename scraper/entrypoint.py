@@ -23,6 +23,7 @@ import sys
 import json
 import threading
 import urllib.error
+import urllib.parse
 import urllib.request
 from datetime import datetime, timezone, timedelta
 from http.server import HTTPServer, BaseHTTPRequestHandler
@@ -128,6 +129,34 @@ def run_cmd(cmd: list[str]) -> int:
     return result.returncode
 
 
+def trigger_session_finished_cron() -> None:
+    """
+    Hit GET /api/cron/session-finished-kudos on the Next.js service every scrape run.
+    The endpoint has its own hour-of-day guard (7am–9pm ICT) so extra calls outside
+    that window are cheap no-ops. This replaces the missing Railway cron HTTP trigger.
+    """
+    base = (os.environ.get("VERCEL_APP_URL") or "").strip().rstrip("/")
+    secret = os.environ.get("CRON_SECRET", "")
+    if not base or not secret:
+        print("  [cron/pn6] VERCEL_APP_URL or CRON_SECRET not set — skipping", flush=True)
+        return
+    url = f"{base}/api/cron/session-finished-kudos"
+    try:
+        req = urllib.request.Request(
+            url,
+            data=b"",
+            method="GET",
+            headers={"x-cron-secret": secret},
+        )
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            body = resp.read().decode("utf-8", errors="replace")
+            print(f"  [cron/pn6] {resp.status} — {body[:120]}", flush=True)
+    except urllib.error.HTTPError as e:
+        print(f"  [cron/pn6] HTTP {e.code}", flush=True)
+    except Exception as e:
+        print(f"  [cron/pn6] request error: {e}", flush=True)
+
+
 def trigger_vercel_revalidation(tag: str | None = None) -> None:
     """Best-effort Next.js cache revalidation; never raises."""
     base = (os.environ.get("VERCEL_APP_URL") or "").strip().rstrip("/")
@@ -183,6 +212,10 @@ def run_scrape() -> dict:
 
         if ingest_rc == 0:
             trigger_vercel_revalidation()
+
+        # Trigger session-finished cron on every scrape run.
+        # The endpoint guards itself to 7am–9pm ICT, so off-hours calls are no-ops.
+        trigger_session_finished_cron()
 
         # Evening run (9 PM VN): do a dedicated tomorrow roster refresh after
         # ingest, so the Discovery tab's tomorrow cards have real DUPR + roster

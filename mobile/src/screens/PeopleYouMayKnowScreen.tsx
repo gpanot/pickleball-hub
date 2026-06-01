@@ -85,9 +85,11 @@ const skeletonStyles = StyleSheet.create({
 export function PeopleYouMayKnowScreen({
   onComplete,
   embedded = false,
+  onPlayerPress,
 }: {
   onComplete: () => void
   embedded?: boolean
+  onPlayerPress?: (userId: string) => void
 }) {
   const insets = useSafeAreaInsets()
   const { authedFetch, reclubUserId, ensureServerAuth } = useAuthStore()
@@ -264,12 +266,14 @@ export function PeopleYouMayKnowScreen({
               const isFollowed = followedIds.has(p.userId)
               return (
                 <View key={p.userId} style={styles.coPlayerRow}>
-                  <PlayerAvatar
-                    userId={p.userId}
-                    displayName={p.displayName}
-                    imageUrl={p.imageUrl}
-                    size={48}
-                  />
+                  <TouchableOpacity onPress={() => onPlayerPress?.(p.userId)} activeOpacity={0.7}>
+                    <PlayerAvatar
+                      userId={p.userId}
+                      displayName={p.displayName}
+                      imageUrl={p.imageUrl}
+                      size={48}
+                    />
+                  </TouchableOpacity>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.coName}>
                       {p.displayName ?? 'Unknown'}
@@ -333,12 +337,14 @@ export function PeopleYouMayKnowScreen({
                     const isFollowed = followedIds.has(p.userId)
                     return (
                       <View key={p.userId} style={styles.rosterItem}>
-                        <PlayerAvatar
-                          userId={p.userId}
-                          displayName={p.displayName}
-                          imageUrl={p.imageUrl}
-                          size={42}
-                        />
+                        <TouchableOpacity onPress={() => onPlayerPress?.(p.userId)} activeOpacity={0.7}>
+                          <PlayerAvatar
+                            userId={p.userId}
+                            displayName={p.displayName}
+                            imageUrl={p.imageUrl}
+                            size={42}
+                          />
+                        </TouchableOpacity>
                         <Text style={styles.rosterName} numberOfLines={1}>
                           {p.displayName ?? 'Unknown'}
                         </Text>

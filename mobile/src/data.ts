@@ -55,6 +55,7 @@ export type Session = {
   vibeTag: VibeTag
 
   duprRange: { min: number; max: number } | null
+  returningPlayerPct: number | null
 
   venue: { name: string; latitude: number; longitude: number } | null
   club: { name: string; slug: string }
@@ -137,6 +138,7 @@ export type FeedItemType =
   | 'joining'
   | 'played'
   | 'played_today'
+  | 'played_self'
   | 'you_are_playing'
   | 'dupr_update'
   | 'just_followed'

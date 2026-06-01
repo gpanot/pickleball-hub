@@ -357,6 +357,62 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // ── played_self: viewer's own past sessions (last 5 days, already ended) ─────
+  // Catches sessions the PN6 cron missed and any day the cron didn't run.
+  // Excluded from the per-player cap (like played_today / you_are_playing).
+  if (user.reclubUserId) {
+    const pastSelfRosters = await prisma.sessionRoster.findMany({
+      where: {
+        userId: user.reclubUserId,
+        session: {
+          scrapedDate: { gte: cutoffStr, lt: todayStr },
+        },
+      },
+      include: {
+        session: {
+          select: {
+            id: true,
+            name: true,
+            startTime: true,
+            endTime: true,
+            scrapedDate: true,
+            eventUrl: true,
+            club: { select: { name: true } },
+            snapshots: { orderBy: { scrapedAt: "desc" }, take: 1 },
+          },
+        },
+      },
+      orderBy: { session: { scrapedDate: "desc" } },
+      take: 10,
+    });
+
+    if (pastSelfRosters.length > 0) {
+      const myProfile = await prisma.player.findUnique({
+        where: { userId: user.reclubUserId },
+        select: { userId: true, displayName: true, imageUrl: true, duprDoubles: true },
+      });
+      if (myProfile) {
+        for (const r of pastSelfRosters) {
+          const selfId = `played_self_${user.reclubUserId}_${r.session.id}`;
+          // Skip if there's already a you_are_playing for the same session
+          if (items.some((i) => i.id === `you_are_playing_${r.session.id}`)) continue;
+          items.push({
+            id: selfId,
+            type: "played_self",
+            player: toPlayerPayload(myProfile),
+            isFollowing: false,
+            timestamp:
+              r.session.snapshots?.[0]?.scrapedAt?.toISOString() ??
+              `${r.session.scrapedDate}T${r.session.startTime}:00+07:00`,
+            venueName: r.session.club.name,
+            sessionId: r.session.id,
+            sessionTime: `${r.session.scrapedDate}T${r.session.startTime}:00+07:00`,
+          });
+        }
+      }
+    }
+  }
+
   // ── Streaks, DUPR history, and follow events — run in parallel ───────────────
   // These three are completely independent: no shared mutable state, different tables.
   const MILESTONE_WEEKS = [4, 8, 12, 26, 52];
@@ -550,7 +606,7 @@ export async function GET(req: NextRequest) {
   );
 
   // Max 2 items per player (follow events + played_today + you_are_playing are exempt)
-  const EXEMPT_TYPES = new Set(["just_followed", "new_follower", "played_today", "you_are_playing"]);
+  const EXEMPT_TYPES = new Set(["just_followed", "new_follower", "played_today", "you_are_playing", "played_self"]);
   const playerCount = new Map<string, number>();
   const filtered = items.filter((item) => {
     if (EXEMPT_TYPES.has(item.type)) return true;

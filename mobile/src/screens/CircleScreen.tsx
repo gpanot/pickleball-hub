@@ -12,10 +12,10 @@ import {
   Linking,
   useWindowDimensions,
   Image,
-  Modal,
   Pressable,
   Dimensions,
 } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { debugLog } from '../lib/debug'
 import { Rss, Users, Search, ArrowLeft, Sparkles, X } from 'lucide-react-native'
@@ -85,6 +85,7 @@ function formatClock(clock: string): string {
 }
 
 export function CircleScreen({ onOpenGear, gearSaved, gearSetupComplete }: { onOpenGear?: () => void; gearSaved?: boolean; gearSetupComplete?: boolean }) {
+  const insets = useSafeAreaInsets()
   const [subTab, setSubTab] = useState<CircleSubTab>('feed')
   const [friends, setFriends] = useState<FollowedPlayer[]>([])
   const [loadingFriends, setLoadingFriends] = useState(false)
@@ -144,12 +145,21 @@ export function CircleScreen({ onOpenGear, gearSaved, gearSetupComplete }: { onO
     new Set()
   )
   const [showAvatarTip, setShowAvatarTip] = useState(false)
+  const [showKudosTip, setShowKudosTip] = useState(false)
   const [showNotifSheet, setShowNotifSheet] = useState(false)
 
   useEffect(() => {
     if (feedItems.length > 0 && !showAvatarTip) {
       AsyncStorage.getItem('hasSeenAvatarTip').then((val) => {
         if (!val) setShowAvatarTip(true)
+      })
+    }
+  }, [feedItems.length])
+
+  useEffect(() => {
+    if (feedItems.length > 0 && !showKudosTip) {
+      AsyncStorage.getItem('hasSeenKudosTip').then((val) => {
+        if (!val) setShowKudosTip(true)
       })
     }
   }, [feedItems.length])
@@ -199,6 +209,11 @@ export function CircleScreen({ onOpenGear, gearSaved, gearSetupComplete }: { onO
   const dismissAvatarTip = useCallback(async () => {
     setShowAvatarTip(false)
     await AsyncStorage.setItem('hasSeenAvatarTip', 'true')
+  }, [])
+
+  const dismissKudosTip = useCallback(async () => {
+    setShowKudosTip(false)
+    await AsyncStorage.setItem('hasSeenKudosTip', 'true')
   }, [])
 
   const handleShowRoster = useCallback(async (sessionId: number) => {
@@ -899,22 +914,30 @@ export function CircleScreen({ onOpenGear, gearSaved, gearSetupComplete }: { onO
             const livePlayerIds = new Set(
               presence?.liveVenues?.flatMap((v: any) => v.players.map((p: any) => p.userId)) ?? []
             )
-            return feedItems.map((item, index) => (
-              <FeedItemRow
-                key={item.id}
-                item={item}
-                onJoinToo={(eventUrl) => Linking.openURL(eventUrl)}
-                onAvatarPress={(uid) => {
-                  if (index === 0 && showAvatarTip) dismissAvatarTip()
-                  setSelectedPlayerStub(item.player)
-                  setSelectedPlayerId(uid)
-                }}
-                isLive={livePlayerIds.has(item.player.userId)}
-                showAvatarTip={index === 0 && showAvatarTip}
-                onDismissTip={dismissAvatarTip}
-                onShowRoster={handleShowRoster}
-              />
-            ))
+            let kudosTipShown = false
+            return feedItems.map((item, index) => {
+              const showThisKudosTip = showKudosTip && !kudosTipShown &&
+                (item.type === 'played_today' || item.type === 'played' || item.type === 'joining')
+              if (showThisKudosTip) kudosTipShown = true
+              return (
+                <FeedItemRow
+                  key={item.id}
+                  item={item}
+                  onJoinToo={(eventUrl) => Linking.openURL(eventUrl)}
+                  onAvatarPress={(uid) => {
+                    if (index === 0 && showAvatarTip) dismissAvatarTip()
+                    setSelectedPlayerStub(item.player)
+                    setSelectedPlayerId(uid)
+                  }}
+                  isLive={livePlayerIds.has(item.player.userId)}
+                  showAvatarTip={index === 0 && showAvatarTip}
+                  onDismissTip={dismissAvatarTip}
+                  onShowRoster={handleShowRoster}
+                  showKudosTip={showThisKudosTip}
+                  onDismissKudosTip={dismissKudosTip}
+                />
+              )
+            })
           })()}
 
           {!feedLoading && hasMore && (
@@ -952,13 +975,14 @@ export function CircleScreen({ onOpenGear, gearSaved, gearSetupComplete }: { onO
                   onPress={handleCloseSearch}
                   style={styles.searchBackBtn}
                 >
-                  <ArrowLeft size={18} color="#999" strokeWidth={2} />
-                  <Text style={{ fontSize: 14, color: '#999' }}>Back to friends</Text>
+                  <ArrowLeft size={18} color="#fff" strokeWidth={2} />
+                  <Text style={{ fontSize: 14, color: '#fff' }}>Back to friends</Text>
                 </TouchableOpacity>
               </View>
               <PeopleYouMayKnowScreen
                 onComplete={handleCloseSearch}
                 embedded
+                onPlayerPress={(userId) => setSelectedPlayerId(userId)}
               />
             </View>
           ) : showSearch ? (
@@ -968,8 +992,8 @@ export function CircleScreen({ onOpenGear, gearSaved, gearSetupComplete }: { onO
                   onPress={handleCloseSearch}
                   style={styles.searchBackBtn}
                 >
-                  <ArrowLeft size={18} color="#999" strokeWidth={2} />
-                  <Text style={{ fontSize: 14, color: '#999' }}>Back to friends</Text>
+                  <ArrowLeft size={18} color="#fff" strokeWidth={2} />
+                  <Text style={{ fontSize: 14, color: '#fff' }}>Back to friends</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => { setShowSearch(false); setShowSuggested(true) }}
@@ -1006,8 +1030,12 @@ export function CircleScreen({ onOpenGear, gearSaved, gearSetupComplete }: { onO
                   <View style={styles.sectionHeaderRow}>
                     <Text style={styles.sectionLabel}>CROSSED PATHS WITH</Text>
                     {!suggestionsLoading && (
-                      <TouchableOpacity onPress={() => setShowSuggested(true)}>
-                        <Text style={styles.sectionLink}>See all</Text>
+                      <TouchableOpacity
+                        onPress={() => setShowSuggested(true)}
+                        style={styles.suggestedBtn}
+                      >
+                        <Sparkles size={14} color={T.amber} strokeWidth={2} />
+                        <Text style={styles.suggestedLabel}>Suggested</Text>
                       </TouchableOpacity>
                     )}
                   </View>
@@ -1138,91 +1166,90 @@ export function CircleScreen({ onOpenGear, gearSaved, gearSetupComplete }: { onO
         </View>
       )}
 
+      <NotificationPermissionSheet
+        visible={showNotifSheet}
+        onClose={() => setShowNotifSheet(false)}
+      />
+
+      {/* Roster sheet — root-level overlay (no native Modal so PlayerProfileSheet can sit above it) */}
+      {rosterModal.visible && (
+        <View style={styles.rosterHost} pointerEvents="box-none">
+          <Pressable
+            style={styles.rosterBackdrop}
+            onPress={() => setRosterModal(prev => ({ ...prev, visible: false }))}
+          />
+          <View style={[styles.rosterSheet, { paddingBottom: insets.bottom + 16 }]}>
+            <View style={styles.rosterHandle} />
+            <Text style={styles.rosterTitle} numberOfLines={1}>
+              {rosterModal.sessionName || 'Session roster'}
+            </Text>
+            {rosterModal.venueName ? (
+              <Text style={styles.rosterVenue}>{rosterModal.venueName}</Text>
+            ) : null}
+
+            {rosterModal.loadingId !== null ? (
+              <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                <ActivityIndicator color="#22c55e" />
+              </View>
+            ) : (
+              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
+                {(() => {
+                  const players = rosterModal.players
+                  const rows: React.ReactNode[] = []
+                  for (let i = 0; i < players.length; i += 3) {
+                    const group = players.slice(i, i + 3)
+                    rows.push(
+                      <View key={i} style={styles.rosterRow}>
+                        {group.map((p) => {
+                          const isFollowed = followingSet.has(p.userId)
+                          return (
+                            <View key={p.userId} style={styles.rosterCell}>
+                              <TouchableOpacity onPress={() => {
+                                setSelectedPlayerStub({ userId: p.userId, displayName: p.displayName, imageUrl: p.imageUrl, duprDoubles: p.duprDoubles })
+                                setSelectedPlayerId(p.userId)
+                              }}>
+                                <Image
+                                  source={{ uri: p.imageUrl ?? `https://api.reclub.vn/avatars/${p.userId}.jpg` }}
+                                  style={styles.rosterAvatar}
+                                />
+                              </TouchableOpacity>
+                              <Text style={styles.rosterName} numberOfLines={1}>{p.displayName}</Text>
+                              {p.duprDoubles != null && (
+                                <View style={styles.rosterDuprPill}>
+                                  <Text style={styles.rosterDuprText}>DUPR {p.duprDoubles.toFixed(2)}</Text>
+                                </View>
+                              )}
+                              <TouchableOpacity
+                                style={[styles.rosterFollowBtn, isFollowed && styles.rosterFollowBtnDone]}
+                                onPress={() => !isFollowed && handleFollowFromRoster(p.userId)}
+                                activeOpacity={isFollowed ? 1 : 0.8}
+                              >
+                                <Text style={[styles.rosterFollowBtnText, isFollowed && styles.rosterFollowBtnTextDone]}>
+                                  {isFollowed ? 'Following' : 'Follow'}
+                                </Text>
+                              </TouchableOpacity>
+                            </View>
+                          )
+                        })}
+                        {group.length < 3 && Array.from({ length: 3 - group.length }).map((_, gi) => (
+                          <View key={`empty-${gi}`} style={styles.rosterCell} />
+                        ))}
+                      </View>
+                    )
+                  }
+                  return rows
+                })()}
+              </ScrollView>
+            )}
+          </View>
+        </View>
+      )}
+
+      {/* PlayerProfileSheet sits above the roster overlay via zIndex: 10000 */}
       <PlayerProfileSheet
         userId={selectedPlayerId}
         stub={selectedPlayerStub}
         onClose={() => { setSelectedPlayerId(null); setSelectedPlayerStub(null) }}
-      />
-
-      {/* Roster Modal — "You are playing" */}
-      <Modal
-        visible={rosterModal.visible}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setRosterModal(prev => ({ ...prev, visible: false }))}
-      >
-        <Pressable
-          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.65)' }}
-          onPress={() => setRosterModal(prev => ({ ...prev, visible: false }))}
-        />
-        <View style={styles.rosterSheet}>
-          <View style={styles.rosterHandle} />
-          <Text style={styles.rosterTitle} numberOfLines={1}>
-            {rosterModal.sessionName || 'Session roster'}
-          </Text>
-          {rosterModal.venueName ? (
-            <Text style={styles.rosterVenue}>{rosterModal.venueName}</Text>
-          ) : null}
-
-          {rosterModal.loadingId !== null ? (
-            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-              <ActivityIndicator color="#22c55e" />
-            </View>
-          ) : (
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
-              {(() => {
-                const players = rosterModal.players
-                const rows: React.ReactNode[] = []
-                for (let i = 0; i < players.length; i += 3) {
-                  const group = players.slice(i, i + 3)
-                  rows.push(
-                    <View key={i} style={styles.rosterRow}>
-                      {group.map((p) => {
-                        const isFollowed = followingSet.has(p.userId)
-                        return (
-                          <View key={p.userId} style={styles.rosterCell}>
-                            <TouchableOpacity onPress={() => {
-                              setSelectedPlayerStub({ userId: p.userId, displayName: p.displayName, imageUrl: p.imageUrl, duprDoubles: p.duprDoubles })
-                              setSelectedPlayerId(p.userId)
-                            }}>
-                              <Image
-                                source={{ uri: p.imageUrl ?? `https://api.reclub.vn/avatars/${p.userId}.jpg` }}
-                                style={styles.rosterAvatar}
-                              />
-                            </TouchableOpacity>
-                            <Text style={styles.rosterName} numberOfLines={1}>{p.displayName}</Text>
-                            {p.duprDoubles != null && (
-                              <View style={styles.rosterDuprPill}>
-                                <Text style={styles.rosterDuprText}>DUPR {p.duprDoubles.toFixed(2)}</Text>
-                              </View>
-                            )}
-                            <TouchableOpacity
-                              style={[styles.rosterFollowBtn, isFollowed && styles.rosterFollowBtnDone]}
-                              onPress={() => !isFollowed && handleFollowFromRoster(p.userId)}
-                              activeOpacity={isFollowed ? 1 : 0.8}
-                            >
-                              <Text style={[styles.rosterFollowBtnText, isFollowed && styles.rosterFollowBtnTextDone]}>
-                                {isFollowed ? 'Following' : 'Follow'}
-                              </Text>
-                            </TouchableOpacity>
-                          </View>
-                        )
-                      })}
-                      {group.length < 3 && Array.from({ length: 3 - group.length }).map((_, gi) => (
-                        <View key={`empty-${gi}`} style={styles.rosterCell} />
-                      ))}
-                    </View>
-                  )
-                }
-                return rows
-              })()}
-            </ScrollView>
-          )}
-        </View>
-      </Modal>
-      <NotificationPermissionSheet
-        visible={showNotifSheet}
-        onClose={() => setShowNotifSheet(false)}
       />
     </View>
   )
@@ -1757,12 +1784,22 @@ const styles = StyleSheet.create({
     color: '#2a2a2a',
     marginTop: 1,
   },
-  // ── Roster modal ──────────────────────────────────────────────
+  // ── Roster overlay (root-level, no native Modal) ──────────────
+  rosterHost: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 9000,
+    elevation: 9000,
+    justifyContent: 'flex-end',
+  },
+  rosterBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+  },
   rosterSheet: {
     backgroundColor: '#0e0e0e',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    height: Dimensions.get('window').height * 0.88,
+    maxHeight: Dimensions.get('window').height * 0.88,
     paddingHorizontal: 16,
     paddingTop: 12,
     borderWidth: 1,

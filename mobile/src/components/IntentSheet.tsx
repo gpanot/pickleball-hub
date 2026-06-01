@@ -8,6 +8,9 @@ import {
   Pressable,
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useAuthStore } from '../stores/authStore'
@@ -103,74 +106,84 @@ export function IntentSheet({ visible, myActiveIntent, onClose, onSaved, onDelet
   return (
     <View style={s.host} pointerEvents="box-none">
       <Pressable style={s.backdrop} onPress={onClose} />
-      <View style={[s.sheet, { paddingBottom: insets.bottom + 20 }]}>
-        <View style={s.handle} />
-
-        <Text style={s.title}>When are you looking to play?</Text>
-
-        <Text style={s.sectionLabel}>Time of day</Text>
-        <View style={s.chipRow}>
-          {TIME_SLOTS.map(({ key, label }) => (
-            <TouchableOpacity
-              key={key}
-              style={[s.chip, timeSlot === key && s.chipActive]}
-              onPress={() => setTimeSlot(key)}
-            >
-              <Text style={[s.chipText, timeSlot === key && s.chipTextActive]}>{label}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        <Text style={s.sectionLabel}>Day</Text>
-        <View style={s.chipRow}>
-          {DATES.map(({ key, label }) => (
-            <TouchableOpacity
-              key={key}
-              style={[s.chip, date === key && s.chipActive]}
-              onPress={() => setDate(key)}
-            >
-              <Text style={[s.chipText, date === key && s.chipTextActive]}>{label}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        <Text style={s.sectionLabel}>Zalo number</Text>
-        <Text style={s.sectionSub}>Visible only to women who follow you back</Text>
-        <TextInput
-          style={s.input}
-          value={zaloNumber}
-          onChangeText={setZaloNumber}
-          placeholder="Your Zalo number (optional)"
-          placeholderTextColor="#555"
-          keyboardType="phone-pad"
-        />
-
-        <TouchableOpacity
-          style={[s.saveBtn, (!timeSlot || !date || saving) && { opacity: 0.5 }]}
-          onPress={handleSave}
-          disabled={!timeSlot || !date || saving}
-        >
-          {saving ? (
-            <ActivityIndicator color="#000" />
-          ) : (
-            <Text style={s.saveBtnText}>Post my availability</Text>
-          )}
-        </TouchableOpacity>
-
-        {myActiveIntent && (
-          <TouchableOpacity
-            style={[s.deleteBtn, deleting && { opacity: 0.5 }]}
-            onPress={handleDelete}
-            disabled={deleting}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 44 : 0}
+      >
+        <View style={[s.sheet, { paddingBottom: insets.bottom + 20 }]}>
+          <View style={s.handle} />
+          <ScrollView
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+            bounces={false}
           >
-            {deleting ? (
-              <ActivityIndicator color="#ef4444" />
-            ) : (
-              <Text style={s.deleteBtnText}>Remove my availability</Text>
+            <Text style={s.title}>When are you looking to play?</Text>
+
+            <Text style={s.sectionLabel}>Time of day</Text>
+            <View style={s.chipRow}>
+              {TIME_SLOTS.map(({ key, label }) => (
+                <TouchableOpacity
+                  key={key}
+                  style={[s.chip, timeSlot === key && s.chipActive]}
+                  onPress={() => setTimeSlot(key)}
+                >
+                  <Text style={[s.chipText, timeSlot === key && s.chipTextActive]}>{label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <Text style={s.sectionLabel}>Day</Text>
+            <View style={s.chipRow}>
+              {DATES.map(({ key, label }) => (
+                <TouchableOpacity
+                  key={key}
+                  style={[s.chip, date === key && s.chipActive]}
+                  onPress={() => setDate(key)}
+                >
+                  <Text style={[s.chipText, date === key && s.chipTextActive]}>{label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <Text style={s.sectionLabel}>Zalo number</Text>
+            <Text style={s.sectionSub}>Visible only to women who follow you back</Text>
+            <TextInput
+              style={s.input}
+              value={zaloNumber}
+              onChangeText={setZaloNumber}
+              placeholder="Your Zalo number (optional)"
+              placeholderTextColor="#555"
+              keyboardType="phone-pad"
+            />
+
+            <TouchableOpacity
+              style={[s.saveBtn, (!timeSlot || !date || saving) && { opacity: 0.5 }]}
+              onPress={handleSave}
+              disabled={!timeSlot || !date || saving}
+            >
+              {saving ? (
+                <ActivityIndicator color="#000" />
+              ) : (
+                <Text style={s.saveBtnText}>Post my availability</Text>
+              )}
+            </TouchableOpacity>
+
+            {myActiveIntent && (
+              <TouchableOpacity
+                style={[s.deleteBtn, deleting && { opacity: 0.5 }]}
+                onPress={handleDelete}
+                disabled={deleting}
+              >
+                {deleting ? (
+                  <ActivityIndicator color="#ef4444" />
+                ) : (
+                  <Text style={s.deleteBtnText}>Remove my availability</Text>
+                )}
+              </TouchableOpacity>
             )}
-          </TouchableOpacity>
-        )}
-      </View>
+          </ScrollView>
+        </View>
+      </KeyboardAvoidingView>
     </View>
   )
 }

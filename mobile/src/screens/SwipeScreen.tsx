@@ -28,7 +28,7 @@ import { useSessionStore } from '../stores/sessionStore'
 import { useUiStore } from '../stores/uiStore'
 import { type SwipeDateFilter, type TimeSlotKey } from '../stores/uiStore'
 import { FilterPill, SwipeFilterSheet } from '../components/SwipeFilterControls'
-import { FriendsListModal } from '../components/FriendsListModal'
+import { FriendsListModal, type RecommendedPlayer } from '../components/FriendsListModal'
 import type { FriendListItem } from '../components/FriendListRow'
 import {
   FriendGoingCard,
@@ -37,6 +37,7 @@ import {
 } from '../components/FriendGoingCard'
 import type { FriendGoingItem } from '../components/FriendGoingCard'
 import { IntentSheet } from '../components/IntentSheet'
+import { PlayerProfileSheet } from '../components/PlayerProfileSheet'
 
 type GoingTabFilter = SwipeDateFilter | 'saved'
 
@@ -76,6 +77,9 @@ type PlayApiCard = {
   topDupr: FriendGoingItem['topDupr']
   totalRoster: number
   duprCount?: number
+  duprRange?: { min: number; max: number } | null
+  returningPlayerPct?: number | null
+  vibeTag?: string
 }
 
 function playCardToFriendGoingItem(c: PlayApiCard): FriendGoingItem {
@@ -101,6 +105,9 @@ function playCardToFriendGoingItem(c: PlayApiCard): FriendGoingItem {
     topDupr: c.topDupr,
     totalRoster: c.totalRoster,
     duprCount,
+    duprRange: c.duprRange ?? null,
+    returningPlayerPct: c.returningPlayerPct ?? null,
+    vibeTag: c.vibeTag,
   }
 }
 import { debugLog } from '../lib/debug'
@@ -161,8 +168,12 @@ export function SwipeScreen({
   const [playIntents, setPlayIntents] = useState<PlayIntent[]>([])
   const [intentSheetOpen, setIntentSheetOpen] = useState(false)
   const [myActiveIntent, setMyActiveIntent] = useState<MyActiveIntent>(null)
+  const [profilePlayerId, setProfilePlayerId] = useState<string | null>(null)
+  const [recommendations, setRecommendations] = useState<RecommendedPlayer[]>([])
 
   const currentUserGender = useAuthStore((s) => s.gender)
+  const displayName = useAuthStore((s) => s.displayName)
+  const imageUrl = useAuthStore((s) => s.imageUrl)
   const [showLocationPopup, setShowLocationPopup] = useState(false)
   const locationPopupShownRef = useRef(false)
 
@@ -342,7 +353,7 @@ export function SwipeScreen({
   }, [signedIn])
 
   const openTopDuprModal = useCallback(
-    (
+    async (
       topPlayers: Array<{
         userId: string
         displayName: string | null
@@ -356,6 +367,7 @@ export function SwipeScreen({
         duprRange?: { min: number; max: number } | null
         returningPlayerPct?: number | null
         vibeTag?: string
+        sessionId?: number
       },
     ) => {
       if (!signedIn || topPlayers.length === 0) return
@@ -376,21 +388,62 @@ export function SwipeScreen({
 
       const subtitle = lines.length > 0 ? lines.join('\n') : undefined
 
+      const friends: FriendListItem[] = topPlayers.map((p) => ({
+        userId: p.userId,
+        displayName: p.displayName,
+        imageUrl: p.imageUrl,
+        duprDoubles: p.duprDoubles,
+        isFollowing: p.isFollowing ?? false,
+      }))
+
       setFriendsModal({
         visible: true,
         title,
         subtitle,
         showFollow: true,
-        friends: topPlayers.map((p) => ({
-          userId: p.userId,
-          displayName: p.displayName,
-          imageUrl: p.imageUrl,
-          duprDoubles: p.duprDoubles,
-          isFollowing: p.isFollowing ?? false,
-        })),
+        friends,
       })
+
+      // Compute recommendations in background
+      setRecommendations([])
+      if (extra?.sessionId) {
+        try {
+          const currentAuth = useAuthStore.getState()
+          const profileId = currentAuth.profileId ?? ''
+          const duprDoubles = currentAuth.duprRating
+
+          // Fetch overlap counts
+          const overlapRes = await auth.authedFetch(
+            `/api/sessions/overlap?sessionId=${extra.sessionId}`
+          )
+          debugLog('Recommendations', `overlap fetch → HTTP ${overlapRes.status}`)
+          const overlapData = overlapRes.ok ? await overlapRes.json() : { overlaps: [] }
+          const sessionOverlapCounts = new Map<string, number>(
+            (overlapData.overlaps ?? []).map((o: { userId: string; count: number }) => [o.userId, o.count])
+          )
+          debugLog('Recommendations', `overlap counts: ${JSON.stringify([...sessionOverlapCounts.entries()])}`)
+
+          // Build following set and mutual-follow counts (approximated from existing friends list)
+          const followingIds = new Set(
+            friends.filter((f) => f.isFollowing).map((f) => f.userId)
+          )
+          const mutualFollowCounts = new Map<string, number>()
+
+          const recs = getRecommendations(
+            friends,
+            { profileId, duprDoubles },
+            followingIds,
+            sessionOverlapCounts,
+            mutualFollowCounts,
+          )
+          debugLog('Recommendations', `computed ${recs.length} recs for sessionId=${extra.sessionId}`)
+          setRecommendations(recs)
+        } catch (e) {
+          debugLog('Recommendations', `error computing recs: ${e}`)
+        }
+      }
     },
-    [signedIn],
+    [signedIn, auth],
   )
 
   const openTopDupr = useCallback(
@@ -404,7 +457,9 @@ export function SwipeScreen({
       ).length
       openTopDuprModal(topPlayers, duprCount, session.roster.length, {
         duprRange: session.duprRange,
+        returningPlayerPct: session.returningPlayerPct,
         vibeTag: session.vibeTag,
+        sessionId: session.id,
       })
     },
     [openTopDuprModal],
@@ -420,6 +475,7 @@ export function SwipeScreen({
         duprRange: item.duprRange,
         returningPlayerPct: item.returningPlayerPct,
         vibeTag: item.vibeTag,
+        sessionId: item.sessionId,
       })
     },
     [openTopDuprModal],
@@ -762,12 +818,30 @@ export function SwipeScreen({
                       <Animated.View style={[s.intentDot, { opacity: pulseAnim }]} />
                       <Text style={s.intentStripTitle}>LOOKING TO PLAY</Text>
                     </View>
+                    <View style={s.forWomenPill}>
+                      <Text style={s.forWomenText}>For women only</Text>
+                    </View>
                     {playIntents.length > 0 && (
                       <View style={s.intentCount}>
-                        <Text style={s.intentCountText}>{playIntents.length} women</Text>
+                        <Text style={s.intentCountText}>{playIntents.length + (myActiveIntent ? 1 : 0)} women</Text>
                       </View>
                     )}
                   </View>
+
+                  {myActiveIntent && (
+                    <View style={[s.intentRow, s.intentRowMe]}>
+                      <Image
+                        source={{ uri: imageUrl ?? undefined }}
+                        style={s.intentAv}
+                      />
+                      <View style={s.intentInfo}>
+                        <Text style={s.intentName}>{displayName ?? 'Me'} <Text style={s.intentMeTag}>· You</Text></Text>
+                        <Text style={s.intentMeta}>
+                          {capitalize(myActiveIntent.timeSlot)} · {myActiveIntent.date}
+                        </Text>
+                      </View>
+                    </View>
+                  )}
 
                   {playIntents.map((intent) => (
                     <View key={intent.profileId} style={s.intentRow}>
@@ -938,12 +1012,21 @@ export function SwipeScreen({
 
       <FriendsListModal
         visible={friendsModal.visible}
-        onClose={() => setFriendsModal((m) => ({ ...m, visible: false }))}
+        onClose={() => {
+          setFriendsModal((m) => ({ ...m, visible: false }))
+          setRecommendations([])
+        }}
         title={friendsModal.title}
         subtitle={friendsModal.subtitle}
         friends={friendsModal.friends}
         overflowNote={friendsModal.overflowNote}
         onFollow={friendsModal.showFollow ? handleFollowFromTopDupr : undefined}
+        onAvatarPress={(userId) => setProfilePlayerId(userId)}
+        recommendations={friendsModal.showFollow ? recommendations : undefined}
+        onFollowRecommended={async (userId) => {
+          await handleFollowFromTopDupr(userId)
+          setRecommendations((prev) => prev.filter((r) => r.player.userId !== userId))
+        }}
       />
 
       <SwipeFilterSheet
@@ -965,6 +1048,11 @@ export function SwipeScreen({
       <LocationPermissionPopup
         visible={showLocationPopup}
         onClose={() => setShowLocationPopup(false)}
+      />
+
+      <PlayerProfileSheet
+        userId={profilePlayerId}
+        onClose={() => setProfilePlayerId(null)}
       />
 
     </View>
@@ -1290,6 +1378,30 @@ const s = StyleSheet.create({
     fontSize: 11,
     color: '#1D9E75',
   },
+  forWomenPill: {
+    backgroundColor: '#2a0a2a',
+    borderWidth: 1,
+    borderColor: '#e040a0',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+  },
+  forWomenText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#e040a0',
+  },
+  intentRowMe: {
+    backgroundColor: '#0a2a0a',
+    borderWidth: 0.5,
+    borderColor: '#1D9E75',
+    borderRadius: 10,
+  },
+  intentMeTag: {
+    fontSize: 11,
+    color: '#1D9E75',
+    fontWeight: '600',
+  },
   intentRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1333,4 +1445,47 @@ const s = StyleSheet.create({
 
 function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1)
+}
+
+function getRecommendations(
+  rosterPlayers: FriendListItem[],
+  currentUser: { profileId: string; duprDoubles: number | null },
+  followingIds: Set<string>,
+  sessionOverlapCounts: Map<string, number>,
+  mutualFollowCounts: Map<string, number>,
+): RecommendedPlayer[] {
+  return rosterPlayers
+    .filter((p) => !followingIds.has(p.userId))
+    .filter((p) => p.userId !== currentUser.profileId)
+    .map((p) => {
+      let score = 0
+      let reason = ''
+      let reasonType: 'overlap' | 'level' | 'social' = 'social'
+
+      const overlap = sessionOverlapCounts.get(p.userId) ?? 0
+      const mutual = mutualFollowCounts.get(p.userId) ?? 0
+      const duprDiff =
+        currentUser.duprDoubles != null && p.duprDoubles != null
+          ? Math.abs(currentUser.duprDoubles - p.duprDoubles)
+          : null
+
+      if (overlap >= 2) {
+        score = 100 + overlap
+        reason = `🏓 You've been at the same session ${overlap} times`
+        reasonType = 'overlap'
+      } else if (duprDiff !== null && duprDiff <= 0.4) {
+        score = 80
+        reason = `⚡ Similar level · ${p.duprDoubles!.toFixed(1)} DUPR`
+        reasonType = 'level'
+      } else if (mutual >= 2) {
+        score = 60
+        reason = `👥 Followed by ${mutual} people you follow`
+        reasonType = 'social'
+      }
+
+      return { player: p, score, reason, reasonType }
+    })
+    .filter((p) => p.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 3)
 }

@@ -7,7 +7,8 @@ import { sendSessionFinishedKudosNotifications } from "@/lib/notifications/pn6-s
  * PN6: Fires when a followed player finishes a session — prompts the follower to give kudos.
  * Runs every hour between 7am–9pm ICT via Railway cron.
  *
- * Railway cron schedule (UTC): every hour 00:00–14:00
+ * Called hourly by the scraper entrypoint (trigger_session_finished_cron) between 7am–9pm ICT.
+ * Railway cron schedule (UTC): every hour 00:00–14:00 — triggered via HTTP from scraper
  *   "0 0-14 * * *"
  *
  * Protected by CRON_SECRET (x-cron-secret header or ?secret= query param).

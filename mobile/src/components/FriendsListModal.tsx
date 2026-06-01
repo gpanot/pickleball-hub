@@ -6,11 +6,20 @@ import {
   FlatList,
   Pressable,
   StyleSheet,
+  Image,
+  ScrollView,
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { X } from 'lucide-react-native'
 import { T } from '../theme'
 import { FriendListRow, type FriendListItem } from './FriendListRow'
+
+export type RecommendedPlayer = {
+  player: FriendListItem
+  score: number
+  reason: string
+  reasonType: 'overlap' | 'level' | 'social'
+}
 
 /**
  * Root-level overlay bottom sheet — no RN Modal.
@@ -26,6 +35,9 @@ export function FriendsListModal({
   overflowNote,
   onUnfollow,
   onFollow,
+  onAvatarPress,
+  recommendations,
+  onFollowRecommended,
 }: {
   visible: boolean
   onClose: () => void
@@ -35,10 +47,15 @@ export function FriendsListModal({
   overflowNote?: string
   onUnfollow?: (userId: string) => void
   onFollow?: (userId: string) => void
+  onAvatarPress?: (userId: string) => void
+  recommendations?: RecommendedPlayer[]
+  onFollowRecommended?: (userId: string) => void
 }) {
   const insets = useSafeAreaInsets()
 
   if (!visible) return null
+
+  const recs = recommendations ?? []
 
   return (
     <View style={styles.host} pointerEvents="box-none">
@@ -67,23 +84,64 @@ export function FriendsListModal({
           <Text style={styles.overflow}>{overflowNote}</Text>
         ) : null}
 
-        {friends.length === 0 ? (
-          <Text style={styles.empty}>No friends on this session yet.</Text>
-        ) : (
-          <FlatList
-            data={friends}
-            keyExtractor={(item) => item.userId}
-            renderItem={({ item }) => (
+        <ScrollView
+          style={{ flexShrink: 1 }}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          {/* ── Recommendation section ─────────────────────────────── */}
+          {recs.length > 0 && (
+            <View style={r.recSection}>
+              <View style={r.recHeader}>
+                <Text style={r.recTitle}>✦ Recommended to follow</Text>
+                <Text style={r.recCount}>{recs.length} good fits</Text>
+              </View>
+
+              {recs.map((rec) => (
+                <View key={rec.player.userId} style={r.recRow}>
+                  <Image
+                    source={{ uri: rec.player.imageUrl ?? undefined }}
+                    style={r.recAv}
+                  />
+                  <View style={r.recInfo}>
+                    <Text style={r.recName}>{rec.player.displayName ?? 'Player'}</Text>
+                    {rec.player.duprDoubles != null && (
+                      <Text style={r.recDupr}>
+                        {rec.player.duprDoubles.toFixed(2)} DUPR
+                      </Text>
+                    )}
+                    <View style={[r.recChip, r[`recChip_${rec.reasonType}`]]}>
+                      <Text style={[r.recChipText, r[`recChipText_${rec.reasonType}`]]}>
+                        {rec.reason}
+                      </Text>
+                    </View>
+                  </View>
+                  <TouchableOpacity
+                    style={r.recFollowBtn}
+                    onPress={() => onFollowRecommended?.(rec.player.userId)}
+                  >
+                    <Text style={r.recFollowBtnText}>Follow</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+          )}
+
+          {/* ── Existing player list ───────────────────────────────── */}
+          {friends.length === 0 ? (
+            <Text style={styles.empty}>No friends on this session yet.</Text>
+          ) : (
+            friends.map((item) => (
               <FriendListRow
+                key={item.userId}
                 item={item}
                 onFollow={onFollow ? () => onFollow(item.userId) : undefined}
                 onUnfollow={onUnfollow ? () => onUnfollow(item.userId) : undefined}
+                onAvatarPress={onAvatarPress ? () => onAvatarPress(item.userId) : undefined}
               />
-            )}
-            style={{ flexShrink: 1 }}
-            keyboardShouldPersistTaps="handled"
-          />
-        )}
+            ))
+          )}
+        </ScrollView>
       </View>
     </View>
   )
@@ -149,3 +207,78 @@ const styles = StyleSheet.create({
     paddingVertical: 24,
   },
 })
+
+// Recommendation section styles (kept separate for clarity)
+const r = StyleSheet.create({
+  recSection: {
+    backgroundColor: '#0a0a1a',
+    borderWidth: 0.5,
+    borderColor: '#4a90e2',
+    borderRadius: 14,
+    marginBottom: 16,
+    overflow: 'hidden',
+  },
+  recHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 10,
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#0f0f2a',
+  },
+  recTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#4a90e2',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
+  recCount: { fontSize: 10, color: '#555' },
+  recRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 10,
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#0f0f2a',
+  },
+  recAv: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 2,
+    borderColor: '#4a90e2',
+    marginRight: 10,
+    flexShrink: 0,
+    backgroundColor: '#1a1a2a',
+  },
+  recInfo: { flex: 1 },
+  recName: { fontSize: 14, fontWeight: '600', color: '#fff' },
+  recDupr: { fontSize: 11, color: '#f5a623', fontWeight: '600', marginTop: 1 },
+  recChip: {
+    borderRadius: 5,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    alignSelf: 'flex-start',
+    marginTop: 4,
+  },
+  recChip_overlap: { backgroundColor: '#0a1a0a' },
+  recChip_level: { backgroundColor: '#1a1000' },
+  recChip_social: { backgroundColor: '#1a0a1a' },
+  recChipText: { fontSize: 10, fontWeight: '500' },
+  recChipText_overlap: { color: '#1D9E75' },
+  recChipText_level: { color: '#f5a623' },
+  recChipText_social: { color: '#9b59b6' },
+  recFollowBtn: {
+    backgroundColor: '#4a90e2',
+    borderRadius: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    marginLeft: 10,
+    flexShrink: 0,
+  },
+  recFollowBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#fff',
+  },
+} as const)

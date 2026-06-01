@@ -15,7 +15,23 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.squadd.thehub.app",
       "appleTeamId": "F8VE3HCR27",
-      "googleServicesFile": "./GoogleService-Info.plist"
+      "googleServicesFile": "./GoogleService-Info.plist",
+      "usesAppleSignIn": true,
+      "infoPlist": {
+        "CFBundleURLTypes": [
+          {
+            "CFBundleURLSchemes": [
+              "com.squadd.thehub.app"
+            ]
+          },
+          {
+            "CFBundleTypeRole": "Editor",
+            "CFBundleURLSchemes": [
+              "com.googleusercontent.apps.140906288105-oa9csuarionhlcsksjjeakcrqob2auvn"
+            ]
+          }
+        ]
+      }
     },
     "newArchEnabled": true,
     "android": {
@@ -24,7 +40,11 @@
         "foregroundImage": "./assets/icon.png",
         "backgroundColor": "#0a0a0a"
       },
-      "googleServicesFile": "./google-services.json"
+      "googleServicesFile": "./google-services.json",
+      "permissions": [
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
+      ]
     },
     "scheme": "com.squadd.thehub.app",
     "plugins": [
@@ -47,6 +67,10 @@
           "defaultChannel": "default"
         }
       ]
-    ]
+    ],
+    "runtimeVersion": "1.0.0",
+    "updates": {
+      "url": "https://u.expo.dev/06420ce0-0582-4866-afa5-5ec6e0b6c4ce"
+    }
   }
 }

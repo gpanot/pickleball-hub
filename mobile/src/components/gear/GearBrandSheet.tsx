@@ -129,6 +129,7 @@ export function GearBrandSheet({ zone, currentValue, onConfirm, onClose }: Props
             <KeyboardAvoidingView
               behavior={Platform.OS === 'ios' ? 'padding' : undefined}
               style={{ flex: 1 }}
+              keyboardVerticalOffset={Platform.OS === 'ios' ? 44 : 0}
             >
               <View style={styles.handle} />
               <View style={styles.header}>
@@ -149,35 +150,36 @@ export function GearBrandSheet({ zone, currentValue, onConfirm, onClose }: Props
                 contentContainerStyle={styles.grid}
                 showsVerticalScrollIndicator={false}
                 keyboardShouldPersistTaps="handled"
+                ListFooterComponent={
+                  tempPick === OTHER_BRAND_KEY ? (
+                    <View style={styles.otherRow}>
+                      <TextInput
+                        style={styles.otherInput}
+                        placeholder="Type brand name..."
+                        placeholderTextColor="#555"
+                        value={otherText}
+                        onChangeText={onOtherTextChange}
+                        maxLength={20}
+                        autoFocus
+                        returnKeyType="done"
+                        onSubmitEditing={confirmOtherBrand}
+                        blurOnSubmit={false}
+                      />
+                      <TouchableOpacity
+                        style={[
+                          styles.otherDoneBtn,
+                          otherText.trim().length === 0 && styles.otherDoneBtnDisabled,
+                        ]}
+                        onPress={confirmOtherBrand}
+                        disabled={otherText.trim().length === 0}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={styles.otherDoneText}>Done</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : null
+                }
               />
-
-              {tempPick === OTHER_BRAND_KEY && (
-                <View style={styles.otherRow}>
-                  <TextInput
-                    style={styles.otherInput}
-                    placeholder="Type brand name..."
-                    placeholderTextColor="#555"
-                    value={otherText}
-                    onChangeText={onOtherTextChange}
-                    maxLength={20}
-                    autoFocus
-                    returnKeyType="done"
-                    onSubmitEditing={confirmOtherBrand}
-                    blurOnSubmit={false}
-                  />
-                  <TouchableOpacity
-                    style={[
-                      styles.otherDoneBtn,
-                      otherText.trim().length === 0 && styles.otherDoneBtnDisabled,
-                    ]}
-                    onPress={confirmOtherBrand}
-                    disabled={otherText.trim().length === 0}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={styles.otherDoneText}>Done</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
             </KeyboardAvoidingView>
           </Pressable>
         </Animated.View>

@@ -317,14 +317,9 @@ export function PlayerProfileSheet({ userId, onClose, stub }: Props) {
 
   return (
     <>
-    <Modal
-      visible={!!userId}
-      transparent
-      animationType="none"
-      onRequestClose={handleClose}>
-      <View style={s.backdrop}>
-        <Pressable style={s.backdropTap} onPress={handleClose} />
-        <View style={s.sheet}>
+    <View style={s.fullScreenHost} pointerEvents="box-none">
+      <Pressable style={s.fullScreenBackdrop} onPress={handleClose} />
+      <View style={s.sheet}>
 
           <View style={s.handle} />
 
@@ -428,15 +423,86 @@ export function PlayerProfileSheet({ userId, onClose, stub }: Props) {
                   {profile.reclubId != null && (
                     <Text style={s.reclubId}>{profile.reclubId}</Text>
                   )}
+                  {avatarExpanded && (
+                    <TouchableOpacity
+                      style={[s.followBtnExpanded, profile.isFollowing && s.followBtnActive]}
+                      onPress={async () => {
+                        if (!profile) return
+                        const wasFollowing = profile.isFollowing
+                        setProfile(p => p ? { ...p, isFollowing: !wasFollowing } : p)
+                        try {
+                          await authedFetch('/api/follows', {
+                            method: wasFollowing ? 'DELETE' : 'POST',
+                            body: JSON.stringify({ followeeId: profile.userId }),
+                          })
+                        } catch {
+                          setProfile(p => p ? { ...p, isFollowing: wasFollowing } : p)
+                        }
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[s.followBtnText, profile.isFollowing && s.followBtnTextActive]}>
+                        {profile.isFollowing ? 'Following' : 'Follow'}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
                 </RNAnimated.View>
               </View>
 
               {profile.duprDoubles != null && (
-                <View style={s.duprPillRow}>
+                <View style={s.duprFollowRow}>
                   <View style={s.duprPill}>
                     <Text style={s.duprPillLabel}>DUPR</Text>
                     <Text style={s.duprPillValue}>{profile.duprDoubles.toFixed(2)}</Text>
                   </View>
+                  <TouchableOpacity
+                    style={[s.followBtn, profile.isFollowing && s.followBtnActive]}
+                    onPress={async () => {
+                      if (!profile) return
+                      const wasFollowing = profile.isFollowing
+                      setProfile(p => p ? { ...p, isFollowing: !wasFollowing } : p)
+                      try {
+                        await authedFetch('/api/follows', {
+                          method: wasFollowing ? 'DELETE' : 'POST',
+                          body: JSON.stringify({ followeeId: profile.userId }),
+                        })
+                      } catch {
+                        setProfile(p => p ? { ...p, isFollowing: wasFollowing } : p)
+                      }
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[s.followBtnText, profile.isFollowing && s.followBtnTextActive]}>
+                      {profile.isFollowing ? 'Following' : 'Follow'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {profile.duprDoubles == null && (
+                <View style={s.duprFollowRow}>
+                  <View style={{ flex: 1 }} />
+                  <TouchableOpacity
+                    style={[s.followBtn, profile.isFollowing && s.followBtnActive]}
+                    onPress={async () => {
+                      if (!profile) return
+                      const wasFollowing = profile.isFollowing
+                      setProfile(p => p ? { ...p, isFollowing: !wasFollowing } : p)
+                      try {
+                        await authedFetch('/api/follows', {
+                          method: wasFollowing ? 'DELETE' : 'POST',
+                          body: JSON.stringify({ followeeId: profile.userId }),
+                        })
+                      } catch {
+                        setProfile(p => p ? { ...p, isFollowing: wasFollowing } : p)
+                      }
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[s.followBtnText, profile.isFollowing && s.followBtnTextActive]}>
+                      {profile.isFollowing ? 'Following' : 'Follow'}
+                    </Text>
+                  </TouchableOpacity>
                 </View>
               )}
 
@@ -585,8 +651,7 @@ export function PlayerProfileSheet({ userId, onClose, stub }: Props) {
             ) : null}
           </ScrollView>
         </View>
-      </View>
-    </Modal>
+    </View>
 
     {/* Report reason picker modal */}
     <Modal
@@ -650,12 +715,15 @@ export function PlayerProfileSheet({ userId, onClose, stub }: Props) {
 }
 
 const s = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
+  fullScreenHost: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 10000,
+    elevation: 10000,
+    justifyContent: 'flex-end',
   },
-  backdropTap: {
-    flex: 1,
+  fullScreenBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.7)',
   },
   sheet: {
     backgroundColor: '#111',
@@ -773,6 +841,40 @@ const s = StyleSheet.create({
   duprPillRow: {
     alignItems: 'center',
     marginBottom: 10,
+  },
+  duprFollowRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    marginBottom: 10,
+  },
+  followBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: '#f5a623',
+  },
+  followBtnActive: {
+    backgroundColor: '#1a1a1a',
+    borderWidth: 1,
+    borderColor: '#333',
+  },
+  followBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#000',
+  },
+  followBtnTextActive: {
+    color: '#888',
+  },
+  followBtnExpanded: {
+    alignSelf: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: '#f5a623',
+    marginTop: 10,
   },
   duprPill: {
     flexDirection: 'row',

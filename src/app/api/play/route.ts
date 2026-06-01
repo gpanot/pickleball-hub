@@ -216,6 +216,23 @@ export async function GET(req: NextRequest) {
     ),
   ]);
 
+  // Resolve effective user DUPR: prefer Reclub DUPR, fall back to manual onboarding DUPR
+  let effectiveUserDupr: number | null = null;
+  const reclubDupr = userProfile?.duprDoubles ? Number(userProfile.duprDoubles) : null;
+  if (reclubDupr && reclubDupr > 0) {
+    effectiveUserDupr = reclubDupr;
+  } else if (user?.profileId) {
+    const profile = await prisma.playerProfile.findUnique({
+      where: { id: user.profileId },
+      select: { preferences: true },
+    });
+    const prefs = (profile?.preferences as Record<string, unknown>) ?? {};
+    const manualDupr = typeof prefs.dupr === "number" ? prefs.dupr : null;
+    if (manualDupr && manualDupr > 0) {
+      effectiveUserDupr = manualDupr;
+    }
+  }
+
   // Apply minTime filter in-memory (not in DB query so cache is shared across all request times)
   const sessions = minTime
     ? allSessions.filter((s) => s.startTime >= minTime)
@@ -313,9 +330,7 @@ export async function GET(req: NextRequest) {
       });
 
     const matchScore = calculateMatchScore({
-      userDupr: userProfile?.duprDoubles
-        ? Number(userProfile.duprDoubles)
-        : null,
+      userDupr: effectiveUserDupr,
       sessionAvgDupr: session.duprStat?.avgDuprDoubles
         ? Number(session.duprStat.avgDuprDoubles)
         : null,

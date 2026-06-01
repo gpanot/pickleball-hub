@@ -187,7 +187,7 @@ export function OnboardingScreen({
             style={[styles.textInput, duprError ? { borderColor: '#ef4444' } : undefined]}
             value={dupr}
             onChangeText={(v) => {
-              setDupr(v)
+              setDupr(v.replace(',', '.'))
               if (duprError) setDuprError('')
             }}
             placeholder="e.g. 3.5"

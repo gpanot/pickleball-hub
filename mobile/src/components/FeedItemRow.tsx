@@ -58,6 +58,8 @@ interface Props {
   showAvatarTip?: boolean
   onDismissTip?: () => void
   onShowRoster?: (sessionId: number) => void
+  showKudosTip?: boolean
+  onDismissKudosTip?: () => void
 }
 
 export function FeedItemRow({
@@ -68,6 +70,8 @@ export function FeedItemRow({
   showAvatarTip,
   onDismissTip,
   onShowRoster,
+  showKudosTip,
+  onDismissKudosTip,
 }: Props) {
   const name = item.player.displayName ?? 'Player'
   const dupr = item.player.duprDoubles?.toFixed(2) ?? '–'
@@ -297,6 +301,14 @@ export function FeedItemRow({
           </Text>
         )}
 
+        {item.type === 'played_self' && (
+          <Text style={s.action}>
+            You played at{' '}
+            <Text style={s.highlight}>{item.venueName}</Text>
+            {' '}🏓
+          </Text>
+        )}
+
         {item.type === 'you_are_playing' && (
           <View>
             <Text style={s.action}>
@@ -317,25 +329,38 @@ export function FeedItemRow({
         )}
 
         <View style={s.footerRow}>
-          <View style={s.kudosRow}>
-            {(['fistbump', 'flame', 'star'] as const).map(type => {
-              const isActive = kudos.myReactions.includes(type)
-              const count = kudos[type]
-              const emoji = type === 'fistbump' ? '🤜' : type === 'flame' ? '🔥' : '⭐'
-              return (
-                <TouchableOpacity
-                  key={type}
-                  style={[s.kudosBtn, isActive && s.kudosBtnActive]}
-                  onPress={() => handleKudos(type)}>
-                  <Text style={s.kudosEmoji}>{emoji}</Text>
-                  {count > 0 && (
-                    <Text style={[s.kudosCount, isActive && s.kudosCountActive]}>
-                      {count}
-                    </Text>
-                  )}
-                </TouchableOpacity>
-              )
-            })}
+          <View style={{ position: 'relative' }}>
+            <View style={[s.kudosRow, item.type === 'played_self' && { opacity: 0, pointerEvents: 'none' }]}>
+              {(['fistbump', 'flame', 'star'] as const).map(type => {
+                const isActive = kudos.myReactions.includes(type)
+                const count = kudos[type]
+                const emoji = type === 'fistbump' ? '🤜' : type === 'flame' ? '🔥' : '⭐'
+                return (
+                  <TouchableOpacity
+                    key={type}
+                    style={[s.kudosBtn, isActive && s.kudosBtnActive, showKudosTip && type === 'fistbump' && s.kudosBtnHighlight]}
+                    onPress={() => {
+                      if (showKudosTip) onDismissKudosTip?.()
+                      handleKudos(type)
+                    }}>
+                    <Text style={s.kudosEmoji}>{emoji}</Text>
+                    {count > 0 && (
+                      <Text style={[s.kudosCount, isActive && s.kudosCountActive]}>
+                        {count}
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                )
+              })}
+            </View>
+            {showKudosTip && (
+              <TouchableOpacity style={s.kudosTipWrap} onPress={onDismissKudosTip} activeOpacity={0.9}>
+                <View style={s.kudosTipBubble}>
+                  <Text style={s.kudosTipText}>Tap a kudo to support your circle</Text>
+                </View>
+                <View style={s.kudosTipArrow} />
+              </TouchableOpacity>
+            )}
           </View>
           <Text style={s.timestamp} numberOfLines={1} ellipsizeMode="tail">
             {item.type === 'played'
@@ -490,6 +515,47 @@ const s = StyleSheet.create({
   kudosBtnActive: {
     borderColor: '#f5a623',
     backgroundColor: '#1f1400',
+  },
+  kudosBtnHighlight: {
+    borderColor: '#f5a623',
+    borderWidth: 1.5,
+  },
+  kudosTipWrap: {
+    position: 'absolute',
+    bottom: -36,
+    left: 0,
+    zIndex: 99,
+    alignItems: 'flex-start',
+  },
+  kudosTipArrow: {
+    width: 0,
+    height: 0,
+    borderLeftWidth: 6,
+    borderRightWidth: 6,
+    borderBottomWidth: 7,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    borderBottomColor: 'transparent',
+    borderTopWidth: 7,
+    borderTopColor: '#f5a623',
+    marginLeft: 14,
+    marginTop: -1,
+  },
+  kudosTipBubble: {
+    backgroundColor: '#f5a623',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    shadowColor: '#f5a623',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  kudosTipText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#1a0a00',
   },
   kudosEmoji: {
     fontSize: 13,

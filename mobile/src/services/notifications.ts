@@ -6,16 +6,6 @@ import { Platform } from 'react-native'
 const IS_EXPO_GO = Constants.appOwnership === 'expo'
 const MAX_TOKEN_RETRIES = 5
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
-})
-
 /**
  * On iOS, getDevicePushTokenAsync returns a raw APNs token (hex string)
  * which is NOT a valid FCM registration token. We need @react-native-firebase/messaging
