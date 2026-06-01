@@ -11,6 +11,9 @@ platform :ios, podfile_properties['ios.deploymentTarget'] || '15.1'
 install! 'cocoapods',
   :deterministic_uuids => false
 
+# Required for FirebaseCoreInternal (Swift pod) to import GoogleUtilities as a static library
+pod 'GoogleUtilities', :modular_headers => true
+
 prepare_react_native_project!
 
 target 'SQUADD' do
