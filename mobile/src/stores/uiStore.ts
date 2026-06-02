@@ -52,6 +52,8 @@ interface UiState extends Stored {
   // PN6: userId of a player who just finished — Circle scrolls to them for kudos
   pendingKudosTarget: string | null
   setPendingKudosTarget: (userId: string | null) => void
+  backgroundRefreshTrigger: number
+  triggerBackgroundRefresh: () => void
 }
 
 async function persist(prefs: Stored) {
@@ -72,6 +74,8 @@ export const useUiStore = create<UiState>((set, get) => ({
   setPendingNewFollower: (follower) => set({ pendingNewFollower: follower }),
   pendingKudosTarget: null,
   setPendingKudosTarget: (userId) => set({ pendingKudosTarget: userId }),
+  backgroundRefreshTrigger: 0,
+  triggerBackgroundRefresh: () => set((s) => ({ backgroundRefreshTrigger: s.backgroundRefreshTrigger + 1 })),
 
   hydrate: async () => {
     try {

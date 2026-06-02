@@ -302,7 +302,7 @@ export function FeedItemRow({
 
         {item.type === 'played_self' && (
           <Text style={s.action}>
-            You played at{' '}
+            You finished playing at{' '}
             <Text style={s.highlight}>{item.venueName}</Text>
             {' '}🏓
           </Text>
@@ -329,7 +329,7 @@ export function FeedItemRow({
 
         <View style={s.footerRow}>
           <View style={{ position: 'relative' }}>
-            <View style={[s.kudosRow, item.type === 'played_self' && { opacity: 0, pointerEvents: 'none' }]}>
+            <View style={[s.kudosRow, item.type === 'played_self' && { opacity: 0.35, pointerEvents: 'none' }]}>
               {(['fistbump', 'flame', 'star'] as const).map(type => {
                 const isActive = kudos.myReactions.includes(type)
                 const count = kudos[type]

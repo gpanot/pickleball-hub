@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { View, Pressable, Platform, StyleSheet } from 'react-native'
+import { View, Pressable, Platform, StyleSheet, AppState } from 'react-native'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { StatusBar } from 'expo-status-bar'
@@ -186,6 +186,30 @@ export default function App() {
   useEffect(() => {
     void useUiStore.getState().hydrate()
     void useAvatarCacheStore.getState().hydrate()
+  }, [])
+
+  // Auto-refresh content when app returns from background after 30+ minutes
+  const backgroundTimestampRef = useRef<number | null>(null)
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'background' || nextState === 'inactive') {
+        backgroundTimestampRef.current = Date.now()
+      } else if (nextState === 'active' && backgroundTimestampRef.current) {
+        const elapsed = Date.now() - backgroundTimestampRef.current
+        const THIRTY_MIN = 30 * 60 * 1000
+        if (elapsed >= THIRTY_MIN) {
+          debugLog('App', `Returned from background after ${Math.round(elapsed / 60000)}min — triggering refresh`)
+          useUiStore.getState().triggerBackgroundRefresh()
+          useSessionStore.getState().fetchSessions(
+            useSessionStore.getState()._lastLat,
+            useSessionStore.getState()._lastLng,
+            useSessionStore.getState()._lastDate,
+          )
+        }
+        backgroundTimestampRef.current = null
+      }
+    })
+    return () => subscription.remove()
   }, [])
 
   // Re-fetch the swipe deck once authenticated so friend data is included.

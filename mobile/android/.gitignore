@@ -18,3 +18,4 @@ local.properties
 # Release signing — never commit these
 keystore.properties
 app/release.keystore
+app/eas-release.keystore

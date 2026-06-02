@@ -357,7 +357,7 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // ── played_self: viewer's own past sessions (last 5 days, already ended) ─────
+  // ── played_self: viewer's own sessions (last 5 days + today ended) ────────────
   // Catches sessions the PN6 cron missed and any day the cron didn't run.
   // Excluded from the per-player cap (like played_today / you_are_playing).
   if (user.reclubUserId) {
@@ -365,7 +365,10 @@ export async function GET(req: NextRequest) {
       where: {
         userId: user.reclubUserId,
         session: {
-          scrapedDate: { gte: cutoffStr, lt: todayStr },
+          OR: [
+            { scrapedDate: { gte: cutoffStr, lt: todayStr } },
+            { scrapedDate: todayStr, endTime: { lte: nowTimeVN } },
+          ],
         },
       },
       include: {

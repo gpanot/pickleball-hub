@@ -116,6 +116,12 @@ export function CircleScreen({ onOpenGear, gearSaved, gearSetupComplete }: { onO
     loadingId: number | null
   }>({ visible: false, sessionName: '', venueName: '', players: [], loadingId: null })
   const [followingSet, setFollowingSet] = useState<Set<string>>(new Set())
+  const [rosterRecommendations, setRosterRecommendations] = useState<{
+    player: RosterPlayer
+    score: number
+    reason: string
+    reasonType: 'overlap' | 'level' | 'social'
+  }[]>([])
 
   const { authedFetch, jwt, ensureServerAuth, reclubUserId } = useAuthStore()
   const toast = useToast((s) => s.show)
@@ -123,6 +129,7 @@ export function CircleScreen({ onOpenGear, gearSaved, gearSetupComplete }: { onO
   const { width: screenWidth } = useWindowDimensions()
   const pendingNewFollower = useUiStore((s) => s.pendingNewFollower)
   const clearPendingNewFollower = useUiStore((s) => s.setPendingNewFollower)
+  const backgroundRefreshTrigger = useUiStore((s) => s.backgroundRefreshTrigger)
 
   // ── Feed state ──────────────────────────────────────────────────────────────
   const [feedItems, setFeedItems] = useState<FeedItem[]>([])
@@ -171,6 +178,16 @@ export function CircleScreen({ onOpenGear, gearSaved, gearSetupComplete }: { onO
     }
   }, [jwt])
 
+  // Auto-refresh when returning from background after 30+ minutes
+  useEffect(() => {
+    if (backgroundRefreshTrigger === 0) return
+    if (!jwt) return
+    debugLog('CircleScreen', 'Background refresh triggered — reloading feed + presence')
+    feedLoadedRef.current = false
+    loadFeed()
+    loadPresence()
+  }, [backgroundRefreshTrigger])
+
   // Show notification permission sheet once after onboarding
   useEffect(() => {
     if (!jwt) return
@@ -218,6 +235,7 @@ export function CircleScreen({ onOpenGear, gearSaved, gearSetupComplete }: { onO
 
   const handleShowRoster = useCallback(async (sessionId: number) => {
     setRosterModal(prev => ({ ...prev, visible: true, loadingId: sessionId, players: [], sessionName: '', venueName: '' }))
+    setRosterRecommendations([])
     try {
       const res = await authedFetch(`/api/sessions/${sessionId}/roster`)
       if (res.ok) {
@@ -229,6 +247,50 @@ export function CircleScreen({ onOpenGear, gearSaved, gearSetupComplete }: { onO
         const followed = new Set<string>((data.players as { userId: string; isFollowing: boolean }[])
           .filter(p => p.isFollowing).map(p => p.userId))
         setFollowingSet(followed)
+
+        // Compute recommendations
+        try {
+          const currentAuth = useAuthStore.getState()
+          const profileId = currentAuth.profileId ?? ''
+          const duprDoubles = currentAuth.duprRating
+
+          const overlapRes = await authedFetch(
+            `/api/sessions/overlap?sessionId=${sessionId}`
+          )
+          const overlapData = overlapRes.ok ? await overlapRes.json() : { overlaps: [] }
+          const sessionOverlapCounts = new Map<string, number>(
+            (overlapData.overlaps ?? []).map((o: { userId: string; count: number }) => [o.userId, o.count])
+          )
+
+          const recs = (data.players as RosterPlayer[])
+            .filter(p => !followed.has(p.userId) && p.userId !== profileId)
+            .map(p => {
+              let score = 0
+              let reason = ''
+              let reasonType: 'overlap' | 'level' | 'social' = 'social'
+              const overlap = sessionOverlapCounts.get(p.userId) ?? 0
+              const duprDiff = duprDoubles != null && p.duprDoubles != null
+                ? Math.abs(duprDoubles - p.duprDoubles) : null
+
+              if (overlap >= 2) {
+                score = 100 + overlap
+                reason = `🏓 Same session ${overlap} times`
+                reasonType = 'overlap'
+              } else if (duprDiff !== null && duprDiff <= 0.4) {
+                score = 80
+                reason = `⚡ Similar level · ${p.duprDoubles!.toFixed(1)} DUPR`
+                reasonType = 'level'
+              }
+              return { player: p, score, reason, reasonType }
+            })
+            .filter(r => r.score > 0)
+            .sort((a, b) => b.score - a.score)
+            .slice(0, 3)
+
+          setRosterRecommendations(recs)
+        } catch (e) {
+          debugLog('ROSTER', `recommendations error: ${e}`)
+        }
       } else {
         debugLog('ROSTER', `session=${sessionId} → HTTP ${res.status}`)
       }
@@ -1183,12 +1245,23 @@ export function CircleScreen({ onOpenGear, gearSaved, gearSetupComplete }: { onO
           />
           <View style={[styles.rosterSheet, { paddingBottom: insets.bottom + 16 }]}>
             <View style={styles.rosterHandle} />
-            <Text style={styles.rosterTitle} numberOfLines={1}>
-              {rosterModal.sessionName || 'Session roster'}
-            </Text>
-            {rosterModal.venueName ? (
-              <Text style={styles.rosterVenue}>{rosterModal.venueName}</Text>
-            ) : null}
+            <View style={styles.rosterHeader}>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={styles.rosterTitle} numberOfLines={1}>
+                  {rosterModal.sessionName || 'Session roster'}
+                </Text>
+                {rosterModal.venueName ? (
+                  <Text style={styles.rosterVenue}>{rosterModal.venueName}</Text>
+                ) : null}
+              </View>
+              <TouchableOpacity
+                style={styles.rosterCloseBtn}
+                onPress={() => setRosterModal(prev => ({ ...prev, visible: false }))}
+                hitSlop={12}
+              >
+                <X size={22} color="#999" strokeWidth={2} />
+              </TouchableOpacity>
+            </View>
 
             {rosterModal.loadingId !== null ? (
               <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
@@ -1196,6 +1269,57 @@ export function CircleScreen({ onOpenGear, gearSaved, gearSetupComplete }: { onO
               </View>
             ) : (
               <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
+                {/* Recommended to follow section */}
+                {rosterRecommendations.length > 0 && (
+                  <View style={styles.rosterRecSection}>
+                    <View style={styles.rosterRecHeader}>
+                      <Text style={styles.rosterRecTitle}>✦ Recommended to follow</Text>
+                      <Text style={styles.rosterRecCount}>{rosterRecommendations.length} good fits</Text>
+                    </View>
+                    {rosterRecommendations.map((rec) => (
+                      <View key={rec.player.userId} style={styles.rosterRecRow}>
+                        <TouchableOpacity onPress={() => {
+                          setSelectedPlayerStub({ userId: rec.player.userId, displayName: rec.player.displayName, imageUrl: rec.player.imageUrl, duprDoubles: rec.player.duprDoubles })
+                          setSelectedPlayerId(rec.player.userId)
+                        }}>
+                          <Image
+                            source={{ uri: rec.player.imageUrl ?? `https://api.reclub.vn/avatars/${rec.player.userId}.jpg` }}
+                            style={styles.rosterRecAvatar}
+                          />
+                        </TouchableOpacity>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.rosterRecName}>{rec.player.displayName}</Text>
+                          {rec.player.duprDoubles != null && (
+                            <Text style={styles.rosterRecDupr}>{rec.player.duprDoubles.toFixed(2)} DUPR</Text>
+                          )}
+                          <View style={[
+                            styles.rosterRecChip,
+                            rec.reasonType === 'overlap' && { backgroundColor: '#0a1a0a' },
+                            rec.reasonType === 'level' && { backgroundColor: '#1a1000' },
+                            rec.reasonType === 'social' && { backgroundColor: '#1a0a1a' },
+                          ]}>
+                            <Text style={[
+                              styles.rosterRecChipText,
+                              rec.reasonType === 'overlap' && { color: '#1D9E75' },
+                              rec.reasonType === 'level' && { color: '#f5a623' },
+                              rec.reasonType === 'social' && { color: '#9b59b6' },
+                            ]}>{rec.reason}</Text>
+                          </View>
+                        </View>
+                        <TouchableOpacity
+                          style={[styles.rosterRecFollowBtn, followingSet.has(rec.player.userId) && styles.rosterFollowBtnDone]}
+                          onPress={() => !followingSet.has(rec.player.userId) && handleFollowFromRoster(rec.player.userId)}
+                          activeOpacity={followingSet.has(rec.player.userId) ? 1 : 0.8}
+                        >
+                          <Text style={[styles.rosterRecFollowBtnText, followingSet.has(rec.player.userId) && styles.rosterFollowBtnTextDone]}>
+                            {followingSet.has(rec.player.userId) ? 'Following' : 'Follow'}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    ))}
+                  </View>
+                )}
+
                 {(() => {
                   const players = rosterModal.players
                   const rows: React.ReactNode[] = []
@@ -1802,7 +1926,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#0e0e0e',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    maxHeight: Dimensions.get('window').height * 0.88,
+    maxHeight: Dimensions.get('window').height * 0.85,
     paddingHorizontal: 16,
     paddingTop: 12,
     borderWidth: 1,
@@ -1814,7 +1938,17 @@ const styles = StyleSheet.create({
     borderRadius: 2,
     backgroundColor: '#333',
     alignSelf: 'center',
+    marginBottom: 12,
+  },
+  rosterHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
     marginBottom: 16,
+  },
+  rosterCloseBtn: {
+    padding: 4,
+    marginLeft: 8,
   },
   rosterTitle: {
     fontSize: 17,
@@ -1825,7 +1959,6 @@ const styles = StyleSheet.create({
   rosterVenue: {
     fontSize: 12,
     color: '#666',
-    marginBottom: 16,
   },
   rosterRow: {
     flexDirection: 'row',
@@ -1838,9 +1971,9 @@ const styles = StyleSheet.create({
     marginHorizontal: 4,
   },
   rosterAvatar: {
-    width: 91,
-    height: 91,
-    borderRadius: 46,
+    width: 100,
+    height: 100,
+    borderRadius: 50,
     backgroundColor: '#222',
     marginBottom: 6,
   },
@@ -1892,5 +2025,69 @@ const styles = StyleSheet.create({
   loadMoreText: {
     fontSize: 13,
     color: '#555',
+  },
+  rosterRecSection: {
+    backgroundColor: '#0a0a1a',
+    borderWidth: 0.5,
+    borderColor: '#4a90e2',
+    borderRadius: 14,
+    marginBottom: 16,
+    overflow: 'hidden',
+  },
+  rosterRecHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 10,
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#0f0f2a',
+  },
+  rosterRecTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#4a90e2',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
+  rosterRecCount: { fontSize: 10, color: '#555' },
+  rosterRecRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 10,
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#0f0f2a',
+  },
+  rosterRecAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 2,
+    borderColor: '#4a90e2',
+    marginRight: 10,
+    flexShrink: 0,
+    backgroundColor: '#1a1a2a',
+  },
+  rosterRecName: { fontSize: 14, fontWeight: '600', color: '#fff' },
+  rosterRecDupr: { fontSize: 11, color: '#f5a623', fontWeight: '600', marginTop: 1 },
+  rosterRecChip: {
+    borderRadius: 5,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    alignSelf: 'flex-start',
+    marginTop: 4,
+  },
+  rosterRecChipText: { fontSize: 10, fontWeight: '500' },
+  rosterRecFollowBtn: {
+    backgroundColor: '#4a90e2',
+    borderRadius: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    marginLeft: 10,
+    flexShrink: 0,
+  },
+  rosterRecFollowBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#fff',
   },
 })

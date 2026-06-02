@@ -18,6 +18,7 @@
       "googleServicesFile": "./GoogleService-Info.plist",
       "usesAppleSignIn": true,
       "infoPlist": {
+        "NSUserNotificationsUsageDescription": "Get notified when you receive kudos, when friends are playing, or when someone follows you.",
         "CFBundleURLTypes": [
           {
             "CFBundleURLSchemes": [

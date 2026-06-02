@@ -538,9 +538,11 @@ export function SwipeScreen({
   useEffect(() => {
     if (!isActive) return
     if (locationPopupShownRef.current) return
+    // Only show location popup after user has signed in (both platforms)
+    if (!signedIn) return
 
     swipeTabVisitCount.current += 1
-    console.log('[LOCATION_DEBUG] swipe tab activated, visit #', swipeTabVisitCount.current)
+    console.log('[LOCATION_DEBUG] swipe tab activated, visit #', swipeTabVisitCount.current, 'signedIn:', signedIn)
 
     if (swipeTabVisitCount.current < 2) return
 
@@ -559,7 +561,7 @@ export function SwipeScreen({
     }
 
     check()
-  }, [isActive])
+  }, [isActive, signedIn])
 
   // Re-fetch when date filter changes or jwt arrives after boot.
   // Skip the very first render (boot effect handles that).
