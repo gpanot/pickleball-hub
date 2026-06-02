@@ -146,23 +146,36 @@ export function ProfileSheet({
 
   const handleDeleteData = () => {
     Alert.alert(
-      'Delete all my data',
-      'This will permanently remove your account, profile, follows, and all associated data. This cannot be undone.',
+      'Delete all my data?',
+      'This will permanently remove your account, profile, follows, and all associated data. This action is irreversible and your data cannot be recovered.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Delete everything',
+          text: 'Yes, delete everything',
           style: 'destructive',
-          onPress: async () => {
-            try {
-              await deleteAccount()
-              onClose()
-            } catch {
-              Alert.alert(
-                'Could not delete',
-                'Something went wrong. Please try again.',
-              )
-            }
+          onPress: () => {
+            Alert.alert(
+              'Are you absolutely sure?',
+              'This is your last chance. All your data will be deleted forever.',
+              [
+                { text: 'Go back', style: 'cancel' },
+                {
+                  text: 'Delete forever',
+                  style: 'destructive',
+                  onPress: async () => {
+                    try {
+                      await deleteAccount()
+                      onClose()
+                    } catch {
+                      Alert.alert(
+                        'Could not delete',
+                        'Something went wrong. Please try again.',
+                      )
+                    }
+                  },
+                },
+              ],
+            )
           },
         },
       ],
@@ -455,92 +468,77 @@ export function ProfileSheet({
           </>
         )}
 
-        <TouchableOpacity
-          style={styles.settingsRow}
-          onPress={async () => {
-            try {
-              // Step 1: client-side diagnostics
-              console.log('[push-debug] Starting PNS diagnostics...')
-              const diag = await getPushDiagnostics()
-              console.log('[push-debug] Diagnostics:', JSON.stringify(diag))
+        {__DEV__ && (
+          <>
+            <TouchableOpacity
+              style={styles.settingsRow}
+              onPress={async () => {
+                try {
+                  console.log('[push-debug] Starting PNS diagnostics...')
+                  const diag = await getPushDiagnostics()
+                  console.log('[push-debug] Diagnostics:', JSON.stringify(diag))
 
-              const diagMsg = [
-                `Platform: ${diag.platform}`,
-                `isDevice: ${diag.isDevice}`,
-                `isExpoGo: ${diag.isExpoGo}`,
-                `Permission: ${diag.permissionStatus}`,
-                diag.tokenPrefix ? `Token: ${diag.tokenPrefix}...` : 'Token: none',
-                diag.error ? `Error: ${diag.error}` : null,
-              ].filter(Boolean).join('\n')
+                  const diagMsg = [
+                    `Platform: ${diag.platform}`,
+                    `isDevice: ${diag.isDevice}`,
+                    `isExpoGo: ${diag.isExpoGo}`,
+                    `Permission: ${diag.permissionStatus}`,
+                    diag.tokenPrefix ? `Token: ${diag.tokenPrefix}...` : 'Token: none',
+                    diag.error ? `Error: ${diag.error}` : null,
+                  ].filter(Boolean).join('\n')
 
-              // Step 2: if no local token, try registering now
-              if (!diag.tokenPrefix && diag.permissionStatus === 'granted' && !diag.isExpoGo) {
-                console.log('[push-debug] No token yet — attempting registration...')
-                const token = await registerForPushNotifications()
-                if (token) {
-                  console.log('[push-debug] Got token, uploading:', token.slice(0, 20))
-                  await authedFetch('/api/players/push-token', {
-                    method: 'POST',
-                    body: JSON.stringify({ token, platform: Platform.OS }),
-                  })
+                  if (!diag.tokenPrefix && diag.permissionStatus === 'granted' && !diag.isExpoGo) {
+                    const token = await registerForPushNotifications()
+                    if (token) {
+                      await authedFetch('/api/players/push-token', {
+                        method: 'POST',
+                        body: JSON.stringify({ token, platform: Platform.OS }),
+                      })
+                    }
+                  }
+
+                  const statusRes = await authedFetch('/api/notifications/test')
+                  const statusData = await statusRes.json()
+
+                  const serverMsg = statusData.registered
+                    ? `DB token: ${statusData.tokenPrefix}...\nUpdated: ${statusData.updatedAt ?? 'unknown'}`
+                    : 'No token in DB'
+
+                  if (statusData.registered) {
+                    const res = await authedFetch('/api/notifications/test', { method: 'POST' })
+                    const data = await res.json()
+
+                    if (data.ok) {
+                      Alert.alert('PNS Debug ✓', `Notification sent!\n\n— Client —\n${diagMsg}\n\n— Server —\n${serverMsg}`)
+                    } else {
+                      Alert.alert('PNS Send Failed', `Code: ${data.code ?? 'unknown'}\nMsg: ${data.message ?? data.error}\n\n— Client —\n${diagMsg}\n\n— Server —\n${serverMsg}`)
+                    }
+                  } else {
+                    Alert.alert('PNS Not Registered', `No push token in DB.\n\n— Client —\n${diagMsg}\n\nMake sure you have a physical device and notifications permission is granted.`)
+                  }
+                } catch (e: any) {
+                  console.error('[push-debug] Unexpected error:', e)
+                  Alert.alert('PNS Error', e.message ?? String(e))
                 }
-              }
+              }}
+            >
+              <Bell size={20} color="#555" strokeWidth={2} />
+              <Text style={styles.settingsLabel}>Test Push Notification</Text>
+            </TouchableOpacity>
 
-              // Step 3: server status check
-              console.log('[push-debug] Fetching server registration status...')
-              const statusRes = await authedFetch('/api/notifications/test')
-              const statusData = await statusRes.json()
-              console.log('[push-debug] Server status:', JSON.stringify(statusData))
-
-              const serverMsg = statusData.registered
-                ? `DB token: ${statusData.tokenPrefix}...\nUpdated: ${statusData.updatedAt ?? 'unknown'}`
-                : 'No token in DB'
-
-              // Step 4: fire the test notification
-              if (statusData.registered) {
-                console.log('[push-debug] Sending test notification...')
-                const res = await authedFetch('/api/notifications/test', { method: 'POST' })
-                const data = await res.json()
-                console.log('[push-debug] Send result:', JSON.stringify(data))
-
-                if (data.ok) {
-                  Alert.alert(
-                    'PNS Debug ✓',
-                    `Notification sent!\n\n— Client —\n${diagMsg}\n\n— Server —\n${serverMsg}`,
-                  )
-                } else {
-                  Alert.alert(
-                    'PNS Send Failed',
-                    `Code: ${data.code ?? 'unknown'}\nMsg: ${data.message ?? data.error}\n\n— Client —\n${diagMsg}\n\n— Server —\n${serverMsg}`,
-                  )
-                }
-              } else {
-                Alert.alert(
-                  'PNS Not Registered',
-                  `No push token in DB.\n\n— Client —\n${diagMsg}\n\nMake sure you have a physical device and notifications permission is granted.`,
-                )
-              }
-            } catch (e: any) {
-              console.error('[push-debug] Unexpected error:', e)
-              Alert.alert('PNS Error', e.message ?? String(e))
-            }
-          }}
-        >
-          <Bell size={20} color="#555" strokeWidth={2} />
-          <Text style={styles.settingsLabel}>Test Push Notification</Text>
-        </TouchableOpacity>
-
-        {onOpenPushDebug && (
-          <TouchableOpacity
-            style={styles.settingsRow}
-            onPress={() => {
-              onClose()
-              onOpenPushDebug()
-            }}
-          >
-            <Bell size={20} color="#f5a623" strokeWidth={2} />
-            <Text style={[styles.settingsLabel, { color: '#f5a623' }]}>FCM Debug Screen</Text>
-          </TouchableOpacity>
+            {onOpenPushDebug && (
+              <TouchableOpacity
+                style={styles.settingsRow}
+                onPress={() => {
+                  onClose()
+                  onOpenPushDebug()
+                }}
+              >
+                <Bell size={20} color="#f5a623" strokeWidth={2} />
+                <Text style={[styles.settingsLabel, { color: '#f5a623' }]}>FCM Debug Screen</Text>
+              </TouchableOpacity>
+            )}
+          </>
         )}
       </View>
       </ScrollView>

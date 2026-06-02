@@ -1,10 +1,18 @@
 import React, { useState, useEffect, useRef } from 'react'
 import {
-  View, Text, ScrollView, TouchableOpacity, StyleSheet
+  View, Text, ScrollView, TouchableOpacity, StyleSheet, Platform
 } from 'react-native'
-import messaging from '@react-native-firebase/messaging'
 import AsyncStorage from '@react-native-async-storage/async-storage'
+import Constants from 'expo-constants'
 import { useAuthStore } from '../stores/authStore'
+
+const IS_EXPO_GO = Constants.appOwnership === 'expo'
+const messaging: (() => any) | null = IS_EXPO_GO
+  ? null
+  : (() => {
+      try { return require('@react-native-firebase/messaging').default }
+      catch { return null }
+    })()
 
 const STORAGE_KEY = 'pns_debug_logs'
 
@@ -29,6 +37,11 @@ export function PushDebugScreen({ onClose }: { onClose?: () => void }) {
     })
 
     addLog('--- Debug screen opened ---')
+
+    if (!messaging) {
+      addLog('⚠️ Firebase unavailable in Expo Go — FCM tests require a dev/release build')
+      return
+    }
 
     messaging().getToken()
       .then(t => addLog(`TOKEN: ${t?.substring(0, 35)}... (${t?.length} chars)`))
@@ -71,7 +84,7 @@ export function PushDebugScreen({ onClose }: { onClose?: () => void }) {
       const { authedFetch } = useAuthStore.getState()
       const res = await authedFetch('/api/notifications/test', {
         method: 'POST',
-        body: JSON.stringify({}),
+        body: JSON.stringify({ platform: Platform.OS }),
       })
       const data = await res.json()
       addLog(`📤 HTTP ${res.status}: ${JSON.stringify(data)}`)

@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getMobileUser } from "@/lib/mobile-auth";
-import { sendPushNotification } from "@/lib/notifications";
+import { sendToToken } from "@/lib/notifications";
 
 /**
  * POST /api/notifications/test
- * Sends a test push notification to the calling user's registered device(s).
+ * Sends a test push notification to the calling device only (based on platform).
  */
 export async function POST(req: NextRequest) {
   const user = await getMobileUser(req);
@@ -13,21 +13,25 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const { platform } = (await req.json().catch(() => ({}))) as { platform?: string };
+
   const profile = await prisma.playerProfile.findUnique({
     where: { id: user.profileId },
     select: { pushToken: true, pushTokenIos: true, displayName: true },
   });
 
-  if (!profile?.pushToken && !profile?.pushTokenIos) {
+  const token = platform === "ios" ? profile?.pushTokenIos : profile?.pushToken;
+
+  if (!token) {
     return NextResponse.json(
-      { error: "No push token registered", registered: false },
+      { error: `No push token registered for ${platform ?? "unknown"}`, registered: false },
       { status: 400 }
     );
   }
 
-  const result = await sendPushNotification(user.profileId, {
+  const result = await sendToToken(token, {
     title: "Test notification",
-    body: `Hey ${profile.displayName ?? "there"}! Push notifications are working.`,
+    body: `Hey ${profile?.displayName ?? "there"}! Push notifications are working.`,
     data: { type: "test", screen: "Circle" },
   });
 
@@ -37,8 +41,7 @@ export async function POST(req: NextRequest) {
         error: "Push send failed",
         code: result.error,
         message: result.message,
-        tokenPrefix: profile.pushToken?.slice(0, 20) ?? null,
-        tokenIosPrefix: profile.pushTokenIos?.slice(0, 20) ?? null,
+        tokenPrefix: token.slice(0, 20),
         registered: true,
       },
       { status: 502 }

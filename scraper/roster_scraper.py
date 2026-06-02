@@ -359,8 +359,21 @@ def scrape_session_roster(
         # A "regular" is a non-host player who has attended this club at least 3 times
         # across all sessions in the past 60 days (excluding today).
         returning_pct: float | None = None
-        non_host_total = sum(1 for p in participants if not p["isHost"])
-        host_total = sum(1 for p in participants if p["isHost"])
+        # Keep denominator aligned with persisted roster rows (confirmed only),
+        # so regulars % cannot exceed 100 due to mixed status rows.
+        cur.execute(
+            """
+            SELECT
+              SUM(CASE WHEN is_confirmed = TRUE AND is_host = FALSE THEN 1 ELSE 0 END) AS non_host_total,
+              SUM(CASE WHEN is_confirmed = TRUE AND is_host = TRUE THEN 1 ELSE 0 END) AS host_total
+            FROM session_rosters
+            WHERE session_id = %s
+            """,
+            (session_id,),
+        )
+        row = cur.fetchone() or (0, 0)
+        non_host_total = int(row[0] or 0)
+        host_total = int(row[1] or 0)
         print(
             f"[roster] {reference_code} participants breakdown — "
             f"non_host={non_host_total}, host={host_total}, scraped_date={scraped_date_str}"
@@ -373,6 +386,7 @@ def scrape_session_roster(
                     FROM session_rosters r1
                     JOIN sessions s1 ON r1.session_id = s1.id
                     WHERE s1.id = %s
+                      AND r1.is_confirmed = TRUE
                       AND r1.is_host = FALSE
                       AND r1.user_id IN (
                           SELECT r2.user_id
@@ -381,6 +395,7 @@ def scrape_session_roster(
                           WHERE s2.club_id = (SELECT club_id FROM sessions WHERE id = %s)
                             AND s2.scraped_date < %s
                             AND s2.scraped_date >= (DATE %s - INTERVAL '60 days')::text
+                            AND r2.is_confirmed = TRUE
                             AND r2.is_host = FALSE
                           GROUP BY r2.user_id
                           HAVING COUNT(DISTINCT r2.session_id) >= 3
@@ -394,6 +409,8 @@ def scrape_session_roster(
                 else:
                     (regulars,) = row
                     returning_pct = round((int(regulars) / non_host_total) * 100, 2)
+                    if returning_pct > 100:
+                        returning_pct = 100.0
                     print(f"[roster] {reference_code} regulars query — regulars={regulars}, non_host_total={non_host_total}")
             except Exception as e:
                 import traceback

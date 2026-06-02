@@ -72,6 +72,7 @@ interface PlayerProfile {
   duprDoubles: number | null
   reclubId: number | null
   followingCount: number
+  followersCount: number
   sessionCount: number
   isFollowing: boolean
   regularPlay: Array<{
@@ -510,6 +511,10 @@ export function PlayerProfileSheet({ userId, onClose, stub }: Props) {
                 <View style={[s.stat, { borderRightWidth: 0.5, borderRightColor: '#1e1e1e' }]}>
                   <Text style={s.statVal}>{profile.followingCount}</Text>
                   <Text style={s.statLbl}>Following</Text>
+                </View>
+                <View style={[s.stat, { borderRightWidth: 0.5, borderRightColor: '#1e1e1e' }]}>
+                  <Text style={s.statVal}>{profile.followersCount}</Text>
+                  <Text style={s.statLbl}>Followers</Text>
                 </View>
                 <View style={s.stat}>
                   <Text style={s.statVal}>{profile.sessionCount}</Text>

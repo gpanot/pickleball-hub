@@ -6,7 +6,7 @@ type PushResult = { success: boolean; error?: string; message?: string };
 /**
  * Send a push notification to a single FCM/APNs token.
  */
-async function sendToToken(
+export async function sendToToken(
   token: string,
   payload: { title: string; body: string; data?: Record<string, string> },
 ): Promise<PushResult> {
@@ -99,7 +99,13 @@ export async function sendPushNotification(
   }
 
   const results = await Promise.all(
-    tokens.map((t) => sendToToken(t, payload)),
+    tokens.map(async (t) => {
+      const label = t === profile?.pushTokenIos ? "iOS" : "Android";
+      console.log(`[push] Sending to ${label} token — prefix:`, t.slice(0, 20));
+      const r = await sendToToken(t, payload);
+      console.log(`[push] ${label} result:`, r.success ? "✅ success" : `❌ ${r.error}: ${r.message}`);
+      return r;
+    }),
   );
 
   return results.some((r) => r.success)

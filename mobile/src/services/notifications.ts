@@ -13,7 +13,7 @@ const MAX_TOKEN_RETRIES = 5
  */
 async function getIosFcmToken(): Promise<string | null> {
   try {
-    const messagingModule = await import('@react-native-firebase/messaging')
+    const messagingModule = require('@react-native-firebase/messaging')
     const messaging = messagingModule.default
 
     // Do NOT call requestPermission() — expo-notifications already requested

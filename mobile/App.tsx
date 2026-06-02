@@ -57,7 +57,9 @@ if (!IS_EXPO_GO) {
 }
 
 // FCM debug listeners — log every message event regardless of app state
+// Skip entirely in Expo Go — native Firebase module is unavailable there
 try {
+  if (IS_EXPO_GO) throw new Error('Expo Go — skipping Firebase')
   const messagingModule = require('@react-native-firebase/messaging')
   const messaging = messagingModule.default
 

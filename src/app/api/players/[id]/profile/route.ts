@@ -51,7 +51,7 @@ export async function GET(
         displayName: true,
         imageUrl: true,
         duprDoubles: true,
-        _count: { select: { rosters: true } }
+        _count: { select: { rosters: true, followers: true } }
       }
     }),
     prisma.follow.findFirst({
@@ -293,6 +293,7 @@ export async function GET(
     duprDoubles: player.duprDoubles ? Number(player.duprDoubles) : null,
     reclubId: Number(player.userId),
     followingCount: playerProfile?._count.following ?? 0,
+    followersCount: player._count.followers,
     sessionCount: player._count.rosters,
     isFollowing: !!isFollowing,
     regularPlay: quick ? null : regularPlay,

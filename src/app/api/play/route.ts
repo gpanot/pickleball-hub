@@ -60,7 +60,6 @@ const getCachedSessions = unstable_cache(
             },
           },
           orderBy: { player: { duprDoubles: "desc" } },
-          take: 10,
         },
         _count: { select: { rosters: true } },
       },
@@ -371,7 +370,7 @@ export async function GET(req: NextRequest) {
         return null;
       })(),
       returningPlayerPct: session.duprStat?.returningPlayerPct != null
-        ? Number(session.duprStat.returningPlayerPct)
+        ? Math.min(100, Number(session.duprStat.returningPlayerPct))
         : null,
       vibeTag: deriveVibeTag(
         session.name,
@@ -398,7 +397,10 @@ export async function GET(req: NextRequest) {
   );
 
   const eligible = scored.filter(
-    (s) => !friendSessionIds.has(s.sessionId) && s.duprCoverageCount >= 2,
+    (s) =>
+      !friendSessionIds.has(s.sessionId) &&
+      s.duprCoverageCount >= 4 &&
+      s.card.totalRoster >= 15,
   );
 
   // Compute per-slot max avg DUPR from eligible sessions (ignores duprMin so
