@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react'
+import React, { useRef, useEffect, useState } from 'react'
 import {
   View,
   Text,
@@ -6,8 +6,9 @@ import {
   StyleSheet,
   Linking,
   Animated,
+  Modal,
 } from 'react-native'
-import { Users, Clock } from 'lucide-react-native'
+import { Users, Clock, X } from 'lucide-react-native'
 import { T } from '../theme'
 import { RING_COLORS, type Session } from '../data'
 import { PlayerAvatar } from './PlayerAvatar'
@@ -25,6 +26,7 @@ export interface FriendGoingItem {
   totalSpots: number
   eventUrl: string
   matchScore: number
+  fillRate?: number | null
   fillingFast?: boolean
   friendCount: number
   friends: Array<{
@@ -45,6 +47,8 @@ export interface FriendGoingItem {
   duprRange?: { min: number; max: number } | null
   returningPlayerPct?: number | null
   vibeTag?: string
+  /** User's own DUPR, used for score breakdown display only */
+  userDupr?: number | null
 }
 
 interface Props {
@@ -56,6 +60,98 @@ interface Props {
   onTopDuprPress?: () => void
   /** Tap anywhere on the card (except friends row) opens DUPR modal. */
   onCardPress?: () => void
+  isSignedIn?: boolean
+}
+
+/* ── Score breakdown computation (mirrors src/lib/match-score.ts) ── */
+function computeBreakdown(item: FriendGoingItem) {
+  const userDupr = item.userDupr ?? null
+  const sessionAvgDupr = item.duprRange
+    ? Math.round(((item.duprRange.min + item.duprRange.max) / 2) * 10) / 10
+    : null
+
+  let duprScore = 28
+  if (userDupr !== null && sessionAvgDupr !== null) {
+    const diff = Math.abs(userDupr - sessionAvgDupr)
+    if (diff <= 0.2) duprScore = 55
+    else if (diff <= 0.4) duprScore = 44
+    else if (diff <= 0.6) duprScore = 33
+    else if (diff <= 1.0) duprScore = 18
+    else duprScore = 5
+  }
+
+  const fillRate = item.fillRate != null
+    ? item.fillRate
+    : item.totalSpots > 0 ? (item.totalSpots - item.spotsLeft) / item.totalSpots : 0
+  let fillScore = 5
+  if (fillRate >= 0.75) fillScore = 30
+  else if (fillRate >= 0.50) fillScore = 22
+  else if (fillRate >= 0.25) fillScore = 12
+
+  const rPct = item.returningPlayerPct
+  let communityScore = 7
+  if (rPct !== null && rPct !== undefined) {
+    const pct = rPct > 1 ? rPct / 100 : rPct
+    if (pct >= 0.6) communityScore = 15
+    else if (pct >= 0.4) communityScore = 10
+    else if (pct >= 0.2) communityScore = 5
+    else communityScore = 3
+  }
+
+  return { duprScore, fillScore, communityScore, total: Math.min(100, duprScore + fillScore + communityScore) }
+}
+
+/* ── Score breakdown popup ─────────────────────────────────────── */
+const CRITERIA_BAR_COLOR = '#4ade80'
+
+function ScoreBreakdownPopup({
+  visible,
+  onClose,
+  item,
+  scoreColor,
+}: {
+  visible: boolean
+  onClose: () => void
+  item: FriendGoingItem
+  scoreColor: string
+}) {
+  const { duprScore, fillScore, communityScore, total } = computeBreakdown(item)
+  const totalPoints = duprScore + fillScore + communityScore
+  const rows = [
+    { label: 'DUPR fit', pts: duprScore, max: 55, hint: item.userDupr == null ? 'No DUPR set' : undefined },
+    { label: 'Fill rate', pts: fillScore, max: 30, hint: undefined },
+    { label: 'Returning players', pts: communityScore, max: 15, hint: item.returningPlayerPct == null ? 'No data' : undefined },
+  ]
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <TouchableOpacity style={bp.backdrop} activeOpacity={1} onPress={onClose}>
+        <TouchableOpacity activeOpacity={1} onPress={() => {}} style={bp.card}>
+          <View style={bp.header}>
+            <Text style={bp.title}>Match score</Text>
+            <TouchableOpacity onPress={onClose} hitSlop={12}>
+              <X size={18} color="#777" strokeWidth={2} />
+            </TouchableOpacity>
+          </View>
+          <Text style={[bp.total, { color: scoreColor }]}>{total}%</Text>
+          <View style={bp.divider} />
+          {rows.map((row) => (
+            <View key={row.label} style={bp.row}>
+              <View style={{ flex: 1 }}>
+                <Text style={bp.rowLabel}>{row.label}</Text>
+                {row.hint && <Text style={bp.rowHint}>{row.hint}</Text>}
+              </View>
+              <View style={bp.barWrap}>
+                <View style={[bp.barFill, { width: `${Math.round((row.pts / row.max) * 100)}%`, backgroundColor: CRITERIA_BAR_COLOR }]} />
+              </View>
+              <Text style={bp.rowPts}>+{row.pts}<Text style={bp.rowPtsUnit}>pts</Text></Text>
+            </View>
+          ))}
+          <View style={bp.divider} />
+          <Text style={bp.totalPts}>Total = {totalPoints} points</Text>
+        </TouchableOpacity>
+      </TouchableOpacity>
+    </Modal>
+  )
 }
 
 /* ── Match score: green / yellow / light red ─────────────────── */
@@ -191,9 +287,11 @@ export function FriendGoingCard({
   dimLevel = 0,
   onTopDuprPress,
   onCardPress,
+  isSignedIn,
 }: Props) {
   const joined = item.totalSpots - item.spotsLeft
   const pulseAnim = useRef(new Animated.Value(1)).current
+  const [scorePopupVisible, setScorePopupVisible] = useState(false)
 
   useEffect(() => {
     const loop = Animated.loop(
@@ -248,12 +346,17 @@ export function FriendGoingCard({
             {item.clubName}
           </Text>
         </View>
-        <View style={s.fcScoreBadge}>
+        <TouchableOpacity
+          style={s.fcScoreBadge}
+          onPress={(e) => { e.stopPropagation?.(); setScorePopupVisible(true) }}
+          activeOpacity={0.7}
+          hitSlop={8}
+        >
           <Text style={[s.fcScoreNum, { color: scoreColor }]}>
             {item.matchScore}%
           </Text>
-          <Text style={s.fcScoreLbl}>match</Text>
-        </View>
+          <Text style={s.fcScoreLbl}>match ⓘ</Text>
+        </TouchableOpacity>
       </View>
 
       {/* ② Pills row */}
@@ -370,6 +473,13 @@ export function FriendGoingCard({
       >
         <Text style={s.joinBtnText}>Join on Reclub</Text>
       </TouchableOpacity>
+
+      <ScoreBreakdownPopup
+        visible={scorePopupVisible}
+        onClose={() => setScorePopupVisible(false)}
+        item={item}
+        scoreColor={scoreColor}
+      />
     </TouchableOpacity>
   )
 }
@@ -566,5 +676,88 @@ const s = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: '#1a0a00',
+  },
+})
+
+const bp = StyleSheet.create({
+  backdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 28,
+  },
+  card: {
+    backgroundColor: '#111',
+    borderRadius: 18,
+    padding: 20,
+    width: '100%',
+    borderWidth: 0.5,
+    borderColor: '#2a2a2a',
+    gap: 10,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  title: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  total: {
+    fontSize: 36,
+    fontWeight: '800',
+    textAlign: 'center',
+    lineHeight: 40,
+  },
+  divider: {
+    height: 0.5,
+    backgroundColor: '#2a2a2a',
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  rowLabel: {
+    fontSize: 13,
+    color: '#ccc',
+    fontWeight: '500',
+  },
+  rowHint: {
+    fontSize: 10,
+    color: '#666',
+    marginTop: 1,
+  },
+  barWrap: {
+    height: 4,
+    width: 60,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    overflow: 'hidden',
+  },
+  barFill: {
+    height: '100%',
+    borderRadius: 2,
+  },
+  rowPts: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#fff',
+    minWidth: 52,
+    textAlign: 'right',
+  },
+  rowPtsUnit: {
+    fontSize: 11,
+    fontWeight: '400',
+    color: '#aaa',
+  },
+  totalPts: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#ccc',
+    textAlign: 'right',
   },
 })

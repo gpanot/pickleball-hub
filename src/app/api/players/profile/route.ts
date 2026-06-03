@@ -33,6 +33,22 @@ export async function PATCH(req: NextRequest) {
         duprUpdatedAt: new Date(),
       },
     });
+
+    // Keep preferences.dupr in sync so reinstalls can read it from mobile-token
+    const currentProfile = await prisma.playerProfile.findUnique({
+      where: { id: user.profileId },
+      select: { preferences: true },
+    });
+    const currentPrefs =
+      (currentProfile?.preferences as Record<string, unknown>) ?? {};
+    await prisma.playerProfile.update({
+      where: { id: user.profileId },
+      data: { preferences: { ...currentPrefs, dupr: rating } },
+    });
+
+    console.log(
+      `[DUPR_DEBUG] saved: profileId=${user.profileId} reclubUserId=${user.reclubUserId} duprDoubles=${rating}`
+    );
   }
 
   return NextResponse.json({ ok: true });

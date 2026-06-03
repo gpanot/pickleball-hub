@@ -35,6 +35,7 @@ export const PlayerSearch = forwardRef<PlayerSearchRef, {
   onSelectPlayer?: (player: SearchResult | null) => void
   onFollow?: (userId: string, player: SearchResult) => Promise<void>
   onUnfollow?: (userId: string) => Promise<void>
+  onAvatarPress?: (userId: string, player: SearchResult) => void
   initialFollowedIds?: string[]
   autoFocus?: boolean
 }>(function PlayerSearch({
@@ -43,6 +44,7 @@ export const PlayerSearch = forwardRef<PlayerSearchRef, {
   onSelectPlayer,
   onFollow,
   onUnfollow,
+  onAvatarPress,
   initialFollowedIds,
   autoFocus = false,
 }, ref) {
@@ -170,12 +172,18 @@ export const PlayerSearch = forwardRef<PlayerSearchRef, {
       const isFollowed = followedIds.has(item.userId)
       return (
         <View style={styles.row}>
-          <PlayerAvatar
-            userId={item.userId}
-            displayName={item.displayName}
-            imageUrl={item.imageUrl}
-            size={40}
-          />
+          <TouchableOpacity
+            onPress={() => onAvatarPress?.(item.userId, item)}
+            activeOpacity={onAvatarPress ? 0.7 : 1}
+            disabled={!onAvatarPress}
+          >
+            <PlayerAvatar
+              userId={item.userId}
+              displayName={item.displayName}
+              imageUrl={item.imageUrl}
+              size={40}
+            />
+          </TouchableOpacity>
           <View style={{ flex: 1 }}>
             <Text style={styles.name}>
               {item.displayName ?? item.username ?? 'Unknown'}
@@ -203,7 +211,7 @@ export const PlayerSearch = forwardRef<PlayerSearchRef, {
         </View>
       )
     },
-    [mode, selectedPlayer, followedIds, handleFollowToggle, onSelectPlayer]
+    [mode, selectedPlayer, followedIds, handleFollowToggle, onSelectPlayer, onAvatarPress]
   )
 
   return (

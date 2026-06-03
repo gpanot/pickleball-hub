@@ -196,15 +196,41 @@ export function ProfileSheet({
   const [showFollowersModal, setShowFollowersModal] = useState(false)
   const [followersList, setFollowersList] = useState<Array<{ userId: string; displayName: string; imageUrl: string | null; duprDoubles: number | null }>>([])
 
+  // Developer mode — unlocked by tapping the name 6 times within 3 seconds
+  const [devMode, setDevMode] = useState(false)
+  const nameTapCountRef = useRef(0)
+  const nameTapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const handleNameTap = () => {
+    nameTapCountRef.current += 1
+    if (nameTapTimerRef.current) clearTimeout(nameTapTimerRef.current)
+    nameTapTimerRef.current = setTimeout(() => {
+      nameTapCountRef.current = 0
+    }, 3000)
+    if (nameTapCountRef.current >= 6) {
+      nameTapCountRef.current = 0
+      if (nameTapTimerRef.current) clearTimeout(nameTapTimerRef.current)
+      setDevMode((prev) => {
+        const next = !prev
+        console.log(`[DEV_MODE] ${next ? 'enabled' : 'disabled'}`)
+        return next
+      })
+    }
+  }
+
   useEffect(() => {
+    console.log(`[DUPR_DEBUG] ProfileSheet: authStore.duprRating=${duprRating} reclubUserId=${reclubUserId ?? 'none'}`)
     if (!jwt || !reclubUserId) return
     authedFetch(`/api/players/${reclubUserId}/profile`)
       .then(r => r.ok ? r.json() : null)
       .then(data => {
-        if (data?.duprDoubles) setReclubDupr(data.duprDoubles)
+        if (data?.duprDoubles) {
+          console.log(`[DUPR_DEBUG] ProfileSheet: fetched reclubDupr=${data.duprDoubles} for reclubUserId=${reclubUserId}`)
+          setReclubDupr(data.duprDoubles)
+        }
       })
       .catch(() => {})
-  }, [jwt, reclubUserId, authedFetch])
+  }, [jwt, reclubUserId, authedFetch, duprRating])
 
   useEffect(() => {
     if (!jwt) return
@@ -238,9 +264,16 @@ export function ProfileSheet({
           )}
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={styles.headerName}>
-            {displayName ?? 'Player'}
-          </Text>
+          <TouchableOpacity onPress={handleNameTap} activeOpacity={1} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Text style={styles.headerName}>
+              {displayName ?? 'Player'}
+            </Text>
+            {devMode && (
+              <View style={styles.devBadge}>
+                <Text style={styles.devBadgeText}>DEV</Text>
+              </View>
+            )}
+          </TouchableOpacity>
           <Text style={styles.headerMeta}>{linkedLabel}</Text>
           {reclubDupr != null && reclubDupr > 0 && (
             <View style={styles.reclubDuprPill}>
@@ -468,7 +501,7 @@ export function ProfileSheet({
           </>
         )}
 
-        {__DEV__ && (
+        {(__DEV__ || devMode) && (
           <>
             <TouchableOpacity
               style={styles.settingsRow}
@@ -1064,5 +1097,17 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#666',
     marginTop: 2,
+  },
+  devBadge: {
+    backgroundColor: '#f97316',
+    borderRadius: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+  },
+  devBadgeText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#fff',
+    letterSpacing: 0.5,
   },
 })

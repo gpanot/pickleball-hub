@@ -50,6 +50,7 @@ export function OnboardingScreen({
   const [gender, setGender] = useState<PlayerGender | null>(null)
   const [selectedPlayer, setSelectedPlayer] = useState<SearchResult | null>(null)
   const [finishing, setFinishing] = useState(false)
+  const [linkError, setLinkError] = useState<string | null>(null)
   const playerSearchRef = useRef<PlayerSearchRef>(null)
 
   const { authedFetch, setOnboardingComplete, setReclubUserId, setDuprRating, setGender: saveGenderToStore, profileId } =
@@ -82,6 +83,7 @@ export function OnboardingScreen({
 
   const handleFinish = async () => {
     if (finishing) return
+    setLinkError(null)
     setFinishing(true)
     try {
       const prefs: Record<string, unknown> = {
@@ -99,6 +101,14 @@ export function OnboardingScreen({
           reclubUserId: selectedPlayer?.userId ?? undefined,
         }),
       })
+
+      if (res.status === 409) {
+        setLinkError(
+          '⚠️ This Reclub account is already linked to another player. If this is your account, contact us at support@thecourtflow.com'
+        )
+        setFinishing(false)
+        return
+      }
 
       if (!res.ok) {
         const errBody = await res.text().catch(() => '')
@@ -308,8 +318,15 @@ export function OnboardingScreen({
             ref={playerSearchRef}
             mode="select"
             selectedPlayer={selectedPlayer}
-            onSelectPlayer={setSelectedPlayer}
+            onSelectPlayer={(player) => {
+              setSelectedPlayer(player)
+              setLinkError(null)
+            }}
           />
+
+          {linkError && (
+            <Text style={styles.linkErrorText}>{linkError}</Text>
+          )}
 
           <TouchableOpacity
             style={[styles.nextBtn, { marginTop: 12, marginBottom: insets.bottom + 8 }, finishing && { opacity: 0.6 }]}
@@ -461,5 +478,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#fff',
+  },
+  linkErrorText: {
+    fontSize: 13,
+    color: '#f97316',
+    lineHeight: 19,
+    marginTop: 10,
+    paddingHorizontal: 4,
   },
 })

@@ -383,6 +383,7 @@ export function ExploreSessionsScreen({ onClose }: Props) {
         overflowNote={friendsModal.overflowNote}
         onFollow={friendsModal.showFollow ? handleFollowFromTopDupr : undefined}
         onAvatarPress={(userId) => setProfilePlayerId(userId)}
+        onRecommendedAvatarPress={(userId) => setProfilePlayerId(userId)}
       />
 
       <PlayerProfileSheet

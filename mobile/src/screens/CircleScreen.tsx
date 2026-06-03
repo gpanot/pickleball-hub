@@ -846,7 +846,7 @@ export function CircleScreen({ onOpenGear, gearSaved, gearSetupComplete }: { onO
                       <View style={styles.soonDot} />
                       <View style={styles.presenceBannerText}>
                         <Text style={styles.soonBannerTitle} numberOfLines={1}>
-                          {totalSoon} up next
+                          {totalSoon} next 8h
                         </Text>
                         <Text style={styles.soonBannerSub} numberOfLines={1}>
                           Next session
@@ -902,7 +902,7 @@ export function CircleScreen({ onOpenGear, gearSaved, gearSetupComplete }: { onO
                           </View>
                           <View style={styles.soonCardBadge}>
                             <View style={styles.soonCardDot} />
-                            <Text style={styles.soonCardBadgeText}>SOON</Text>
+                            <Text style={styles.soonCardBadgeText}>{formatClock(venue.startTime)}</Text>
                           </View>
                         </View>
                         <View style={styles.soonCardBody}>
@@ -1069,6 +1069,10 @@ export function CircleScreen({ onOpenGear, gearSaved, gearSetupComplete }: { onO
                 mode="follow"
                 onFollow={handleFollowFromSearch}
                 onUnfollow={handleUnfollowFromSearch}
+                onAvatarPress={(userId, player) => {
+                  setSelectedPlayerStub({ userId: player.userId, displayName: player.displayName, imageUrl: player.imageUrl })
+                  setSelectedPlayerId(userId)
+                }}
                 initialFollowedIds={friends.map((f) => f.userId)}
                 autoFocus
               />

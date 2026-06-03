@@ -38,6 +38,7 @@ export function FriendsListModal({
   onAvatarPress,
   recommendations,
   onFollowRecommended,
+  onRecommendedAvatarPress,
 }: {
   visible: boolean
   onClose: () => void
@@ -50,6 +51,7 @@ export function FriendsListModal({
   onAvatarPress?: (userId: string) => void
   recommendations?: RecommendedPlayer[]
   onFollowRecommended?: (userId: string) => void
+  onRecommendedAvatarPress?: (userId: string) => void
 }) {
   const insets = useSafeAreaInsets()
 
@@ -99,10 +101,16 @@ export function FriendsListModal({
 
               {recs.map((rec) => (
                 <View key={rec.player.userId} style={r.recRow}>
-                  <Image
-                    source={{ uri: rec.player.imageUrl ?? undefined }}
-                    style={r.recAv}
-                  />
+                  <TouchableOpacity
+                    onPress={() => onRecommendedAvatarPress?.(rec.player.userId)}
+                    activeOpacity={onRecommendedAvatarPress ? 0.7 : 1}
+                    disabled={!onRecommendedAvatarPress}
+                  >
+                    <Image
+                      source={{ uri: rec.player.imageUrl ?? undefined }}
+                      style={r.recAv}
+                    />
+                  </TouchableOpacity>
                   <View style={r.recInfo}>
                     <Text style={r.recName}>{rec.player.displayName ?? 'Player'}</Text>
                     {rec.player.duprDoubles != null && (

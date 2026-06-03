@@ -235,9 +235,14 @@ export default function App() {
 
     registerForPushNotifications().then(async (token) => {
       if (token) {
-        pushTokenRegistered.current = true
-        console.log('[push] token obtained, uploading to backend. Prefix:', token.slice(0, 30))
-        await uploadPushToken(token, Platform.OS, authedFetch)
+        console.log('[push] token obtained, uploading to backend. Platform:', Platform.OS, '| prefix:', token.slice(0, 30))
+        const uploaded = await uploadPushToken(token, Platform.OS, authedFetch)
+        if (uploaded) {
+          pushTokenRegistered.current = true
+          console.log('[push] ✅ token uploaded successfully')
+        } else {
+          console.warn('[push] ❌ token upload failed — will retry on next app launch')
+        }
       } else {
         console.warn('[push] no token returned — permission denied or not a physical device')
       }
@@ -285,6 +290,11 @@ export default function App() {
           if (data?.type === 'pn6' && data.followeeUserId) {
             // Scroll Circle feed to the player who just finished so user can give kudos
             useUiStore.getState().setPendingKudosTarget(data.followeeUserId)
+          }
+          if (data?.type === 'pn7') {
+            // PN7 "You are playing" — just open Circle feed; the you_are_playing
+            // feed item with "Show me" button is already displayed at the top.
+            debugLog('App', `PN7 tap — sessionId=${data.sessionId ?? 'unknown'}`)
           }
         }
       }

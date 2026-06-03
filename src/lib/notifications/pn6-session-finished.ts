@@ -129,6 +129,8 @@ export async function sendSessionFinishedKudosNotifications(): Promise<{
       },
     });
 
+    console.log(`[PN6] player=${playerName} (${playerId}) session=${session.id} followers=${followers.length}`);
+
     for (const { follower } of followers) {
       // played_today feed item — use consistent 2-part id format matching
       // what the live feed query produces: played_today_{playerUserId}_{sessionId}
@@ -163,9 +165,12 @@ export async function sendSessionFinishedKudosNotifications(): Promise<{
 
       // PN6 push notification
       if (!follower.pushToken && !follower.pushTokenIos) {
+        console.log(`[PN6]   ⚠️  profileId=${follower.id} — no push token, skipping`);
         skipped++;
         continue;
       }
+
+      console.log(`[PN6]   📲 profileId=${follower.id} token_android=${follower.pushToken ? follower.pushToken.slice(0, 20) + "…" : "null"} token_ios=${follower.pushTokenIos ? follower.pushTokenIos.slice(0, 20) + "…" : "null"}`);
 
       const alreadySentToday = await prisma.notificationSent.count({
         where: {
@@ -175,6 +180,7 @@ export async function sendSessionFinishedKudosNotifications(): Promise<{
         },
       });
       if (alreadySentToday >= 2) {
+        console.log(`[PN6]   🚫 profileId=${follower.id} — throttled (${alreadySentToday} sent in last 24h)`);
         skipped++;
         continue;
       }

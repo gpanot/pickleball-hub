@@ -43,10 +43,24 @@ export async function GET(req: NextRequest) {
 
   const prefs = (profile.preferences as Record<string, unknown>) ?? {};
   const rawDupr = prefs.dupr;
-  const duprRating =
+  const prefsDuprDev =
     typeof rawDupr === 'number' ? rawDupr :
     typeof rawDupr === 'string' && rawDupr !== '' ? parseFloat(rawDupr) || null :
     null;
+
+  let reclubDuprDev: number | null = null;
+  if (profile.reclubUserId) {
+    const player = await prisma.player.findUnique({
+      where: { userId: profile.reclubUserId },
+      select: { duprDoubles: true },
+    });
+    reclubDuprDev = player?.duprDoubles != null ? Number(player.duprDoubles) : null;
+  }
+  const duprRating = reclubDuprDev ?? prefsDuprDev;
+
+  console.log(
+    `[DUPR_DEBUG] mobile-token (dev): profileId=${profile.id} preferences.dupr=${prefsDuprDev} reclubDupr=${reclubDuprDev} final=${duprRating}`
+  );
 
   return NextResponse.json({
     jwt,
@@ -111,10 +125,25 @@ async function buildAuthResponse(params: {
   const jwt = await signMobileJwt({ sub: user.id, profileId: profile.id });
   const prefs = (profile.preferences as Record<string, unknown>) ?? {};
   const rawDupr = prefs.dupr;
-  const duprRating =
+  const prefsDupr =
     typeof rawDupr === "number" ? rawDupr :
     typeof rawDupr === "string" && rawDupr !== "" ? parseFloat(rawDupr) || null :
     null;
+
+  // Prefer player.duprDoubles (kept in sync by PATCH /api/players/profile) over preferences.dupr
+  let reclubDupr: number | null = null;
+  if (profile.reclubUserId) {
+    const player = await prisma.player.findUnique({
+      where: { userId: profile.reclubUserId },
+      select: { duprDoubles: true },
+    });
+    reclubDupr = player?.duprDoubles != null ? Number(player.duprDoubles) : null;
+  }
+  const duprRating = reclubDupr ?? prefsDupr;
+
+  console.log(
+    `[DUPR_DEBUG] mobile-token: profileId=${profile.id} reclubUserId=${profile.reclubUserId ?? "none"} preferences.dupr=${prefsDupr} reclubDupr=${reclubDupr} final=${duprRating}`
+  );
 
   return NextResponse.json({
     jwt,

@@ -72,6 +72,7 @@ type PlayApiCard = {
   matchScore: number
   distanceKm: number | null
   fillingFast: boolean
+  fillRate?: number | null
   friendCount: number
   friends: FriendGoingItem['friends']
   topDupr: FriendGoingItem['topDupr']
@@ -82,7 +83,7 @@ type PlayApiCard = {
   vibeTag?: string
 }
 
-function playCardToFriendGoingItem(c: PlayApiCard): FriendGoingItem {
+function playCardToFriendGoingItem(c: PlayApiCard, userDupr?: number | null): FriendGoingItem {
   const duprCount =
     c.duprCount ??
     (c.topDupr ?? []).filter((p) => p.duprDoubles != null && p.duprDoubles > 0)
@@ -99,6 +100,7 @@ function playCardToFriendGoingItem(c: PlayApiCard): FriendGoingItem {
     eventUrl: c.eventUrl,
     matchScore: c.matchScore,
     fillingFast: c.fillingFast,
+    fillRate: c.fillRate ?? null,
     distanceKm: c.distanceKm,
     friendCount: c.friendCount,
     friends: c.friends,
@@ -108,6 +110,7 @@ function playCardToFriendGoingItem(c: PlayApiCard): FriendGoingItem {
     duprRange: c.duprRange ?? null,
     returningPlayerPct: c.returningPlayerPct ?? null,
     vibeTag: c.vibeTag,
+    userDupr: userDupr ?? null,
   }
 }
 import { debugLog } from '../lib/debug'
@@ -135,6 +138,7 @@ export function SwipeScreen({
 }) {
   const { openSignUp } = useSignUpModal()
   const signedIn = useAuthStore((s) => s.isSignedIn)()
+  const userDupr = useAuthStore((s) => s.duprRating)
   const { loadSavedIds, saveSession, unsaveSession } =
     useSessionStore.getState()
   const bootedRef = useRef(false)
@@ -168,6 +172,7 @@ export function SwipeScreen({
   const [playIntents, setPlayIntents] = useState<PlayIntent[]>([])
   const [intentSheetOpen, setIntentSheetOpen] = useState(false)
   const [myActiveIntent, setMyActiveIntent] = useState<MyActiveIntent>(null)
+  const [intentExpanded, setIntentExpanded] = useState(false)
   const [profilePlayerId, setProfilePlayerId] = useState<string | null>(null)
   const [recommendations, setRecommendations] = useState<RecommendedPlayer[]>([])
 
@@ -226,7 +231,7 @@ export function SwipeScreen({
       debugLog('PERF[TOP5]', `⏱ JSON parse: ${Date.now() - tParse}ms — cards=${data.top5?.length ?? 0}`)
 
       const mapCards = (cards: PlayApiCard[]) =>
-        (cards ?? []).map(playCardToFriendGoingItem)
+        (cards ?? []).map((c) => playCardToFriendGoingItem(c, useAuthStore.getState().duprRating))
 
       setTop5(mapCards(data.top5))
       if (data.slotStats) setSlotStats(data.slotStats)
@@ -845,7 +850,7 @@ export function SwipeScreen({
                     </View>
                   )}
 
-                  {playIntents.map((intent) => (
+                  {(intentExpanded ? playIntents : playIntents.slice(0, 3)).map((intent) => (
                     <View key={intent.profileId} style={s.intentRow}>
                       <Image
                         source={{ uri: intent.imageUrl ?? undefined }}
@@ -869,6 +874,17 @@ export function SwipeScreen({
                       </View>
                     </View>
                   ))}
+
+                  {playIntents.length > 3 && (
+                    <TouchableOpacity
+                      onPress={() => setIntentExpanded(!intentExpanded)}
+                      style={s.intentExpandBtn}
+                    >
+                      <Text style={s.intentExpandText}>
+                        {intentExpanded ? 'Show less' : `Show all ${playIntents.length} women`}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
 
                   <TouchableOpacity
                     style={s.intentAddBtn}
@@ -1029,6 +1045,7 @@ export function SwipeScreen({
           await handleFollowFromTopDupr(userId)
           setRecommendations((prev) => prev.filter((r) => r.player.userId !== userId))
         }}
+        onRecommendedAvatarPress={(userId) => setProfilePlayerId(userId)}
       />
 
       <SwipeFilterSheet
@@ -1428,6 +1445,15 @@ const s = StyleSheet.create({
     color: '#1D9E75',
     fontWeight: '500',
     marginTop: 3,
+  },
+  intentExpandBtn: {
+    paddingVertical: 8,
+    alignItems: 'center',
+  },
+  intentExpandText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#1D9E75',
   },
   intentAddBtn: {
     marginTop: 12,

@@ -178,18 +178,32 @@ export async function getPushDiagnostics(): Promise<{
 
 /**
  * Upload a push token to the backend. Call this after getting a new token
- * or when the FCM token refreshes.
+ * or when the FCM token refreshes. Retries up to 3 times on failure.
  */
-export async function uploadPushToken(token: string, platform: string, authedFetch: (url: string, opts?: RequestInit) => Promise<Response>): Promise<void> {
-  try {
-    const res = await authedFetch('/api/players/push-token', {
-      method: 'POST',
-      body: JSON.stringify({ token, platform }),
-    })
-    console.log('[push] token upload response:', res.status, '| platform:', platform, '| prefix:', token.slice(0, 20))
-  } catch (err) {
-    console.warn('[push] token upload failed', err)
+export async function uploadPushToken(token: string, platform: string, authedFetch: (url: string, opts?: RequestInit) => Promise<Response>): Promise<boolean> {
+  const MAX_UPLOAD_RETRIES = 3
+  for (let attempt = 1; attempt <= MAX_UPLOAD_RETRIES; attempt++) {
+    try {
+      const res = await authedFetch('/api/players/push-token', {
+        method: 'POST',
+        body: JSON.stringify({ token, platform }),
+      })
+      console.log('[push] token upload response:', res.status, '| platform:', platform, '| prefix:', token.slice(0, 20), '| attempt:', attempt)
+      if (res.ok) return true
+      const body = await res.text().catch(() => '')
+      console.warn(`[push] token upload HTTP ${res.status} — body: ${body.slice(0, 200)}`)
+      if (res.status === 401) {
+        console.warn('[push] token upload auth failed — JWT may be invalid, will not retry')
+        return false
+      }
+    } catch (err: any) {
+      console.warn(`[push] token upload attempt ${attempt} failed:`, err?.message)
+    }
+    if (attempt < MAX_UPLOAD_RETRIES) {
+      await new Promise((r) => setTimeout(r, 2000 * attempt))
+    }
   }
+  return false
 }
 
 export function useNotificationListeners(

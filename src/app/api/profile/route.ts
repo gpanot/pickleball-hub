@@ -20,16 +20,24 @@ export async function POST(req: NextRequest) {
 
     const markOnboardingComplete = preferences != null;
 
-    // If reclubUserId is being set, clear it from any other profile first
-    // (unique constraint — one Reclub account per app user)
+    // If reclubUserId is being set, check for conflicts first
     if (reclubId !== undefined) {
-      await prisma.playerProfile.updateMany({
+      const conflict = await prisma.playerProfile.findFirst({
         where: {
           reclubUserId: reclubId,
           NOT: { id: resolvedProfileId },
         },
-        data: { reclubUserId: null },
+        select: { id: true },
       });
+      if (conflict) {
+        console.warn(
+          `[POST /api/profile] duplicate_reclub: reclubId=${reclubId} already on profile=${conflict.id}, requester=${resolvedProfileId}`
+        );
+        return NextResponse.json(
+          { error: "duplicate_reclub" },
+          { status: 409 }
+        );
+      }
     }
 
     // Merge gender into preferences JSON if provided

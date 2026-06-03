@@ -26,6 +26,6 @@ export async function GET(req: NextRequest) {
   }
 
   const result = await sendSessionFinishedKudosNotifications();
-  console.log("[cron/session-finished-kudos]", result);
+  console.log("[cron/session-finished-kudos] result:", JSON.stringify(result));
   return NextResponse.json({ ok: true, ...result });
 }
