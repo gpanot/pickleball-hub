@@ -514,6 +514,8 @@ model SquadWaitlist {
   id          Int      @id @default(autoincrement())
   squadName   String   @map("squad_name")
   emoji       String
+  country     String
+  city        String
   friendCount Int      @map("friend_count")
   createdAt   DateTime @default(now()) @map("created_at")
 

@@ -14,25 +14,43 @@ import {
   Animated,
   ActivityIndicator,
   StatusBar,
-  Modal,
-  Pressable,
   Easing,
   Image,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useFonts, Bangers_400Regular } from '@expo-google-fonts/bangers';
+import { useFonts } from 'expo-font';
+import { Asset } from 'expo-asset';
 import { LinearGradient } from 'expo-linear-gradient';
 
+const BANGERS_FONT = 'Bangers_400Regular';
+const BANGERS_TTF = require('../../assets/fonts/Bangers_400Regular.ttf');
 const CHEST_IMAGE = require('../../assets/images/pickleball_chest_clash_of_clan.png');
 const SQUADD_WAITLIST_KEY = 'squadd_waitlist_registered';
 
 type SquaddRegistration = {
   squadName: string;
   emoji: string;
+  country: string;
+  city: string;
   friendCount: number;
   registeredAt: string;
 };
+
+type SquadDraft = {
+  squadName: string;
+  emoji: string;
+};
+
+type CountryKey = 'Vietnam' | 'Philippines' | 'Malaysia';
+
+const REGIONAL_DATA: Record<CountryKey, { flag: string; cities: string[] }> = {
+  Vietnam: { flag: '🇻🇳', cities: ['Ho Chi Minh City', 'Hanoi Capital', 'Da Nang'] },
+  Philippines: { flag: '🇵🇭', cities: ['Metro Manila', 'Cebu', 'Cavite'] },
+  Malaysia: { flag: '🇲🇾', cities: ['Kuala Lumpur', 'Selangor', 'Penang'] },
+};
+
+const COUNTRY_KEYS = Object.keys(REGIONAL_DATA) as CountryKey[];
 
 const { width: W, height: H } = Dimensions.get('window');
 const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? '';
@@ -43,16 +61,6 @@ const GOLD_BORDER = '#854d0e';
 const GRAY_400 = '#9ca3af';
 const GREEN_400 = '#4ade80';
 const GREEN_CHECK = '#22c55e';
-
-const FRIEND_OPTIONS: { count: number; label: string }[] = [
-  { count: 1, label: '1 friend' },
-  { count: 2, label: '2 friends' },
-  { count: 3, label: '3 friends' },
-  { count: 4, label: '4 friends' },
-  { count: 5, label: '5 friends' },
-  { count: 6, label: '6 friends' },
-  { count: 7, label: '7 friends (Full Squad!)' },
-];
 
 const PERKS = ['Founder Badge', 'Early Access', 'First Squad Name Selection'];
 const ANIMALS_ROW1 = ['🦁', '🐉', '🦅', '🐺', '🐯', '🦈', '🦄', '🦋', '🐻'];
@@ -115,8 +123,17 @@ const FloatEmoji = ({ emoji, size = 72, delayMs = 0, style }: { emoji: string; s
 const FloatChest = ({ size = 140 }: { size?: number }) => {
   const translateY = useFloatAnim(0);
   return (
-    <Animated.View style={{ marginBottom: 40, transform: [{ translateY }] }}>
-      <Image source={CHEST_IMAGE} style={{ width: size, height: size }} resizeMode="contain" />
+    <Animated.View
+      style={{ marginBottom: 40, transform: [{ translateY }] }}
+      collapsable={false}
+      renderToHardwareTextureAndroid
+    >
+      <Image
+        source={CHEST_IMAGE}
+        style={{ width: size, height: size }}
+        resizeMode="contain"
+        accessibilityLabel="Pickleball squad chest"
+      />
     </Animated.View>
   );
 };
@@ -200,24 +217,27 @@ const ClashButton = ({
   label,
   onPress,
   loading = false,
+  disabled = false,
   style,
 }: {
   label: string;
   onPress: () => void;
   loading?: boolean;
+  disabled?: boolean;
   style?: object;
 }) => {
   const pressed = useRef(new Animated.Value(0)).current;
   const translateY = pressed.interpolate({ inputRange: [0, 1], outputRange: [0, 2] });
+  const inactive = disabled || loading;
 
   return (
-    <Animated.View style={[style, { transform: [{ translateY }] }]}>
+    <Animated.View style={[style, { transform: [{ translateY }] }, inactive && styles.clashBtnDisabledWrap]}>
       <TouchableOpacity
         activeOpacity={1}
-        onPressIn={() => Animated.timing(pressed, { toValue: 1, duration: 100, useNativeDriver: true }).start()}
+        onPressIn={() => !inactive && Animated.timing(pressed, { toValue: 1, duration: 100, useNativeDriver: true }).start()}
         onPressOut={() => Animated.timing(pressed, { toValue: 0, duration: 100, useNativeDriver: true }).start()}
         onPress={onPress}
-        disabled={loading}
+        disabled={inactive}
       >
         <View style={styles.clashBtnWrap}>
           <LinearGradient colors={[GOLD, GOLD_DARK]} style={styles.clashBtn}>
@@ -236,13 +256,11 @@ const ClashButton = ({
   );
 };
 
-const clashTitle = (fontsLoaded: boolean) => [styles.clashTitle, fontsLoaded && { fontFamily: 'Bangers_400Regular' }];
-
 // ─── Screen 1 ────────────────────────────────────────────────────────────────
-const Screen1 = ({ fontsLoaded }: { fontsLoaded: boolean }) => (
+const Screen1 = () => (
   <View style={styles.screen}>
     <FloatEmoji emoji="🏆" size={72} />
-    <Text style={clashTitle(fontsLoaded)}>The first real{'\n'}pickleball squads.</Text>
+    <Text style={styles.clashTitle}>The first real{'\n'}pickleball squads.</Text>
     <Text style={styles.bodyXl}>
       Build a crew of up to <Text style={styles.boldWhite}>8 players</Text>.{'\n'}
       Every game helps your squad rise.
@@ -251,14 +269,14 @@ const Screen1 = ({ fontsLoaded }: { fontsLoaded: boolean }) => (
 );
 
 // ─── Screen 2 ────────────────────────────────────────────────────────────────
-const Screen2 = ({ fontsLoaded }: { fontsLoaded: boolean }) => (
+const Screen2 = () => (
   <View style={styles.screen}>
     <View style={styles.animalRow}>
       {['🦁', '🐉', '🦅', '🐺'].map((e, i) => (
         <FloatEmoji key={e} emoji={e} size={48} delayMs={i * 200} style={{ marginBottom: 0 }} />
       ))}
     </View>
-    <Text style={[clashTitle(fontsLoaded), { marginTop: 24 }]}>Choose your{'\n'}identity.</Text>
+    <Text style={[styles.clashTitle, { marginTop: 24 }]}>Choose your{'\n'}identity.</Text>
     <View style={styles.identityList}>
       <Text style={styles.bodyLg}>Name your squad.</Text>
       <Text style={styles.bodyLg}>Pick your animal.</Text>
@@ -269,10 +287,10 @@ const Screen2 = ({ fontsLoaded }: { fontsLoaded: boolean }) => (
 );
 
 // ─── Screen 3 ────────────────────────────────────────────────────────────────
-const Screen3 = ({ fontsLoaded }: { fontsLoaded: boolean }) => (
+const Screen3 = () => (
   <View style={styles.screen}>
     <FloatChest size={140} />
-    <Text style={clashTitle(fontsLoaded)}>Play together.{'\n'}Earn together.</Text>
+    <Text style={styles.clashTitle}>Play together.{'\n'}Earn together.</Text>
     <View style={styles.identityList}>
       <Text style={styles.bodyLg}>When a squadmate plays,{'\n'}everyone earns rewards.</Text>
       <Text style={[styles.bodyLg, styles.boldWhite]}>Open squad chests.</Text>
@@ -283,7 +301,7 @@ const Screen3 = ({ fontsLoaded }: { fontsLoaded: boolean }) => (
 );
 
 // ─── Screen 4 ────────────────────────────────────────────────────────────────
-const Screen4 = ({ fontsLoaded }: { fontsLoaded: boolean }) => (
+const Screen4 = () => (
   <View style={styles.screen}>
     <View style={styles.lbContainer}>
       {LB_DATA.map((row) => (
@@ -302,7 +320,7 @@ const Screen4 = ({ fontsLoaded }: { fontsLoaded: boolean }) => (
         </View>
       ))}
     </View>
-    <Text style={clashTitle(fontsLoaded)}>Own your district.</Text>
+    <Text style={styles.clashTitle}>Own your district.</Text>
     <View style={styles.identityList}>
       <Text style={styles.bodyLg}>Climb the leaderboard.</Text>
       <Text style={styles.bodyLg}>Beat rival squads.</Text>
@@ -312,11 +330,11 @@ const Screen4 = ({ fontsLoaded }: { fontsLoaded: boolean }) => (
 );
 
 // ─── Screen 5 ────────────────────────────────────────────────────────────────
-const Screen5 = ({ fontsLoaded, onReserve }: { fontsLoaded: boolean; onReserve: () => void }) => (
+const Screen5 = ({ onReserve }: { onReserve: () => void }) => (
   <View style={styles.screen}>
     <FloatingEmojiBackground />
     <View style={styles.screen5Content}>
-      <Text style={clashTitle(fontsLoaded)}>Founding Squads{'\n'}are opening soon.</Text>
+      <Text style={styles.clashTitle}>Founding Squads{'\n'}are opening soon.</Text>
       <Text style={[styles.bodyLg, { textAlign: 'center', marginBottom: 32 }]}>
         Reserve your spot and be among the first squads on Squadd.
       </Text>
@@ -347,8 +365,12 @@ const EmojiPickerRows = ({
       <ScrollView
         key={rowIndex}
         horizontal
-        showsHorizontalScrollIndicator={false}
+        style={styles.emojiPickerScroll}
         contentContainerStyle={styles.emojiPickerRow}
+        showsHorizontalScrollIndicator={false}
+        nestedScrollEnabled
+        directionalLockEnabled
+        bounces
       >
         {row.map((e) => (
           <TouchableOpacity
@@ -364,34 +386,25 @@ const EmojiPickerRows = ({
   </View>
 );
 
-// ─── Screen 6 ────────────────────────────────────────────────────────────────
+// ─── Screen 6: Create squad ──────────────────────────────────────────────────
 const Screen6 = ({
-  fontsLoaded,
-  onConfirm,
+  onNext,
   onBack,
 }: {
-  fontsLoaded: boolean;
-  onConfirm: (name: string, emoji: string, friendCount: number) => void;
+  onNext: (name: string, emoji: string) => void;
   onBack: () => void;
 }) => {
   const insets = useSafeAreaInsets();
   const [squadName, setSquadName] = useState('');
   const [selectedEmoji, setSelectedEmoji] = useState('🦁');
-  const [friendCount, setFriendCount] = useState(1);
-  const [loading, setLoading] = useState(false);
-  const [friendModal, setFriendModal] = useState(false);
 
-  const friendLabel = FRIEND_OPTIONS.find((o) => o.count === friendCount)?.label ?? '1 friend';
-
-  const handleConfirm = async () => {
+  const handleNext = () => {
     if (!squadName.trim()) return;
-    setLoading(true);
-    await onConfirm(squadName.trim().toUpperCase(), selectedEmoji, friendCount);
-    setLoading(false);
+    onNext(squadName.trim().toUpperCase(), selectedEmoji);
   };
 
   return (
-    <View style={[styles.screen, styles.formScreenWrap]}>
+    <View style={[styles.screen, styles.formScreenWrap, { paddingHorizontal: 0 }]}>
       <TouchableOpacity
         style={[styles.backBtn, { top: insets.top + 8 }]}
         onPress={onBack}
@@ -405,69 +418,151 @@ const Screen6 = ({
         contentContainerStyle={[styles.formScreen, { paddingTop: insets.top + 48 }]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
+        nestedScrollEnabled
       >
-      <View style={styles.formInner}>
-        <Text style={[styles.clashTitle, styles.titleForm, fontsLoaded && { fontFamily: 'Bangers_400Regular' }]}>
-          Create your squad
-        </Text>
+        <View style={styles.formInner}>
+          <Text style={[styles.clashTitle, styles.titleForm]}>
+            Create your squad
+          </Text>
 
-        <Text style={styles.fieldLabel}>Squad Name</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="e.g. D2 LIONS"
-          placeholderTextColor="rgba(255,255,255,0.35)"
-          value={squadName}
-          onChangeText={(t) => setSquadName(t.toUpperCase())}
-          autoCapitalize="characters"
-          maxLength={24}
-        />
+          <Text style={styles.fieldLabel}>Squad Name</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="e.g. D2 LIONS"
+            placeholderTextColor="rgba(255,255,255,0.35)"
+            value={squadName}
+            onChangeText={(t) => setSquadName(t.toUpperCase())}
+            autoCapitalize="characters"
+            maxLength={24}
+          />
+        </View>
 
-        <Text style={styles.fieldLabel}>Pick your Animal</Text>
+        <Text style={[styles.fieldLabel, styles.emojiFieldLabel]}>Pick your Animal</Text>
         <EmojiPickerRows selected={selectedEmoji} onSelect={setSelectedEmoji} />
 
-        <Text style={styles.fieldLabel}>How many friends will you invite?</Text>
-        <TouchableOpacity style={styles.select} onPress={() => setFriendModal(true)}>
-          <Text style={styles.selectText}>{friendLabel}</Text>
-          <Text style={styles.selectChevron}>▾</Text>
-        </TouchableOpacity>
-
-        <ClashButton label="Confirm Reservation" onPress={handleConfirm} loading={loading} style={{ width: '100%', marginTop: 16 }} />
-      </View>
-
-      <Modal visible={friendModal} transparent animationType="fade">
-        <Pressable style={styles.modalBackdrop} onPress={() => setFriendModal(false)}>
-          <View style={styles.modalSheet}>
-            {FRIEND_OPTIONS.map((opt) => (
-              <TouchableOpacity
-                key={opt.count}
-                style={[styles.modalOption, friendCount === opt.count && styles.modalOptionActive]}
-                onPress={() => {
-                  setFriendCount(opt.count);
-                  setFriendModal(false);
-                }}
-              >
-                <Text style={[styles.modalOptionText, friendCount === opt.count && styles.modalOptionTextActive]}>
-                  {opt.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </Pressable>
-      </Modal>
+        <View style={styles.formInner}>
+          <ClashButton label="Next: Region" onPress={handleNext} style={{ width: '100%', marginTop: 16 }} />
+        </View>
       </ScrollView>
     </View>
   );
 };
 
-// ─── Screen 7 ────────────────────────────────────────────────────────────────
-const Screen7 = ({
-  fontsLoaded,
-  squadName,
-  emoji,
+// ─── Screen 7: Select Region ─────────────────────────────────────────────────
+const Screen7Region = ({
+  onConfirm,
+  onBack,
 }: {
-  fontsLoaded: boolean;
-  squadName?: string;
-  emoji?: string;
+  onConfirm: (country: string, city: string) => void;
+  onBack: () => void;
+}) => {
+  const insets = useSafeAreaInsets();
+  const [selectedCountry, setSelectedCountry] = useState<CountryKey | null>(null);
+  const [selectedCity, setSelectedCity] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const cityOpacity = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(cityOpacity, {
+      toValue: selectedCountry ? 1 : 0,
+      duration: 400,
+      useNativeDriver: true,
+    }).start();
+  }, [selectedCountry, cityOpacity]);
+
+  const handleCountry = (country: CountryKey) => {
+    setSelectedCountry(country);
+    setSelectedCity(null);
+  };
+
+  const handleConfirm = async () => {
+    if (!selectedCountry || !selectedCity) return;
+    setLoading(true);
+    await onConfirm(selectedCountry, selectedCity);
+    setLoading(false);
+  };
+
+  const cities = selectedCountry ? REGIONAL_DATA[selectedCountry].cities : [];
+
+  return (
+    <View style={[styles.screen, styles.formScreenWrap, { paddingHorizontal: 0 }]}>
+      <TouchableOpacity
+        style={[styles.backBtn, { top: insets.top + 8 }]}
+        onPress={onBack}
+        hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+        accessibilityLabel="Back to create squad"
+      >
+        <Text style={styles.backBtnText}>‹</Text>
+      </TouchableOpacity>
+
+      <ScrollView
+        contentContainerStyle={[styles.formScreen, { paddingTop: insets.top + 48 }]}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.formInner}>
+          <Text style={[styles.clashTitle, styles.titleForm]}>Select Region</Text>
+
+          <Text style={[styles.fieldLabel, styles.regionLabel]}>Tap your Country</Text>
+          <View style={styles.flagSelector}>
+            {COUNTRY_KEYS.map((country) => (
+              <TouchableOpacity
+                key={country}
+                style={[styles.flagOpt, selectedCountry === country && styles.flagOptSelected]}
+                onPress={() => handleCountry(country)}
+              >
+                <Text style={styles.flagEmoji}>{REGIONAL_DATA[country].flag}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <Animated.View
+            style={[
+              styles.cityPills,
+              {
+                opacity: cityOpacity,
+                transform: [{
+                  translateY: cityOpacity.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }),
+                }],
+              },
+              !selectedCountry && styles.cityPillsHidden,
+            ]}
+            pointerEvents={selectedCountry ? 'auto' : 'none'}
+          >
+            <Text style={[styles.fieldLabel, styles.regionLabel]}>Choose your City</Text>
+            {cities.map((city) => (
+              <TouchableOpacity
+                key={city}
+                style={[styles.cityPill, selectedCity === city && styles.cityPillSelected]}
+                onPress={() => setSelectedCity(city)}
+              >
+                <Text style={[styles.cityPillText, selectedCity === city && styles.cityPillTextSelected]}>
+                  {city}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </Animated.View>
+
+          <ClashButton
+            label="Confirm Reservation"
+            onPress={handleConfirm}
+            loading={loading}
+            disabled={!selectedCountry || !selectedCity}
+            style={{ width: '100%', marginTop: 40 }}
+          />
+        </View>
+      </ScrollView>
+    </View>
+  );
+};
+
+// ─── Screen 8: Confirmation ────────────────────────────────────────────────
+const Screen8 = ({
+  countryFlag,
+  city,
+}: {
+  countryFlag?: string;
+  city?: string;
 }) => {
   const pulse = useRef(new Animated.Value(1)).current;
   useEffect(() => {
@@ -483,15 +578,10 @@ const Screen7 = ({
 
   return (
     <View style={styles.screen}>
-      <FloatEmoji emoji="🇻🇳" size={80} />
-      <Text style={clashTitle(fontsLoaded)}>You are in the game!</Text>
-      {squadName ? (
-        <Text style={[styles.bodyXl, { marginBottom: 12 }]}>
-          <Text style={styles.boldWhite}>{emoji} {squadName}</Text> is reserved.
-        </Text>
-      ) : null}
+      <FloatEmoji emoji={countryFlag ?? '🇻🇳'} size={80} />
+      <Text style={styles.clashTitle}>You are in the game!</Text>
       <Text style={[styles.bodyXl, { marginBottom: 32 }]}>
-        Representing <Text style={styles.boldWhite}>Ho Chi Minh Squads</Text>.
+        Representing <Text style={styles.boldWhite}>{city ?? 'Ho Chi Minh City'}</Text> Squads.
       </Text>
       <View style={styles.confirmCard}>
         <Text style={styles.confirmText}>We will let you know when the game starts.</Text>
@@ -503,9 +593,11 @@ const Screen7 = ({
 
 // ─── Main ────────────────────────────────────────────────────────────────────
 export default function SquaddOnboarding() {
-  const [fontsLoaded] = useFonts({ Bangers_400Regular });
+  const [fontsLoaded, fontError] = useFonts({ [BANGERS_FONT]: BANGERS_TTF });
+  const [assetsReady, setAssetsReady] = useState(false);
   const [ready, setReady] = useState(false);
   const [registered, setRegistered] = useState<SquaddRegistration | null>(null);
+  const [draft, setDraft] = useState<SquadDraft | null>(null);
   const [current, setCurrent] = useState(0);
   const scrollRef = useRef<ScrollView>(null);
   const autoSlideRef = useRef(true);
@@ -513,14 +605,27 @@ export default function SquaddOnboarding() {
   const TOTAL_INTRO = 5;
 
   useEffect(() => {
+    Asset.fromModule(CHEST_IMAGE)
+      .downloadAsync()
+      .catch(() => undefined)
+      .finally(() => setAssetsReady(true));
+  }, []);
+
+  useEffect(() => {
+    if (fontError) {
+      console.warn('[SquaddOnboarding] Bangers font failed to load:', fontError);
+    }
+  }, [fontError]);
+
+  useEffect(() => {
     AsyncStorage.getItem(SQUADD_WAITLIST_KEY)
       .then((raw) => {
         if (!raw) return;
         try {
           const data = JSON.parse(raw) as SquaddRegistration;
-          if (data.squadName && data.emoji) {
+          if (data.squadName && data.emoji && data.country && data.city) {
             setRegistered(data);
-            setCurrent(6);
+            setCurrent(7);
           }
         } catch {
           // ignore corrupt storage
@@ -532,7 +637,7 @@ export default function SquaddOnboarding() {
   useEffect(() => {
     if (ready && registered) {
       requestAnimationFrame(() => {
-        scrollRef.current?.scrollTo({ x: 6 * W, animated: false });
+        scrollRef.current?.scrollTo({ x: 7 * W, animated: false });
       });
     }
   }, [ready, registered]);
@@ -559,30 +664,45 @@ export default function SquaddOnboarding() {
 
   const handleReserve = () => goTo(5, true);
   const handleBackToWaitlist = () => goTo(4, true);
-  const handleConfirm = async (name: string, emoji: string, friendCount: number) => {
+  const handleBackToSquadForm = () => goTo(5, true);
+  const handleNextRegion = (name: string, emoji: string) => {
+    setDraft({ squadName: name, emoji });
+    goTo(6, true);
+  };
+  const handleConfirm = async (country: string, city: string) => {
+    if (!draft) return;
     const record: SquaddRegistration = {
-      squadName: name,
-      emoji,
-      friendCount,
+      squadName: draft.squadName,
+      emoji: draft.emoji,
+      country,
+      city,
+      friendCount: 0,
       registeredAt: new Date().toISOString(),
     };
     try {
       await fetch(`${API_BASE}/api/squad-waitlist`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ squadName: name, emoji, friendCount }),
+        body: JSON.stringify({
+          squadName: draft.squadName,
+          emoji: draft.emoji,
+          country,
+          city,
+          friendCount: 0,
+        }),
       });
     } catch {
       // confirmation still shown
     }
     await AsyncStorage.setItem(SQUADD_WAITLIST_KEY, JSON.stringify(record));
     setRegistered(record);
-    goTo(6, true);
+    goTo(7, true);
   };
 
   const showDots = !registered && current < TOTAL_INTRO;
+  const uiReady = ready && fontsLoaded && assetsReady;
 
-  if (!ready) {
+  if (!uiReady) {
     return <View style={styles.root} />;
   }
 
@@ -591,10 +711,9 @@ export default function SquaddOnboarding() {
       <View style={styles.root}>
         <StatusBar barStyle="light-content" />
         <BgGradient>
-          <Screen7
-            fontsLoaded={!!fontsLoaded}
-            squadName={registered.squadName}
-            emoji={registered.emoji}
+          <Screen8
+            countryFlag={REGIONAL_DATA[registered.country as CountryKey]?.flag ?? '🇻🇳'}
+            city={registered.city}
           />
         </BgGradient>
       </View>
@@ -620,13 +739,14 @@ export default function SquaddOnboarding() {
             }
           }}
         >
-          <Screen1 fontsLoaded={!!fontsLoaded} />
-          <Screen2 fontsLoaded={!!fontsLoaded} />
-          <Screen3 fontsLoaded={!!fontsLoaded} />
-          <Screen4 fontsLoaded={!!fontsLoaded} />
-          <Screen5 fontsLoaded={!!fontsLoaded} onReserve={handleReserve} />
-          <Screen6 fontsLoaded={!!fontsLoaded} onConfirm={handleConfirm} onBack={handleBackToWaitlist} />
-          <Screen7 fontsLoaded={!!fontsLoaded} />
+          <Screen1 />
+          <Screen2 />
+          <Screen3 />
+          <Screen4 />
+          <Screen5 onReserve={handleReserve} />
+          <Screen6 onNext={handleNextRegion} onBack={handleBackToWaitlist} />
+          <Screen7Region onConfirm={handleConfirm} onBack={handleBackToSquadForm} />
+          <Screen8 />
         </ScrollView>
 
         {showDots && (
@@ -656,8 +776,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   formScreenWrap: { justifyContent: 'flex-start', alignItems: 'stretch' },
-  formScreen: { flexGrow: 1, paddingHorizontal: 32, paddingBottom: 100 },
-  formInner: { width: '100%', maxWidth: 384, alignSelf: 'center' },
+  formScreen: { flexGrow: 1, paddingBottom: 100 },
+  formInner: { width: '100%', paddingHorizontal: 32, maxWidth: W, alignSelf: 'center' },
+  emojiFieldLabel: { paddingHorizontal: 32, alignSelf: 'flex-start' },
   backBtn: {
     position: 'absolute',
     left: 16,
@@ -674,6 +795,7 @@ const styles = StyleSheet.create({
   backBtnText: { color: '#fff', fontSize: 28, fontWeight: '300', lineHeight: 32, marginTop: -2 },
 
   clashTitle: {
+    fontFamily: BANGERS_FONT,
     fontSize: 48,
     color: '#fff',
     textAlign: 'center',
@@ -684,6 +806,7 @@ const styles = StyleSheet.create({
     textShadowColor: '#000',
     textShadowOffset: { width: 3, height: 3 },
     textShadowRadius: 0,
+    includeFontPadding: false,
   },
   titleForm: { fontSize: 36, lineHeight: 40, marginBottom: 32 },
 
@@ -803,8 +926,15 @@ const styles = StyleSheet.create({
     width: '100%',
     marginBottom: 24,
   },
-  emojiPickerWrap: { marginBottom: 24, gap: 8 },
-  emojiPickerRow: { flexDirection: 'row', gap: 8, paddingVertical: 4 },
+  emojiPickerWrap: { width: W, marginBottom: 24, gap: 8 },
+  emojiPickerScroll: { width: W },
+  emojiPickerRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingVertical: 4,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+  },
   emojiOpt: {
     padding: 8,
     borderRadius: 12,
@@ -819,38 +949,45 @@ const styles = StyleSheet.create({
     transform: [{ scale: 1.1 }],
   },
   emojiOptText: { fontSize: 32 },
-  emojiOptTextSelected: {},
 
-  select: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+  regionLabel: { textAlign: 'center', alignSelf: 'center', marginBottom: 16 },
+  flagSelector: { flexDirection: 'row', justifyContent: 'center', gap: 24, marginBottom: 32 },
+  flagOpt: {
+    padding: 8,
+    borderRadius: 20,
+    opacity: 0.6,
+  },
+  flagOptSelected: {
+    opacity: 1,
     backgroundColor: 'rgba(255,255,255,0.1)',
+    transform: [{ scale: 1.3 }],
+  },
+  flagEmoji: { fontSize: 56 },
+  cityPills: { width: '100%', gap: 12, marginBottom: 8 },
+  cityPillsHidden: { height: 0, overflow: 'hidden', marginBottom: 0 },
+  cityPill: {
+    backgroundColor: 'rgba(255,255,255,0.08)',
     borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.2)',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 24,
+    borderColor: 'rgba(255,255,255,0.1)',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderRadius: 100,
+    alignItems: 'center',
   },
-  selectText: { color: '#fff', fontSize: 16, fontWeight: '700' },
-  selectChevron: { color: GRAY_400, fontSize: 14 },
-
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    justifyContent: 'flex-end',
+  cityPillSelected: {
+    backgroundColor: GOLD,
+    borderColor: GOLD_DARK,
+    transform: [{ scale: 1.05 }],
   },
-  modalSheet: {
-    backgroundColor: '#1a1a1a',
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    padding: 16,
-    paddingBottom: 40,
+  cityPillText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
   },
-  modalOption: { paddingVertical: 14, paddingHorizontal: 8, borderRadius: 8 },
-  modalOptionActive: { backgroundColor: 'rgba(250,204,21,0.15)' },
-  modalOptionText: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  modalOptionTextActive: { color: GOLD },
+  cityPillTextSelected: { color: '#000' },
+  clashBtnDisabledWrap: { opacity: 0.5 },
 
   confirmCard: {
     backgroundColor: 'rgba(34,197,94,0.1)',

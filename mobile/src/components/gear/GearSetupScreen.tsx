@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import {
   View,
   Text,
@@ -15,6 +15,8 @@ import { GearBubble, GearDot } from './GearBubble'
 import { GearBrandSheet } from './GearBrandSheet'
 import { GEAR_ZONES, GEAR_AVATAR, playerGenderFromStored, NO_BRAND_KEY } from './gearConstants'
 import { GearProfile, GearZoneConfig, GearZoneKey, PlayerGender } from './gearTypes'
+import { useTheme } from '../../useTheme'
+import type { ThemeColors } from '../../theme'
 
 type BubblePosition = {
   top: string
@@ -79,6 +81,8 @@ export function GearSetupScreen({
   closeIcon = 'back',
   embedded = false,
 }: Props) {
+  const theme = useTheme()
+  const styles = useMemo(() => createGearSetupStyles(theme), [theme])
   const insets = useSafeAreaInsets()
   const [gear, setGear] = useState<GearProfile>(initialGear)
   const [activeZone, setActiveZone] = useState<GearZoneConfig | null>(null)
@@ -109,13 +113,13 @@ export function GearSetupScreen({
   if (showGenderPicker) {
     const avatarSize = SCREEN_W * 0.36
     return (
-      <View style={styles.root}>
+      <View style={[styles.root, { backgroundColor: theme.bg }]}>
         <View style={[styles.genderTopBar, { paddingTop: embedded ? 12 : insets.top + 8 }]}>
           <Pressable onPress={onBack} style={styles.backBtn} hitSlop={12}>
             {closeIcon === 'close' ? (
-              <X size={20} color="#fff" strokeWidth={2.5} />
+              <X size={20} color={theme.text} strokeWidth={2.5} />
             ) : (
-              <ChevronLeft size={22} color="#fff" strokeWidth={2.5} />
+              <ChevronLeft size={22} color={theme.text} strokeWidth={2.5} />
             )}
           </Pressable>
         </View>
@@ -160,7 +164,7 @@ export function GearSetupScreen({
   }
 
   return (
-    <View style={styles.root}>
+    <View style={[styles.root, { backgroundColor: theme.bg }]}>
       {/* Full-bleed avatar background */}
       <Image source={GEAR_AVATAR[gender]} style={styles.bgImage} resizeMode="cover" />
 
@@ -287,8 +291,9 @@ export function GearSetupScreen({
   )
 }
 
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#0A0A0A' },
+function createGearSetupStyles(T: ThemeColors) {
+  return StyleSheet.create({
+  root: { flex: 1, backgroundColor: T.bg },
   bgImage: { ...StyleSheet.absoluteFillObject, width: '100%', height: '100%' },
   topGradient: {
     position: 'absolute',
@@ -326,9 +331,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  topBarTitle: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  topBarTitle: { color: T.text, fontSize: 16, fontWeight: '700' },
   saveBtn: {
-    backgroundColor: '#f5a623',
+    backgroundColor: T.amber,
     borderRadius: 10,
     paddingVertical: 8,
     paddingHorizontal: 18,
@@ -350,7 +355,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     zIndex: 15,
   },
-  toastText: { color: '#fff', fontSize: 14, fontWeight: '600' },
+  toastText: { color: T.text, fontSize: 14, fontWeight: '600' },
   bubbleAnchor: { position: 'absolute', zIndex: 5 },
   bubbleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   connectorLine: {
@@ -380,10 +385,10 @@ const styles = StyleSheet.create({
     borderRadius: 2,
     backgroundColor: 'rgba(60,60,60,0.6)',
   },
-  progressDotDone: { backgroundColor: '#f5a623' },
-  errorText: { color: '#E24B4A', fontSize: 13, paddingTop: 8, textAlign: 'center' },
+  progressDotDone: { backgroundColor: T.amber },
+  errorText: { color: T.red, fontSize: 13, paddingTop: 8, textAlign: 'center' },
   skipBtn: { alignItems: 'center', paddingTop: 12 },
-  skipText: { color: '#888', fontSize: 14 },
+  skipText: { color: T.textSecondary, fontSize: 14 },
   genderTopBar: {
     position: 'absolute',
     top: 0,
@@ -402,12 +407,12 @@ const styles = StyleSheet.create({
   genderTitle: {
     fontSize: 22,
     fontWeight: '700',
-    color: '#fff',
+    color: T.text,
     marginBottom: 6,
   },
   genderSub: {
     fontSize: 13,
-    color: 'rgba(255,255,255,0.45)',
+    color: T.textSecondary,
     marginBottom: 32,
   },
   genderRow: {
@@ -420,12 +425,13 @@ const styles = StyleSheet.create({
   },
   genderAvatar: {
     borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.1)',
+    borderColor: T.border,
     overflow: 'hidden',
   },
   genderLabel: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#fff',
+    color: T.text,
   },
-})
+  })
+}

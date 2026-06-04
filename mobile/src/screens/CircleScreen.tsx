@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react'
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import {
   View,
   Text,
@@ -21,7 +21,8 @@ import { debugLog } from '../lib/debug'
 import { Rss, Users, Search, ArrowLeft, Sparkles, X } from 'lucide-react-native'
 import { TopBar } from '../components/CardBody'
 import { SquaddLoader } from '../components/SquaddLoader'
-import { T } from '../theme'
+import { useTheme } from '../useTheme'
+import type { ThemeColors } from '../theme'
 import { useAuthStore } from '../stores/authStore'
 import { SignInPrompt } from '../components/SignInPrompt'
 import { GearTeaserCard } from '../components/GearTeaserCard'
@@ -37,6 +38,7 @@ import type { FeedItem, FeedItemType, CoPlayerSuggestion } from '../data'
 import { useProfileMenu } from '../contexts/ProfileMenuContext'
 import { useUiStore } from '../stores/uiStore'
 import { NotificationPermissionSheet } from '../components/NotificationPermissionSheet'
+import { ActivityScreen } from './ActivityScreen'
 
 type CircleSubTab = 'feed' | 'players'
 
@@ -51,6 +53,8 @@ type FollowedPlayer = {
 const SUGGESTION_SKELETON_COUNT = 4
 
 function SuggestionCardSkeleton() {
+  const T = useTheme()
+  const styles = useMemo(() => createStyles(T), [T])
   return (
     <View style={styles.suggestionSkeletonCard}>
       <View style={styles.suggestionSkeletonAvatar} />
@@ -85,6 +89,8 @@ function formatClock(clock: string): string {
 }
 
 export function CircleScreen({ onOpenGear, gearSaved, gearSetupComplete }: { onOpenGear?: () => void; gearSaved?: boolean; gearSetupComplete?: boolean }) {
+  const T = useTheme()
+  const styles = useMemo(() => createStyles(T), [T])
   const insets = useSafeAreaInsets()
   const [subTab, setSubTab] = useState<CircleSubTab>('feed')
   const [friends, setFriends] = useState<FollowedPlayer[]>([])
@@ -154,6 +160,7 @@ export function CircleScreen({ onOpenGear, gearSaved, gearSetupComplete }: { onO
   const [showAvatarTip, setShowAvatarTip] = useState(false)
   const [showKudosTip, setShowKudosTip] = useState(false)
   const [showNotifSheet, setShowNotifSheet] = useState(false)
+  const [showActivity, setShowActivity] = useState(false)
 
   useEffect(() => {
     if (feedItems.length > 0 && !showAvatarTip) {
@@ -678,14 +685,14 @@ export function CircleScreen({ onOpenGear, gearSaved, gearSetupComplete }: { onO
   console.log('[FREEZE_DEBUG] CircleScreen render — feedItems:', feedItems.length, 'feedLoading:', feedLoading, 'subTab:', subTab, 'showNotifSheet:', showNotifSheet)
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#0a0a0a' }}>
-      <TopBar title="YOUR CIRCLE" showAvatar />
+    <View style={{ flex: 1, backgroundColor: T.bg }}>
+      <TopBar title="YOUR CIRCLE" showAvatar onHeartPress={() => setShowActivity(true)} />
 
       <View style={{ paddingHorizontal: 16, marginBottom: 16 }}>
         <View
           style={{
             flexDirection: 'row',
-            backgroundColor: '#141414',
+            backgroundColor: T.input,
             borderRadius: 10,
             padding: 3,
           }}
@@ -716,21 +723,21 @@ export function CircleScreen({ onOpenGear, gearSaved, gearSetupComplete }: { onO
                   gap: 6,
                   paddingVertical: 10,
                   borderRadius: 8,
-                  backgroundColor: active ? '#1e1e1e' : 'transparent',
+                  backgroundColor: active ? T.borderSubtle : 'transparent',
                 }}
                 accessibilityRole="tab"
                 accessibilityState={{ selected: active }}
               >
                 <Icon
                   size={14}
-                  color={active ? T.amber : '#555'}
+                  color={active ? T.amber : T.textTertiary}
                   strokeWidth={2}
                 />
                 <Text
                   style={{
                     fontSize: 13,
                     fontWeight: active ? '600' : '400',
-                    color: active ? T.amber : '#555',
+                    color: active ? T.amber : T.textTertiary,
                   }}
                 >
                   {label}
@@ -774,7 +781,7 @@ export function CircleScreen({ onOpenGear, gearSaved, gearSetupComplete }: { onO
           {/* Feed empty state */}
           {!feedLoading && !hasFollows && (
             <View style={styles.emptyState}>
-              <Users size={44} color="#1e1e1e" />
+              <Users size={44} color={T.borderSubtle} />
               <Text style={styles.emptyText}>
                 Follow players to see their activity here.
               </Text>
@@ -1009,7 +1016,7 @@ export function CircleScreen({ onOpenGear, gearSaved, gearSetupComplete }: { onO
               disabled={loadingMore}
             >
               {loadingMore
-                ? <ActivityIndicator size="small" color="#f5a623" />
+                ? <ActivityIndicator size="small" color={T.amber} />
                 : <Text style={styles.loadMoreText}>Load more</Text>
               }
             </TouchableOpacity>
@@ -1037,8 +1044,8 @@ export function CircleScreen({ onOpenGear, gearSaved, gearSetupComplete }: { onO
                   onPress={handleCloseSearch}
                   style={styles.searchBackBtn}
                 >
-                  <ArrowLeft size={18} color="#fff" strokeWidth={2} />
-                  <Text style={{ fontSize: 14, color: '#fff' }}>Back to friends</Text>
+                  <ArrowLeft size={18} color={T.text} strokeWidth={2} />
+                  <Text style={{ fontSize: 14, color: T.text }}>Back to friends</Text>
                 </TouchableOpacity>
               </View>
               <PeopleYouMayKnowScreen
@@ -1054,8 +1061,8 @@ export function CircleScreen({ onOpenGear, gearSaved, gearSetupComplete }: { onO
                   onPress={handleCloseSearch}
                   style={styles.searchBackBtn}
                 >
-                  <ArrowLeft size={18} color="#fff" strokeWidth={2} />
-                  <Text style={{ fontSize: 14, color: '#fff' }}>Back to friends</Text>
+                  <ArrowLeft size={18} color={T.text} strokeWidth={2} />
+                  <Text style={{ fontSize: 14, color: T.text }}>Back to friends</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => { setShowSearch(false); setShowSuggested(true) }}
@@ -1085,7 +1092,7 @@ export function CircleScreen({ onOpenGear, gearSaved, gearSetupComplete }: { onO
                 onPress={() => setShowSearch(true)}
                 activeOpacity={0.7}
               >
-                <Search size={16} color="#666" strokeWidth={2} />
+                <Search size={16} color={T.muted} strokeWidth={2} />
                 <Text style={styles.findFriendsText}>Find friends</Text>
               </TouchableOpacity>
 
@@ -1137,7 +1144,7 @@ export function CircleScreen({ onOpenGear, gearSaved, gearSetupComplete }: { onO
                                 )
                               }
                             >
-                              <X size={10} color="#2a2a2a" />
+                              <X size={10} color={T.iconMuted} />
                             </TouchableOpacity>
                             <TouchableOpacity
                               onPress={() => {
@@ -1194,12 +1201,12 @@ export function CircleScreen({ onOpenGear, gearSaved, gearSetupComplete }: { onO
                 <SquaddLoader />
               ) : friends.length === 0 ? (
                 <View style={{ alignItems: 'center', marginTop: 60 }}>
-                  <Users size={40} color="#444" strokeWidth={1.5} />
+                  <Users size={40} color={T.textTertiary} strokeWidth={1.5} />
                   <Text
                     style={{
                       fontSize: 16,
                       fontWeight: '600',
-                      color: '#fff',
+                      color: T.text,
                       marginTop: 12,
                     }}
                   >
@@ -1208,7 +1215,7 @@ export function CircleScreen({ onOpenGear, gearSaved, gearSetupComplete }: { onO
                   <Text
                     style={{
                       fontSize: 13,
-                      color: '#888',
+                      color: T.textSecondary,
                       marginTop: 4,
                       textAlign: 'center',
                     }}
@@ -1263,13 +1270,13 @@ export function CircleScreen({ onOpenGear, gearSaved, gearSetupComplete }: { onO
                 onPress={() => setRosterModal(prev => ({ ...prev, visible: false }))}
                 hitSlop={12}
               >
-                <X size={22} color="#999" strokeWidth={2} />
+                <X size={22} color={T.textSecondary} strokeWidth={2} />
               </TouchableOpacity>
             </View>
 
             {rosterModal.loadingId !== null ? (
               <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-                <ActivityIndicator color="#22c55e" />
+                <ActivityIndicator color={T.green} />
               </View>
             ) : (
               <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
@@ -1305,7 +1312,7 @@ export function CircleScreen({ onOpenGear, gearSaved, gearSetupComplete }: { onO
                             <Text style={[
                               styles.rosterRecChipText,
                               rec.reasonType === 'overlap' && { color: '#1D9E75' },
-                              rec.reasonType === 'level' && { color: '#f5a623' },
+                              rec.reasonType === 'level' && { color: T.amber },
                               rec.reasonType === 'social' && { color: '#9b59b6' },
                             ]}>{rec.reason}</Text>
                           </View>
@@ -1382,11 +1389,16 @@ export function CircleScreen({ onOpenGear, gearSaved, gearSetupComplete }: { onO
         stub={selectedPlayerStub}
         onClose={() => { setSelectedPlayerId(null); setSelectedPlayerStub(null) }}
       />
+
+      {showActivity && (
+        <ActivityScreen onClose={() => setShowActivity(false)} />
+      )}
     </View>
   )
 }
 
-const styles = StyleSheet.create({
+function createStyles(T: ThemeColors) {
+  return StyleSheet.create({
   findFriendsBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1401,7 +1413,7 @@ const styles = StyleSheet.create({
   },
   findFriendsText: {
     fontSize: 15,
-    color: '#555',
+    color: T.textSecondary,
   },
   searchHeaderRow: {
     flexDirection: 'row',
@@ -1445,17 +1457,17 @@ const styles = StyleSheet.create({
   },
   sectionLabel: {
     fontSize: 11,
-    color: '#444',
+    color: T.muted,
     textTransform: 'uppercase',
     letterSpacing: 0.8,
   },
-  sectionLink: { fontSize: 11, color: '#555' },
+  sectionLink: { fontSize: 11, color: T.muted },
   carouselContent: { paddingHorizontal: 12, gap: 10 },
   suggestionSkeletonCard: {
     minWidth: 108,
-    backgroundColor: '#141414',
+    backgroundColor: T.input,
     borderWidth: 0.5,
-    borderColor: '#252525',
+    borderColor: T.border,
     borderRadius: 10,
     paddingTop: 8,
     paddingBottom: 8,
@@ -1466,13 +1478,13 @@ const styles = StyleSheet.create({
     width: 42,
     height: 42,
     borderRadius: 21,
-    backgroundColor: '#1e1e1e',
+    backgroundColor: T.borderSubtle,
   },
   suggestionSkeletonName: {
     width: 64,
     height: 13,
     borderRadius: 6,
-    backgroundColor: '#1e1e1e',
+    backgroundColor: T.borderSubtle,
     marginTop: 5,
     marginBottom: 4,
   },
@@ -1480,20 +1492,20 @@ const styles = StyleSheet.create({
     width: 80,
     height: 13,
     borderRadius: 6,
-    backgroundColor: '#1a1a1a',
+    backgroundColor: T.surface,
     marginBottom: 6,
   },
   suggestionSkeletonBtn: {
     width: '100%',
     height: 26,
     borderRadius: 6,
-    backgroundColor: '#1e1e1e',
+    backgroundColor: T.borderSubtle,
   },
   suggestionCard: {
     minWidth: 108,
-    backgroundColor: '#141414',
+    backgroundColor: T.input,
     borderWidth: 0.5,
-    borderColor: '#252525',
+    borderColor: T.border,
     borderRadius: 10,
     paddingTop: 8,
     paddingBottom: 8,
@@ -1506,7 +1518,7 @@ const styles = StyleSheet.create({
   suggestionName: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#f0f0f0',
+    color: T.text,
     marginTop: 5,
     marginBottom: 2,
     textAlign: 'center',
@@ -1519,6 +1531,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 6,
     maxWidth: 96,
+    color: T.textSecondary,
   },
   suggestionSessionsCount: {
     fontSize: 14,
@@ -1528,7 +1541,7 @@ const styles = StyleSheet.create({
   suggestionSessionsLabel: {
     fontSize: 13,
     fontWeight: '500',
-    color: 'rgba(255,255,255,0.55)',
+    color: T.textSecondary,
   },
   feedFollowBtn: {
     backgroundColor: T.amber,
@@ -1542,8 +1555,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(34,197,94,0.3)',
   },
-  feedFollowBtnText: { fontSize: 11, fontWeight: '500', color: '#1a0a00' },
-  feedFollowedBtnText: { fontSize: 11, fontWeight: '600', color: '#22c55e' },
+  feedFollowBtnText: { fontSize: 11, fontWeight: '500', color: T.textOnPrimary },
+  feedFollowedBtnText: { fontSize: 11, fontWeight: '600', color: T.green },
   emptyState: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -1553,7 +1566,7 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 12,
-    color: '#333',
+    color: T.muted,
     textAlign: 'center',
     lineHeight: 18,
   },
@@ -1564,7 +1577,7 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
     marginTop: 4,
   },
-  emptyBtnText: { fontSize: 11, fontWeight: '600', color: '#1a0a00' },
+  emptyBtnText: { fontSize: 11, fontWeight: '600', color: T.textOnPrimary },
   linkReclubBanner: {
     marginHorizontal: 12,
     marginBottom: 8,
@@ -1690,7 +1703,7 @@ const styles = StyleSheet.create({
     height: 28,
     borderRadius: 14,
     borderWidth: 1.5,
-    borderColor: '#0a0a0a',
+    borderColor: T.bg,
     overflow: 'hidden',
   },
   soonCardAvFallback: {
@@ -1704,18 +1717,18 @@ const styles = StyleSheet.create({
     color: T.amber,
   },
   soonCardAvMore: {
-    backgroundColor: '#141414',
-    borderColor: '#1e1e1e',
+    backgroundColor: T.input,
+    borderColor: T.borderSubtle,
     alignItems: 'center',
     justifyContent: 'center',
   },
   soonCardAvMoreText: {
     fontSize: 8,
-    color: '#555',
+    color: T.textTertiary,
   },
   soonCardCircleInfo: {
     fontSize: 10,
-    color: '#555',
+    color: T.textTertiary,
     marginLeft: 10,
     flex: 1,
     minWidth: 0,
@@ -1735,7 +1748,7 @@ const styles = StyleSheet.create({
   soonCardJoinText: {
     fontSize: 10,
     fontWeight: '600',
-    color: '#1a0a00',
+    color: T.textOnPrimary,
   },
   soonCardShowMeBtn: {
     backgroundColor: '#1D9E75',
@@ -1746,7 +1759,7 @@ const styles = StyleSheet.create({
   soonCardShowMeText: {
     fontSize: 10,
     fontWeight: '600',
-    color: '#fff',
+    color: T.text,
   },
   soonDot: {
     width: 8,
@@ -1872,14 +1885,14 @@ const styles = StyleSheet.create({
   endingSoonPill: {
     backgroundColor: '#1f1400',
     borderWidth: 0.5,
-    borderColor: '#f5a623',
+    borderColor: T.amber,
     borderRadius: 6,
     paddingHorizontal: 6,
     paddingVertical: 2,
   },
   endingSoonText: {
     fontSize: 9,
-    color: '#f5a623',
+    color: T.amber,
     fontWeight: '500',
   },
   endsAtText: {
@@ -1889,9 +1902,9 @@ const styles = StyleSheet.create({
   noOneLive: {
     marginHorizontal: 12,
     marginBottom: 10,
-    backgroundColor: '#141414',
+    backgroundColor: T.input,
     borderWidth: 0.5,
-    borderColor: '#1e1e1e',
+    borderColor: T.borderSubtle,
     borderRadius: 12,
     padding: 10,
     flexDirection: 'row',
@@ -1902,17 +1915,17 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#2a2a2a',
+    backgroundColor: T.border,
     flexShrink: 0,
   },
   noOneLiveTitle: {
     fontSize: 12,
     fontWeight: '500',
-    color: '#444',
+    color: T.textTertiary,
   },
   noOneLiveSub: {
     fontSize: 10,
-    color: '#2a2a2a',
+    color: T.border,
     marginTop: 1,
   },
   // ── Roster overlay (root-level, no native Modal) ──────────────
@@ -1927,7 +1940,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.65)',
   },
   rosterSheet: {
-    backgroundColor: '#0e0e0e',
+    backgroundColor: T.bg,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     maxHeight: Dimensions.get('window').height * 0.85,
@@ -1940,7 +1953,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 4,
     borderRadius: 2,
-    backgroundColor: '#333',
+    backgroundColor: T.borderSubtle,
     alignSelf: 'center',
     marginBottom: 12,
   },
@@ -1957,12 +1970,12 @@ const styles = StyleSheet.create({
   rosterTitle: {
     fontSize: 17,
     fontWeight: '700',
-    color: '#fff',
+    color: T.text,
     marginBottom: 2,
   },
   rosterVenue: {
     fontSize: 12,
-    color: '#666',
+    color: T.muted,
   },
   rosterRow: {
     flexDirection: 'row',
@@ -1984,7 +1997,7 @@ const styles = StyleSheet.create({
   rosterName: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#fff',
+    color: T.text,
     textAlign: 'center',
     marginBottom: 4,
   },
@@ -2006,21 +2019,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 5,
     borderRadius: 8,
-    backgroundColor: '#22c55e',
+    backgroundColor: T.green,
     alignItems: 'center',
   },
   rosterFollowBtnDone: {
-    backgroundColor: '#1a1a1a',
+    backgroundColor: T.surface,
     borderWidth: 1,
-    borderColor: '#333',
+    borderColor: T.border,
   },
   rosterFollowBtnText: {
     fontSize: 11,
     fontWeight: '700',
-    color: '#fff',
+    color: T.text,
   },
   rosterFollowBtnTextDone: {
-    color: '#555',
+    color: T.textTertiary,
   },
   loadMoreBtn: {
     padding: 16,
@@ -2028,7 +2041,7 @@ const styles = StyleSheet.create({
   },
   loadMoreText: {
     fontSize: 13,
-    color: '#555',
+    color: T.textTertiary,
   },
   rosterRecSection: {
     backgroundColor: '#0a0a1a',
@@ -2053,7 +2066,7 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.6,
   },
-  rosterRecCount: { fontSize: 10, color: '#555' },
+  rosterRecCount: { fontSize: 10, color: T.textTertiary },
   rosterRecRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2071,8 +2084,8 @@ const styles = StyleSheet.create({
     flexShrink: 0,
     backgroundColor: '#1a1a2a',
   },
-  rosterRecName: { fontSize: 14, fontWeight: '600', color: '#fff' },
-  rosterRecDupr: { fontSize: 11, color: '#f5a623', fontWeight: '600', marginTop: 1 },
+  rosterRecName: { fontSize: 14, fontWeight: '600', color: T.text },
+  rosterRecDupr: { fontSize: 11, color: T.amber, fontWeight: '600', marginTop: 1 },
   rosterRecChip: {
     borderRadius: 5,
     paddingHorizontal: 6,
@@ -2092,6 +2105,7 @@ const styles = StyleSheet.create({
   rosterRecFollowBtnText: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#fff',
+    color: T.text,
   },
 })
+}

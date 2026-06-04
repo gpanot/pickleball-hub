@@ -1,5 +1,7 @@
-import React from 'react'
+import React, { useMemo } from 'react'
 import { View, Pressable, StyleSheet, Dimensions } from 'react-native'
+import { useTheme } from '../../useTheme'
+import type { ThemeColors } from '../../theme'
 import { GearSetupScreen } from './GearSetupScreen'
 import { useNavBarHeight } from '../NavBar'
 import { GearProfile, PlayerGender } from './gearTypes'
@@ -27,6 +29,8 @@ export function GearSetupSheet({
   onSave,
   savedConfirmation,
 }: Props) {
+  const T = useTheme()
+  const s = useMemo(() => createSheetStyles(T), [T])
   const navBarHeight = useNavBarHeight()
   const availableHeight = H - navBarHeight
   const sheetHeight = availableHeight * 0.9
@@ -53,26 +57,28 @@ export function GearSetupSheet({
   )
 }
 
-const s = StyleSheet.create({
-  host: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 9000,
-    elevation: 9000,
-    justifyContent: 'flex-end',
-  },
-  backdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.65)',
-  },
-  sheet: {
-    backgroundColor: '#0A0A0A',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-  },
-})
+function createSheetStyles(T: ThemeColors) {
+  return StyleSheet.create({
+    host: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      zIndex: 9000,
+      elevation: 9000,
+      justifyContent: 'flex-end',
+    },
+    backdrop: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: T.sheetBackdrop,
+    },
+    sheet: {
+      backgroundColor: T.bg,
+      borderTopLeftRadius: 24,
+      borderTopRightRadius: 24,
+      overflow: 'hidden',
+      borderWidth: 1,
+      borderColor: T.border,
+    },
+  })
+}

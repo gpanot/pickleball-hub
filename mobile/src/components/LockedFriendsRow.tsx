@@ -1,5 +1,7 @@
-import React from 'react'
+import React, { useMemo } from 'react'
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native'
+import { useTheme } from '../useTheme'
+import type { ThemeColors } from '../theme'
 import { LinearGradient } from 'expo-linear-gradient'
 import { RING_COLORS } from '../data'
 
@@ -12,6 +14,9 @@ const FROST_COLORS: [string, string][] = [
 
 /** Blurred friend placeholders — tap handled by parent (opens global sign-up modal). */
 export function LockedFriendsRow({ onPress }: { onPress: () => void }) {
+  const T = useTheme()
+  const styles = useMemo(() => createStyles(T), [T])
+
   return (
     <TouchableOpacity
       onPress={onPress}
@@ -44,42 +49,44 @@ export function LockedFriendsRow({ onPress }: { onPress: () => void }) {
   )
 }
 
-const styles = StyleSheet.create({
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 10,
-  },
-  avatar: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    borderWidth: 2.5,
-    overflow: 'hidden',
-  },
-  gradient: {
-    width: 47,
-    height: 47,
-    borderRadius: 24,
-  },
-  frostOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-  },
-  more: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.12)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  moreText: {
-    fontSize: 14,
-    color: '#aaa',
-    fontWeight: '500',
-  },
-})
+function createStyles(T: ThemeColors) {
+  return StyleSheet.create({
+    row: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      marginBottom: 10,
+    },
+    avatar: {
+      width: 52,
+      height: 52,
+      borderRadius: 26,
+      borderWidth: 2.5,
+      overflow: 'hidden',
+    },
+    gradient: {
+      width: 47,
+      height: 47,
+      borderRadius: 24,
+    },
+    frostOverlay: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: T.overlay,
+    },
+    more: {
+      width: 52,
+      height: 52,
+      borderRadius: 26,
+      backgroundColor: T.input,
+      borderWidth: 1.5,
+      borderColor: T.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    moreText: {
+      fontSize: 14,
+      color: T.textSecondary,
+      fontWeight: '500',
+    },
+  })
+}

@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useMemo } from 'react'
 import { View, Text, TouchableOpacity, StyleSheet, Animated } from 'react-native'
 import { FeedItem } from '../data'
 import { PlayerAvatar } from './PlayerAvatar'
-import { T } from '../theme'
+import { useTheme } from '../useTheme'
+import type { ThemeColors } from '../theme'
 import { useAuthStore } from '../stores/authStore'
 
 function formatRelativeTime(iso: string): string {
@@ -73,6 +74,8 @@ export function FeedItemRow({
   showKudosTip,
   onDismissKudosTip,
 }: Props) {
+  const T = useTheme()
+  const s = useMemo(() => createS(T), [T])
   const name = item.player.displayName ?? 'Player'
   const dupr = item.player.duprDoubles?.toFixed(2) ?? '–'
   const sessionLabel = truncateSessionName(item.sessionName)
@@ -265,7 +268,7 @@ export function FeedItemRow({
           <>
             <Text style={s.action}>
               hit a{' '}
-              <Text style={[s.highlight, { color: '#f5a623' }]}>
+              <Text style={[s.highlight, { color: T.amber }]}>
                 🔥 {item.streakCount}-week streak
               </Text>
               {' '}· playing every week
@@ -376,14 +379,15 @@ export function FeedItemRow({
   )
 }
 
-const s = StyleSheet.create({
+function createS(T: ThemeColors) {
+  return StyleSheet.create({
   row: {
     flexDirection: 'row',
     gap: 12,
     paddingHorizontal: 14,
     paddingVertical: 14,
     borderBottomWidth: 0.5,
-    borderBottomColor: '#0f0f0f',
+    borderBottomColor: T.borderSubtle,
     alignItems: 'flex-start',
     overflow: 'visible',
   },
@@ -403,16 +407,16 @@ const s = StyleSheet.create({
     minWidth: 0,
     flexWrap: 'wrap',
   },
-  name: { fontSize: 14, fontWeight: '600', color: '#ddd', flexShrink: 1 },
-  followingLabel: { fontSize: 11, color: '#333' },
-  action: { fontSize: 13, color: '#555', marginTop: 2, lineHeight: 18 },
-  highlight: { color: '#aaa', fontWeight: '500', fontSize: 13 },
+  name: { fontSize: 14, fontWeight: '600', color: T.text, flexShrink: 1 },
+  followingLabel: { fontSize: 11, color: T.muted },
+  action: { fontSize: 13, color: T.muted, marginTop: 2, lineHeight: 18 },
+  highlight: { color: T.text, fontWeight: '500', fontSize: 13 },
   miniCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#141414',
+    backgroundColor: T.input,
     borderWidth: 0.5,
-    borderColor: '#1e1e1e',
+    borderColor: T.borderSubtle,
     borderRadius: 10,
     paddingVertical: 10,
     paddingHorizontal: 12,
@@ -422,19 +426,19 @@ const s = StyleSheet.create({
     alignSelf: 'stretch',
   },
   miniCardLeft: { flex: 1 },
-  miniCardName: { fontSize: 13, fontWeight: '600', color: '#ccc' },
-  miniCardMeta: { fontSize: 12, color: '#555', marginTop: 1 },
+  miniCardName: { fontSize: 13, fontWeight: '600', color: T.text },
+  miniCardMeta: { fontSize: 12, color: T.muted, marginTop: 1 },
   joinBtn: {
     backgroundColor: T.amber,
     borderRadius: 5,
     paddingHorizontal: 12,
     paddingVertical: 5,
   },
-  joinBtnText: { fontSize: 12, fontWeight: '600', color: '#1a0a00' },
+  joinBtnText: { fontSize: 12, fontWeight: '600', color: T.textOnPrimary },
   streakMiniCard: {
     backgroundColor: '#1f1400',
     borderWidth: 0.5,
-    borderColor: '#f5a623',
+    borderColor: T.amber,
     borderRadius: 10,
     padding: 9,
     marginTop: 5,
@@ -448,17 +452,17 @@ const s = StyleSheet.create({
   streakMiniNum: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#f5a623',
+    color: T.amber,
     lineHeight: 24,
   },
   streakMiniLabel: {
     fontSize: 11,
     fontWeight: '600',
-    color: '#fff',
+    color: T.text,
   },
   streakMiniSub: {
     fontSize: 9,
-    color: '#555',
+    color: T.muted,
     marginTop: 1,
   },
   streakMiniDots: {
@@ -469,13 +473,13 @@ const s = StyleSheet.create({
     flex: 1,
     height: 4,
     borderRadius: 2,
-    backgroundColor: '#141414',
+    backgroundColor: T.input,
     borderWidth: 0.5,
-    borderColor: '#1e1e1e',
+    borderColor: T.borderSubtle,
   },
   streakMiniDotOn: {
-    backgroundColor: '#f5a623',
-    borderColor: '#f5a623',
+    backgroundColor: T.amber,
+    borderColor: T.amber,
   },
   footerRow: {
     flexDirection: 'row',
@@ -486,12 +490,12 @@ const s = StyleSheet.create({
   },
   timestamp: {
     fontSize: 11,
-    color: '#333',
+    color: T.muted,
     textAlign: 'right',
     flexShrink: 0,
     maxWidth: '42%',
   },
-  duprOld: { color: '#888' },
+  duprOld: { color: T.muted },
   duprArrow: { color: T.amber },
   duprNew: { color: T.amber, fontWeight: '500' },
   kudosRow: {
@@ -505,19 +509,19 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 3,
-    backgroundColor: '#1a1a1a',
+    backgroundColor: T.surface,
     borderWidth: 0.5,
-    borderColor: '#2a2a2a',
+    borderColor: T.border,
     borderRadius: 14,
     paddingHorizontal: 8,
     paddingVertical: 4,
   },
   kudosBtnActive: {
-    borderColor: '#f5a623',
+    borderColor: T.amber,
     backgroundColor: '#1f1400',
   },
   kudosBtnHighlight: {
-    borderColor: '#f5a623',
+    borderColor: T.amber,
     borderWidth: 1.5,
   },
   kudosTipWrap: {
@@ -537,16 +541,16 @@ const s = StyleSheet.create({
     borderRightColor: 'transparent',
     borderBottomColor: 'transparent',
     borderTopWidth: 7,
-    borderTopColor: '#f5a623',
+    borderTopColor: T.amber,
     marginLeft: 14,
     marginTop: -1,
   },
   kudosTipBubble: {
-    backgroundColor: '#f5a623',
+    backgroundColor: T.amber,
     borderRadius: 8,
     paddingHorizontal: 10,
     paddingVertical: 6,
-    shadowColor: '#f5a623',
+    shadowColor: T.amber,
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.4,
     shadowRadius: 8,
@@ -555,17 +559,17 @@ const s = StyleSheet.create({
   kudosTipText: {
     fontSize: 11,
     fontWeight: '700',
-    color: '#1a0a00',
+    color: T.textOnPrimary,
   },
   kudosEmoji: {
     fontSize: 13,
   },
   kudosCount: {
     fontSize: 11,
-    color: '#666',
+    color: T.muted,
   },
   kudosCountActive: {
-    color: '#f5a623',
+    color: T.amber,
   },
   liveBadge: {
     flexDirection: 'row',
@@ -592,7 +596,7 @@ const s = StyleSheet.create({
   },
   avatarHighlight: {
     borderWidth: 2,
-    borderColor: '#f5a623',
+    borderColor: T.amber,
     borderRadius: 22,
   },
   pulseRing: {
@@ -603,7 +607,7 @@ const s = StyleSheet.create({
     height: 52,
     borderRadius: 26,
     borderWidth: 2,
-    borderColor: '#f5a623',
+    borderColor: T.amber,
     zIndex: 1,
   },
   tipWrap: {
@@ -622,16 +626,16 @@ const s = StyleSheet.create({
     borderBottomWidth: 7,
     borderLeftColor: 'transparent',
     borderRightColor: 'transparent',
-    borderBottomColor: '#f5a623',
+    borderBottomColor: T.amber,
     marginLeft: 16,
   },
   tipBubble: {
-    backgroundColor: '#f5a623',
+    backgroundColor: T.amber,
     borderRadius: 10,
     paddingHorizontal: 14,
     paddingVertical: 10,
     width: 160,
-    shadowColor: '#f5a623',
+    shadowColor: T.amber,
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.4,
     shadowRadius: 8,
@@ -640,18 +644,18 @@ const s = StyleSheet.create({
   tipText: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#1a0a00',
+    color: T.textOnPrimary,
     textAlign: 'center',
   },
   tipDismiss: {
     fontSize: 9,
-    color: 'rgba(26,10,0,0.45)',
+    color: T.textOnPrimary + '73',
     textAlign: 'center',
     marginTop: 3,
   },
   youPlayingSub: {
     fontSize: 12,
-    color: '#666',
+    color: T.muted,
     marginTop: 3,
     marginBottom: 8,
   },
@@ -665,6 +669,7 @@ const s = StyleSheet.create({
   showMeBtnText: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#fff',
+    color: T.text,
   },
 })
+}

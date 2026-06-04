@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react'
 import {
   View,
   Text,
@@ -9,6 +9,8 @@ import {
   ScrollView,
   Platform,
   TextInput,
+  Dimensions,
+  Pressable,
 } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -20,8 +22,12 @@ import {
   Trash2,
   Link2,
   Shirt,
+  Sun,
+  Moon,
+  X,
 } from 'lucide-react-native'
-import { T } from '../theme'
+import { useTheme } from '../useTheme'
+import type { ThemeColors } from '../theme'
 import { useAuthStore } from '../stores/authStore'
 import { useUiStore } from '../stores/uiStore'
 import { useSessionStore } from '../stores/sessionStore'
@@ -40,6 +46,8 @@ export function ProfileSheet({
   onOpenGear?: () => void
   onOpenPushDebug?: () => void
 }) {
+  const T = useTheme()
+  const styles = useMemo(() => createStyles(T), [T])
   const insets = useSafeAreaInsets()
   const {
     displayName,
@@ -55,7 +63,14 @@ export function ProfileSheet({
 
   const notificationsOn = useUiStore((s) => s.notificationsEnabled)
   const setNotificationsEnabled = useUiStore((s) => s.setNotificationsEnabled)
+  const themeMode = useUiStore((s) => s.themeMode)
+  const setThemeMode = useUiStore((s) => s.setThemeMode)
   const sessionsCount = useSessionStore((s) => s.currentIdx)
+
+  const toggleThemeMode = () => {
+    setThemeMode(themeMode === 'light' ? 'dark' : 'light')
+  }
+  const ThemeModeIcon = themeMode === 'light' ? Sun : Moon
 
   const [followingCount, setFollowingCount] = useState(0)
   const [kudos, setKudos] = useState({ fistbump: 0, flame: 0, star: 0 })
@@ -194,7 +209,18 @@ export function ProfileSheet({
   const [showKudosModal, setShowKudosModal] = useState(false)
   const [kudosGivers, setKudosGivers] = useState<Array<{ userId: string; displayName: string; imageUrl: string | null; type: string; givenAt: string }>>([])
   const [showFollowersModal, setShowFollowersModal] = useState(false)
-  const [followersList, setFollowersList] = useState<Array<{ userId: string; displayName: string; imageUrl: string | null; duprDoubles: number | null }>>([])
+  const [followersList, setFollowersList] = useState<Array<{ userId: string; displayName: string; imageUrl: string | null; duprDoubles: number | null; followedAt?: string }>>([])
+
+  const formatTimeAgo = (iso: string) => {
+    const diff = Date.now() - new Date(iso).getTime()
+    const mins = Math.floor(diff / 60000)
+    if (mins < 1) return 'just now'
+    if (mins < 60) return `${mins}m ago`
+    const hours = Math.floor(mins / 60)
+    if (hours < 24) return `${hours}h ago`
+    const days = Math.floor(hours / 24)
+    return `${days}d ago`
+  }
 
   // Developer mode — unlocked by tapping the name 6 times within 3 seconds
   const [devMode, setDevMode] = useState(false)
@@ -248,7 +274,7 @@ export function ProfileSheet({
         onPress={onClose}
         style={styles.backBtn}
       >
-        <ChevronLeft size={20} color="#999" strokeWidth={2} />
+        <ChevronLeft size={20} color={T.textSecondary} strokeWidth={2} />
         <Text style={styles.backLabel}>Back</Text>
       </TouchableOpacity>
 
@@ -440,7 +466,7 @@ export function ProfileSheet({
               onOpenGear()
             }}
           >
-            <Shirt size={20} color="#555" strokeWidth={2} />
+            <Shirt size={20} color={T.textTertiary} strokeWidth={2} />
             <Text style={styles.settingsLabel}>My Gear</Text>
           </TouchableOpacity>
         )}
@@ -459,11 +485,19 @@ export function ProfileSheet({
             </Text>
           </TouchableOpacity>
         )}
+        <TouchableOpacity style={styles.settingsRow} onPress={toggleThemeMode}>
+          <ThemeModeIcon size={20} color={T.iconMuted} strokeWidth={2} />
+          <Text style={styles.settingsLabel}>Appearance</Text>
+          <Text style={styles.settingsRight}>
+            {themeMode === 'light' ? 'Light' : 'Dark'}
+          </Text>
+        </TouchableOpacity>
+
         <TouchableOpacity
           style={styles.settingsRow}
           onPress={() => setNotificationsEnabled(!notificationsOn)}
         >
-          <Bell size={20} color="#555" strokeWidth={2} />
+          <Bell size={20} color={T.iconMuted} strokeWidth={2} />
           <Text style={styles.settingsLabel}>Notifications</Text>
           <Text style={styles.settingsRight}>
             {notificationsOn ? 'On' : 'Off'}
@@ -471,15 +505,15 @@ export function ProfileSheet({
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.settingsRow} onPress={handleSignOut}>
-          <LogOut size={20} color="#555" strokeWidth={2} />
+          <LogOut size={20} color={T.textTertiary} strokeWidth={2} />
           <Text style={styles.settingsLabel}>Sign out</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.settingsRow}
           onPress={handleDeleteData}
         >
-          <Trash2 size={20} color="#e24b4a" strokeWidth={2} />
-          <Text style={[styles.settingsLabel, { color: '#e24b4a' }]}>
+          <Trash2 size={20} color={T.red} strokeWidth={2} />
+          <Text style={[styles.settingsLabel, { color: T.red }]}>
             Delete my data
           </Text>
         </TouchableOpacity>
@@ -564,7 +598,7 @@ export function ProfileSheet({
                 }
               }}
             >
-              <Bell size={20} color="#555" strokeWidth={2} />
+              <Bell size={20} color={T.textTertiary} strokeWidth={2} />
               <Text style={styles.settingsLabel}>Test Push Notification</Text>
             </TouchableOpacity>
 
@@ -576,8 +610,8 @@ export function ProfileSheet({
                   onOpenPushDebug()
                 }}
               >
-                <Bell size={20} color="#f5a623" strokeWidth={2} />
-                <Text style={[styles.settingsLabel, { color: '#f5a623' }]}>FCM Debug Screen</Text>
+                <Bell size={20} color={T.amber} strokeWidth={2} />
+                <Text style={[styles.settingsLabel, { color: T.amber }]}>FCM Debug Screen</Text>
               </TouchableOpacity>
             )}
           </>
@@ -596,7 +630,7 @@ export function ProfileSheet({
               value={duprInput}
               onChangeText={setDuprInput}
               placeholder="e.g. 3.50"
-              placeholderTextColor="#555"
+              placeholderTextColor={T.textTertiary}
               keyboardType="decimal-pad"
               maxLength={4}
               autoFocus
@@ -631,10 +665,16 @@ export function ProfileSheet({
 
       {/* Kudos Givers Modal */}
       {showKudosModal && (
-        <View style={styles.popupBackdrop}>
-          <View style={styles.popupCard}>
-            <Text style={styles.popupTitle}>Kudos received</Text>
-            <ScrollView style={{ maxHeight: 300 }}>
+        <View style={styles.popupSheetBackdrop}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowKudosModal(false)} />
+          <View style={[styles.popupSheet, { paddingBottom: insets.bottom + 16 }]}>
+            <View style={styles.popupSheetHeader}>
+              <Text style={styles.popupTitle}>Kudos received</Text>
+              <TouchableOpacity onPress={() => setShowKudosModal(false)} hitSlop={12}>
+                <X size={22} color={T.textSecondary} strokeWidth={2} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.popupSheetScroll} showsVerticalScrollIndicator={false}>
               {kudosGivers.length === 0 ? (
                 <Text style={styles.popupSub}>No kudos yet</Text>
               ) : (
@@ -643,31 +683,39 @@ export function ProfileSheet({
                     {g.imageUrl ? (
                       <Image source={{ uri: g.imageUrl }} style={styles.listAvatar} />
                     ) : (
-                      <View style={[styles.listAvatar, { backgroundColor: '#1a1a1a', alignItems: 'center', justifyContent: 'center' }]}>
-                        <Text style={{ color: '#666', fontSize: 12 }}>{(g.displayName ?? '?')[0]}</Text>
+                      <View style={[styles.listAvatar, { backgroundColor: T.surface, alignItems: 'center', justifyContent: 'center' }]}>
+                        <Text style={{ color: T.muted, fontSize: 12 }}>{(g.displayName ?? '?')[0]}</Text>
                       </View>
                     )}
                     <View style={{ flex: 1 }}>
                       <Text style={styles.listName}>{g.displayName ?? 'Player'}</Text>
-                      <Text style={styles.listMeta}>{g.type === 'fistbump' ? '🤜' : g.type === 'flame' ? '🔥' : '⭐'}</Text>
+                      <Text style={styles.listMeta}>
+                        {g.type === 'fistbump' ? '🤜 Fist bump' : g.type === 'flame' ? '🔥 On fire' : '⭐ Star'}
+                      </Text>
                     </View>
+                    {g.givenAt ? (
+                      <Text style={styles.listTime}>{formatTimeAgo(g.givenAt)}</Text>
+                    ) : null}
                   </View>
                 ))
               )}
             </ScrollView>
-            <TouchableOpacity style={styles.popupCloseBtn} onPress={() => setShowKudosModal(false)}>
-              <Text style={styles.popupCloseBtnText}>Close</Text>
-            </TouchableOpacity>
           </View>
         </View>
       )}
 
       {/* Followers Modal */}
       {showFollowersModal && (
-        <View style={styles.popupBackdrop}>
-          <View style={styles.popupCard}>
-            <Text style={styles.popupTitle}>Followers ({followersCount})</Text>
-            <ScrollView style={{ maxHeight: 300 }}>
+        <View style={styles.popupSheetBackdrop}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowFollowersModal(false)} />
+          <View style={[styles.popupSheet, { paddingBottom: insets.bottom + 16 }]}>
+            <View style={styles.popupSheetHeader}>
+              <Text style={styles.popupTitle}>Followers ({followersCount})</Text>
+              <TouchableOpacity onPress={() => setShowFollowersModal(false)} hitSlop={12}>
+                <X size={22} color={T.textSecondary} strokeWidth={2} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.popupSheetScroll} showsVerticalScrollIndicator={false}>
               {followersList.length === 0 ? (
                 <Text style={styles.popupSub}>No followers yet</Text>
               ) : (
@@ -676,21 +724,21 @@ export function ProfileSheet({
                     {f.imageUrl ? (
                       <Image source={{ uri: f.imageUrl }} style={styles.listAvatar} />
                     ) : (
-                      <View style={[styles.listAvatar, { backgroundColor: '#1a1a1a', alignItems: 'center', justifyContent: 'center' }]}>
-                        <Text style={{ color: '#666', fontSize: 12 }}>{(f.displayName ?? '?')[0]}</Text>
+                      <View style={[styles.listAvatar, { backgroundColor: T.surface, alignItems: 'center', justifyContent: 'center' }]}>
+                        <Text style={{ color: T.muted, fontSize: 12 }}>{(f.displayName ?? '?')[0]}</Text>
                       </View>
                     )}
                     <View style={{ flex: 1 }}>
                       <Text style={styles.listName}>{f.displayName ?? 'Player'}</Text>
                       {f.duprDoubles != null && <Text style={styles.listMeta}>DUPR {f.duprDoubles.toFixed(1)}</Text>}
                     </View>
+                    {f.followedAt ? (
+                      <Text style={styles.listTime}>{formatTimeAgo(f.followedAt)}</Text>
+                    ) : null}
                   </View>
                 ))
               )}
             </ScrollView>
-            <TouchableOpacity style={styles.popupCloseBtn} onPress={() => setShowFollowersModal(false)}>
-              <Text style={styles.popupCloseBtnText}>Close</Text>
-            </TouchableOpacity>
           </View>
         </View>
       )}
@@ -698,10 +746,11 @@ export function ProfileSheet({
   )
 }
 
-const styles = StyleSheet.create({
+function createStyles(T: ThemeColors) {
+  return StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0a0a0a',
+    backgroundColor: T.bg,
     paddingHorizontal: 24,
   },
   scrollContent: {
@@ -716,7 +765,7 @@ const styles = StyleSheet.create({
   },
   backLabel: {
     fontSize: 14,
-    color: '#999',
+    color: T.textSecondary,
   },
   headerRow: {
     flexDirection: 'row',
@@ -727,7 +776,7 @@ const styles = StyleSheet.create({
   headerAvatarWrap: {
     borderRadius: 36,
     borderWidth: 2,
-    borderColor: '#f5a623',
+    borderColor: T.amber,
     overflow: 'hidden',
   },
   headerAvatar: {
@@ -736,33 +785,33 @@ const styles = StyleSheet.create({
     borderRadius: 36,
   },
   avatarFallback: {
-    backgroundColor: '#1a1a1a',
+    backgroundColor: T.surface,
     alignItems: 'center',
     justifyContent: 'center',
   },
   headerInitial: {
     fontSize: 28,
     fontWeight: '700',
-    color: '#ccc',
+    color: T.textSecondary,
   },
   headerName: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#fff',
+    color: T.text,
   },
   headerMeta: {
     fontSize: 13,
-    color: '#555',
+    color: T.textTertiary,
     marginTop: 4,
   },
   statsRow: {
     flexDirection: 'row',
     marginBottom: 24,
-    backgroundColor: '#111',
+    backgroundColor: T.input,
     borderRadius: 14,
     overflow: 'hidden',
     borderWidth: 0.5,
-    borderColor: '#1e1e1e',
+    borderColor: T.borderSubtle,
   },
   statCol: {
     flex: 1,
@@ -771,16 +820,16 @@ const styles = StyleSheet.create({
   },
   statDivider: {
     width: 0.5,
-    backgroundColor: '#1e1e1e',
+    backgroundColor: T.borderSubtle,
   },
   statValue: {
     fontSize: 22,
     fontWeight: '700',
-    color: '#f5a623',
+    color: T.amber,
   },
   statLabel: {
     fontSize: 12,
-    color: '#555',
+    color: T.textTertiary,
     marginTop: 4,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
@@ -793,9 +842,9 @@ const styles = StyleSheet.create({
   },
   kudosBtn: {
     flex: 1,
-    backgroundColor: '#1a1a1a',
+    backgroundColor: T.surface,
     borderWidth: 0.5,
-    borderColor: '#2a2a2a',
+    borderColor: T.border,
     borderRadius: 12,
     paddingVertical: 10,
     alignItems: 'center',
@@ -807,18 +856,18 @@ const styles = StyleSheet.create({
   kudosCount: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#f5a623',
+    color: T.amber,
     minHeight: 16,
   },
   kudosLabel: {
     fontSize: 9,
-    color: '#444',
+    color: T.textTertiary,
     textTransform: 'uppercase',
     letterSpacing: 0.6,
   },
   settingsBlock: {
     borderTopWidth: 0.5,
-    borderTopColor: '#1a1a1a',
+    borderTopColor: T.surface,
   },
   settingsRow: {
     flexDirection: 'row',
@@ -827,24 +876,24 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     paddingHorizontal: 4,
     borderBottomWidth: 0.5,
-    borderBottomColor: '#1a1a1a',
+    borderBottomColor: T.surface,
   },
   settingsLabel: {
     flex: 1,
     fontSize: 16,
-    color: '#ccc',
+    color: T.textSecondary,
   },
   settingsRight: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#f5a623',
+    color: T.amber,
   },
   streakCard: {
     marginHorizontal: 14,
     marginBottom: 12,
     backgroundColor: '#1f1400',
     borderWidth: 0.5,
-    borderColor: '#f5a623',
+    borderColor: T.amber,
     borderRadius: 16,
     padding: 16,
   },
@@ -857,7 +906,7 @@ const styles = StyleSheet.create({
   streakNum: {
     fontSize: 42,
     fontWeight: '700',
-    color: '#f5a623',
+    color: T.amber,
     lineHeight: 46,
     flexShrink: 0,
   },
@@ -867,12 +916,12 @@ const styles = StyleSheet.create({
   streakLabel: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#fff',
+    color: T.text,
     marginBottom: 3,
   },
   streakSub: {
     fontSize: 11,
-    color: '#666',
+    color: T.muted,
     lineHeight: 15,
   },
   streakExplainer: {
@@ -918,19 +967,19 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 36,
     borderRadius: 10,
-    backgroundColor: '#141414',
+    backgroundColor: T.input,
     borderWidth: 0.5,
-    borderColor: '#2a2a2a',
+    borderColor: T.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
   weekDotPlayed: {
-    backgroundColor: '#f5a623',
-    borderColor: '#f5a623',
+    backgroundColor: T.amber,
+    borderColor: T.amber,
   },
   weekDotText: {
     fontSize: 9,
-    color: '#666',
+    color: T.muted,
     fontWeight: '500',
   },
   weekDotTextPlayed: {
@@ -938,9 +987,9 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   compareBlock: {
-    backgroundColor: '#1a1a1a',
+    backgroundColor: T.surface,
     borderWidth: 0.5,
-    borderColor: '#2a2a2a',
+    borderColor: T.border,
     borderRadius: 12,
     padding: 12,
   },
@@ -952,7 +1001,7 @@ const styles = StyleSheet.create({
   },
   compareTitle: {
     fontSize: 11,
-    color: '#888',
+    color: T.muted,
     fontWeight: '500',
   },
   compareVals: {
@@ -961,29 +1010,29 @@ const styles = StyleSheet.create({
   compareHighlight: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#f5a623',
+    color: T.amber,
   },
   compareDivider: {
-    color: '#333',
+    color: T.textTertiary,
   },
   compareSub: {
     fontSize: 11,
-    color: '#555',
+    color: T.textTertiary,
   },
   barBg: {
     height: 5,
-    backgroundColor: '#111',
+    backgroundColor: T.input,
     borderRadius: 3,
     marginBottom: 7,
   },
   barFill: {
     height: 5,
-    backgroundColor: '#f5a623',
+    backgroundColor: T.amber,
     borderRadius: 3,
   },
   compareCaption: {
     fontSize: 10,
-    color: '#444',
+    color: T.textTertiary,
     lineHeight: 14,
   },
   reclubDuprPill: {
@@ -1010,34 +1059,61 @@ const styles = StyleSheet.create({
     elevation: 999,
     paddingHorizontal: 24,
   },
+  popupSheetBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    justifyContent: 'flex-end',
+    zIndex: 999,
+    elevation: 999,
+  },
+  popupSheet: {
+    height: Dimensions.get('window').height * 0.8,
+    backgroundColor: T.input,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    borderWidth: 0.5,
+    borderColor: T.border,
+    borderBottomWidth: 0,
+  },
+  popupSheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  popupSheetScroll: {
+    flex: 1,
+  },
   popupCard: {
-    backgroundColor: '#111',
+    backgroundColor: T.input,
     borderRadius: 20,
     padding: 24,
     width: '100%',
     borderWidth: 0.5,
-    borderColor: '#2a2a2a',
+    borderColor: T.border,
   },
   popupTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#fff',
+    color: T.text,
     marginBottom: 6,
   },
   popupSub: {
     fontSize: 13,
-    color: '#666',
+    color: T.muted,
     marginBottom: 16,
   },
   popupInput: {
-    backgroundColor: '#1a1a1a',
+    backgroundColor: T.surface,
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 14,
     fontSize: 18,
-    color: '#fff',
+    color: T.text,
     borderWidth: 1,
-    borderColor: '#2a2a2a',
+    borderColor: T.border,
     marginBottom: 16,
   },
   popupBtnRow: {
@@ -1050,13 +1126,13 @@ const styles = StyleSheet.create({
     padding: 13,
     alignItems: 'center',
     borderRadius: 10,
-    backgroundColor: '#1a1a1a',
+    backgroundColor: T.surface,
     borderWidth: 1,
-    borderColor: '#2a2a2a',
+    borderColor: T.border,
   },
   popupBtnCancelText: {
     fontSize: 14,
-    color: '#ccc',
+    color: T.textSecondary,
     fontWeight: '600',
   },
   popupBtnSave: {
@@ -1064,7 +1140,7 @@ const styles = StyleSheet.create({
     padding: 13,
     alignItems: 'center',
     borderRadius: 10,
-    backgroundColor: '#f5a623',
+    backgroundColor: T.amber,
   },
   popupBtnSaveText: {
     fontSize: 14,
@@ -1076,7 +1152,7 @@ const styles = StyleSheet.create({
     padding: 13,
     alignItems: 'center',
     borderRadius: 10,
-    backgroundColor: '#f5a623',
+    backgroundColor: T.amber,
     marginTop: 16,
   },
   popupCloseBtnText: {
@@ -1090,7 +1166,7 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingVertical: 10,
     borderBottomWidth: 0.5,
-    borderBottomColor: '#1a1a1a',
+    borderBottomColor: T.surface,
   },
   listAvatar: {
     width: 36,
@@ -1100,12 +1176,18 @@ const styles = StyleSheet.create({
   listName: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#ddd',
+    color: T.text,
   },
   listMeta: {
     fontSize: 11,
-    color: '#666',
+    color: T.muted,
     marginTop: 2,
+  },
+  listTime: {
+    fontSize: 11,
+    color: T.muted,
+    flexShrink: 0,
+    marginLeft: 8,
   },
   devBadge: {
     backgroundColor: '#f97316',
@@ -1116,7 +1198,8 @@ const styles = StyleSheet.create({
   devBadgeText: {
     fontSize: 9,
     fontWeight: '800',
-    color: '#fff',
+    color: T.text,
     letterSpacing: 0.5,
   },
 })
+}

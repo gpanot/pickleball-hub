@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState } from 'react'
+import React, { useRef, useEffect, useState, useMemo } from 'react'
 import {
   View,
   Text,
@@ -9,7 +9,8 @@ import {
   Modal,
 } from 'react-native'
 import { Users, Clock, X } from 'lucide-react-native'
-import { T } from '../theme'
+import { useTheme } from '../useTheme'
+import type { ThemeColors } from '../theme'
 import { RING_COLORS, type Session } from '../data'
 import { PlayerAvatar } from './PlayerAvatar'
 
@@ -115,6 +116,8 @@ function ScoreBreakdownPopup({
   item: FriendGoingItem
   scoreColor: string
 }) {
+  const T = useTheme()
+  const bp = useMemo(() => createBp(T), [T])
   const { duprScore, fillScore, communityScore, total } = computeBreakdown(item)
   const totalPoints = duprScore + fillScore + communityScore
   const rows = [
@@ -176,6 +179,8 @@ function averageTopDupr(players: FriendGoingItem['topDupr']): number | null {
 
 /* ── small fill-rate bar ──────────────────────────────────────── */
 function FillBar({ filled, total }: { filled: number; total: number }) {
+  const T = useTheme()
+  const fb = useMemo(() => createFb(T), [T])
   const pct = total > 0 ? Math.min(filled / total, 1) : 0
   return (
     <View style={fb.track}>
@@ -265,7 +270,8 @@ export function sessionToFriendGoingItem(session: Session): FriendGoingItem {
   }
 }
 
-const fb = StyleSheet.create({
+function createFb(T: ThemeColors) {
+  return StyleSheet.create({
   track: {
     height: 3,
     borderRadius: 2,
@@ -277,7 +283,8 @@ const fb = StyleSheet.create({
     height: '100%',
     borderRadius: 2,
   },
-})
+  })
+}
 
 /* ── FriendGoingCard ──────────────────────────────────────────── */
 export function FriendGoingCard({
@@ -289,6 +296,9 @@ export function FriendGoingCard({
   onCardPress,
   isSignedIn,
 }: Props) {
+  const T = useTheme()
+  const fb = useMemo(() => createFb(T), [T])
+  const s = useMemo(() => createCardS(T), [T])
   const joined = item.totalSpots - item.spotsLeft
   const pulseAnim = useRef(new Animated.Value(1)).current
   const [scorePopupVisible, setScorePopupVisible] = useState(false)
@@ -457,7 +467,7 @@ export function FriendGoingCard({
 
       {/* ⑤ Fill bar */}
       <View style={s.capacityRow}>
-        <Users size={11} color="rgba(255,255,255,0.35)" strokeWidth={1.5} />
+        <Users size={11} color={T.iconMuted} strokeWidth={1.5} />
         <Text style={s.capacityText}>{joined}/{item.totalSpots} joined</Text>
         <FillBar filled={joined} total={item.totalSpots} />
         <Text style={[s.spotsText, item.spotsLeft <= 5 && { color: T.amber }]}>
@@ -484,14 +494,15 @@ export function FriendGoingCard({
   )
 }
 
-const s = StyleSheet.create({
+function createCardS(T: ThemeColors) {
+  return StyleSheet.create({
   card: {
     marginHorizontal: 16,
     marginBottom: 10,
-    backgroundColor: '#140f00',
+    backgroundColor: T.surface,
     borderRadius: 16,
     borderWidth: 1.5,
-    borderColor: 'rgba(245,166,35,0.55)',
+    borderColor: T.amber + '8C',
     paddingBottom: 14,
     gap: 6,
   },
@@ -509,7 +520,7 @@ const s = StyleSheet.create({
   },
   fcSocialName: {
     fontSize: 9,
-    color: '#999',
+    color: T.muted,
     textTransform: 'uppercase',
     letterSpacing: 0.6,
     marginBottom: 3,
@@ -517,7 +528,7 @@ const s = StyleSheet.create({
   fcVenue: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#fff',
+    color: T.text,
     lineHeight: 18,
   },
   fcScoreBadge: {
@@ -531,7 +542,7 @@ const s = StyleSheet.create({
   },
   fcScoreLbl: {
     fontSize: 7,
-    color: '#555',
+    color: T.muted,
     textTransform: 'uppercase',
     letterSpacing: 0.04,
   },
@@ -603,7 +614,7 @@ const s = StyleSheet.create({
   friendLabel: {
     flex: 1,
     fontSize: 12,
-    color: '#ccc',
+    color: T.muted,
     fontWeight: '500',
   },
   duprSection: {
@@ -636,7 +647,7 @@ const s = StyleSheet.create({
   avgDuprLbl: {
     fontSize: 8,
     fontWeight: '600',
-    color: '#666',
+    color: T.muted,
     letterSpacing: 0.4,
   },
   avgDuprVal: {
@@ -653,12 +664,12 @@ const s = StyleSheet.create({
   },
   capacityText: {
     fontSize: 11,
-    color: 'rgba(255,255,255,0.3)',
+    color: T.muted,
     minWidth: 60,
   },
   spotsText: {
     fontSize: 11,
-    color: 'rgba(255,255,255,0.35)',
+    color: T.muted,
     minWidth: 36,
     textAlign: 'right',
   },
@@ -675,25 +686,27 @@ const s = StyleSheet.create({
   joinBtnText: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#1a0a00',
+    color: T.textOnPrimary,
   },
-})
+  })
+}
 
-const bp = StyleSheet.create({
+function createBp(T: ThemeColors) {
+  return StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.7)',
+    backgroundColor: T.overlay,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 28,
   },
   card: {
-    backgroundColor: '#111',
+    backgroundColor: T.input,
     borderRadius: 18,
     padding: 20,
     width: '100%',
     borderWidth: 0.5,
-    borderColor: '#2a2a2a',
+    borderColor: T.border,
     gap: 10,
   },
   header: {
@@ -704,7 +717,7 @@ const bp = StyleSheet.create({
   title: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#fff',
+    color: T.text,
   },
   total: {
     fontSize: 36,
@@ -714,7 +727,7 @@ const bp = StyleSheet.create({
   },
   divider: {
     height: 0.5,
-    backgroundColor: '#2a2a2a',
+    backgroundColor: T.border,
   },
   row: {
     flexDirection: 'row',
@@ -723,12 +736,12 @@ const bp = StyleSheet.create({
   },
   rowLabel: {
     fontSize: 13,
-    color: '#ccc',
+    color: T.textSecondary,
     fontWeight: '500',
   },
   rowHint: {
     fontSize: 10,
-    color: '#666',
+    color: T.muted,
     marginTop: 1,
   },
   barWrap: {
@@ -745,7 +758,7 @@ const bp = StyleSheet.create({
   rowPts: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#fff',
+    color: T.text,
     minWidth: 52,
     textAlign: 'right',
   },
@@ -757,7 +770,8 @@ const bp = StyleSheet.create({
   totalPts: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#ccc',
+    color: T.textSecondary,
     textAlign: 'right',
   },
-})
+  })
+}

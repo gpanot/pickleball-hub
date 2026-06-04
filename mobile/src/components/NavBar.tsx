@@ -1,15 +1,16 @@
-import React from 'react'
+import React, { useMemo } from 'react'
 import { View, Text, TouchableOpacity, Platform } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Zap, Users, Shield } from 'lucide-react-native'
-import { T } from '../theme'
-
+import { useTheme } from '../useTheme'
+import type { ThemeColors } from '../theme'
 export type TabId = 'swipe' | 'circle' | 'squadd'
 
 /** Content height of the bottom tab bar (excluding safe-area padding). */
 export const NAV_BAR_CONTENT_HEIGHT = 46
 
 export function useNavBarHeight() {
+  const T = useTheme()
   const insets = useSafeAreaInsets()
   const bottomPad = Math.max(insets.bottom, Platform.OS === 'android' ? 12 : 0)
   return NAV_BAR_CONTENT_HEIGHT + bottomPad
@@ -24,6 +25,7 @@ export function NavBar({
   onChange: (key: TabId) => void
   badges?: Partial<Record<TabId, number>>
 }) {
+  const T = useTheme()
   const insets = useSafeAreaInsets()
   const bottomPad = Math.max(insets.bottom, Platform.OS === 'android' ? 12 : 0)
 
@@ -37,9 +39,9 @@ export function NavBar({
     <View
       style={{
         flexDirection: 'row',
-        backgroundColor: '#0a0a0a',
+        backgroundColor: T.bg,
         borderTopWidth: 0.5,
-        borderTopColor: '#1e1e1e',
+        borderTopColor: T.borderSubtle,
         paddingBottom: bottomPad,
         paddingTop: 10,
       }}
@@ -58,7 +60,7 @@ export function NavBar({
             <View style={{ position: 'relative' }}>
               <Icon
                 size={20}
-                color={active === key ? T.amber : '#444'}
+                color={active === key ? T.amber : T.textTertiary}
                 strokeWidth={1.5}
               />
               {badge > 0 && (
@@ -80,7 +82,7 @@ export function NavBar({
                     style={{
                       fontSize: 9,
                       fontWeight: '700',
-                      color: '#fff',
+                      color: T.text,
                     }}
                   >
                     {badge > 99 ? '99+' : badge}
@@ -92,7 +94,7 @@ export function NavBar({
               style={{
                 fontSize: 10,
                 fontWeight: active === key ? '600' : '400',
-                color: active === key ? T.amber : '#444',
+                color: active === key ? T.amber : T.textTertiary,
               }}
             >
               {label}

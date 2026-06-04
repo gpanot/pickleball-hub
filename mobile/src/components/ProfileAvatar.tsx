@@ -1,10 +1,12 @@
 import React from 'react'
 import { TouchableOpacity, View, Text, Image } from 'react-native'
 import { useAuthStore } from '../stores/authStore'
+import { useTheme } from '../useTheme'
 import { useSignUpModal } from '../contexts/SignUpModalContext'
 import { useProfileMenu } from '../contexts/ProfileMenuContext'
 
 export function ProfileAvatar({ size = 28 }: { size?: number }) {
+  const T = useTheme()
   const { jwt, displayName, imageUrl } = useAuthStore()
   const { openSignUp } = useSignUpModal()
   const { openProfileSheet } = useProfileMenu()
@@ -34,9 +36,9 @@ export function ProfileAvatar({ size = 28 }: { size?: number }) {
           height: size,
           borderRadius: size / 2,
           borderWidth,
-          borderColor: '#f5a623',
+          borderColor: T.amber,
           overflow: 'hidden',
-          backgroundColor: '#1a1a1a',
+          backgroundColor: T.surface,
           alignItems: 'center',
           justifyContent: 'center',
         }}
@@ -52,7 +54,7 @@ export function ProfileAvatar({ size = 28 }: { size?: number }) {
             style={{
               fontSize: size * 0.38,
               fontWeight: '600',
-              color: '#ccc',
+              color: T.textSecondary,
             }}
           >
             {initial}

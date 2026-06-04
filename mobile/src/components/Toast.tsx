@@ -9,6 +9,7 @@ import Animated, {
 } from 'react-native-reanimated'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { create } from 'zustand'
+import { useTheme } from '../useTheme'
 
 type ToastType = 'success' | 'error' | 'info'
 
@@ -33,6 +34,7 @@ const TYPE_COLORS: Record<ToastType, { bg: string; text: string }> = {
 }
 
 export function ToastOverlay() {
+  const T = useTheme()
   const insets = useSafeAreaInsets()
   const { message, type, key } = useToast()
   const translateY = useSharedValue(-80)
@@ -67,7 +69,7 @@ export function ToastOverlay() {
     <Animated.View
       style={[
         styles.container,
-        { top: insets.top + 8, backgroundColor: colors.bg },
+        { top: insets.top + 8, backgroundColor: colors.bg, borderColor: T.border },
         animStyle,
       ]}
       pointerEvents="none"
@@ -88,7 +90,6 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
   },
   text: {
     fontSize: 14,

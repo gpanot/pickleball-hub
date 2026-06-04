@@ -1,5 +1,7 @@
-import React from 'react'
+import React, { useMemo } from 'react'
 import { Modal, View, Text, TouchableOpacity, StyleSheet } from 'react-native'
+import { useTheme } from '../useTheme'
+import type { ThemeColors } from '../theme'
 import * as Location from 'expo-location'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 
@@ -14,6 +16,9 @@ export function LocationPermissionSheet({
   onClose: () => void
   onGranted?: (coords: { lat: number; lng: number }) => void
 }) {
+  const T = useTheme()
+  const s = useMemo(() => createLocationSheetStyles(T), [T])
+
   const handleAllow = async () => {
     onClose()
     await AsyncStorage.setItem(STORAGE_KEY, '1')
@@ -61,19 +66,19 @@ export function LocationPermissionSheet({
           {[
             {
               icon: '🗺️',
-              bg: '#0a1a2e',
+              bg: T.input,
               title: 'Distance on every card',
               sub: 'See exactly how far each session is',
             },
             {
               icon: '⚡',
-              bg: '#0a1a2e',
+              bg: T.input,
               title: 'Ranked by proximity',
               sub: 'Sessions within 5km are prioritised in your Top 5',
             },
             {
               icon: '🟢',
-              bg: '#0a1a2e',
+              bg: T.input,
               title: 'Looking to play',
               sub: 'Women nearby show their distance from you',
             },
@@ -102,98 +107,100 @@ export function LocationPermissionSheet({
   )
 }
 
-const s = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    justifyContent: 'flex-end',
-  },
-  sheet: {
-    backgroundColor: '#111',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 24,
-    paddingBottom: 40,
-  },
-  handle: {
-    width: 36,
-    height: 4,
-    backgroundColor: '#333',
-    borderRadius: 2,
-    alignSelf: 'center',
-    marginBottom: 20,
-  },
-  iconWrap: {
-    width: 64,
-    height: 64,
-    backgroundColor: '#0a1a2e',
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#4a90e2',
-    alignItems: 'center',
-    justifyContent: 'center',
-    alignSelf: 'center',
-    marginBottom: 16,
-  },
-  iconEmoji: { fontSize: 28 },
-  badge: {
-    backgroundColor: '#0a1a2e',
-    borderWidth: 0.5,
-    borderColor: '#4a90e2',
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    alignSelf: 'center',
-    marginBottom: 12,
-  },
-  badgeText: { fontSize: 10, fontWeight: '700', color: '#4a90e2' },
-  title: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#fff',
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  sub: {
-    fontSize: 13,
-    color: '#666',
-    textAlign: 'center',
-    lineHeight: 20,
-    marginBottom: 20,
-  },
-  benefitRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
-    paddingVertical: 8,
-    borderBottomWidth: 0.5,
-    borderBottomColor: '#1a1a1a',
-  },
-  benefitIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  benefitEmoji: { fontSize: 14 },
-  benefitText: { flex: 1 },
-  benefitTitle: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#ddd',
-    marginBottom: 2,
-  },
-  benefitSub: { fontSize: 11, color: '#555', lineHeight: 16 },
-  btnPrimary: {
-    backgroundColor: '#4a90e2',
-    borderRadius: 14,
-    padding: 14,
-    alignItems: 'center',
-    marginTop: 20,
-  },
-  btnPrimaryText: { fontSize: 15, fontWeight: '700', color: '#fff' },
-  btnSecondary: { padding: 10, alignItems: 'center', marginTop: 4 },
-  btnSecondaryText: { fontSize: 13, color: '#444' },
-})
+function createLocationSheetStyles(T: ThemeColors) {
+  return StyleSheet.create({
+    backdrop: {
+      flex: 1,
+      backgroundColor: T.sheetBackdrop,
+      justifyContent: 'flex-end',
+    },
+    sheet: {
+      backgroundColor: T.bg,
+      borderTopLeftRadius: 24,
+      borderTopRightRadius: 24,
+      padding: 24,
+      paddingBottom: 40,
+    },
+    handle: {
+      width: 36,
+      height: 4,
+      backgroundColor: T.border,
+      borderRadius: 2,
+      alignSelf: 'center',
+      marginBottom: 20,
+    },
+    iconWrap: {
+      width: 64,
+      height: 64,
+      backgroundColor: T.input,
+      borderRadius: 20,
+      borderWidth: 1,
+      borderColor: '#4a90e2',
+      alignItems: 'center',
+      justifyContent: 'center',
+      alignSelf: 'center',
+      marginBottom: 16,
+    },
+    iconEmoji: { fontSize: 28 },
+    badge: {
+      backgroundColor: T.input,
+      borderWidth: 0.5,
+      borderColor: '#4a90e2',
+      borderRadius: 6,
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+      alignSelf: 'center',
+      marginBottom: 12,
+    },
+    badgeText: { fontSize: 10, fontWeight: '700', color: '#4a90e2' },
+    title: {
+      fontSize: 20,
+      fontWeight: '700',
+      color: T.text,
+      textAlign: 'center',
+      marginBottom: 8,
+    },
+    sub: {
+      fontSize: 13,
+      color: T.textSecondary,
+      textAlign: 'center',
+      lineHeight: 20,
+      marginBottom: 20,
+    },
+    benefitRow: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: 10,
+      paddingVertical: 8,
+      borderBottomWidth: 0.5,
+      borderBottomColor: T.borderSubtle,
+    },
+    benefitIcon: {
+      width: 32,
+      height: 32,
+      borderRadius: 10,
+      alignItems: 'center',
+      justifyContent: 'center',
+      flexShrink: 0,
+    },
+    benefitEmoji: { fontSize: 14 },
+    benefitText: { flex: 1 },
+    benefitTitle: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: T.text,
+      marginBottom: 2,
+    },
+    benefitSub: { fontSize: 11, color: T.textTertiary, lineHeight: 16 },
+    btnPrimary: {
+      backgroundColor: '#4a90e2',
+      borderRadius: 14,
+      padding: 14,
+      alignItems: 'center',
+      marginTop: 20,
+    },
+    btnPrimaryText: { fontSize: 15, fontWeight: '700', color: '#fff' },
+    btnSecondary: { padding: 10, alignItems: 'center', marginTop: 4 },
+    btnSecondaryText: { fontSize: 13, color: T.textTertiary },
+  })
+}

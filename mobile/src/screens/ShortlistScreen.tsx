@@ -15,7 +15,8 @@ import Animated, {
 } from 'react-native-reanimated'
 import { X, Zap } from 'lucide-react-native'
 import * as Haptics from 'expo-haptics'
-import { T } from '../theme'
+import { useTheme } from '../useTheme'
+import type { ThemeColors } from '../theme'
 import { type Session } from '../data'
 import { TopBar, CardBody } from '../components/CardBody'
 import { LockedFriendsRow } from '../components/LockedFriendsRow'
@@ -41,6 +42,7 @@ const SORT_LABELS: Record<SortKey, string> = {
 
 /* ── Dot indicator ───────────────────────────────────────────── */
 function CarouselDot({ active }: { active: boolean }) {
+  const T = useTheme()
   const w = useSharedValue(active ? 14 : 5)
 
   React.useEffect(() => {
@@ -51,7 +53,7 @@ function CarouselDot({ active }: { active: boolean }) {
     width: w.value,
     height: 5,
     borderRadius: 3,
-    backgroundColor: active ? T.amber : 'rgba(255,255,255,0.1)',
+    backgroundColor: active ? T.amber : T.borderSubtle,
   }))
 
   return <Animated.View style={animStyle} />
@@ -59,6 +61,7 @@ function CarouselDot({ active }: { active: boolean }) {
 
 /* ── Carousel card CTA — "Join on Reclub" + X remove ────────── */
 function CarouselCta({ eventUrl, onRemove }: { eventUrl: string; onRemove: () => void }) {
+  const T = useTheme()
   return (
     <View style={{ flexDirection: 'row', gap: 8 }}>
       <TouchableOpacity
@@ -89,15 +92,15 @@ function CarouselCta({ eventUrl, onRemove }: { eventUrl: string; onRemove: () =>
         accessibilityRole="button"
         style={{
           width: 48,
-          backgroundColor: 'rgba(255,255,255,0.04)',
+          backgroundColor: T.input,
           borderWidth: 1,
-          borderColor: 'rgba(255,255,255,0.08)',
+          borderColor: T.border,
           borderRadius: 14,
           alignItems: 'center',
           justifyContent: 'center',
         }}
       >
-        <X size={16} color="rgba(255,255,255,0.4)" strokeWidth={2} />
+        <X size={16} color={T.iconMuted} strokeWidth={2} />
       </TouchableOpacity>
     </View>
   )
@@ -105,6 +108,7 @@ function CarouselCta({ eventUrl, onRemove }: { eventUrl: string; onRemove: () =>
 
 /* ── ShortlistScreen ─────────────────────────────────────────── */
 export function ShortlistScreen({ onNavigateToSwipe }: { onNavigateToSwipe?: () => void } = {}) {
+  const T = useTheme()
   const { openSignUp } = useSignUpModal()
   const signedIn = useAuthStore((s) => s.isSignedIn)()
   const sort = useUiStore((s) => s.shortlistSort)
@@ -294,12 +298,12 @@ export function ShortlistScreen({ onNavigateToSwipe }: { onNavigateToSwipe?: () 
             padding: 24,
           }}
         >
-          <Zap size={40} color="#444" strokeWidth={1.5} />
+          <Zap size={40} color={T.textTertiary} strokeWidth={1.5} />
           <Text
             style={{
               fontSize: 16,
               fontWeight: '600',
-              color: '#fff',
+              color: T.text,
               marginTop: 16,
             }}
           >
@@ -308,7 +312,7 @@ export function ShortlistScreen({ onNavigateToSwipe }: { onNavigateToSwipe?: () 
           <Text
             style={{
               fontSize: 13,
-              color: '#888',
+              color: T.textSecondary,
               marginTop: 6,
               textAlign: 'center',
             }}

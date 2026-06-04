@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useMemo } from 'react'
 import {
   View,
   Text,
@@ -15,7 +15,8 @@ import Animated, {
 } from 'react-native-reanimated'
 import { X } from 'lucide-react-native'
 import Slider from '@react-native-community/slider'
-import { T } from '../theme'
+import { useTheme } from '../useTheme'
+import type { ThemeColors } from '../theme'
 import {
   SWIPE_FILTER_DEFAULTS,
   type SwipeDateFilter,
@@ -40,6 +41,8 @@ export function FilterPill({
   onPress: () => void
   hideSections?: HiddenFilterSections
 }) {
+  const T = useTheme()
+  const bar = useMemo(() => createBar(T), [T])
   const swipeDuprMin = useUiStore((s) => s.swipeDuprMin)
   const swipeTimeSlots = useUiStore((s) => s.swipeTimeSlots)
   const swipeMaxCards = useUiStore((s) => s.swipeMaxCards)
@@ -99,6 +102,8 @@ export function SwipeFilterBar({
 }: {
   onFiltersPress: () => void
 }) {
+  const T = useTheme()
+  const bar = useMemo(() => createBar(T), [T])
   const dateFilter = useUiStore((s) => s.swipeDateFilter)
   const setDateFilter = useUiStore((s) => s.setSwipeDateFilter)
 
@@ -161,6 +166,8 @@ export function SwipeFilterSheet({
   /** Per-slot max avgDupr from the current Top 5 pool */
   slotStats?: { morning: number | null; afternoon: number | null; evening: number | null }
 }) {
+  const T = useTheme()
+  const sheet = useMemo(() => createSheet(T), [T])
   const dateFilter = useUiStore((s) => s.swipeDateFilter)
   const swipeDuprMin = useUiStore((s) => s.swipeDuprMin)
   const swipeTimeSlots = useUiStore((s) => s.swipeTimeSlots)
@@ -247,7 +254,7 @@ export function SwipeFilterSheet({
               <Text style={sheet.reset}>Reset</Text>
             </TouchableOpacity>
             <TouchableOpacity style={sheet.close} onPress={onClose}>
-              <X size={16} color="#555" />
+              <X size={16} color={T.textTertiary} />
             </TouchableOpacity>
           </View>
         </View>
@@ -272,7 +279,7 @@ export function SwipeFilterSheet({
                 setDraftDupr(rounded)
               }}
               minimumTrackTintColor={T.amber}
-              maximumTrackTintColor="#1e1e1e"
+              maximumTrackTintColor={T.borderSubtle}
               thumbTintColor={T.amber}
             />
             <View style={sheet.sliderLabels}>
@@ -393,7 +400,7 @@ export function SwipeFilterSheet({
         >
           {applying ? (
             <View style={sheet.applyRow}>
-              <ActivityIndicator size="small" color="#1a0a00" />
+              <ActivityIndicator size="small" color={T.textOnPrimary} />
               <Text style={sheet.applyText}>Applying...</Text>
             </View>
           ) : (
@@ -405,7 +412,8 @@ export function SwipeFilterSheet({
   )
 }
 
-const bar = StyleSheet.create({
+function createBar(T: ThemeColors) {
+  return StyleSheet.create({
   row: {
     flexDirection: 'row',
     gap: 8,
@@ -424,7 +432,7 @@ const bar = StyleSheet.create({
   },
   pillTextOn: {
     fontWeight: '600',
-    color: '#fff',
+    color: T.text,
   },
   filterPill: {
     flexDirection: 'row',
@@ -446,11 +454,13 @@ const bar = StyleSheet.create({
     color: T.amber,
   },
   filterPillTextActive: {
-    color: '#1a0a00',
+    color: T.textOnPrimary,
   },
-})
+  })
+}
 
-const sheet = StyleSheet.create({
+function createSheet(T: ThemeColors) {
+  return StyleSheet.create({
   host: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 9000,
@@ -459,24 +469,24 @@ const sheet = StyleSheet.create({
   },
   backdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.65)',
+    backgroundColor: T.sheetBackdrop,
   },
   sheet: {
-    backgroundColor: '#111',
+    backgroundColor: T.bg,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     paddingHorizontal: 20,
     paddingTop: 12,
     paddingBottom: 36,
     borderWidth: 1,
-    borderColor: '#222',
+    borderColor: T.border,
     maxHeight: '85%',
   },
   handle: {
     width: 36,
     height: 4,
     borderRadius: 2,
-    backgroundColor: '#333',
+    backgroundColor: T.border,
     alignSelf: 'center',
     marginBottom: 4,
   },
@@ -491,7 +501,7 @@ const sheet = StyleSheet.create({
   title: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#fff',
+    color: T.text,
   },
   headerRight: {
     flexDirection: 'row',
@@ -507,9 +517,9 @@ const sheet = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: '#1a1a1a',
+    backgroundColor: T.surface,
     borderWidth: 0.5,
-    borderColor: '#2a2a2a',
+    borderColor: T.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -525,7 +535,7 @@ const sheet = StyleSheet.create({
   },
   label: {
     fontSize: 11,
-    color: '#555',
+    color: T.muted,
     textTransform: 'uppercase',
     letterSpacing: 0.8,
     fontWeight: '500',
@@ -543,7 +553,7 @@ const sheet = StyleSheet.create({
   },
   sliderLabel: {
     fontSize: 10,
-    color: '#333',
+    color: T.muted,
   },
   chipRow: {
     flexDirection: 'row',
@@ -551,29 +561,29 @@ const sheet = StyleSheet.create({
   },
   timeBtn: {
     flex: 1,
-    backgroundColor: '#1a1a1a',
+    backgroundColor: T.surface,
     borderWidth: 0.5,
-    borderColor: '#2a2a2a',
+    borderColor: T.border,
     borderRadius: 10,
     paddingVertical: 10,
     alignItems: 'center',
     gap: 3,
   },
   timeBtnOn: {
-    backgroundColor: '#1f1400',
+    backgroundColor: T.input,
     borderColor: T.amber,
   },
   timeLbl: {
     fontSize: 11,
     fontWeight: '600',
-    color: '#555',
+    color: T.muted,
   },
   timeLblOn: {
     color: T.amber,
   },
   timeSub: {
     fontSize: 9,
-    color: '#2a2a2a',
+    color: T.textTertiary,
   },
   timeSubOn: {
     color: T.amber,
@@ -581,7 +591,7 @@ const sheet = StyleSheet.create({
   },
   timeMax: {
     fontSize: 9,
-    color: '#444',
+    color: T.textTertiary,
     marginTop: 3,
     fontWeight: '600' as const,
   },
@@ -591,22 +601,22 @@ const sheet = StyleSheet.create({
   },
   vibeBtn: {
     flex: 1,
-    backgroundColor: '#1a1a1a',
+    backgroundColor: T.surface,
     borderWidth: 0.5,
-    borderColor: '#2a2a2a',
+    borderColor: T.border,
     borderRadius: 10,
     paddingVertical: 10,
     alignItems: 'center',
     justifyContent: 'center',
   },
   vibeBtnOn: {
-    backgroundColor: '#1f1400',
+    backgroundColor: T.input,
     borderColor: T.amber,
   },
   vibeLbl: {
     fontSize: 11,
     fontWeight: '600',
-    color: '#555',
+    color: T.muted,
   },
   vibeLblOn: {
     color: T.amber,
@@ -622,19 +632,19 @@ const sheet = StyleSheet.create({
   },
   toggleLbl: {
     fontSize: 13,
-    color: '#aaa',
+    color: T.text,
     fontWeight: '500',
   },
   toggleSub: {
     fontSize: 10,
-    color: '#333',
+    color: T.muted,
     marginTop: 2,
   },
   toggle: {
     width: 38,
     height: 22,
     borderRadius: 11,
-    backgroundColor: '#2a2a2a',
+    backgroundColor: T.border,
     position: 'relative',
     flexShrink: 0,
   },
@@ -645,13 +655,13 @@ const sheet = StyleSheet.create({
     width: 18,
     height: 18,
     borderRadius: 9,
-    backgroundColor: '#555',
+    backgroundColor: T.textTertiary,
     position: 'absolute',
     top: 2,
     left: 2,
   },
   toggleDotOn: {
-    backgroundColor: '#fff',
+    backgroundColor: T.text,
     left: 18,
   },
   apply: {
@@ -673,6 +683,7 @@ const sheet = StyleSheet.create({
   applyText: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#1a0a00',
+    color: T.textOnPrimary,
   },
 })
+}

@@ -1,6 +1,7 @@
-import React from 'react'
+import React, { useMemo } from 'react'
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native'
-import { T } from '../theme'
+import { useTheme } from '../useTheme'
+import type { ThemeColors } from '../theme'
 import { PlayerAvatar } from './PlayerAvatar'
 
 export type FriendListItem = {
@@ -11,7 +12,7 @@ export type FriendListItem = {
   isFollowing?: boolean
 }
 
-function DuprPill({ value }: { value: number }) {
+function DuprPill({ value, styles }: { value: number; styles: ReturnType<typeof createStyles> }) {
   return (
     <View style={styles.duprPill}>
       <Text style={styles.duprLabel}>DUPR</Text>
@@ -31,6 +32,8 @@ export function FriendListRow({
   onFollow?: () => void
   onAvatarPress?: () => void
 }) {
+  const T = useTheme()
+  const styles = useMemo(() => createStyles(T), [T])
   return (
     <View style={styles.row}>
       <TouchableOpacity onPress={onAvatarPress} disabled={!onAvatarPress}>
@@ -44,7 +47,7 @@ export function FriendListRow({
       <View style={styles.info}>
         <Text style={styles.name}>{item.displayName ?? 'Unknown'}</Text>
         {item.duprDoubles != null && (
-          <DuprPill value={item.duprDoubles} />
+          <DuprPill value={item.duprDoubles} styles={styles} />
         )}
       </View>
       {onFollow ? (
@@ -67,14 +70,15 @@ export function FriendListRow({
   )
 }
 
-const styles = StyleSheet.create({
+function createStyles(T: ThemeColors) {
+  return StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
     paddingVertical: 12,
     borderBottomWidth: 0.5,
-    borderBottomColor: '#1e1e1e',
+    borderBottomColor: T.borderSubtle,
   },
   info: {
     flex: 1,
@@ -83,7 +87,7 @@ const styles = StyleSheet.create({
   name: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#fff',
+    color: T.text,
   },
   duprPill: {
     flexDirection: 'row',
@@ -118,8 +122,8 @@ const styles = StyleSheet.create({
     borderColor: '#1D9E75',
   },
   followBtnDone: {
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    borderColor: '#333',
+    backgroundColor: T.input,
+    borderColor: T.border,
   },
   followLabel: {
     fontSize: 13,
@@ -128,19 +132,20 @@ const styles = StyleSheet.create({
   },
   followLabelDone: {
     fontWeight: '500',
-    color: '#666',
+    color: T.muted,
   },
   unfollowBtn: {
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 8,
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: T.input,
     borderWidth: 1,
-    borderColor: '#333',
+    borderColor: T.border,
   },
   unfollowLabel: {
     fontSize: 13,
     fontWeight: '500',
-    color: '#999',
+    color: T.textSecondary,
   },
-})
+  })
+}

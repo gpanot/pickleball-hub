@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react'
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import {
   View, Text, ScrollView, TouchableOpacity,
   StyleSheet, Modal, Pressable, Dimensions, Image, Linking, Alert,
@@ -7,7 +7,8 @@ import {
 import * as Location from 'expo-location'
 import { X, MapPin, MoreHorizontal } from 'lucide-react-native'
 import { useAuthStore } from '../stores/authStore'
-import { T } from '../theme'
+import { useTheme } from '../useTheme'
+import type { ThemeColors } from '../theme'
 import { formatDistance } from '../data'
 
 const HCMC_LAT = 10.78
@@ -27,6 +28,7 @@ function SkeletonBox({
   borderRadius?: number
   style?: object
 }) {
+  const T = useTheme()
   return (
     <View
       style={[
@@ -34,7 +36,7 @@ function SkeletonBox({
           width,
           height,
           borderRadius,
-          backgroundColor: '#1a1a1a',
+          backgroundColor: T.surface,
         },
         style,
       ]}
@@ -43,6 +45,8 @@ function SkeletonBox({
 }
 
 function ProfileSkeleton() {
+  const T = useTheme()
+  const s = useMemo(() => createS(T), [T])
   return (
     <View style={s.skeletonWrap}>
       <SkeletonBox width={156} height={156} borderRadius={78} style={{ alignSelf: 'center' }} />
@@ -113,6 +117,8 @@ interface Props {
 }
 
 export function PlayerProfileSheet({ userId, onClose, stub }: Props) {
+  const T = useTheme()
+  const s = useMemo(() => createS(T), [T])
   const { authedFetch } = useAuthStore()
   const [profile, setProfile] = useState<PlayerProfile | null>(null)
   const [venuesLoading, setVenuesLoading] = useState(false)
@@ -330,7 +336,7 @@ export function PlayerProfileSheet({ userId, onClose, stub }: Props) {
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
             accessibilityRole="button"
             accessibilityLabel="Close profile">
-            <X size={18} color="#999" />
+            <X size={18} color={T.textSecondary} />
           </TouchableOpacity>
 
           {profile?.profileId && (
@@ -340,7 +346,7 @@ export function PlayerProfileSheet({ userId, onClose, stub }: Props) {
               hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
               accessibilityRole="button"
               accessibilityLabel="More options">
-              <MoreHorizontal size={18} color="#999" />
+              <MoreHorizontal size={18} color={T.textSecondary} />
             </TouchableOpacity>
           )}
 
@@ -508,11 +514,11 @@ export function PlayerProfileSheet({ userId, onClose, stub }: Props) {
               )}
 
               <View style={s.statsRow}>
-                <View style={[s.stat, { borderRightWidth: 0.5, borderRightColor: '#1e1e1e' }]}>
+                <View style={[s.stat, { borderRightWidth: 0.5, borderRightColor: T.borderSubtle }]}>
                   <Text style={s.statVal}>{profile.followingCount}</Text>
                   <Text style={s.statLbl}>Following</Text>
                 </View>
-                <View style={[s.stat, { borderRightWidth: 0.5, borderRightColor: '#1e1e1e' }]}>
+                <View style={[s.stat, { borderRightWidth: 0.5, borderRightColor: T.borderSubtle }]}>
                   <Text style={s.statVal}>{profile.followersCount}</Text>
                   <Text style={s.statLbl}>Followers</Text>
                 </View>
@@ -523,12 +529,12 @@ export function PlayerProfileSheet({ userId, onClose, stub }: Props) {
               </View>
 
               <View style={s.kudosStatsRow}>
-                <View style={[s.kudosStat, { borderRightWidth: 0.5, borderRightColor: '#2a2a2a' }]}>
+                <View style={[s.kudosStat, { borderRightWidth: 0.5, borderRightColor: T.border }]}>
                   <Text style={s.kudosStatEmoji}>🤜</Text>
                   <Text style={s.kudosStatVal}>{profile.myKudos.fistbump}</Text>
                   <Text style={s.kudosStatLbl}>Fist bumps</Text>
                 </View>
-                <View style={[s.kudosStat, { borderRightWidth: 0.5, borderRightColor: '#2a2a2a' }]}>
+                <View style={[s.kudosStat, { borderRightWidth: 0.5, borderRightColor: T.border }]}>
                   <Text style={s.kudosStatEmoji}>🔥</Text>
                   <Text style={s.kudosStatVal}>{profile.myKudos.flame}</Text>
                   <Text style={s.kudosStatLbl}>On fire</Text>
@@ -690,7 +696,7 @@ export function PlayerProfileSheet({ userId, onClose, stub }: Props) {
             value={reportDetail}
             onChangeText={setReportDetail}
             placeholder="Additional details (optional)"
-            placeholderTextColor="#555"
+            placeholderTextColor={T.textTertiary}
             multiline
             numberOfLines={3}
           />
@@ -719,7 +725,8 @@ export function PlayerProfileSheet({ userId, onClose, stub }: Props) {
   )
 }
 
-const s = StyleSheet.create({
+function createS(T: ThemeColors) {
+  return StyleSheet.create({
   fullScreenHost: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 10000,
@@ -731,7 +738,7 @@ const s = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.7)',
   },
   sheet: {
-    backgroundColor: '#111',
+    backgroundColor: T.input,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     height: SHEET_HEIGHT,
@@ -744,7 +751,7 @@ const s = StyleSheet.create({
   },
   handle: {
     width: 32, height: 3,
-    backgroundColor: '#2a2a2a',
+    backgroundColor: T.border,
     borderRadius: 2,
     alignSelf: 'center',
     marginBottom: 12,
@@ -758,9 +765,9 @@ const s = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: '#1a1a1a',
+    backgroundColor: T.surface,
     borderWidth: 0.5,
-    borderColor: '#2a2a2a',
+    borderColor: T.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -780,13 +787,13 @@ const s = StyleSheet.create({
   },
   loadingText: {
     fontSize: 13,
-    color: '#444',
+    color: T.textTertiary,
   },
   retryBtn: {
     marginTop: 12,
-    backgroundColor: '#1a1a1a',
+    backgroundColor: T.surface,
     borderWidth: 0.5,
-    borderColor: '#2a2a2a',
+    borderColor: T.border,
     borderRadius: 8,
     paddingHorizontal: 16,
     paddingVertical: 8,
@@ -822,7 +829,7 @@ const s = StyleSheet.create({
     borderColor: T.amber,
   },
   avatarFallback: {
-    backgroundColor: '#1a1a1a',
+    backgroundColor: T.surface,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -834,12 +841,12 @@ const s = StyleSheet.create({
   displayName: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#fff',
+    color: T.text,
     textAlign: 'center',
   },
   reclubId: {
     fontSize: 11,
-    color: '#555',
+    color: T.textTertiary,
     marginTop: 4,
     textAlign: 'center',
   },
@@ -858,12 +865,12 @@ const s = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 20,
-    backgroundColor: '#f5a623',
+    backgroundColor: T.amber,
   },
   followBtnActive: {
-    backgroundColor: '#1a1a1a',
+    backgroundColor: T.surface,
     borderWidth: 1,
-    borderColor: '#333',
+    borderColor: T.border,
   },
   followBtnText: {
     fontSize: 13,
@@ -871,14 +878,14 @@ const s = StyleSheet.create({
     color: '#000',
   },
   followBtnTextActive: {
-    color: '#888',
+    color: T.textSecondary,
   },
   followBtnExpanded: {
     alignSelf: 'center',
     paddingHorizontal: 20,
     paddingVertical: 8,
     borderRadius: 20,
-    backgroundColor: '#f5a623',
+    backgroundColor: T.amber,
     marginTop: 10,
   },
   duprPill: {
@@ -908,9 +915,9 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     marginHorizontal: 16,
     marginBottom: 14,
-    backgroundColor: '#1a1a1a',
+    backgroundColor: T.surface,
     borderWidth: 0.5,
-    borderColor: '#2a2a2a',
+    borderColor: T.border,
     borderRadius: 12,
     overflow: 'hidden',
   },
@@ -926,7 +933,7 @@ const s = StyleSheet.create({
   },
   statLbl: {
     fontSize: 9,
-    color: '#444',
+    color: T.textTertiary,
     textTransform: 'uppercase',
     letterSpacing: 0.6,
     marginTop: 2,
@@ -935,9 +942,9 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     marginHorizontal: 16,
     marginBottom: 14,
-    backgroundColor: '#1a1a1a',
+    backgroundColor: T.surface,
     borderWidth: 0.5,
-    borderColor: '#2a2a2a',
+    borderColor: T.border,
     borderRadius: 12,
     overflow: 'hidden',
   },
@@ -957,7 +964,7 @@ const s = StyleSheet.create({
   },
   kudosStatLbl: {
     fontSize: 9,
-    color: '#444',
+    color: T.textTertiary,
     textTransform: 'uppercase',
     letterSpacing: 0.6,
     marginTop: 2,
@@ -967,7 +974,7 @@ const s = StyleSheet.create({
     marginBottom: 14,
     backgroundColor: '#1f1400',
     borderWidth: 0.5,
-    borderColor: '#f5a623',
+    borderColor: T.amber,
     borderRadius: 12,
     padding: 12,
   },
@@ -980,7 +987,7 @@ const s = StyleSheet.create({
   streakNum: {
     fontSize: 24,
     fontWeight: '700',
-    color: '#f5a623',
+    color: T.amber,
     lineHeight: 28,
   },
   streakRight: {
@@ -989,11 +996,11 @@ const s = StyleSheet.create({
   streakLabel: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#fff',
+    color: T.text,
   },
   streakSub: {
     fontSize: 10,
-    color: '#555',
+    color: T.textTertiary,
     marginTop: 1,
   },
   weekDotsRow: {
@@ -1004,13 +1011,13 @@ const s = StyleSheet.create({
     flex: 1,
     height: 5,
     borderRadius: 3,
-    backgroundColor: '#141414',
+    backgroundColor: T.input,
     borderWidth: 0.5,
-    borderColor: '#1e1e1e',
+    borderColor: T.borderSubtle,
   },
   weekDotOn: {
-    backgroundColor: '#f5a623',
-    borderColor: '#f5a623',
+    backgroundColor: T.amber,
+    borderColor: T.amber,
   },
   section: {
     paddingHorizontal: 16,
@@ -1018,13 +1025,13 @@ const s = StyleSheet.create({
   },
   sectionLabel: {
     fontSize: 11,
-    color: '#ccc',
+    color: T.textSecondary,
     fontWeight: '500',
     marginBottom: 2,
   },
   sectionSub: {
     fontSize: 9,
-    color: '#444',
+    color: T.textTertiary,
     textTransform: 'uppercase',
     letterSpacing: 0.6,
     marginBottom: 10,
@@ -1035,9 +1042,9 @@ const s = StyleSheet.create({
     flexWrap: 'wrap',
   },
   reclubKudosPill: {
-    backgroundColor: '#141414',
+    backgroundColor: T.input,
     borderWidth: 0.5,
-    borderColor: '#2a2a2a',
+    borderColor: T.border,
     borderRadius: 10,
     paddingHorizontal: 10,
     paddingVertical: 6,
@@ -1051,13 +1058,13 @@ const s = StyleSheet.create({
   },
   reclubKudosLabel: {
     fontSize: 9,
-    color: '#555',
+    color: T.textTertiary,
     marginTop: 1,
   },
   venueBlock: {
-    backgroundColor: '#141414',
+    backgroundColor: T.input,
     borderWidth: 0.5,
-    borderColor: '#1e1e1e',
+    borderColor: T.borderSubtle,
     borderRadius: 10,
     paddingHorizontal: 10,
     paddingTop: 8,
@@ -1081,9 +1088,9 @@ const s = StyleSheet.create({
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: '#1a1a1a',
+    backgroundColor: T.surface,
     borderWidth: 0.5,
-    borderColor: '#2a2a2a',
+    borderColor: T.border,
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
@@ -1098,7 +1105,7 @@ const s = StyleSheet.create({
     flex: 1,
     fontSize: 12,
     fontWeight: '600',
-    color: '#ddd',
+    color: T.text,
     minWidth: 0,
   },
   venueDistance: {
@@ -1109,7 +1116,7 @@ const s = StyleSheet.create({
   },
   venueMeta: {
     fontSize: 10,
-    color: '#555',
+    color: T.textTertiary,
     marginTop: 2,
   },
   venueCount: {
@@ -1125,7 +1132,7 @@ const s = StyleSheet.create({
     paddingVertical: 6,
     paddingLeft: 32,
     borderTopWidth: 0.5,
-    borderTopColor: '#1a1a1a',
+    borderTopColor: T.surface,
   },
   slotMain: {
     flex: 1,
@@ -1138,17 +1145,17 @@ const s = StyleSheet.create({
   },
   slotName: {
     fontSize: 10,
-    color: '#666',
+    color: T.muted,
     marginTop: 1,
   },
   slotCount: {
     fontSize: 10,
-    color: '#444',
+    color: T.textTertiary,
     flexShrink: 0,
   },
   venuesEmpty: {
     fontSize: 12,
-    color: '#333',
+    color: T.textTertiary,
     fontStyle: 'italic',
     paddingVertical: 8,
   },
@@ -1167,7 +1174,7 @@ const s = StyleSheet.create({
     padding: 20,
   },
   reportSheet: {
-    backgroundColor: '#141414',
+    backgroundColor: T.input,
     borderRadius: 16,
     padding: 20,
     width: '100%',
@@ -1175,7 +1182,7 @@ const s = StyleSheet.create({
   reportTitle: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#fff',
+    color: T.text,
     marginBottom: 16,
   },
   reportOption: {
@@ -1183,7 +1190,7 @@ const s = StyleSheet.create({
     paddingHorizontal: 14,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#2a2a2a',
+    borderColor: T.border,
     marginBottom: 8,
   },
   reportOptionActive: {
@@ -1192,20 +1199,20 @@ const s = StyleSheet.create({
   },
   reportOptionText: {
     fontSize: 14,
-    color: '#aaa',
+    color: T.textSecondary,
   },
   reportOptionTextActive: {
     color: '#ef4444',
     fontWeight: '600',
   },
   reportInput: {
-    backgroundColor: '#1a1a1a',
+    backgroundColor: T.surface,
     borderRadius: 10,
     padding: 12,
     fontSize: 13,
-    color: '#fff',
+    color: T.text,
     borderWidth: 1,
-    borderColor: '#2a2a2a',
+    borderColor: T.border,
     marginTop: 8,
     minHeight: 72,
     textAlignVertical: 'top',
@@ -1220,12 +1227,12 @@ const s = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#333',
+    borderColor: T.border,
     alignItems: 'center',
   },
   reportCancelText: {
     fontSize: 14,
-    color: '#888',
+    color: T.textSecondary,
   },
   reportSubmitBtn: {
     flex: 1,
@@ -1237,6 +1244,7 @@ const s = StyleSheet.create({
   reportSubmitText: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#fff',
+    color: T.text,
   },
 })
+}

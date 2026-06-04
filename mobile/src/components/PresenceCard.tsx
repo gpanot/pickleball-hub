@@ -1,6 +1,7 @@
-import React, { useEffect, useRef } from 'react'
+import React, { useEffect, useRef, useMemo } from 'react'
 import { View, Text, TouchableOpacity, StyleSheet, Image, Animated, Linking } from 'react-native'
-import { T } from '../theme'
+import { useTheme } from '../useTheme'
+import type { ThemeColors } from '../theme'
 import { formatTime } from '../data'
 
 interface LiveVenue {
@@ -52,6 +53,8 @@ interface Props {
 }
 
 export function PresenceCard({ venue, onPlayerPress, onShowRoster }: Props) {
+  const T = useTheme()
+  const s = useMemo(() => createS(T), [T])
   const minsLeft = minutesUntil(venue.endTime)
   const durationH = sessionDurationHours(venue.startTime, venue.endTime)
   const endingSoon = minsLeft <= 60
@@ -164,7 +167,8 @@ export function PresenceCard({ venue, onPlayerPress, onShowRoster }: Props) {
   )
 }
 
-const s = StyleSheet.create({
+function createS(T: ThemeColors) {
+  return StyleSheet.create({
   card: {
     marginHorizontal: 12,
     marginBottom: 8,
@@ -239,7 +243,7 @@ const s = StyleSheet.create({
     height: 28,
     borderRadius: 14,
     borderWidth: 1.5,
-    borderColor: '#0a0a0a',
+    borderColor: T.bg,
     overflow: 'hidden',
   },
   playerAvFallback: {
@@ -253,18 +257,18 @@ const s = StyleSheet.create({
     color: '#5DCAA5',
   },
   playerMore: {
-    backgroundColor: '#141414',
-    borderColor: '#1e1e1e',
+    backgroundColor: T.input,
+    borderColor: T.borderSubtle,
     alignItems: 'center',
     justifyContent: 'center',
   },
   playerMoreText: {
     fontSize: 8,
-    color: '#555',
+    color: T.muted,
   },
   circleInfo: {
     fontSize: 10,
-    color: '#555',
+    color: T.muted,
     marginLeft: 10,
     flex: 1,
     minWidth: 0,
@@ -275,7 +279,7 @@ const s = StyleSheet.create({
   },
   endsAt: {
     fontSize: 10,
-    color: '#444',
+    color: T.muted,
   },
   endingSoon: {
     backgroundColor: '#1f1400',
@@ -287,7 +291,7 @@ const s = StyleSheet.create({
   },
   endingSoonText: {
     fontSize: 10,
-    color: '#f5a623',
+    color: T.amber,
     fontWeight: '500',
   },
   checkClubBtn: {
@@ -301,7 +305,7 @@ const s = StyleSheet.create({
   checkClubText: {
     fontSize: 10,
     fontWeight: '600',
-    color: '#1a0a00',
+    color: T.textOnPrimary,
   },
   btnGroup: {
     flexDirection: 'row',
@@ -318,6 +322,7 @@ const s = StyleSheet.create({
   showMeBtnText: {
     fontSize: 10,
     fontWeight: '600',
-    color: '#fff',
+    color: T.text,
   },
 })
+}

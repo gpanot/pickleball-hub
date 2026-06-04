@@ -5,7 +5,7 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "dark",
+    "userInterfaceStyle": "automatic",
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "cover",
@@ -48,10 +48,20 @@
       ]
     },
     "scheme": "com.squadd.thehub.app",
+    "assetBundlePatterns": [
+      "assets/**/*"
+    ],
     "plugins": [
       "@react-native-firebase/app",
       "expo-asset",
-      "expo-font",
+      [
+        "expo-font",
+        {
+          "fonts": [
+            "./assets/fonts/Bangers_400Regular.ttf"
+          ]
+        }
+      ],
       "expo-secure-store",
       "@react-native-google-signin/google-signin",
       [

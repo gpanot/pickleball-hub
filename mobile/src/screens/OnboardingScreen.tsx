@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useMemo } from 'react'
 import {
   View,
   Text,
@@ -15,7 +15,8 @@ import {
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { ChevronLeft } from 'lucide-react-native'
-import { T } from '../theme'
+import { useTheme } from '../useTheme'
+import type { ThemeColors } from '../theme'
 import { useAuthStore } from '../stores/authStore'
 import { PlayerSearch, type SearchResult, type PlayerSearchRef } from '../components/PlayerSearch'
 import { GEAR_AVATAR } from '../components/gear/gearConstants'
@@ -42,6 +43,8 @@ export function OnboardingScreen({
   onCancel?: () => void
   initialStep?: number
 }) {
+  const T = useTheme()
+  const styles = useMemo(() => createStyles(T), [T])
   const insets = useSafeAreaInsets()
   const [step, setStep] = useState(initialStep)
   const [dupr, setDupr] = useState('')
@@ -166,7 +169,7 @@ export function OnboardingScreen({
                     ? T.amber
                     : i === step
                       ? 'rgba(245,166,35,0.6)'
-                      : '#2a2a2a',
+                      : T.border,
               },
             ]}
           />
@@ -177,7 +180,7 @@ export function OnboardingScreen({
       <View style={styles.header}>
         {step > 0 && (
           <TouchableOpacity onPress={prevStep} style={styles.backBtn}>
-            <ChevronLeft size={20} color="#999" strokeWidth={2} />
+            <ChevronLeft size={20} color={T.textSecondary} strokeWidth={2} />
             <Text style={styles.backLabel}>Back</Text>
           </TouchableOpacity>
         )}
@@ -201,7 +204,7 @@ export function OnboardingScreen({
               if (duprError) setDuprError('')
             }}
             placeholder="e.g. 3.5"
-            placeholderTextColor="#555"
+            placeholderTextColor={T.textTertiary}
             keyboardType="decimal-pad"
             maxLength={4}
           />
@@ -351,7 +354,8 @@ export function OnboardingScreen({
   )
 }
 
-const styles = StyleSheet.create({
+function createStyles(T: ThemeColors) {
+  return StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: T.bg,
@@ -381,12 +385,12 @@ const styles = StyleSheet.create({
   },
   backLabel: {
     fontSize: 13,
-    color: '#999',
+    color: T.textSecondary,
   },
   stepLabel: {
     fontSize: 11,
     fontWeight: '700',
-    color: '#666',
+    color: T.muted,
     textTransform: 'uppercase',
     letterSpacing: 1,
   },
@@ -396,12 +400,12 @@ const styles = StyleSheet.create({
   question: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#fff',
+    color: T.text,
     lineHeight: 26,
   },
   questionSub: {
     fontSize: 13,
-    color: '#888',
+    color: T.textSecondary,
     marginTop: 6,
   },
   textInput: {
@@ -410,7 +414,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 14,
     fontSize: 18,
-    color: '#fff',
+    color: T.text,
     marginTop: 20,
     borderWidth: 1,
     borderColor: T.border,
@@ -444,11 +448,11 @@ const styles = StyleSheet.create({
   optionLabel: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#fff',
+    color: T.text,
   },
   optionSub: {
     fontSize: 11,
-    color: '#888',
+    color: T.textSecondary,
     marginTop: 2,
   },
   checkMark: {
@@ -471,13 +475,13 @@ const styles = StyleSheet.create({
   genderAvatar: {
     borderRadius: 20,
     borderWidth: 3,
-    borderColor: 'rgba(255,255,255,0.1)',
+    borderColor: T.border,
     overflow: 'hidden',
   },
   genderLabel: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#fff',
+    color: T.text,
   },
   linkErrorText: {
     fontSize: 13,
@@ -487,3 +491,4 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
 })
+}

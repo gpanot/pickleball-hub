@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react'
+import React, { useEffect, useMemo } from 'react'
 import {
   View,
   Text,
@@ -22,8 +22,10 @@ import {
   Smile,
   Zap,
   MapPin,
+  Heart,
 } from 'lucide-react-native'
-import { T } from '../theme'
+import { useTheme } from '../useTheme'
+import type { ThemeColors } from '../theme'
 import { ProfileAvatar } from './ProfileAvatar'
 import {
   type Session,
@@ -52,6 +54,7 @@ const VIBE_LABELS: Record<string, string> = {
 
 /* ── ImageAvatar (URL-based, used by card roster) ────────────── */
 function ImageAvatar({ url, name, size }: { url: string; name: string; size: number }) {
+  const T = useTheme()
   const [failed, setFailed] = React.useState(false)
   const initials = name
     .split(' ')
@@ -67,12 +70,12 @@ function ImageAvatar({ url, name, size }: { url: string; name: string; size: num
           width: size,
           height: size,
           borderRadius: size / 2,
-          backgroundColor: '#333',
+          backgroundColor: T.borderSubtle,
           alignItems: 'center',
           justifyContent: 'center',
         }}
       >
-        <Text style={{ color: '#fff', fontWeight: '600', fontSize: size * 0.36 }}>
+        <Text style={{ color: T.text, fontWeight: '600', fontSize: size * 0.36 }}>
           {initials || '?'}
         </Text>
       </View>
@@ -94,12 +97,15 @@ export function TopBar({
   title,
   counter,
   showAvatar = false,
+  onHeartPress,
 }: {
   supertitle?: string
   title: string
   counter?: string
   showAvatar?: boolean
+  onHeartPress?: () => void
 }) {
+  const T = useTheme()
   const insets = useSafeAreaInsets()
   return (
     <View
@@ -119,7 +125,7 @@ export function TopBar({
             style={{
               fontSize: 9,
               fontWeight: '600',
-              color: '#555',
+              color: T.textTertiary,
               textTransform: 'uppercase',
               letterSpacing: 0.5,
               marginBottom: 2,
@@ -132,7 +138,7 @@ export function TopBar({
           style={{
             fontSize: supertitle ? 16 : 22,
             fontWeight: '600',
-            color: '#fff',
+            color: T.text,
           }}
         >
           {title}
@@ -143,6 +149,11 @@ export function TopBar({
           {counter}
         </Text>
       ) : null}
+      {onHeartPress ? (
+        <TouchableOpacity onPress={onHeartPress} hitSlop={10} style={{ marginRight: 10 }}>
+          <Heart size={22} color="#e74c6f" strokeWidth={2} />
+        </TouchableOpacity>
+      ) : null}
       {showAvatar ? <ProfileAvatar /> : null}
     </View>
   )
@@ -150,6 +161,7 @@ export function TopBar({
 
 /* ── MatchDial ───────────────────────────────────────────────── */
 export function MatchDial({ pct }: { pct: number }) {
+  const T = useTheme()
   const isNew = pct === 0
   const size = 72
   const radius = 30
@@ -169,7 +181,7 @@ export function MatchDial({ pct }: { pct: number }) {
           cx={size / 2}
           cy={size / 2}
           r={radius}
-          stroke="#2a2a2a"
+          stroke={T.border}
           strokeWidth={3}
           fill="transparent"
         />
@@ -189,7 +201,7 @@ export function MatchDial({ pct }: { pct: number }) {
           />
         )}
       </Svg>
-      <Text style={{ fontSize: isNew ? 13 : 18, fontWeight: '700', color: isNew ? '#888' : T.amber }}>
+      <Text style={{ fontSize: isNew ? 13 : 18, fontWeight: '700', color: isNew ? T.textSecondary : T.amber }}>
         {isNew ? 'New' : `${pct}%`}
       </Text>
     </View>
@@ -198,6 +210,7 @@ export function MatchDial({ pct }: { pct: number }) {
 
 /* ── TopDuprAlternatingLabel — cycles "Top 8 DUPR" ↔ "Avge. X.XX" ─ */
 function TopDuprAlternatingLabel({ average }: { average: number }) {
+  const T = useTheme()
   const showAvg = useSharedValue(0)
 
   useEffect(() => {
@@ -236,6 +249,7 @@ function TopDuprAlternatingLabel({ average }: { average: number }) {
 
 /* ── CardBgRotator ───────────────────────────────────────────── */
 export function CardBgRotator() {
+  const T = useTheme()
   const opacity0 = useSharedValue(1)
   const opacity1 = useSharedValue(0)
 
@@ -300,6 +314,7 @@ export function CardBody({
   /** Tap top DUPR avatars — if signed out, prompts login; if signed in, shows modal. */
   onTopDuprPress?: () => void
 }) {
+  const T = useTheme()
   const displayFriends = s.friends.slice(0, 4)
   const price = formatPriceDuration(s.feeAmount, s.durationMin)
   const distance = formatDistance(s.distanceKm)
@@ -416,7 +431,7 @@ export function CardBody({
               </Text>
               {s.joinedRecently > 0 && (
                 <>
-                  <Text style={{ fontSize: 11, color: '#555' }}>·</Text>
+                  <Text style={{ fontSize: 11, color: T.textTertiary }}>·</Text>
                   <Text style={{ fontSize: 11, color: '#888' }}>
                     {s.joinedRecently} joined recently
                   </Text>
@@ -452,7 +467,7 @@ export function CardBody({
             style={{
               fontSize: 28,
               fontWeight: '800',
-              color: '#fff',
+              color: T.text,
               lineHeight: 32,
               marginBottom: 6,
               maxWidth: '75%',
@@ -477,7 +492,7 @@ export function CardBody({
           </Text>
           {distance !== '' && (
             <>
-              <Text style={{ fontSize: 12, color: '#555' }}>·</Text>
+              <Text style={{ fontSize: 12, color: T.textTertiary }}>·</Text>
               <MapPin size={11} color="rgba(255,255,255,0.55)" strokeWidth={1.5} />
               <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)' }}>
                 {distance}
@@ -532,7 +547,7 @@ export function CardBody({
                         borderRadius: 5,
                         backgroundColor: T.green,
                         borderWidth: 2,
-                        borderColor: '#0a0a0a',
+                        borderColor: T.bg,
                       }}
                     />
                   </View>
@@ -605,12 +620,12 @@ export function CardBody({
             </TouchableOpacity>
           )}
           {duprLabel && (
-            <Text style={{ fontSize: 12, color: '#555' }}>|</Text>
+            <Text style={{ fontSize: 12, color: T.textTertiary }}>|</Text>
           )}
           {duprLabel && (
             <Text style={{ fontSize: 12, color: '#7F77DD' }}>{duprLabel}</Text>
           )}
-          <Text style={{ fontSize: 12, color: '#555' }}>|</Text>
+          <Text style={{ fontSize: 12, color: T.textTertiary }}>|</Text>
           <Smile size={12} color="#1D9E75" strokeWidth={2} />
           <Text style={{ fontSize: 12, color: '#1D9E75' }}>
             {vibeLabel === 'Competitive' ? 'Intense' : vibeLabel === 'Chill' ? 'Relaxed vibes' : 'Great vibes'}
@@ -645,7 +660,7 @@ export function CardBody({
             >
               <Zap size={20} color={T.amber} strokeWidth={2.5} />
             </View>
-            <Text style={{ fontSize: 14, fontWeight: '600', color: '#fff' }}>
+            <Text style={{ fontSize: 14, fontWeight: '600', color: T.text }}>
               {vibeLabel}
             </Text>
           </View>
@@ -687,7 +702,7 @@ export function CardBody({
               )}
             </TouchableOpacity>
           ) : s.roster.length === 0 ? (
-            <Text style={{ fontSize: 11, color: '#555' }}>
+            <Text style={{ fontSize: 11, color: T.textTertiary }}>
               No roster yet
             </Text>
           ) : null}

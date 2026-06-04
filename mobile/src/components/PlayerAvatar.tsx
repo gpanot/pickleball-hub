@@ -1,5 +1,7 @@
-import React, { useState } from 'react'
+import React, { useMemo, useState } from 'react'
 import { View, Text, Image, StyleSheet } from 'react-native'
+import { useTheme } from '../useTheme'
+import type { ThemeColors } from '../theme'
 import { resolvePlayerImageUrl, reclubAvatarUrl } from '../lib/avatar'
 import { useAvatarCacheStore } from '../stores/avatarCacheStore'
 
@@ -16,6 +18,8 @@ export function PlayerAvatar({
   size?: number
   style?: object
 }) {
+  const T = useTheme()
+  const styles = useMemo(() => createStyles(T), [T])
   const cached = useAvatarCacheStore((s) => s.cache[userId])
   const remember = useAvatarCacheStore((s) => s.remember)
   const [failed, setFailed] = useState(false)
@@ -77,14 +81,16 @@ export function PlayerAvatar({
   )
 }
 
-const styles = StyleSheet.create({
-  fallback: {
-    backgroundColor: '#333',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  initial: {
-    color: '#fff',
-    fontWeight: '600',
-  },
-})
+function createStyles(T: ThemeColors) {
+  return StyleSheet.create({
+    fallback: {
+      backgroundColor: T.borderSubtle,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    initial: {
+      color: T.text,
+      fontWeight: '600',
+    },
+  })
+}

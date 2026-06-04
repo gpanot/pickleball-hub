@@ -44,6 +44,7 @@ export async function GET(req: NextRequest) {
     displayName: f.follower.displayName,
     imageUrl: f.follower.reclubPlayer?.imageUrl ?? (f.follower.reclubUserId ? reclubAvatarUrl(f.follower.reclubUserId) : null),
     duprDoubles: f.follower.reclubPlayer?.duprDoubles ? Number(f.follower.reclubPlayer.duprDoubles) : null,
+    followedAt: f.createdAt.toISOString(),
   }));
 
   return NextResponse.json({ count: followers.length, followers });

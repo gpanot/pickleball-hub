@@ -1,7 +1,9 @@
-import React from 'react'
+import React, { useMemo } from 'react'
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native'
 import * as Location from 'expo-location'
 import AsyncStorage from '@react-native-async-storage/async-storage'
+import { useTheme } from '../useTheme'
+import type { ThemeColors } from '../theme'
 
 export function LocationPermissionPopup({
   visible,
@@ -10,6 +12,9 @@ export function LocationPermissionPopup({
   visible: boolean
   onClose: () => void
 }) {
+  const T = useTheme()
+  const s = useMemo(() => createStyles(T), [T])
+
   if (!visible) return null
 
   const handleAllow = async () => {
@@ -66,106 +71,110 @@ export function LocationPermissionPopup({
   )
 }
 
-const s = StyleSheet.create({
-  backdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.75)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 999,
-    paddingHorizontal: 24,
-  },
-  popup: {
-    backgroundColor: '#111',
-    borderRadius: 20,
-    padding: 24,
-    width: '100%',
-    alignItems: 'center',
-    borderWidth: 0.5,
-    borderColor: '#2a2a2a',
-  },
-  iconWrap: {
-    width: 64, height: 64,
-    backgroundColor: '#0a0a1f',
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#4a90e2',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 14,
-  },
-  iconEmoji: { fontSize: 28 },
-  badge: {
-    backgroundColor: '#0a0a1f',
-    borderWidth: 0.5,
-    borderColor: '#4a90e2',
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    marginBottom: 12,
-  },
-  badgeText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#4a90e2',
-  },
-  title: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#fff',
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  sub: {
-    fontSize: 13,
-    color: '#666',
-    textAlign: 'center',
-    lineHeight: 20,
-    marginBottom: 20,
-  },
-  benefitRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    width: '100%',
-    paddingVertical: 9,
-    borderBottomWidth: 0.5,
-    borderBottomColor: '#1a1a1a',
-  },
-  benefitIcon: {
-    width: 34, height: 34,
-    backgroundColor: '#0a0a1f',
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  benefitEmoji: { fontSize: 16 },
-  benefitLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#ddd',
-  },
-  btnPrimary: {
-    backgroundColor: '#f5a623',
-    borderRadius: 12,
-    padding: 13,
-    width: '100%',
-    alignItems: 'center',
-    marginTop: 20,
-    marginBottom: 8,
-  },
-  btnPrimaryText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#0a0a0a',
-  },
-  btnSecondary: {
-    padding: 10,
-    width: '100%',
-    alignItems: 'center',
-  },
-  btnSecondaryText: {
-    fontSize: 13,
-    color: '#444',
-  },
-})
+function createStyles(T: ThemeColors) {
+  return StyleSheet.create({
+    backdrop: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: T.overlay,
+      justifyContent: 'center',
+      alignItems: 'center',
+      zIndex: 999,
+      paddingHorizontal: 24,
+    },
+    popup: {
+      backgroundColor: T.bg,
+      borderRadius: 20,
+      padding: 24,
+      width: '100%',
+      alignItems: 'center',
+      borderWidth: 0.5,
+      borderColor: T.border,
+    },
+    iconWrap: {
+      width: 64,
+      height: 64,
+      backgroundColor: T.input,
+      borderRadius: 20,
+      borderWidth: 1,
+      borderColor: '#4a90e2',
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: 14,
+    },
+    iconEmoji: { fontSize: 28 },
+    badge: {
+      backgroundColor: T.input,
+      borderWidth: 0.5,
+      borderColor: '#4a90e2',
+      borderRadius: 6,
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+      marginBottom: 12,
+    },
+    badgeText: {
+      fontSize: 10,
+      fontWeight: '700',
+      color: '#4a90e2',
+    },
+    title: {
+      fontSize: 20,
+      fontWeight: '700',
+      color: T.text,
+      textAlign: 'center',
+      marginBottom: 8,
+    },
+    sub: {
+      fontSize: 13,
+      color: T.textSecondary,
+      textAlign: 'center',
+      lineHeight: 20,
+      marginBottom: 20,
+    },
+    benefitRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      width: '100%',
+      paddingVertical: 9,
+      borderBottomWidth: 0.5,
+      borderBottomColor: T.borderSubtle,
+    },
+    benefitIcon: {
+      width: 34,
+      height: 34,
+      backgroundColor: T.input,
+      borderRadius: 10,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    benefitEmoji: { fontSize: 16 },
+    benefitLabel: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: T.text,
+    },
+    btnPrimary: {
+      backgroundColor: T.amber,
+      borderRadius: 12,
+      padding: 13,
+      width: '100%',
+      alignItems: 'center',
+      marginTop: 20,
+      marginBottom: 8,
+    },
+    btnPrimaryText: {
+      fontSize: 15,
+      fontWeight: '700',
+      color: '#0B0B0C',
+    },
+    btnSecondary: {
+      padding: 10,
+      width: '100%',
+      alignItems: 'center',
+    },
+    btnSecondaryText: {
+      fontSize: 13,
+      color: T.textTertiary,
+    },
+  })
+}

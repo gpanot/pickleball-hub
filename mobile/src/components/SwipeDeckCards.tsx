@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useMemo } from 'react'
 import {
   View,
   Text,
@@ -17,7 +17,8 @@ import Animated, {
 } from 'react-native-reanimated'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import * as Haptics from 'expo-haptics'
-import { T } from '../theme'
+import { useTheme } from '../useTheme'
+import type { ThemeColors } from '../theme'
 import {
   type Session,
   formatPriceDuration,
@@ -52,6 +53,7 @@ function SwipeCard({
   onFriendsPress?: () => void
   onTopDuprPress?: () => void
 }) {
+  const T = useTheme()
   const fillPct = s.maxPlayers > 0 ? Math.min(1, s.joined / s.maxPlayers) : 0
   const cta = (
     <TouchableOpacity
@@ -70,7 +72,7 @@ function SwipeCard({
         elevation: 6,
       }}
     >
-      <Text style={{ fontSize: 14, fontWeight: '600', color: '#1a0a00', textAlign: 'center' }}>
+      <Text style={{ fontSize: 14, fontWeight: '600', color: T.textOnPrimary, textAlign: 'center' }}>
         Shortlist · {s.spotsLeft} spots left
       </Text>
       <View style={{ flexDirection: 'row', alignItems: 'center', alignSelf: 'center', marginTop: 6, gap: 6, maxWidth: 180 }}>
@@ -80,12 +82,12 @@ function SwipeCard({
               width: `${Math.round(fillPct * 100)}%`,
               height: 5,
               borderRadius: 3,
-              backgroundColor: fillPct >= 0.85 ? '#c0392b' : '#1a0a00',
+              backgroundColor: fillPct >= 0.85 ? T.red : T.textOnPrimary,
               opacity: fillPct >= 0.85 ? 1 : 0.6,
             }}
           />
         </View>
-        <Text style={{ fontSize: 10, fontWeight: '600', color: 'rgba(0,0,0,0.5)' }}>
+        <Text style={{ fontSize: 10, fontWeight: '600', color: T.textOnPrimary + '80' }}>
           {s.joined}/{s.maxPlayers}
         </Text>
       </View>
@@ -172,6 +174,7 @@ export function AnimatedSwipeCard({
   onFriendsPress?: () => void
   onTopDuprPress?: () => void
 }) {
+  const T = useTheme()
   const translateX = useSharedValue(0)
   const rotate = useSharedValue(0)
   const likeOpacity = useSharedValue(0)
@@ -232,9 +235,10 @@ export function AnimatedSwipeCard({
 }
 
 export function SecondaryCard({ s }: { s: Session }) {
+  const T = useTheme()
   const showScore = s.matchScore >= 50
   const mc = !showScore
-    ? '#666'
+    ? T.muted
     : s.matchScore >= 85
       ? T.amber
       : s.matchScore >= 70
@@ -279,7 +283,7 @@ export function SecondaryCard({ s }: { s: Session }) {
       >
         <View style={{ flex: 1, minWidth: 0 }}>
           <Text
-            style={{ fontSize: 14, fontWeight: '600', color: '#fff', marginBottom: 4 }}
+            style={{ fontSize: 14, fontWeight: '600', color: T.text, marginBottom: 4 }}
             numberOfLines={1}
           >
             {s.name}

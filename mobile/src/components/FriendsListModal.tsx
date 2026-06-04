@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useMemo } from 'react'
 import {
   View,
   Text,
@@ -11,7 +11,8 @@ import {
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { X } from 'lucide-react-native'
-import { T } from '../theme'
+import { useTheme } from '../useTheme'
+import type { ThemeColors } from '../theme'
 import { FriendListRow, type FriendListItem } from './FriendListRow'
 
 export type RecommendedPlayer = {
@@ -53,6 +54,9 @@ export function FriendsListModal({
   onFollowRecommended?: (userId: string) => void
   onRecommendedAvatarPress?: (userId: string) => void
 }) {
+  const T = useTheme()
+  const styles = useMemo(() => createStyles(T), [T])
+  const r = useMemo(() => createRecStyles(T), [T])
   const insets = useSafeAreaInsets()
 
   if (!visible) return null
@@ -74,7 +78,7 @@ export function FriendsListModal({
         <View style={styles.header}>
           <Text style={styles.title}>{title}</Text>
           <TouchableOpacity onPress={onClose} hitSlop={12}>
-            <X size={22} color="#999" strokeWidth={2} />
+            <X size={22} color={T.textSecondary} strokeWidth={2} />
           </TouchableOpacity>
         </View>
 
@@ -155,7 +159,8 @@ export function FriendsListModal({
   )
 }
 
-const styles = StyleSheet.create({
+function createStyles(T: ThemeColors) {
+  return StyleSheet.create({
   host: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 9000,
@@ -180,7 +185,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 4,
     borderRadius: 2,
-    backgroundColor: '#333',
+    backgroundColor: T.border,
     alignSelf: 'center',
     marginBottom: 14,
   },
@@ -193,31 +198,32 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#fff',
+    color: T.text,
     flex: 1,
     paddingRight: 12,
   },
   subtitle: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#f5a623',
+    color: T.amber,
     marginBottom: 10,
   },
   overflow: {
     fontSize: 13,
-    color: '#888',
+    color: T.muted,
     marginBottom: 8,
   },
   empty: {
     fontSize: 14,
-    color: '#888',
+    color: T.muted,
     textAlign: 'center',
     paddingVertical: 24,
   },
-})
+  })
+}
 
-// Recommendation section styles (kept separate for clarity)
-const r = StyleSheet.create({
+function createRecStyles(T: ThemeColors) {
+  return StyleSheet.create({
   recSection: {
     backgroundColor: '#0a0a1a',
     borderWidth: 0.5,
@@ -241,7 +247,7 @@ const r = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.6,
   },
-  recCount: { fontSize: 10, color: '#555' },
+  recCount: { fontSize: 10, color: T.textTertiary },
   recRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -260,8 +266,8 @@ const r = StyleSheet.create({
     backgroundColor: '#1a1a2a',
   },
   recInfo: { flex: 1 },
-  recName: { fontSize: 14, fontWeight: '600', color: '#fff' },
-  recDupr: { fontSize: 11, color: '#f5a623', fontWeight: '600', marginTop: 1 },
+  recName: { fontSize: 14, fontWeight: '600', color: T.text },
+  recDupr: { fontSize: 11, color: T.amber, fontWeight: '600', marginTop: 1 },
   recChip: {
     borderRadius: 5,
     paddingHorizontal: 6,
@@ -274,7 +280,7 @@ const r = StyleSheet.create({
   recChip_social: { backgroundColor: '#1a0a1a' },
   recChipText: { fontSize: 10, fontWeight: '500' },
   recChipText_overlap: { color: '#1D9E75' },
-  recChipText_level: { color: '#f5a623' },
+  recChipText_level: { color: T.amber },
   recChipText_social: { color: '#9b59b6' },
   recFollowBtn: {
     backgroundColor: '#4a90e2',
@@ -287,6 +293,7 @@ const r = StyleSheet.create({
   recFollowBtnText: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#fff',
+    color: T.text,
   },
-} as const)
+  })
+}

@@ -19,7 +19,8 @@ import {
   ChevronLeft,
 } from 'lucide-react-native'
 import * as Haptics from 'expo-haptics'
-import { T } from '../theme'
+import { useTheme } from '../useTheme'
+import type { ThemeColors } from '../theme'
 import { type Session, averageDupr } from '../data'
 import { LockedFriendsRow } from '../components/LockedFriendsRow'
 import { AnimatedSwipeCard, SecondaryCard } from '../components/SwipeDeckCards'
@@ -44,6 +45,8 @@ type Props = {
 }
 
 export function ExploreSessionsScreen({ onClose }: Props) {
+  const T = useTheme()
+  const styles = useMemo(() => createStyles(T), [T])
   const insets = useSafeAreaInsets()
   const { openSignUp } = useSignUpModal()
   const signedIn = useAuthStore((s) => s.isSignedIn)()
@@ -256,7 +259,7 @@ export function ExploreSessionsScreen({ onClose }: Props) {
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           accessibilityLabel="Back to top 5"
         >
-          <ChevronLeft size={22} color="#aaa" strokeWidth={2} />
+          <ChevronLeft size={22} color={T.textSecondary} strokeWidth={2} />
           <Text style={styles.backText}>Top 5</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Explore sessions</Text>
@@ -288,7 +291,7 @@ export function ExploreSessionsScreen({ onClose }: Props) {
         </View>
       ) : error && total === 0 ? (
         <View style={[styles.centered, styles.centeredPad]}>
-          <AlertCircle size={40} color="#666" strokeWidth={1.5} />
+          <AlertCircle size={40} color={T.muted} strokeWidth={1.5} />
           <Text style={styles.errorTitle}>Couldn't load sessions</Text>
           <Text style={styles.errorSub}>Check your connection and try again</Text>
           <TouchableOpacity onPress={handleRefresh} style={styles.retryBtn}>
@@ -304,7 +307,7 @@ export function ExploreSessionsScreen({ onClose }: Props) {
             <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={T.amber} />
           }
         >
-          <Inbox size={48} color="#444" strokeWidth={1.5} style={{ marginBottom: 16 }} />
+          <Inbox size={48} color={T.textTertiary} strokeWidth={1.5} style={{ marginBottom: 16 }} />
           <Text style={styles.errorTitle}>No sessions available</Text>
           <Text style={styles.errorSub}>Pull down to refresh, or check back later</Text>
         </ScrollView>
@@ -319,7 +322,7 @@ export function ExploreSessionsScreen({ onClose }: Props) {
         >
           {isDone ? (
             <View style={styles.doneWrap}>
-              <CheckCircle2 size={48} color="#444" strokeWidth={1.5} style={{ marginBottom: 16 }} />
+              <CheckCircle2 size={48} color={T.textTertiary} strokeWidth={1.5} style={{ marginBottom: 16 }} />
               <Text style={styles.doneText}>{doneMessage}</Text>
               <TouchableOpacity onPress={handleStartOver} style={styles.startOverBtn}>
                 <Text style={styles.startOverText}>Start over</Text>
@@ -348,7 +351,7 @@ export function ExploreSessionsScreen({ onClose }: Props) {
                     onPress={handleUndo}
                     style={[styles.actionUndo, { opacity: viewHistory.length ? 1 : 0.35 }]}
                   >
-                    <RotateCcw size={18} color="#888" strokeWidth={2} />
+                    <RotateCcw size={18} color={T.textSecondary} strokeWidth={2} />
                   </TouchableOpacity>
                   <TouchableOpacity onPress={handleSave} style={styles.actionSave}>
                     <Heart size={28} color="#0B0B0C" fill="#0B0B0C" strokeWidth={2} />
@@ -409,7 +412,8 @@ export function ExploreSessionsScreen({ onClose }: Props) {
   )
 }
 
-const styles = StyleSheet.create({
+function createStyles(T: ThemeColors) {
+  return StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: T.bg,
@@ -433,18 +437,18 @@ const styles = StyleSheet.create({
   },
   backText: {
     fontSize: 13,
-    color: '#aaa',
+    color: T.textSecondary,
   },
   headerTitle: {
     flex: 1,
     fontSize: 15,
     fontWeight: '600',
-    color: '#fff',
+    color: T.text,
     textAlign: 'center',
   },
   counter: {
     fontSize: 12,
-    color: '#666',
+    color: T.muted,
     minWidth: 48,
     textAlign: 'right',
   },
@@ -464,19 +468,19 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     fontSize: 13,
-    color: '#666',
+    color: T.muted,
     marginTop: 12,
   },
   errorTitle: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#fff',
+    color: T.text,
     marginTop: 16,
     textAlign: 'center',
   },
   errorSub: {
     fontSize: 13,
-    color: '#888',
+    color: T.textSecondary,
     marginTop: 6,
     textAlign: 'center',
   },
@@ -493,7 +497,7 @@ const styles = StyleSheet.create({
   retryText: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#0B0B0C',
+    color: T.textOnPrimary,
   },
   scrollContent: {
     paddingHorizontal: 16,
@@ -504,7 +508,7 @@ const styles = StyleSheet.create({
   },
   doneText: {
     fontSize: 15,
-    color: 'rgba(255,255,255,0.35)',
+    color: T.textSecondary,
     marginBottom: 24,
     textAlign: 'center',
   },
@@ -517,7 +521,7 @@ const styles = StyleSheet.create({
   startOverText: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#0B0B0C',
+    color: T.textOnPrimary,
   },
   actions: {
     flexDirection: 'row',
@@ -530,9 +534,9 @@ const styles = StyleSheet.create({
     width: 58,
     height: 58,
     borderRadius: 29,
-    backgroundColor: '#1a1a1a',
+    backgroundColor: T.surface,
     borderWidth: 1.5,
-    borderColor: '#2a2a2a',
+    borderColor: T.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -540,9 +544,9 @@ const styles = StyleSheet.create({
     width: 52,
     height: 52,
     borderRadius: 26,
-    backgroundColor: '#1a1a1a',
+    backgroundColor: T.surface,
     borderWidth: 1.5,
-    borderColor: '#2a2a2a',
+    borderColor: T.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -561,9 +565,10 @@ const styles = StyleSheet.create({
   },
   upNextLabel: {
     fontSize: 12,
-    color: 'rgba(255,255,255,0.3)',
+    color: T.muted,
     textTransform: 'uppercase',
     letterSpacing: 1,
     marginBottom: 10,
   },
 })
+}

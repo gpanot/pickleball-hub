@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { View, Pressable, Platform, StyleSheet, AppState } from 'react-native'
+import { View, Pressable, Platform, AppState, StyleSheet } from 'react-native'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
-import { StatusBar } from 'expo-status-bar'
 import Constants from 'expo-constants'
 import { NavBar, type TabId } from './src/components/NavBar'
 import { SwipeScreen } from './src/screens/SwipeScreen'
@@ -28,6 +27,7 @@ import { registerForPushNotifications, useNotificationListeners, uploadPushToken
 import { PushDebugScreen } from './src/screens/PushDebugScreen'
 import { SplashScreen } from './src/screens/SplashScreen'
 import { debugLog } from './src/lib/debug'
+import { ThemedAppChrome, useThemedOverlayStyles } from './src/components/ThemedAppChrome'
 
 const IS_EXPO_GO = Constants.appOwnership === 'expo'
 const Notifications = IS_EXPO_GO ? null : require('expo-notifications')
@@ -129,6 +129,7 @@ const POSTHOG_API_KEY = 'phc_uZqiFnt6NpnpjL3QPbD4RmpJZaByiJChD5pcrcySXjGJ'
 const POSTHOG_HOST = 'https://us.i.posthog.com'
 
 export default function App() {
+  const overlayStyles = useThemedOverlayStyles()
   const [showSplash, setShowSplash] = useState(true)
   const [activeTab, setActiveTab] = useState<TabId>('swipe')
   const [flowScreen, setFlowScreen] = useState<FlowScreen>('main')
@@ -351,12 +352,13 @@ export default function App() {
     return (
       <GestureHandlerRootView style={{ flex: 1 }}>
         <SafeAreaProvider>
-          <StatusBar style="light" />
+          <ThemedAppChrome>
           <OnboardingScreen
             initialStep={onboardingInitialStep}
             onComplete={handleOnboardingComplete}
             onCancel={cancelOnboarding}
           />
+          </ThemedAppChrome>
         </SafeAreaProvider>
       </GestureHandlerRootView>
     )
@@ -366,8 +368,9 @@ export default function App() {
     return (
       <GestureHandlerRootView style={{ flex: 1 }}>
         <SafeAreaProvider>
-          <StatusBar style="light" />
+          <ThemedAppChrome>
           <PeopleYouMayKnowScreen onComplete={handlePeopleComplete} />
+          </ThemedAppChrome>
         </SafeAreaProvider>
       </GestureHandlerRootView>
     )
@@ -377,8 +380,9 @@ export default function App() {
     return (
       <GestureHandlerRootView style={{ flex: 1 }}>
         <SafeAreaProvider>
-          <StatusBar style="light" />
+          <ThemedAppChrome>
           <PushDebugScreen onClose={() => setFlowScreen('profile')} />
+          </ThemedAppChrome>
         </SafeAreaProvider>
       </GestureHandlerRootView>
     )
@@ -402,7 +406,7 @@ export default function App() {
     >
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <StatusBar style="light" />
+        <ThemedAppChrome>
         <SignUpModalProvider onSignedIn={handleSignedIn}>
           <ProfileMenuProvider
             onOpenProfile={() => setFlowScreen('profile')}
@@ -459,15 +463,15 @@ export default function App() {
         </SignUpModalProvider>
 
         {(flowScreen === 'gear' || gearSheetOpen) && (
-          <PostHogMaskView style={styles.gearOverlay} pointerEvents="box-none">
+          <PostHogMaskView style={overlayStyles.gearOverlay} pointerEvents="box-none">
             <Pressable
-              style={styles.gearBackdrop}
+              style={overlayStyles.gearBackdrop}
               onPress={() => {
                 if (gearSheetOpen) setGearSheetOpen(false)
                 else setFlowScreen(gearReturnTo)
               }}
             />
-            <View style={styles.gearSheet} pointerEvents="auto">
+            <View style={overlayStyles.gearSheet} pointerEvents="auto">
               <GearSetupScreen
                 gender={playerGenderFromStored(storedGender ?? gear.gender)}
                 initialGear={gear}
@@ -485,28 +489,9 @@ export default function App() {
             </View>
           </PostHogMaskView>
         )}
+        </ThemedAppChrome>
       </SafeAreaProvider>
     </GestureHandlerRootView>
     </PostHogProvider>
   )
 }
-
-const styles = StyleSheet.create({
-  gearOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    zIndex: 9000,
-    elevation: 9000,
-    justifyContent: 'flex-end',
-  },
-  gearBackdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.65)',
-  },
-  gearSheet: {
-    height: '92%',
-    backgroundColor: '#0A0A0A',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    overflow: 'hidden',
-  },
-})

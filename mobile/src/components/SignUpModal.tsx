@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useMemo } from 'react'
 import {
   View,
   Text,
@@ -13,7 +13,8 @@ import Svg, { Path } from 'react-native-svg'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import Constants from 'expo-constants'
 import * as AppleAuthentication from 'expo-apple-authentication'
-import { T } from '../theme'
+import { useTheme } from '../useTheme'
+import type { ThemeColors } from '../theme'
 import { useAuthStore, resolveApiBase } from '../stores/authStore'
 import { fetchWithTimeout } from '../lib/fetchWithTimeout'
 import { debugLog, debugError, debugWarn } from '../lib/debug'
@@ -71,6 +72,8 @@ export function SignUpModalOverlay({
   onClose: () => void
   onSignedIn: (needsOnboarding: boolean) => void
 }) {
+  const T = useTheme()
+  const styles = useMemo(() => createStyles(T), [T])
   const insets = useSafeAreaInsets()
   const [loading, setLoading] = useState(false)
   const signIn = useAuthStore((s) => s.signIn)
@@ -292,7 +295,8 @@ export function SignUpModalOverlay({
   )
 }
 
-const styles = StyleSheet.create({
+function createStyles(T: ThemeColors) {
+  return StyleSheet.create({
   host: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 9999,
@@ -307,23 +311,23 @@ const styles = StyleSheet.create({
   card: {
     width: '85%',
     maxWidth: 360,
-    backgroundColor: '#1a1a1a',
+    backgroundColor: T.surface,
     borderRadius: 20,
     padding: 28,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderColor: T.border,
   },
   title: {
     fontSize: 22,
     fontWeight: '700',
-    color: '#fff',
+    color: T.text,
     marginBottom: 8,
     textAlign: 'center',
   },
   subtitle: {
     fontSize: 14,
-    color: '#999',
+    color: T.textSecondary,
     textAlign: 'center',
     lineHeight: 20,
     marginBottom: 28,
@@ -332,7 +336,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#fff',
+    backgroundColor: T.text,
     borderRadius: 12,
     paddingVertical: 14,
     paddingHorizontal: 24,
@@ -345,7 +349,7 @@ const styles = StyleSheet.create({
   googleLabel: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#1a1a1a',
+    color: T.surface,
   },
   appleBtn: {
     width: '100%',
@@ -362,3 +366,4 @@ const styles = StyleSheet.create({
     color: T.muted,
   },
 })
+}

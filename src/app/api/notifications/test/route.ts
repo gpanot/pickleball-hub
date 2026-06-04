@@ -13,7 +13,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { platform } = (await req.json().catch(() => ({}))) as { platform?: string };
+  const { platform, delaySeconds } = (await req.json().catch(() => ({}))) as {
+    platform?: string;
+    delaySeconds?: number;
+  };
 
   const profile = await prisma.playerProfile.findUnique({
     where: { id: user.profileId },
@@ -27,6 +30,10 @@ export async function POST(req: NextRequest) {
       { error: `No push token registered for ${platform ?? "unknown"}`, registered: false },
       { status: 400 }
     );
+  }
+
+  if (delaySeconds && delaySeconds > 0 && delaySeconds <= 30) {
+    await new Promise((r) => setTimeout(r, delaySeconds * 1000));
   }
 
   const result = await sendToToken(token, {
@@ -48,7 +55,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  return NextResponse.json({ ok: true, registered: true });
+  return NextResponse.json({ ok: true, registered: true, delayed: delaySeconds ?? 0 });
 }
 
 /**

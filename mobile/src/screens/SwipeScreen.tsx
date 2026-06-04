@@ -16,7 +16,8 @@ import {
 import { RefreshCw, Trophy, Users } from 'lucide-react-native'
 import * as Location from 'expo-location'
 import * as Haptics from 'expo-haptics'
-import { T } from '../theme'
+import { useTheme } from '../useTheme'
+import type { ThemeColors } from '../theme'
 import { type Session, averageDupr, isSessionStarted } from '../data'
 import { TopBar, CardBody, CARD_HEIGHT } from '../components/CardBody'
 import { SquaddLoader } from '../components/SquaddLoader'
@@ -136,6 +137,8 @@ export function SwipeScreen({
   onOpenExplore?: () => void
   isActive?: boolean
 }) {
+  const T = useTheme()
+  const s = useMemo(() => createS(T), [T])
   const { openSignUp } = useSignUpModal()
   const signedIn = useAuthStore((s) => s.isSignedIn)()
   const userDupr = useAuthStore((s) => s.duprRating)
@@ -607,7 +610,7 @@ export function SwipeScreen({
               accessibilityState={{ selected: active }}
             >
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Icon size={14} color={active ? T.amber : '#555'} strokeWidth={2} />
+                <Icon size={14} color={active ? T.amber : T.textTertiary} strokeWidth={2} />
                 <Text style={[s.tabText, active && s.tabTextActive]}>
                   {label}
                 </Text>
@@ -640,7 +643,7 @@ export function SwipeScreen({
                     style={{
                       fontSize: 12,
                       fontWeight: on ? '600' : '400',
-                      color: on ? '#fff' : T.muted,
+                      color: on ? T.text : T.muted,
                     }}
                   >
                     {label}
@@ -797,7 +800,7 @@ export function SwipeScreen({
                     style={{
                       fontSize: 12,
                       fontWeight: on ? '600' : '400',
-                      color: on ? '#fff' : T.muted,
+                      color: on ? T.text : T.muted,
                     }}
                   >
                     {label}
@@ -1011,10 +1014,10 @@ export function SwipeScreen({
                       alignItems: 'center',
                     }}
                   >
-                    <Text style={{ fontSize: 14, fontWeight: '600', color: '#1a0a00' }}>
+                    <Text style={{ fontSize: 14, fontWeight: '600', color: T.textOnPrimary }}>
                       Join on Reclub · {expandedSession.spotsLeft} spots left
                     </Text>
-                    <Text style={{ fontSize: 11, color: 'rgba(0,0,0,0.5)', marginTop: 2 }}>
+                    <Text style={{ fontSize: 11, color: T.textOnPrimary + '80', marginTop: 2 }}>
                       {expandedSession.joined} / {expandedSession.maxPlayers} filled
                     </Text>
                   </TouchableOpacity>
@@ -1078,12 +1081,13 @@ export function SwipeScreen({
   )
 }
 
-const s = StyleSheet.create({
+function createS(T: ThemeColors) {
+  return StyleSheet.create({
   tabRow: {
     flexDirection: 'row',
     marginHorizontal: 12,
     marginBottom: 10,
-    backgroundColor: '#141414',
+    backgroundColor: T.input,
     borderRadius: 10,
     padding: 3,
   },
@@ -1096,27 +1100,27 @@ const s = StyleSheet.create({
     borderRadius: 8,
   },
   tabActive: {
-    backgroundColor: '#1e1e1e',
+    backgroundColor: T.borderSubtle,
   },
   tabText: {
     fontSize: 13,
-    color: '#555',
+    color: T.muted,
     fontWeight: '400',
   },
   tabTextActive: {
     fontSize: 13,
-    color: '#f5a623',
+    color: T.amber,
     fontWeight: '600',
   },
   tabBadge: {
-    backgroundColor: '#f5a623',
+    backgroundColor: T.amber,
     borderRadius: 8,
     paddingHorizontal: 5,
     paddingVertical: 1,
   },
   tabBadgeText: {
     fontSize: 9,
-    color: '#1a0a00',
+    color: T.textOnPrimary,
     fontWeight: '600',
   },
   emptyShortlist: {
@@ -1127,12 +1131,12 @@ const s = StyleSheet.create({
   },
   emptyShortlistText: {
     fontSize: 13,
-    color: '#333',
+    color: T.muted,
     textAlign: 'center',
     lineHeight: 18,
   },
   emptyShortlistBtn: {
-    backgroundColor: '#f5a623',
+    backgroundColor: T.amber,
     borderRadius: 10,
     paddingHorizontal: 20,
     paddingVertical: 9,
@@ -1140,11 +1144,11 @@ const s = StyleSheet.create({
   emptyShortlistBtnText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#1a0a00',
+    color: T.textOnPrimary,
   },
   shortlistHeader: {
     fontSize: 11,
-    color: '#444',
+    color: T.muted,
     textTransform: 'uppercase',
     letterSpacing: 0.8,
     paddingHorizontal: 14,
@@ -1156,12 +1160,12 @@ const s = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 14,
     borderBottomWidth: 0.5,
-    borderBottomColor: '#111',
+    borderBottomColor: T.input,
     gap: 12,
   },
   shortlistRowBest: {
-    backgroundColor: '#1f1400',
-    borderBottomColor: '#2a1400',
+    backgroundColor: T.input,
+    borderBottomColor: T.border,
   },
   shortlistInfo: {
     flex: 1,
@@ -1170,16 +1174,16 @@ const s = StyleSheet.create({
   shortlistName: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#eee',
+    color: T.text,
   },
   shortlistMeta: {
     fontSize: 11,
-    color: '#555',
+    color: T.muted,
     marginTop: 3,
   },
   shortlistBestLabel: {
     fontSize: 10,
-    color: '#f5a623',
+    color: T.amber,
     fontWeight: '600',
     marginTop: 4,
   },
@@ -1198,7 +1202,7 @@ const s = StyleSheet.create({
   },
   shortlistFriendsLabel: {
     fontSize: 10,
-    color: '#888',
+    color: T.muted,
     fontWeight: '500',
   },
   shortlistRight: {
@@ -1211,7 +1215,7 @@ const s = StyleSheet.create({
     fontWeight: '600',
   },
   shortlistJoin: {
-    backgroundColor: '#f5a623',
+    backgroundColor: T.amber,
     borderRadius: 10,
     paddingHorizontal: 14,
     paddingVertical: 10,
@@ -1221,7 +1225,7 @@ const s = StyleSheet.create({
   shortlistJoinText: {
     fontSize: 11,
     fontWeight: '700',
-    color: '#1a0a00',
+    color: T.textOnPrimary,
     textAlign: 'center',
   },
   keepSwiping: {
@@ -1230,7 +1234,7 @@ const s = StyleSheet.create({
   },
   keepSwipingText: {
     fontSize: 11,
-    color: '#2a2a2a',
+    color: T.muted,
   },
   expandedHost: {
     ...StyleSheet.absoluteFillObject,
@@ -1242,7 +1246,7 @@ const s = StyleSheet.create({
   },
   expandedBackdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.85)',
+    backgroundColor: T.overlay,
   },
   expandedCard: {
     width: '100%',
@@ -1272,7 +1276,7 @@ const s = StyleSheet.create({
   },
   emptyTop5Text: {
     fontSize: 13,
-    color: '#333',
+    color: T.muted,
     textAlign: 'center',
   },
   periodHeader: {
@@ -1293,7 +1297,7 @@ const s = StyleSheet.create({
   periodPillText: {
     fontSize: 11,
     fontWeight: '700',
-    color: '#22c55e',
+    color: T.green,
     letterSpacing: 1,
   },
   signInBanner: {
@@ -1323,7 +1327,7 @@ const s = StyleSheet.create({
   goingSectionLabel: {
     fontSize: 11,
     fontWeight: '600',
-    color: '#666',
+    color: T.muted,
     textTransform: 'uppercase',
     letterSpacing: 0.8,
   },
@@ -1343,12 +1347,12 @@ const s = StyleSheet.create({
   emptyFriendsTitle: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#aaa',
+    color: T.text,
     textAlign: 'center',
   },
   emptyFriendsSub: {
     fontSize: 12,
-    color: '#444',
+    color: T.muted,
     textAlign: 'center',
     lineHeight: 17,
     marginTop: 2,
@@ -1438,8 +1442,8 @@ const s = StyleSheet.create({
     backgroundColor: '#1a2a1a',
   },
   intentInfo: { flex: 1 },
-  intentName: { fontSize: 14, fontWeight: '600', color: '#fff' },
-  intentMeta: { fontSize: 11, color: '#666', marginTop: 1 },
+  intentName: { fontSize: 14, fontWeight: '600', color: T.text },
+  intentMeta: { fontSize: 11, color: T.muted, marginTop: 1 },
   intentZalo: {
     fontSize: 11,
     color: '#1D9E75',
@@ -1470,6 +1474,7 @@ const s = StyleSheet.create({
     color: '#1D9E75',
   },
 })
+}
 
 function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1)

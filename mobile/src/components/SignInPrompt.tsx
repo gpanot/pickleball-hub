@@ -1,7 +1,8 @@
-import React from 'react'
+import React, { useMemo } from 'react'
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native'
 import { Users } from 'lucide-react-native'
-import { T } from '../theme'
+import { useTheme } from '../useTheme'
+import type { ThemeColors } from '../theme'
 import { useSignUpModal } from '../contexts/SignUpModalContext'
 
 interface SignInPromptProps {
@@ -13,11 +14,13 @@ export function SignInPrompt({
   title = 'See friend activities',
   subtitle = 'Sign in to see your friends, follow players, and track your sessions',
 }: SignInPromptProps) {
+  const T = useTheme()
+  const s = useMemo(() => createS(T), [T])
   const { openSignUp } = useSignUpModal()
 
   return (
     <View style={s.container}>
-      <Users size={48} color="#444" strokeWidth={1.5} />
+      <Users size={48} color={T.textTertiary} strokeWidth={1.5} />
       <Text style={s.title}>{title}</Text>
       <Text style={s.subtitle}>{subtitle}</Text>
       <TouchableOpacity
@@ -33,7 +36,8 @@ export function SignInPrompt({
   )
 }
 
-const s = StyleSheet.create({
+function createS(T: ThemeColors) {
+  return StyleSheet.create({
   container: {
     flex: 1,
     alignItems: 'center',
@@ -43,12 +47,12 @@ const s = StyleSheet.create({
   title: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#fff',
+    color: T.text,
     marginTop: 16,
   },
   subtitle: {
     fontSize: 14,
-    color: '#888',
+    color: T.textSecondary,
     marginTop: 6,
     textAlign: 'center',
   },
@@ -65,3 +69,4 @@ const s = StyleSheet.create({
     color: '#000',
   },
 })
+}

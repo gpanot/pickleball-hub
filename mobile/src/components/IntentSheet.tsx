@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useMemo, useState } from 'react'
 import {
   View,
   Text,
@@ -14,6 +14,8 @@ import {
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useAuthStore } from '../stores/authStore'
+import { useTheme } from '../useTheme'
+import type { ThemeColors } from '../theme'
 
 type ActiveIntent = {
   timeSlot: string
@@ -44,6 +46,8 @@ const DATES = [
 
 export function IntentSheet({ visible, myActiveIntent, onClose, onSaved, onDeleted }: Props) {
   const insets = useSafeAreaInsets()
+  const T = useTheme()
+  const s = useMemo(() => createIntentStyles(T), [T])
   const { authedFetch } = useAuthStore()
 
   const [timeSlot, setTimeSlot] = useState<string>(myActiveIntent?.timeSlot ?? '')
@@ -188,108 +192,110 @@ export function IntentSheet({ visible, myActiveIntent, onClose, onSaved, onDelet
   )
 }
 
-const s = StyleSheet.create({
-  host: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: 'flex-end',
-    zIndex: 9000,
-  },
-  backdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-  },
-  sheet: {
-    backgroundColor: '#0e0e0e',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    paddingHorizontal: 20,
-    paddingTop: 12,
-  },
-  handle: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: '#333',
-    alignSelf: 'center',
-    marginBottom: 16,
-  },
-  title: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: '#fff',
-    marginBottom: 20,
-  },
-  sectionLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#888',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 8,
-    marginTop: 16,
-  },
-  sectionSub: {
-    fontSize: 11,
-    color: '#555',
-    marginTop: -6,
-    marginBottom: 8,
-  },
-  chipRow: {
-    flexDirection: 'row',
-    gap: 8,
-    flexWrap: 'wrap',
-  },
-  chip: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#333',
-    backgroundColor: '#141414',
-  },
-  chipActive: {
-    borderColor: '#1D9E75',
-    backgroundColor: 'rgba(29,158,117,0.12)',
-  },
-  chipText: {
-    fontSize: 13,
-    color: '#888',
-    fontWeight: '500',
-  },
-  chipTextActive: {
-    color: '#1D9E75',
-    fontWeight: '600',
-  },
-  input: {
-    backgroundColor: '#141414',
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 14,
-    color: '#fff',
-    borderWidth: 1,
-    borderColor: '#2a2a2a',
-  },
-  saveBtn: {
-    marginTop: 24,
-    backgroundColor: '#1D9E75',
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  saveBtnText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#fff',
-  },
-  deleteBtn: {
-    marginTop: 12,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  deleteBtnText: {
-    fontSize: 14,
-    color: '#ef4444',
-    fontWeight: '500',
-  },
-})
+function createIntentStyles(T: ThemeColors) {
+  return StyleSheet.create({
+    host: {
+      ...StyleSheet.absoluteFillObject,
+      justifyContent: 'flex-end',
+      zIndex: 9000,
+    },
+    backdrop: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: T.sheetBackdrop,
+    },
+    sheet: {
+      backgroundColor: T.bg,
+      borderTopLeftRadius: 20,
+      borderTopRightRadius: 20,
+      paddingHorizontal: 20,
+      paddingTop: 12,
+    },
+    handle: {
+      width: 36,
+      height: 4,
+      borderRadius: 2,
+      backgroundColor: T.border,
+      alignSelf: 'center',
+      marginBottom: 16,
+    },
+    title: {
+      fontSize: 17,
+      fontWeight: '700',
+      color: T.text,
+      marginBottom: 20,
+    },
+    sectionLabel: {
+      fontSize: 12,
+      fontWeight: '600',
+      color: T.textSecondary,
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+      marginBottom: 8,
+      marginTop: 16,
+    },
+    sectionSub: {
+      fontSize: 11,
+      color: T.textTertiary,
+      marginTop: -6,
+      marginBottom: 8,
+    },
+    chipRow: {
+      flexDirection: 'row',
+      gap: 8,
+      flexWrap: 'wrap',
+    },
+    chip: {
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      borderRadius: 20,
+      borderWidth: 1,
+      borderColor: T.border,
+      backgroundColor: T.input,
+    },
+    chipActive: {
+      borderColor: T.green,
+      backgroundColor: T.green + '1F',
+    },
+    chipText: {
+      fontSize: 13,
+      color: T.textSecondary,
+      fontWeight: '500',
+    },
+    chipTextActive: {
+      color: T.green,
+      fontWeight: '600',
+    },
+    input: {
+      backgroundColor: T.input,
+      borderRadius: 12,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+      fontSize: 14,
+      color: T.text,
+      borderWidth: 1,
+      borderColor: T.border,
+    },
+    saveBtn: {
+      marginTop: 24,
+      backgroundColor: T.green,
+      borderRadius: 12,
+      paddingVertical: 14,
+      alignItems: 'center',
+    },
+    saveBtnText: {
+      fontSize: 15,
+      fontWeight: '700',
+      color: '#fff',
+    },
+    deleteBtn: {
+      marginTop: 12,
+      paddingVertical: 12,
+      alignItems: 'center',
+    },
+    deleteBtnText: {
+      fontSize: 14,
+      color: T.red,
+      fontWeight: '500',
+    },
+  })
+}

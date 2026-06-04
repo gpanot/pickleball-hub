@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef, forwardRef, useImperativeHandle } from 'react'
+import React, { useState, useEffect, useCallback, useRef, forwardRef, useImperativeHandle, useMemo } from 'react'
 import {
   View,
   Text,
@@ -9,7 +9,8 @@ import {
   ActivityIndicator,
 } from 'react-native'
 import { Search, Check, UserPlus } from 'lucide-react-native'
-import { T } from '../theme'
+import { useTheme } from '../useTheme'
+import type { ThemeColors } from '../theme'
 import { useAuthStore } from '../stores/authStore'
 import { PlayerAvatar } from './PlayerAvatar'
 
@@ -48,6 +49,8 @@ export const PlayerSearch = forwardRef<PlayerSearchRef, {
   initialFollowedIds,
   autoFocus = false,
 }, ref) {
+  const T = useTheme()
+  const styles = useMemo(() => createStyles(T), [T])
   const inputRef = useRef<TextInput>(null)
 
   useImperativeHandle(ref, () => ({
@@ -217,14 +220,14 @@ export const PlayerSearch = forwardRef<PlayerSearchRef, {
   return (
     <View style={{ flex: 1 }}>
       <View style={styles.searchBox}>
-        <Search size={16} color="#666" strokeWidth={2} />
+        <Search size={16} color={T.muted} strokeWidth={2} />
         <TextInput
           ref={inputRef}
           style={styles.searchInput}
           value={query}
           onChangeText={setQuery}
           placeholder="Search by name..."
-          placeholderTextColor="#555"
+          placeholderTextColor={T.textTertiary}
           autoFocus={autoFocus}
           returnKeyType="search"
           blurOnSubmit={false}
@@ -249,7 +252,8 @@ export const PlayerSearch = forwardRef<PlayerSearchRef, {
   )
 })
 
-const styles = StyleSheet.create({
+function createStyles(T: ThemeColors) {
+  return StyleSheet.create({
   searchBox: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -264,7 +268,7 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     fontSize: 15,
-    color: '#fff',
+    color: T.text,
   },
   row: {
     flexDirection: 'row',
@@ -273,7 +277,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 4,
     borderBottomWidth: 0.5,
-    borderBottomColor: '#1e1e1e',
+    borderBottomColor: T.borderSubtle,
   },
   rowSelected: {
     backgroundColor: 'rgba(245,166,35,0.06)',
@@ -285,23 +289,23 @@ const styles = StyleSheet.create({
     borderRadius: 20,
   },
   avatarFallback: {
-    backgroundColor: '#333',
+    backgroundColor: T.borderSubtle,
     alignItems: 'center',
     justifyContent: 'center',
   },
   name: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#fff',
+    color: T.text,
   },
   dupr: {
     fontSize: 11,
-    color: '#888',
+    color: T.textSecondary,
     marginTop: 2,
   },
   emptyText: {
     fontSize: 13,
-    color: '#666',
+    color: T.muted,
     textAlign: 'center',
     marginTop: 20,
   },
@@ -331,3 +335,4 @@ const styles = StyleSheet.create({
     color: T.green,
   },
 })
+}

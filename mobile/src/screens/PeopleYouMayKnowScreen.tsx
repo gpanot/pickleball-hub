@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react'
+import React, { useEffect, useState, useCallback, useMemo } from 'react'
 import {
   View,
   Text,
@@ -8,7 +8,8 @@ import {
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { UserPlus, Check, AlertCircle, RefreshCw } from 'lucide-react-native'
-import { T } from '../theme'
+import { useTheme } from '../useTheme'
+import type { ThemeColors } from '../theme'
 import { useAuthStore } from '../stores/authStore'
 import { PlayerAvatar } from '../components/PlayerAvatar'
 
@@ -33,8 +34,46 @@ type LastSession = {
   }[]
 }
 
-/* ── Skeleton block ──────────────────────────────────────────── */
+function createSkeletonStyles(T: ThemeColors) {
+  return StyleSheet.create({
+    row: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      paddingVertical: 12,
+      borderBottomWidth: 0.5,
+      borderBottomColor: T.borderSubtle,
+    },
+    avatar: {
+      width: 48,
+      height: 48,
+      borderRadius: 24,
+      backgroundColor: T.borderSubtle,
+    },
+    lineWide: {
+      height: 13,
+      borderRadius: 6,
+      backgroundColor: T.borderSubtle,
+      width: '60%',
+    },
+    lineNarrow: {
+      height: 11,
+      borderRadius: 6,
+      backgroundColor: T.input,
+      width: '40%',
+    },
+    btn: {
+      width: 72,
+      height: 34,
+      borderRadius: 8,
+      backgroundColor: T.borderSubtle,
+    },
+  })
+}
+
 function SkeletonRow() {
+  const T = useTheme()
+  const skeletonStyles = useMemo(() => createSkeletonStyles(T), [T])
   return (
     <View style={skeletonStyles.row}>
       <View style={skeletonStyles.avatar} />
@@ -47,41 +86,6 @@ function SkeletonRow() {
   )
 }
 
-const skeletonStyles = StyleSheet.create({
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingVertical: 12,
-    borderBottomWidth: 0.5,
-    borderBottomColor: '#1e1e1e',
-  },
-  avatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#1e1e1e',
-  },
-  lineWide: {
-    height: 13,
-    borderRadius: 6,
-    backgroundColor: '#1e1e1e',
-    width: '60%',
-  },
-  lineNarrow: {
-    height: 11,
-    borderRadius: 6,
-    backgroundColor: '#181818',
-    width: '40%',
-  },
-  btn: {
-    width: 72,
-    height: 34,
-    borderRadius: 8,
-    backgroundColor: '#1e1e1e',
-  },
-})
-
 export function PeopleYouMayKnowScreen({
   onComplete,
   embedded = false,
@@ -91,6 +95,9 @@ export function PeopleYouMayKnowScreen({
   embedded?: boolean
   onPlayerPress?: (userId: string) => void
 }) {
+  const T = useTheme()
+  const styles = useMemo(() => createStyles(T), [T])
+  const skeletonStyles = useMemo(() => createSkeletonStyles(T), [T])
   const insets = useSafeAreaInsets()
   const { authedFetch, reclubUserId, ensureServerAuth } = useAuthStore()
   // Split loading: coPlayers and sessions load independently
@@ -204,7 +211,7 @@ export function PeopleYouMayKnowScreen({
     return (
       <View style={[styles.container, { paddingTop: embedded ? 20 : insets.top + 40, alignItems: 'center' }]}>
         <Text style={styles.heading}>No Reclub profile linked</Text>
-        <Text style={{ fontSize: 13, color: '#888', marginTop: 6, textAlign: 'center', paddingHorizontal: 20 }}>
+        <Text style={{ fontSize: 13, color: T.muted, marginTop: 6, textAlign: 'center', paddingHorizontal: 20 }}>
           Link your Reclub account in settings to see people you've played with
         </Text>
         <TouchableOpacity style={[styles.skipBtn, { marginTop: 16 }]} onPress={onComplete}>
@@ -237,8 +244,8 @@ export function PeopleYouMayKnowScreen({
             </>
           ) : error ? (
             <View style={{ alignItems: 'center', paddingVertical: 20, gap: 10 }}>
-              <AlertCircle size={32} color="#666" strokeWidth={1.5} />
-              <Text style={{ fontSize: 13, color: '#888', textAlign: 'center' }}>
+              <AlertCircle size={32} color={T.muted} strokeWidth={1.5} />
+              <Text style={{ fontSize: 13, color: T.muted, textAlign: 'center' }}>
                 Couldn't load suggestions
               </Text>
               <TouchableOpacity
@@ -258,7 +265,7 @@ export function PeopleYouMayKnowScreen({
               </TouchableOpacity>
             </View>
           ) : coPlayers.length === 0 ? (
-            <Text style={{ fontSize: 13, color: '#555', marginTop: 8 }}>
+            <Text style={{ fontSize: 13, color: T.textTertiary, marginTop: 8 }}>
               No suggestions yet — play more sessions on Reclub to discover people.
             </Text>
           ) : (
@@ -314,11 +321,11 @@ export function PeopleYouMayKnowScreen({
           </Text>
           {sessionsLoading ? (
             <View style={{ paddingTop: 8 }}>
-              <View style={[skeletonStyles.lineWide, { marginBottom: 10, height: 56, borderRadius: 12, width: '100%', backgroundColor: '#1a1a1a' }]} />
-              <View style={[skeletonStyles.lineWide, { height: 56, borderRadius: 12, width: '100%', backgroundColor: '#1a1a1a' }]} />
+              <View style={[skeletonStyles.lineWide, { marginBottom: 10, height: 56, borderRadius: 12, width: '100%', backgroundColor: T.surface }]} />
+              <View style={[skeletonStyles.lineWide, { height: 56, borderRadius: 12, width: '100%', backgroundColor: T.surface }]} />
             </View>
           ) : lastSessions.length === 0 ? (
-            <Text style={{ fontSize: 13, color: '#555', marginTop: 8 }}>
+            <Text style={{ fontSize: 13, color: T.textTertiary, marginTop: 8 }}>
               No recent sessions found on Reclub.
             </Text>
           ) : (
@@ -391,7 +398,8 @@ export function PeopleYouMayKnowScreen({
   )
 }
 
-const styles = StyleSheet.create({
+function createStyles(T: ThemeColors) {
+  return StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: T.bg,
@@ -400,18 +408,18 @@ const styles = StyleSheet.create({
   purposeText: {
     fontSize: 15,
     lineHeight: 22,
-    color: '#ccc',
+    color: T.textSecondary,
     marginBottom: 20,
   },
   heading: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#fff',
+    color: T.text,
     marginBottom: 4,
   },
   subheading: {
     fontSize: 13,
-    color: '#888',
+    color: T.muted,
     marginBottom: 12,
   },
   sessionCard: {
@@ -425,11 +433,11 @@ const styles = StyleSheet.create({
   sessionName: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#fff',
+    color: T.text,
   },
   sessionMeta: {
     fontSize: 12,
-    color: '#888',
+    color: T.muted,
     marginTop: 2,
   },
   rosterItem: {
@@ -443,18 +451,18 @@ const styles = StyleSheet.create({
     borderRadius: 21,
   },
   avatarFallback: {
-    backgroundColor: '#333',
+    backgroundColor: T.borderSubtle,
     alignItems: 'center',
     justifyContent: 'center',
   },
   avatarInitial: {
-    color: '#fff',
+    color: T.text,
     fontWeight: '600',
     fontSize: 16,
   },
   rosterName: {
     fontSize: 10,
-    color: '#ccc',
+    color: T.textSecondary,
     marginTop: 4,
     textAlign: 'center',
   },
@@ -473,7 +481,7 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingVertical: 12,
     borderBottomWidth: 0.5,
-    borderBottomColor: '#1e1e1e',
+    borderBottomColor: T.borderSubtle,
   },
   coAvatar: {
     width: 48,
@@ -483,11 +491,11 @@ const styles = StyleSheet.create({
   coName: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#fff',
+    color: T.text,
   },
   coMeta: {
     fontSize: 12,
-    color: '#888',
+    color: T.muted,
     marginTop: 2,
   },
   followBtn: {
@@ -533,4 +541,5 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#000',
   },
-})
+  })
+}
