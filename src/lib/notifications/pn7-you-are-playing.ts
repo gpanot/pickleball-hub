@@ -1,44 +1,41 @@
 import { prisma } from "@/lib/db";
 import { sendPushNotification } from "@/lib/notifications";
+import {
+  isPnScheduleHour,
+  isSessionLive,
+  vietnamNow,
+  vietnamTimeStr,
+  vietnamTodayStr,
+} from "@/lib/notifications/session-time";
+
+const PN7_TYPE = "pn7";
+
+function pn7DedupType(sessionId: number): string {
+  return `${PN7_TYPE}:${sessionId}`;
+}
 
 /**
- * PN7: Notify a user when their session has just started.
- * "You are playing, check and connect with players on the court now"
- *
- * Trigger: cron every 30 min (7am–9pm ICT) via GET /api/cron/you-are-playing.
- * Guard:
- *   - Session must have started in the last 35-minute window (cron window + 5 min buffer)
- *   - Session must not be more than 30 min old (don't notify late)
- *   - Max 1 PN7 per user per session (deduplicated by feedItemId in SentNotification table
- *     — using a DB upsert guard on pn7_{userId}_{sessionId})
+ * PN7: Notify a user when their session is live (same window as feed "you_are_playing").
+ * Dedup: one push per user per session via notifications_sent type pn7:{sessionId}.
  */
 export async function sendYouArePlayingNotifications(): Promise<{
   sent: number;
   skipped: number;
   sessions: number;
 }> {
-  const now = new Date();
-  const hourICT = ((now.getUTCHours() + 7) % 24);
-  if (hourICT < 7 || hourICT >= 21) {
+  if (!isPnScheduleHour()) {
     return { sent: 0, skipped: 0, sessions: 0 };
   }
 
-  const vnNow = new Date(Date.now() + 7 * 60 * 60 * 1000);
-  const todayStr = vnNow.toISOString().slice(0, 10);
-  const nowTimeVN = vnNow.toISOString().slice(11, 16);
+  const vnNow = vietnamNow();
+  const todayStr = vietnamTodayStr(vnNow);
+  const nowTimeVN = vietnamTimeStr(vnNow);
 
-  // Window: sessions that started in the last 35 minutes
-  const windowMins = 35;
-  const windowStart = new Date(vnNow.getTime() - windowMins * 60 * 1000);
-  const windowStartTime = windowStart.toISOString().slice(11, 16);
-
-  // Find rosters where the session started in the last 35 minutes
   const liveRosters = await prisma.sessionRoster.findMany({
     where: {
       session: {
         scrapedDate: todayStr,
-        startTime: { gt: windowStartTime, lte: nowTimeVN },
-        status: "active",
+        startTime: { lte: nowTimeVN },
       },
     },
     select: {
@@ -47,6 +44,8 @@ export async function sendYouArePlayingNotifications(): Promise<{
         select: {
           id: true,
           startTime: true,
+          endTime: true,
+          durationMin: true,
           venue: { select: { name: true } },
           club: { select: { name: true } },
         },
@@ -60,14 +59,22 @@ export async function sendYouArePlayingNotifications(): Promise<{
   const sessionsSeen = new Set<number>();
 
   for (const roster of liveRosters) {
-    const playerId = roster.userId;
     const session = roster.session;
+    if (
+      !isSessionLive(
+        session.startTime,
+        session.endTime,
+        session.durationMin,
+        nowTimeVN,
+      )
+    ) {
+      continue;
+    }
+
     sessionsSeen.add(session.id);
-
+    const playerId = roster.userId;
     const venueName = session.venue?.name ?? session.club?.name ?? "your court";
-    const guardId = `pn7_${playerId}_${session.id}`;
 
-    // Find the app profile for this Reclub user
     const profile = await prisma.playerProfile.findUnique({
       where: { reclubUserId: playerId },
       select: { id: true, pushToken: true, pushTokenIos: true },
@@ -83,9 +90,11 @@ export async function sendYouArePlayingNotifications(): Promise<{
       continue;
     }
 
-    // Deduplicate: only send once per user per session
-    const alreadySent = await prisma.feedItem.findUnique({
-      where: { id: guardId },
+    const alreadySent = await prisma.notificationSent.findFirst({
+      where: {
+        recipientId: profile.id,
+        type: pn7DedupType(session.id),
+      },
       select: { id: true },
     });
 
@@ -94,25 +103,11 @@ export async function sendYouArePlayingNotifications(): Promise<{
       continue;
     }
 
-    // Insert guard record so we don't send twice
-    await prisma.feedItem.upsert({
-      where: { id: guardId },
-      create: {
-        id: guardId,
-        profileId: profile.id,
-        type: "pn7_guard",
-        playerUserId: playerId.toString(),
-        payload: { sessionId: session.id, sentAt: now.toISOString() },
-        timestamp: now,
-      },
-      update: {},
-    });
-
     const result = await sendPushNotification(profile.id, {
       title: "You are playing 🏓",
       body: "Check and connect with players on the court now",
       data: {
-        type: "pn7",
+        type: PN7_TYPE,
         screen: "Circle",
         sessionId: String(session.id),
         venueName,
@@ -120,11 +115,21 @@ export async function sendYouArePlayingNotifications(): Promise<{
     });
 
     if (result.success) {
+      await prisma.notificationSent.create({
+        data: {
+          recipientId: profile.id,
+          type: pn7DedupType(session.id),
+        },
+      });
       sent++;
-      console.log(`[PN7] Sent to profileId=${profile.id} sessionId=${session.id} venue="${venueName}"`);
+      console.log(
+        `[PN7] Sent profileId=${profile.id} sessionId=${session.id} venue="${venueName}"`,
+      );
     } else {
       skipped++;
-      console.warn(`[PN7] Failed for profileId=${profile.id} sessionId=${session.id} — ${result.error}`);
+      console.warn(
+        `[PN7] Failed profileId=${profile.id} sessionId=${session.id} — ${result.error}`,
+      );
     }
   }
 

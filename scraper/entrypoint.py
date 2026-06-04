@@ -129,18 +129,14 @@ def run_cmd(cmd: list[str]) -> int:
     return result.returncode
 
 
-def trigger_session_finished_cron() -> None:
-    """
-    Hit GET /api/cron/session-finished-kudos on the Next.js service every scrape run.
-    The endpoint has its own hour-of-day guard (7am–9pm ICT) so extra calls outside
-    that window are cheap no-ops. This replaces the missing Railway cron HTTP trigger.
-    """
+def _trigger_cron(path: str, label: str) -> None:
+    """Hit a protected GET /api/cron/* route on the Next.js app (7am–9pm ICT guards inside)."""
     base = (os.environ.get("VERCEL_APP_URL") or "").strip().rstrip("/")
     secret = os.environ.get("CRON_SECRET", "")
     if not base or not secret:
-        print("  [cron/pn6] VERCEL_APP_URL or CRON_SECRET not set — skipping", flush=True)
+        print(f"  [cron/{label}] VERCEL_APP_URL or CRON_SECRET not set — skipping", flush=True)
         return
-    url = f"{base}/api/cron/session-finished-kudos"
+    url = f"{base}{path}"
     try:
         req = urllib.request.Request(
             url,
@@ -148,13 +144,23 @@ def trigger_session_finished_cron() -> None:
             method="GET",
             headers={"x-cron-secret": secret},
         )
-        with urllib.request.urlopen(req, timeout=30) as resp:
+        with urllib.request.urlopen(req, timeout=60) as resp:
             body = resp.read().decode("utf-8", errors="replace")
-            print(f"  [cron/pn6] {resp.status} — {body[:120]}", flush=True)
+            print(f"  [cron/{label}] {resp.status} — {body[:120]}", flush=True)
     except urllib.error.HTTPError as e:
-        print(f"  [cron/pn6] HTTP {e.code}", flush=True)
+        print(f"  [cron/{label}] HTTP {e.code}", flush=True)
     except Exception as e:
-        print(f"  [cron/pn6] request error: {e}", flush=True)
+        print(f"  [cron/{label}] request error: {e}", flush=True)
+
+
+def trigger_session_finished_cron() -> None:
+    """PN6 — friend finished playing (also triggered on each scrape)."""
+    _trigger_cron("/api/cron/session-finished-kudos", "pn6")
+
+
+def trigger_you_are_playing_cron() -> None:
+    """PN7 — you are playing (also triggered on each scrape; Railway */30 cron is backup)."""
+    _trigger_cron("/api/cron/you-are-playing", "pn7")
 
 
 def trigger_vercel_revalidation(tag: str | None = None) -> None:
@@ -213,9 +219,9 @@ def run_scrape() -> dict:
         if ingest_rc == 0:
             trigger_vercel_revalidation()
 
-        # Trigger session-finished cron on every scrape run.
-        # The endpoint guards itself to 7am–9pm ICT, so off-hours calls are no-ops.
+        # PN6 + PN7 crons on every scrape (7am–9pm ICT guards inside each handler).
         trigger_session_finished_cron()
+        trigger_you_are_playing_cron()
 
         # Evening run (9 PM VN): do a dedicated tomorrow roster refresh after
         # ingest, so the Discovery tab's tomorrow cards have real DUPR + roster
