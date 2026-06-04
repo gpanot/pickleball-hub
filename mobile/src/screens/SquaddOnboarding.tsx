@@ -19,7 +19,7 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useFonts } from 'expo-font';
+import { useFonts, loadAsync } from 'expo-font';
 import { Asset } from 'expo-asset';
 import { LinearGradient } from 'expo-linear-gradient';
 
@@ -257,10 +257,10 @@ const ClashButton = ({
 };
 
 // ─── Screen 1 ────────────────────────────────────────────────────────────────
-const Screen1 = () => (
+const Screen1 = ({ titleStyle }: { titleStyle: object }) => (
   <View style={styles.screen}>
     <FloatEmoji emoji="🏆" size={72} />
-    <Text style={styles.clashTitle}>The first real{'\n'}pickleball squads.</Text>
+    <Text style={titleStyle}>The first real{'\n'}pickleball squads.</Text>
     <Text style={styles.bodyXl}>
       Build a crew of up to <Text style={styles.boldWhite}>8 players</Text>.{'\n'}
       Every game helps your squad rise.
@@ -269,14 +269,14 @@ const Screen1 = () => (
 );
 
 // ─── Screen 2 ────────────────────────────────────────────────────────────────
-const Screen2 = () => (
+const Screen2 = ({ titleStyle }: { titleStyle: object }) => (
   <View style={styles.screen}>
     <View style={styles.animalRow}>
       {['🦁', '🐉', '🦅', '🐺'].map((e, i) => (
         <FloatEmoji key={e} emoji={e} size={48} delayMs={i * 200} style={{ marginBottom: 0 }} />
       ))}
     </View>
-    <Text style={[styles.clashTitle, { marginTop: 24 }]}>Choose your{'\n'}identity.</Text>
+    <Text style={[titleStyle, { marginTop: 24 }]}>Choose your{'\n'}identity.</Text>
     <View style={styles.identityList}>
       <Text style={styles.bodyLg}>Name your squad.</Text>
       <Text style={styles.bodyLg}>Pick your animal.</Text>
@@ -287,10 +287,10 @@ const Screen2 = () => (
 );
 
 // ─── Screen 3 ────────────────────────────────────────────────────────────────
-const Screen3 = () => (
+const Screen3 = ({ titleStyle }: { titleStyle: object }) => (
   <View style={styles.screen}>
     <FloatChest size={140} />
-    <Text style={styles.clashTitle}>Play together.{'\n'}Earn together.</Text>
+    <Text style={titleStyle}>Play together.{'\n'}Earn together.</Text>
     <View style={styles.identityList}>
       <Text style={styles.bodyLg}>When a squadmate plays,{'\n'}everyone earns rewards.</Text>
       <Text style={[styles.bodyLg, styles.boldWhite]}>Open squad chests.</Text>
@@ -301,7 +301,7 @@ const Screen3 = () => (
 );
 
 // ─── Screen 4 ────────────────────────────────────────────────────────────────
-const Screen4 = () => (
+const Screen4 = ({ titleStyle }: { titleStyle: object }) => (
   <View style={styles.screen}>
     <View style={styles.lbContainer}>
       {LB_DATA.map((row) => (
@@ -320,7 +320,7 @@ const Screen4 = () => (
         </View>
       ))}
     </View>
-    <Text style={styles.clashTitle}>Own your district.</Text>
+    <Text style={titleStyle}>Own your district.</Text>
     <View style={styles.identityList}>
       <Text style={styles.bodyLg}>Climb the leaderboard.</Text>
       <Text style={styles.bodyLg}>Beat rival squads.</Text>
@@ -330,11 +330,11 @@ const Screen4 = () => (
 );
 
 // ─── Screen 5 ────────────────────────────────────────────────────────────────
-const Screen5 = ({ onReserve }: { onReserve: () => void }) => (
+const Screen5 = ({ titleStyle, onReserve }: { titleStyle: object; onReserve: () => void }) => (
   <View style={styles.screen}>
     <FloatingEmojiBackground />
     <View style={styles.screen5Content}>
-      <Text style={styles.clashTitle}>Founding Squads{'\n'}are opening soon.</Text>
+      <Text style={titleStyle}>Founding Squads{'\n'}are opening soon.</Text>
       <Text style={[styles.bodyLg, { textAlign: 'center', marginBottom: 32 }]}>
         Reserve your spot and be among the first squads on Squadd.
       </Text>
@@ -388,9 +388,11 @@ const EmojiPickerRows = ({
 
 // ─── Screen 6: Create squad ──────────────────────────────────────────────────
 const Screen6 = ({
+  titleStyle,
   onNext,
   onBack,
 }: {
+  titleStyle: object;
   onNext: (name: string, emoji: string) => void;
   onBack: () => void;
 }) => {
@@ -421,7 +423,7 @@ const Screen6 = ({
         nestedScrollEnabled
       >
         <View style={styles.formInner}>
-          <Text style={[styles.clashTitle, styles.titleForm]}>
+          <Text style={[titleStyle, styles.titleForm]}>
             Create your squad
           </Text>
 
@@ -450,9 +452,11 @@ const Screen6 = ({
 
 // ─── Screen 7: Select Region ─────────────────────────────────────────────────
 const Screen7Region = ({
+  titleStyle,
   onConfirm,
   onBack,
 }: {
+  titleStyle: object;
   onConfirm: (country: string, city: string) => void;
   onBack: () => void;
 }) => {
@@ -501,7 +505,7 @@ const Screen7Region = ({
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.formInner}>
-          <Text style={[styles.clashTitle, styles.titleForm]}>Select Region</Text>
+          <Text style={[titleStyle, styles.titleForm]}>Select Region</Text>
 
           <Text style={[styles.fieldLabel, styles.regionLabel]}>Tap your Country</Text>
           <View style={styles.flagSelector}>
@@ -558,9 +562,11 @@ const Screen7Region = ({
 
 // ─── Screen 8: Confirmation ────────────────────────────────────────────────
 const Screen8 = ({
+  titleStyle,
   countryFlag,
   city,
 }: {
+  titleStyle?: object;
   countryFlag?: string;
   city?: string;
 }) => {
@@ -579,7 +585,7 @@ const Screen8 = ({
   return (
     <View style={styles.screen}>
       <FloatEmoji emoji={countryFlag ?? '🇻🇳'} size={80} />
-      <Text style={styles.clashTitle}>You are in the game!</Text>
+      <Text style={titleStyle ?? styles.clashTitleFallback}>You are in the game!</Text>
       <Text style={[styles.bodyXl, { marginBottom: 32 }]}>
         Representing <Text style={styles.boldWhite}>{city ?? 'Ho Chi Minh City'}</Text> Squads.
       </Text>
@@ -599,6 +605,7 @@ export default function SquaddOnboarding() {
   const [registered, setRegistered] = useState<SquaddRegistration | null>(null);
   const [draft, setDraft] = useState<SquadDraft | null>(null);
   const [current, setCurrent] = useState(0);
+  const [forceShow, setForceShow] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
   const autoSlideRef = useRef(true);
 
@@ -609,11 +616,14 @@ export default function SquaddOnboarding() {
       .downloadAsync()
       .catch(() => undefined)
       .finally(() => setAssetsReady(true));
+    const t = setTimeout(() => setForceShow(true), 3000);
+    return () => clearTimeout(t);
   }, []);
 
   useEffect(() => {
     if (fontError) {
       console.warn('[SquaddOnboarding] Bangers font failed to load:', fontError);
+      loadAsync({ [BANGERS_FONT]: BANGERS_TTF }).catch(() => undefined);
     }
   }, [fontError]);
 
@@ -700,7 +710,8 @@ export default function SquaddOnboarding() {
   };
 
   const showDots = !registered && current < TOTAL_INTRO;
-  const uiReady = ready && fontsLoaded && assetsReady;
+  const uiReady = (ready && assetsReady) || forceShow;
+  const titleStyle = fontsLoaded ? styles.clashTitle : styles.clashTitleFallback;
 
   if (!uiReady) {
     return <View style={styles.root} />;
@@ -712,6 +723,7 @@ export default function SquaddOnboarding() {
         <StatusBar barStyle="light-content" />
         <BgGradient>
           <Screen8
+            titleStyle={titleStyle}
             countryFlag={REGIONAL_DATA[registered.country as CountryKey]?.flag ?? '🇻🇳'}
             city={registered.city}
           />
@@ -739,14 +751,14 @@ export default function SquaddOnboarding() {
             }
           }}
         >
-          <Screen1 />
-          <Screen2 />
-          <Screen3 />
-          <Screen4 />
-          <Screen5 onReserve={handleReserve} />
-          <Screen6 onNext={handleNextRegion} onBack={handleBackToWaitlist} />
-          <Screen7Region onConfirm={handleConfirm} onBack={handleBackToSquadForm} />
-          <Screen8 />
+          <Screen1 titleStyle={titleStyle} />
+          <Screen2 titleStyle={titleStyle} />
+          <Screen3 titleStyle={titleStyle} />
+          <Screen4 titleStyle={titleStyle} />
+          <Screen5 titleStyle={titleStyle} onReserve={handleReserve} />
+          <Screen6 titleStyle={titleStyle} onNext={handleNextRegion} onBack={handleBackToWaitlist} />
+          <Screen7Region titleStyle={titleStyle} onConfirm={handleConfirm} onBack={handleBackToSquadForm} />
+          <Screen8 titleStyle={titleStyle} />
         </ScrollView>
 
         {showDots && (
@@ -803,6 +815,20 @@ const styles = StyleSheet.create({
     lineHeight: 52,
     textTransform: 'uppercase',
     letterSpacing: 2.4,
+    textShadowColor: '#000',
+    textShadowOffset: { width: 3, height: 3 },
+    textShadowRadius: 0,
+    includeFontPadding: false,
+  },
+  clashTitleFallback: {
+    fontSize: 48,
+    color: '#fff',
+    textAlign: 'center',
+    marginBottom: 24,
+    lineHeight: 52,
+    textTransform: 'uppercase',
+    letterSpacing: 2.4,
+    fontWeight: '900',
     textShadowColor: '#000',
     textShadowOffset: { width: 3, height: 3 },
     textShadowRadius: 0,
