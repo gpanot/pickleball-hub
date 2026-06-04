@@ -498,6 +498,15 @@ export function ProfileSheet({
             >
               <Text style={styles.settingsLabel}>Reset avatar tip (dev)</Text>
             </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.settingsRow}
+              onPress={async () => {
+                await AsyncStorage.removeItem('squadd_waitlist_registered')
+                Alert.alert('Dev', 'Squadd registration cleared. Open the Squadd tab to retest.')
+              }}
+            >
+              <Text style={styles.settingsLabel}>Reset squadd registration (dev)</Text>
+            </TouchableOpacity>
           </>
         )}
 

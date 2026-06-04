@@ -1,10 +1,10 @@
 import React from 'react'
 import { View, Text, TouchableOpacity, Platform } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { Zap, Users } from 'lucide-react-native'
+import { Zap, Users, Shield } from 'lucide-react-native'
 import { T } from '../theme'
 
-export type TabId = 'swipe' | 'circle'
+export type TabId = 'swipe' | 'circle' | 'squadd'
 
 /** Content height of the bottom tab bar (excluding safe-area padding). */
 export const NAV_BAR_CONTENT_HEIGHT = 46
@@ -29,6 +29,7 @@ export function NavBar({
 
   const tabs: { key: TabId; icon: typeof Zap; label: string }[] = [
     { key: 'circle', icon: Users, label: 'Circle' },
+    { key: 'squadd', icon: Shield, label: 'Squadd' },
     { key: 'swipe', icon: Zap, label: 'Play' },
   ]
 

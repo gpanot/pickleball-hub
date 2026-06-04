@@ -509,3 +509,13 @@ model SessionDuprStat {
 
   @@map("session_dupr_stats")
 }
+
+model SquadWaitlist {
+  id          Int      @id @default(autoincrement())
+  squadName   String   @map("squad_name")
+  emoji       String
+  friendCount Int      @map("friend_count")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("squad_waitlist")
+}

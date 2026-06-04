@@ -8,6 +8,7 @@ import { NavBar, type TabId } from './src/components/NavBar'
 import { SwipeScreen } from './src/screens/SwipeScreen'
 import { ExploreSessionsScreen } from './src/screens/ExploreSessionsScreen'
 import { CircleScreen } from './src/screens/CircleScreen'
+import SquaddOnboarding from './src/screens/SquaddOnboarding'
 import { OnboardingScreen } from './src/screens/OnboardingScreen'
 import { PeopleYouMayKnowScreen } from './src/screens/PeopleYouMayKnowScreen'
 import { ProfileSheet } from './src/components/ProfileSheet'
@@ -417,6 +418,9 @@ export default function App() {
                   gearSaved={savedConfirmation}
                   gearSetupComplete={gearSetupComplete}
                 />
+              </View>
+              <View style={{ flex: 1, display: activeTab === 'squadd' ? 'flex' : 'none' }}>
+                <SquaddOnboarding />
               </View>
               <View style={{ flex: 1, display: activeTab === 'swipe' ? 'flex' : 'none' }}>
                 <SwipeScreen
