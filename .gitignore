@@ -44,11 +44,10 @@ next-env.d.ts
 /src/generated/prisma
 __pycache__/
 
-# mobile (Expo)
-mobile/node_modules/
-mobile/.expo/
+# mobile app — local only, not tracked in git
+mobile/
+
 .env.local
 
 # Firebase config — contains API key, do not commit
 GoogleService-Info.plist
-mobile/ios/SQUADD/GoogleService-Info.plist
