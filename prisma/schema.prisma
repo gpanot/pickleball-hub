@@ -517,6 +517,10 @@ model SquadWaitlist {
   country     String
   city        String
   friendCount Int      @map("friend_count")
+  profileId   String?  @map("profile_id")
+  playerName  String?  @map("player_name")
+  playerEmail String?  @map("player_email")
+  playerDupr  Decimal? @map("player_dupr") @db.Decimal(5, 3)
   createdAt   DateTime @default(now()) @map("created_at")
 
   @@map("squad_waitlist")
