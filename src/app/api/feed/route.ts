@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getMobileUser } from "@/lib/mobile-auth";
+import {
+  sessionEndTimestamp,
+  sessionStartTimestamp,
+} from "@/lib/notifications/session-time";
 import { reclubAvatarUrl } from "@/lib/utils";
 
 function toPlayerPayload(p: {
@@ -141,9 +145,9 @@ export async function GET(req: NextRequest) {
           session: {
             select: {
               startTime: true,
+              endTime: true,
               scrapedDate: true,
               club: { select: { name: true } },
-              snapshots: { orderBy: { scrapedAt: "desc" }, take: 1 },
             },
           },
         },
@@ -263,8 +267,7 @@ export async function GET(req: NextRequest) {
       type: "played_today",
       player: toPlayerPayload(r.player),
       isFollowing: true,
-      timestamp: r.session.snapshots?.[0]?.scrapedAt?.toISOString()
-        ?? `${r.session.scrapedDate}T${r.session.startTime}:00+07:00`,
+      timestamp: sessionEndTimestamp(r.session.scrapedDate, r.session.endTime),
       venueName: r.session.club.name,
       sessionId: r.session.id,
     });
@@ -291,8 +294,10 @@ export async function GET(req: NextRequest) {
         player: toPlayerPayload(r.player),
         venueName: r.session.club.name,
         count: 1,
-        lastSeen: r.session.snapshots?.[0]?.scrapedAt?.toISOString()
-          ?? `${r.session.scrapedDate}T${r.session.startTime}:00+07:00`,
+        lastSeen: sessionEndTimestamp(
+          r.session.scrapedDate,
+          r.session.endTime ?? r.session.startTime,
+        ),
       });
     }
   }
@@ -346,8 +351,7 @@ export async function GET(req: NextRequest) {
           type: "you_are_playing",
           player: toPlayerPayload(myProfile),
           isFollowing: false,
-          timestamp: sess.snapshots?.[0]?.scrapedAt?.toISOString()
-            ?? `${todayStr}T${sess.startTime}:00+07:00`,
+          timestamp: sessionStartTimestamp(todayStr, sess.startTime),
           sessionId: sess.id,
           sessionName: sess.name,
           venueName: sess.club.name,
@@ -404,9 +408,10 @@ export async function GET(req: NextRequest) {
             type: "played_self",
             player: toPlayerPayload(myProfile),
             isFollowing: false,
-            timestamp:
-              r.session.snapshots?.[0]?.scrapedAt?.toISOString() ??
-              `${r.session.scrapedDate}T${r.session.startTime}:00+07:00`,
+            timestamp: sessionEndTimestamp(
+              r.session.scrapedDate,
+              r.session.endTime,
+            ),
             venueName: r.session.club.name,
             sessionId: r.session.id,
             sessionTime: `${r.session.scrapedDate}T${r.session.startTime}:00+07:00`,

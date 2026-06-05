@@ -4,6 +4,7 @@ import { reclubAvatarUrl } from "@/lib/utils";
 import {
   isPnScheduleHour,
   isSessionEndedInWindow,
+  sessionEndTimestamp,
   vietnamNow,
   vietnamTimeStr,
   vietnamTodayStr,
@@ -75,9 +76,10 @@ export async function sendSessionFinishedKudosNotifications(): Promise<{
     const playerId = roster.userId;
     const session = roster.session;
     const venueName = session.venue?.name ?? session.club?.name ?? "their session";
-    const sessionTimestamp =
-      session.snapshots?.[0]?.scrapedAt?.toISOString() ??
-      `${session.scrapedDate}T${session.startTime}:00+07:00`;
+    const sessionTimestamp = sessionEndTimestamp(
+      session.scrapedDate,
+      session.endTime,
+    );
 
     if (
       !isSessionEndedInWindow(session.endTime, windowStartTime, nowTimeVN)

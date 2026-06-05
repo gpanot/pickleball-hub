@@ -16,6 +16,22 @@ export function vietnamTimeStr(vnNow = vietnamNow()): string {
   return vnNow.toISOString().slice(11, 16);
 }
 
+/** ISO timestamp for when a session ended (VN +07:00). Used for feed + PN6 display time. */
+export function sessionEndTimestamp(
+  scrapedDate: string,
+  endTime: string,
+): string {
+  return `${scrapedDate}T${endTime}:00+07:00`;
+}
+
+/** ISO timestamp for when a session started (VN +07:00). */
+export function sessionStartTimestamp(
+  scrapedDate: string,
+  startTime: string,
+): string {
+  return `${scrapedDate}T${startTime}:00+07:00`;
+}
+
 export function minutesFromTimeStr(time: string): number {
   const [h, m] = time.split(":").map(Number);
   return (h ?? 0) * 60 + (m ?? 0);
