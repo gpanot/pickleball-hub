@@ -129,12 +129,21 @@ def run_cmd(cmd: list[str]) -> int:
     return result.returncode
 
 
-def _trigger_cron(path: str, label: str) -> None:
-    """Hit a protected GET /api/cron/* route on the Next.js app (7am–9pm ICT guards inside)."""
-    base = (os.environ.get("VERCEL_APP_URL") or "").strip().rstrip("/")
+def _mobile_api_base() -> str:
+    """Railway mobile API — all push notification crons run here, not on Vercel."""
+    return (
+        os.environ.get("MOBILE_API_URL")
+        or os.environ.get("RAILWAY_APP_URL")
+        or ""
+    ).strip().rstrip("/")
+
+
+def _trigger_cron(path: str, label: str, *, api_base: str | None = None) -> None:
+    """Hit a protected GET /api/cron/* route on the Next.js app."""
+    base = (api_base if api_base is not None else _mobile_api_base()).strip().rstrip("/")
     secret = os.environ.get("CRON_SECRET", "")
     if not base or not secret:
-        print(f"  [cron/{label}] VERCEL_APP_URL or CRON_SECRET not set — skipping", flush=True)
+        print(f"  [cron/{label}] MOBILE_API_URL or CRON_SECRET not set — skipping", flush=True)
         return
     url = f"{base}{path}"
     try:
@@ -144,23 +153,18 @@ def _trigger_cron(path: str, label: str) -> None:
             method="GET",
             headers={"x-cron-secret": secret},
         )
-        with urllib.request.urlopen(req, timeout=60) as resp:
+        with urllib.request.urlopen(req, timeout=120) as resp:
             body = resp.read().decode("utf-8", errors="replace")
-            print(f"  [cron/{label}] {resp.status} — {body[:120]}", flush=True)
+            print(f"  [cron/{label}] {resp.status} — {body[:160]}", flush=True)
     except urllib.error.HTTPError as e:
         print(f"  [cron/{label}] HTTP {e.code}", flush=True)
     except Exception as e:
         print(f"  [cron/{label}] request error: {e}", flush=True)
 
 
-def trigger_session_finished_cron() -> None:
-    """PN6 — friend finished playing (also triggered on each scrape)."""
-    _trigger_cron("/api/cron/session-finished-kudos", "pn6")
-
-
-def trigger_you_are_playing_cron() -> None:
-    """PN7 — you are playing."""
-    _trigger_cron("/api/cron/you-are-playing", "pn7")
+def trigger_push_notifications_cron() -> None:
+    """PN6 + PN7 — single cron on Railway mobile API."""
+    _trigger_cron("/api/cron/push-notifications", "push")
 
 
 def run_push_notifications() -> None:
@@ -171,8 +175,7 @@ def run_push_notifications() -> None:
         print(f"  [notify] hour={hour} VN — outside 7am–9pm ICT, skipping", flush=True)
         return
     print(f"\n=== Push notifications — {now.strftime('%H:%M')} VN ===", flush=True)
-    trigger_session_finished_cron()
-    trigger_you_are_playing_cron()
+    trigger_push_notifications_cron()
 
 
 # UTC hours (minute :00) when a full scrape runs — matches 6am, 12pm, 3pm, 9pm VN
@@ -239,9 +242,8 @@ def run_scrape() -> dict:
         if ingest_rc == 0:
             trigger_vercel_revalidation()
 
-        # PN6 + PN7 crons on every scrape (7am–9pm ICT guards inside each handler).
-        trigger_session_finished_cron()
-        trigger_you_are_playing_cron()
+        # Push notifications (PN6 + PN7) → Railway mobile API, not Vercel.
+        trigger_push_notifications_cron()
 
         # Evening run (9 PM VN): do a dedicated tomorrow roster refresh after
         # ingest, so the Discovery tab's tomorrow cards have real DUPR + roster

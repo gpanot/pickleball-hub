@@ -6,8 +6,7 @@
  *   npx tsx scripts/test-pn6-pn7-user.ts
  */
 import { PrismaClient } from "@prisma/client";
-import { sendSessionFinishedKudosNotifications } from "../src/lib/notifications/pn6-session-finished";
-import { sendYouArePlayingNotifications } from "../src/lib/notifications/pn7-you-are-playing";
+import { runPushNotificationsCron } from "../src/lib/notifications/push-cron";
 
 const EMAIL = "giompanot@gmail.com";
 const prisma = new PrismaClient();
@@ -40,13 +39,12 @@ async function main() {
   console.log("Before — recent pn6/pn7 records:", before.length);
   before.forEach((n) => console.log(" ", n.type, n.sentAt.toISOString()));
 
-  console.log("\n--- Running PN6 ---");
-  const r6 = await sendSessionFinishedKudosNotifications();
-  console.log(JSON.stringify(r6));
+  console.log("\n--- Running push cron (PN6 + PN7) ---");
+  const result = await runPushNotificationsCron();
+  console.log(JSON.stringify(result, null, 2));
 
-  console.log("\n--- Running PN7 ---");
-  const r7 = await sendYouArePlayingNotifications();
-  console.log(JSON.stringify(r7));
+  const r6 = result.pn6;
+  const r7 = result.pn7;
 
   const after = await prisma.notificationSent.findMany({
     where: {

@@ -1,15 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { sendYouArePlayingNotifications } from "@/lib/notifications/pn7-you-are-playing";
+import { runPushNotificationsCron } from "@/lib/notifications/push-cron";
 
-/**
- * GET /api/cron/you-are-playing
- *
- * PN7: Fires when the user's session starts — nudges them to check and connect
- * with players on the court.
- *
- * Railway cron schedule (UTC): every 30 min 00:00–14:00 — "* /30 0-14 * * *"
- * Protected by CRON_SECRET (x-cron-secret header or ?secret= query param).
- */
+/** @deprecated Use GET /api/cron/push-notifications — kept for backwards compatibility. */
 export async function GET(req: NextRequest) {
   const secret =
     req.headers.get("x-cron-secret") ||
@@ -22,7 +14,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const result = await sendYouArePlayingNotifications();
-  console.log("[cron/you-are-playing]", result);
-  return NextResponse.json({ ok: true, ...result });
+  const result = await runPushNotificationsCron();
+  return NextResponse.json({ ok: true, deprecated: true, ...result });
 }
