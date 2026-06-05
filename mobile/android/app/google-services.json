@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "485785977181",
+    "project_id": "squadd-1c344",
+    "storage_bucket": "squadd-1c344.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:485785977181:android:d40f0719d127a00bea68b4",
+        "android_client_info": {
+          "package_name": "com.squadd.thehub.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCTynr4uYbK6Jbu6Vhi0rFNVFcdxcYTaa8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

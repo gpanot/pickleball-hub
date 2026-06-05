@@ -1,0 +1,3 @@
+# Release signing — lives outside android/ so prebuild cannot wipe it
+keys/
+keystore.properties

@@ -54,6 +54,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     ...(Array.isArray(config.plugins) ? config.plugins : []),
     "expo-apple-authentication",
     "./scripts/with-google-service-info",
+    "./scripts/with-fcm-manifest-fix",
   ],
   extra: {
     apiUrl: process.env.EXPO_PUBLIC_API_URL ?? "",
