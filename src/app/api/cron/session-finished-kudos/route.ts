@@ -15,5 +15,5 @@ export async function GET(req: NextRequest) {
   }
 
   const result = await runPushNotificationsCron();
-  return NextResponse.json({ ok: true, deprecated: true, ...result });
+  return NextResponse.json({ ...result, deprecated: true });
 }
