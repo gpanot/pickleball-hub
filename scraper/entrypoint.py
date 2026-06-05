@@ -159,8 +159,28 @@ def trigger_session_finished_cron() -> None:
 
 
 def trigger_you_are_playing_cron() -> None:
-    """PN7 — you are playing (also triggered on each scrape; Railway */30 cron is backup)."""
+    """PN7 — you are playing."""
     _trigger_cron("/api/cron/you-are-playing", "pn7")
+
+
+def run_push_notifications() -> None:
+    """Lightweight PN6 + PN7 pass (no scrape). Called every 30 min on Railway."""
+    now = datetime.now(VN_TZ)
+    hour = now.hour
+    if hour < 7 or hour >= 21:
+        print(f"  [notify] hour={hour} VN — outside 7am–9pm ICT, skipping", flush=True)
+        return
+    print(f"\n=== Push notifications — {now.strftime('%H:%M')} VN ===", flush=True)
+    trigger_session_finished_cron()
+    trigger_you_are_playing_cron()
+
+
+# UTC hours (minute :00) when a full scrape runs — matches 6am, 12pm, 3pm, 9pm VN
+_FULL_SCRAPE_UTC_HOURS = frozenset({23, 5, 8, 14})
+
+
+def is_full_scrape_slot(utc_now: datetime) -> bool:
+    return utc_now.minute == 0 and utc_now.hour in _FULL_SCRAPE_UTC_HOURS
 
 
 def trigger_vercel_revalidation(tag: str | None = None) -> None:
@@ -370,9 +390,13 @@ def main():
         server = HTTPServer(("0.0.0.0", port), Handler)
         server.serve_forever()
     else:
-        result = run_scrape()
-        if not result.get("ok"):
-            sys.exit(1)
+        utc_now = datetime.now(timezone.utc)
+        if is_full_scrape_slot(utc_now):
+            result = run_scrape()
+            if not result.get("ok"):
+                sys.exit(1)
+        else:
+            run_push_notifications()
 
 
 if __name__ == "__main__":

@@ -16,7 +16,8 @@ function pn7DedupType(sessionId: number): string {
 
 /**
  * PN7: Notify a user when their session is live (same window as feed "you_are_playing").
- * Dedup: one push per user per session via notifications_sent type pn7:{sessionId}.
+ * Dedup: one push per user per session (`notifications_sent` type `pn7:{sessionId}`).
+ * No frequency cap — same as kudos / follow notifications.
  */
 export async function sendYouArePlayingNotifications(): Promise<{
   sent: number;

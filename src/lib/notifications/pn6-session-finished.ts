@@ -10,7 +10,8 @@ import {
 } from "@/lib/notifications/session-time";
 
 const PN6_TYPE = "pn6";
-const PN6_THROTTLE_PER_24H = 2;
+const PN6_THROTTLE_MAX = 2;
+const PN6_THROTTLE_WINDOW_MS = 4 * 60 * 60 * 1000; // 2 PN6 per 4 h rolling window
 const END_WINDOW_MINUTES = 70;
 
 function pn6DedupType(sessionId: number, followeeUserId: bigint): string {
@@ -22,7 +23,7 @@ function pn6DedupType(sessionId: number, followeeUserId: bigint): string {
  * Also creates played_self / played_today feed items.
  *
  * Push dedup: one per follower per followee session (notifications_sent).
- * Throttle: max 2 PN6 pushes per recipient per 24 h (any followee).
+ * Throttle: max 2 PN6 pushes per recipient per 4 h (any followee).
  */
 export async function sendSessionFinishedKudosNotifications(): Promise<{
   sent: number;
@@ -197,14 +198,14 @@ export async function sendSessionFinishedKudosNotifications(): Promise<{
         continue;
       }
 
-      const sentLast24h = await prisma.notificationSent.count({
+      const sentInWindow = await prisma.notificationSent.count({
         where: {
           recipientId: follower.id,
           type: { startsWith: `${PN6_TYPE}:` },
-          sentAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+          sentAt: { gte: new Date(Date.now() - PN6_THROTTLE_WINDOW_MS) },
         },
       });
-      if (sentLast24h >= PN6_THROTTLE_PER_24H) {
+      if (sentInWindow >= PN6_THROTTLE_MAX) {
         skipped++;
         continue;
       }
