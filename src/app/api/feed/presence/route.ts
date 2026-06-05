@@ -33,6 +33,14 @@ interface UpcomingVenue {
   circleCount: number
 }
 
+/** "HH:mm" → minutes since midnight */
+function timeToMinutes(t: string): number {
+  const [h, m] = t.split(':').map(Number)
+  return h * 60 + (m ?? 0)
+}
+
+const UPCOMING_WINDOW_MINS = 8 * 60
+
 export async function GET(req: NextRequest) {
   const user = await getMobileUser(req)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -90,17 +98,16 @@ export async function GET(req: NextRequest) {
     }
   })
 
-  // Upcoming: sessions starting in the next 8 hours
-  const vnNowMs = Date.now() + 7 * 60 * 60 * 1000
-  const eightHoursLaterMs = vnNowMs + 8 * 60 * 60 * 1000
-  const eightHoursLaterTime = new Date(eightHoursLaterMs).toISOString().slice(11, 16)
+  // Upcoming: sessions starting in the next 8 hours (minute-based — string
+  // comparison breaks when the window crosses midnight, e.g. 17:30 → 01:30)
+  const nowMins = timeToMinutes(nowTime)
 
-  const upcomingRosters = await prisma.sessionRoster.findMany({
+  const upcomingRostersRaw = await prisma.sessionRoster.findMany({
     where: {
       userId: { in: followeeIds },
       session: {
         scrapedDate: todayStr,
-        startTime: { gt: nowTime, lte: eightHoursLaterTime },
+        startTime: { gt: nowTime },
       }
     },
     include: {
@@ -123,6 +130,11 @@ export async function GET(req: NextRequest) {
         }
       }
     }
+  })
+
+  const upcomingRosters = upcomingRostersRaw.filter((r) => {
+    const diff = timeToMinutes(r.session.startTime) - nowMins
+    return diff > 0 && diff <= UPCOMING_WINDOW_MINS
   })
 
   const upcomingMap = new Map<number, UpcomingVenue>()
