@@ -131,11 +131,22 @@ def run_cmd(cmd: list[str]) -> int:
 
 def _mobile_api_base() -> str:
     """Railway mobile API — all push notification crons run here, not on Vercel."""
-    return (
+    explicit = (
         os.environ.get("MOBILE_API_URL")
         or os.environ.get("RAILWAY_APP_URL")
         or ""
     ).strip().rstrip("/")
+    if explicit:
+        return explicit
+    # Railway injects private service hostname on linked services
+    host = (
+        os.environ.get("RAILWAY_SERVICE_PICKLEBALL_HUB_MOBILE_I9AG_URL")
+        or os.environ.get("RAILWAY_SERVICE_PICKLEBALL_HUB_MOBILE_URL")
+        or ""
+    ).strip()
+    if host:
+        return host if host.startswith("http") else f"https://{host}"
+    return ""
 
 
 def _trigger_cron(path: str, label: str, *, api_base: str | None = None) -> None:

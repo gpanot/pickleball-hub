@@ -54,3 +54,16 @@ export function isPnScheduleHour(): boolean {
   const h = vietnamHour();
   return h >= 7 && h < 21;
 }
+
+/** 0=Sun, 1=Mon, … — ICT calendar day from the same offset hack as vietnamHour. */
+export function vietnamDayOfWeek(): number {
+  const vn = vietnamNow();
+  return new Date(
+    Date.UTC(vn.getUTCFullYear(), vn.getUTCMonth(), vn.getUTCDate()),
+  ).getUTCDay();
+}
+
+/** PN5 weekly recap: Monday 08:00 ICT (first cron tick in that hour). */
+export function isWeeklyRecapSlot(): boolean {
+  return vietnamDayOfWeek() === 1 && vietnamHour() === 8;
+}

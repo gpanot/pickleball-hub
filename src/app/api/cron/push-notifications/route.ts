@@ -4,7 +4,7 @@ import { runPushNotificationsCron } from "@/lib/notifications/push-cron";
 /**
  * GET /api/cron/push-notifications
  *
- * Unified PN6 + PN7 cron. Runs on Railway mobile API (`pickleball-hub-mobile`).
+ * Unified PN5 (Mon 8am) + PN6 + PN7 cron. Runs on Railway mobile API (`pickleball-hub-mobile`).
  * Railway scraper calls this every 30 min (7am–9pm ICT) and after each ingest.
  *
  * Protected by CRON_SECRET (x-cron-secret header or ?secret= query param).
