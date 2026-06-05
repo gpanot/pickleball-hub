@@ -17,7 +17,7 @@ export async function runPushNotificationsCron(): Promise<{
   pn6: Awaited<ReturnType<typeof sendSessionFinishedKudosNotifications>>;
   pn7: Awaited<ReturnType<typeof sendYouArePlayingNotifications>>;
 }> {
-  const empty = { sent: 0, skipped: 0, sessions: 0 };
+  const empty = { sent: 0, skipped: 0, sessions: 0, feedItemsCreated: 0 };
   const emptyPn6 = { ...empty, feedItemsCreated: 0 };
 
   let pn5: Awaited<ReturnType<typeof sendWeeklyRecaps>> | null = null;

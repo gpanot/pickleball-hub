@@ -2,8 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getMobileUser } from "@/lib/mobile-auth";
 import {
+  isSessionLive,
   sessionEndTimestamp,
   sessionStartTimestamp,
+  vietnamNow,
+  vietnamTodayStr,
+  vietnamTimeStr,
 } from "@/lib/notifications/session-time";
 import { reclubAvatarUrl } from "@/lib/utils";
 
@@ -91,14 +95,12 @@ export async function GET(req: NextRequest) {
   let kudosResult: Array<{ feedItemId: string | null; type: string; _count: { type: number } }> = [];
 
   if (!isPaginating) {
-  const today = new Date();
-  const todayStr = today.toISOString().slice(0, 10);
+  const vnNow = vietnamNow();
+  const todayStr = vietnamTodayStr(vnNow);
+  const nowTimeVN = vietnamTimeStr(vnNow);
 
   const fiveDaysAgo = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000);
   const cutoffStr = fiveDaysAgo.toISOString().slice(0, 10);
-
-  const vnNow = new Date(Date.now() + 7 * 60 * 60 * 1000);
-  const nowTimeVN = vnNow.toISOString().slice(11, 16); // HH:mm
 
   const playerSelect = {
     userId: true,
@@ -108,7 +110,7 @@ export async function GET(req: NextRequest) {
   } as const;
 
   // Fire all queries in parallel — roster queries, follow events, persisted feed, and live roster
-  const [upcomingRosters, recentRosters, todayCompletedRosters, recentFollowing, recentFollowers, myLiveRoster] =
+  const [upcomingRosters, recentRosters, todayCompletedRosters, recentFollowing, recentFollowers, myLiveRosterRows] =
     await Promise.all([
       // "joining" — followees on upcoming sessions
       prisma.sessionRoster.findMany({
@@ -208,7 +210,7 @@ export async function GET(req: NextRequest) {
         : Promise.resolve([]),
       // "you_are_playing" — current user on a live session right now
       user.reclubUserId
-        ? prisma.sessionRoster.findFirst({
+        ? prisma.sessionRoster.findMany({
             where: {
               userId: user.reclubUserId,
               session: {
@@ -226,13 +228,12 @@ export async function GET(req: NextRequest) {
                   endTime: true,
                   durationMin: true,
                   club: { select: { name: true } },
-                  snapshots: { orderBy: { scrapedAt: "desc" }, take: 1 },
                 },
               },
             },
             orderBy: { session: { startTime: "desc" } },
           })
-        : Promise.resolve(null),
+        : Promise.resolve([]),
     ]);
 
   // ── Joining items ────────────────────────────────────────────────────────────
@@ -315,49 +316,45 @@ export async function GET(req: NextRequest) {
   }
 
   // ── You are playing ──────────────────────────────────────────────────────────
-  // myLiveRoster was fetched in the top-level Promise.all above.
-  // Primary check: startTime <= now < endTime (exact window).
-  // Fallback: session started today and durationMin covers the current time,
-  // to handle sessions with a missing or stale endTime string.
+  // Pick the latest session that is actually live (not merely the latest started).
+  const myLiveRoster = (myLiveRosterRows as Array<{
+    sessionId: number;
+    session: {
+      id: number;
+      name: string;
+      eventUrl: string;
+      startTime: string;
+      endTime: string;
+      durationMin: number;
+      club: { name: string };
+    };
+  }>).find((r) =>
+    isSessionLive(
+      r.session.startTime,
+      r.session.endTime,
+      r.session.durationMin,
+      nowTimeVN,
+    ),
+  );
+
   if (myLiveRoster) {
     const sess = myLiveRoster.session;
-    // Derive effective endTime: prefer DB value, fall back to startTime + durationMin
-    let isLive = false;
-    if (sess.endTime) {
-      isLive = sess.endTime > nowTimeVN;
-    } else if (sess.durationMin) {
-      const [sh, sm] = sess.startTime.split(":").map(Number);
-      const startMinutes = (sh ?? 0) * 60 + (sm ?? 0);
-      const [nh, nm] = nowTimeVN.split(":").map(Number);
-      const nowMinutes = (nh ?? 0) * 60 + (nm ?? 0);
-      isLive = nowMinutes < startMinutes + sess.durationMin;
-    } else {
-      // No end info — treat as live for 2 hours after start
-      const [sh, sm] = sess.startTime.split(":").map(Number);
-      const startMinutes = (sh ?? 0) * 60 + (sm ?? 0);
-      const [nh, nm] = nowTimeVN.split(":").map(Number);
-      const nowMinutes = (nh ?? 0) * 60 + (nm ?? 0);
-      isLive = nowMinutes < startMinutes + 120;
-    }
-
-    if (isLive) {
-      const myProfile = await prisma.player.findUnique({
-        where: { userId: user.reclubUserId! },
-        select: { userId: true, displayName: true, imageUrl: true, duprDoubles: true },
+    const myProfile = await prisma.player.findUnique({
+      where: { userId: user.reclubUserId! },
+      select: { userId: true, displayName: true, imageUrl: true, duprDoubles: true },
+    });
+    if (myProfile) {
+      items.push({
+        id: `you_are_playing_${myLiveRoster.sessionId}`,
+        type: "you_are_playing",
+        player: toPlayerPayload(myProfile),
+        isFollowing: false,
+        timestamp: sessionStartTimestamp(todayStr, sess.startTime),
+        sessionId: sess.id,
+        sessionName: sess.name,
+        venueName: sess.club.name,
+        eventUrl: sess.eventUrl,
       });
-      if (myProfile) {
-        items.push({
-          id: `you_are_playing_${myLiveRoster.sessionId}`,
-          type: "you_are_playing",
-          player: toPlayerPayload(myProfile),
-          isFollowing: false,
-          timestamp: sessionStartTimestamp(todayStr, sess.startTime),
-          sessionId: sess.id,
-          sessionName: sess.name,
-          venueName: sess.club.name,
-          eventUrl: sess.eventUrl,
-        });
-      }
     }
   }
 
@@ -654,7 +651,7 @@ export async function GET(req: NextRequest) {
   // Merge live items with historical persisted items (items no longer in live query)
   const liveItemIds = new Set(liveItems.map((i) => i.id));
   const historicalItems = persistedItems
-    .filter((i) => !liveItemIds.has(i.id))
+    .filter((i) => !liveItemIds.has(i.id) && i.type !== "you_are_playing")
     .map((i) => i.payload as any);
 
   const mergedItems = [...liveItems, ...historicalItems].sort(

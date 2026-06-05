@@ -1,8 +1,10 @@
 import { prisma } from "@/lib/db";
 import { sendPushNotification } from "@/lib/notifications";
+import { reclubAvatarUrl } from "@/lib/utils";
 import {
   isPnScheduleHour,
   isSessionLive,
+  sessionStartTimestamp,
   vietnamNow,
   vietnamTimeStr,
   vietnamTodayStr,
@@ -16,16 +18,17 @@ function pn7DedupType(sessionId: number): string {
 
 /**
  * PN7: Notify a user when their session is live (same window as feed "you_are_playing").
+ * Also upserts a you_are_playing feed item so it appears even if the user doesn't refresh.
  * Dedup: one push per user per session (`notifications_sent` type `pn7:{sessionId}`).
- * No frequency cap — same as kudos / follow notifications.
  */
 export async function sendYouArePlayingNotifications(): Promise<{
   sent: number;
   skipped: number;
   sessions: number;
+  feedItemsCreated: number;
 }> {
   if (!isPnScheduleHour()) {
-    return { sent: 0, skipped: 0, sessions: 0 };
+    return { sent: 0, skipped: 0, sessions: 0, feedItemsCreated: 0 };
   }
 
   const vnNow = vietnamNow();
@@ -44,9 +47,11 @@ export async function sendYouArePlayingNotifications(): Promise<{
       session: {
         select: {
           id: true,
+          name: true,
           startTime: true,
           endTime: true,
           durationMin: true,
+          eventUrl: true,
           venue: { select: { name: true } },
           club: { select: { name: true } },
         },
@@ -57,6 +62,7 @@ export async function sendYouArePlayingNotifications(): Promise<{
 
   let sent = 0;
   let skipped = 0;
+  let feedItemsCreated = 0;
   const sessionsSeen = new Set<number>();
 
   for (const roster of liveRosters) {
@@ -75,6 +81,20 @@ export async function sendYouArePlayingNotifications(): Promise<{
     sessionsSeen.add(session.id);
     const playerId = roster.userId;
     const venueName = session.venue?.name ?? session.club?.name ?? "your court";
+    const sessionTimestamp = sessionStartTimestamp(todayStr, session.startTime);
+
+    const player = await prisma.player.findUnique({
+      where: { userId: playerId },
+      select: {
+        userId: true,
+        displayName: true,
+        imageUrl: true,
+        duprDoubles: true,
+      },
+    });
+    if (!player) continue;
+
+    const playerImageUrl = player.imageUrl ?? reclubAvatarUrl(player.userId);
 
     const profile = await prisma.playerProfile.findUnique({
       where: { reclubUserId: playerId },
@@ -85,6 +105,55 @@ export async function sendYouArePlayingNotifications(): Promise<{
       skipped++;
       continue;
     }
+
+    const itemId = `you_are_playing_${session.id}`;
+    await prisma.feedItem.upsert({
+      where: { id: itemId },
+      create: {
+        id: itemId,
+        profileId: profile.id,
+        type: "you_are_playing",
+        playerUserId: playerId.toString(),
+        payload: {
+          id: itemId,
+          type: "you_are_playing",
+          player: {
+            userId: playerId.toString(),
+            displayName: player.displayName,
+            imageUrl: playerImageUrl,
+            duprDoubles: player.duprDoubles ? Number(player.duprDoubles) : null,
+          },
+          venueName,
+          sessionId: session.id,
+          sessionName: session.name,
+          eventUrl: session.eventUrl,
+          timestamp: sessionTimestamp,
+          isFollowing: false,
+          kudos: { fistbump: 0, flame: 0, star: 0, myReactions: [] },
+        },
+        timestamp: new Date(sessionTimestamp),
+      },
+      update: {
+        payload: {
+          id: itemId,
+          type: "you_are_playing",
+          player: {
+            userId: playerId.toString(),
+            displayName: player.displayName,
+            imageUrl: playerImageUrl,
+            duprDoubles: player.duprDoubles ? Number(player.duprDoubles) : null,
+          },
+          venueName,
+          sessionId: session.id,
+          sessionName: session.name,
+          eventUrl: session.eventUrl,
+          timestamp: sessionTimestamp,
+          isFollowing: false,
+        },
+        timestamp: new Date(sessionTimestamp),
+      },
+    });
+    feedItemsCreated++;
 
     if (!profile.pushToken && !profile.pushTokenIos) {
       skipped++;
@@ -134,5 +203,5 @@ export async function sendYouArePlayingNotifications(): Promise<{
     }
   }
 
-  return { sent, skipped, sessions: sessionsSeen.size };
+  return { sent, skipped, sessions: sessionsSeen.size, feedItemsCreated };
 }

@@ -66,9 +66,10 @@ export function isSessionEndedInWindow(
   return endTime > windowStartTime && endTime <= nowTimeVN;
 }
 
+/** 7:00–22:59 ICT — covers evening sessions that end at 21:00–22:00. */
 export function isPnScheduleHour(): boolean {
   const h = vietnamHour();
-  return h >= 7 && h < 21;
+  return h >= 7 && h < 23;
 }
 
 /** 0=Sun, 1=Mon, … — ICT calendar day from the same offset hack as vietnamHour. */
