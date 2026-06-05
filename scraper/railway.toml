@@ -9,10 +9,11 @@ builder = "dockerfile"
 dockerfilePath = "scraper/Dockerfile"
 
 [deploy]
-# Push notifications (PN6+PN7): every 30 min 7am–9pm VN → UTC 0–14 and 23 at :00/:30
+# Push notifications (PN6+PN7): every 30 min 7am–11pm VN → UTC 0–15 and 23 at :00/:30
+#   7am VN = UTC 00:00 | 11pm VN = UTC 16:00 (last :30 slot = 15:30 UTC)
 #   Scraper calls MOBILE_API_URL /api/cron/push-notifications (Railway mobile service).
 # Full scrape ingest: 6am, 12pm, 3pm, 9pm VN → UTC 23:00, 05:00, 08:00, 14:00 (minute :00)
 # Vercel (web only): cache revalidation via VERCEL_APP_URL after ingest — not used for PNS.
-cronSchedule = "0,30 0-14,23 * * *"
+cronSchedule = "0,30 0-15,23 * * *"
 # Token refresh: 1st of every month at 8:00 AM VN (01:00 UTC)
 # Handled by entrypoint.py when day==1 and hour==8 VN.

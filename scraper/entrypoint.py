@@ -179,11 +179,13 @@ def trigger_push_notifications_cron() -> None:
 
 
 def run_push_notifications() -> None:
-    """Lightweight PN6 + PN7 pass (no scrape). Called every 30 min on Railway."""
+    """Lightweight PN6 + PN7 pass (no scrape). Called every 30 min on Railway.
+    Window: 7:00–22:59 VN — covers evening sessions that end at 21:00–22:00.
+    isPnScheduleHour() on the API side enforces the same window."""
     now = datetime.now(VN_TZ)
     hour = now.hour
-    if hour < 7 or hour >= 21:
-        print(f"  [notify] hour={hour} VN — outside 7am–9pm ICT, skipping", flush=True)
+    if hour < 7 or hour >= 23:
+        print(f"  [notify] hour={hour} VN — outside 7am–11pm ICT, skipping", flush=True)
         return
     print(f"\n=== Push notifications — {now.strftime('%H:%M')} VN ===", flush=True)
     trigger_push_notifications_cron()
@@ -254,6 +256,8 @@ def run_scrape() -> dict:
             trigger_vercel_revalidation()
 
         # Push notifications (PN6 + PN7) → Railway mobile API, not Vercel.
+        # Always fire after a full scrape (no hour guard here — the API-side
+        # isPnScheduleHour() enforces the correct VN window).
         trigger_push_notifications_cron()
 
         # Evening run (9 PM VN): do a dedicated tomorrow roster refresh after
