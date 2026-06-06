@@ -4,9 +4,9 @@
 
 [build]
 builder = "dockerfile"
-# Image CMD is scraper/Dockerfile: `python entrypoint.py` (not ingest.py directly).
+# Image CMD is Dockerfile: `python entrypoint.py` (not ingest.py directly).
 # entrypoint.py runs scan_clubs + ingest on a schedule / trigger.
-dockerfilePath = "scraper/Dockerfile"
+dockerfilePath = "Dockerfile"
 
 [deploy]
 # Push notifications (PN6+PN7): every 30 min 7am–11pm VN → UTC 0–15 and 23 at :00/:30
