@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { getMobileUser } from '@/lib/mobile-auth'
+import { notifyGearSetup } from '@/lib/notifications/pn8-gear-setup'
 
 const EMPTY_GEAR = { gender: null, cap: null, shirt: null, paddle: null, shoes: null, setupComplete: false }
 const VALID_GEAR_KEYS = ['cap', 'shirt', 'paddle', 'shoes'] as const
@@ -95,6 +96,13 @@ export async function PUT(
     ]
 
     const setupComplete = gear.setupCompletedAt != null || allFilled
+
+    if (setupComplete) {
+      void notifyGearSetup({
+        profileId: id,
+        gear: { cap: gear.cap, shirt: gear.shirt, paddle: gear.paddle, shoes: gear.shoes },
+      }).catch((err) => console.error('[PN8] gear notify error:', err))
+    }
 
     return NextResponse.json({ ...gear, gender: genderValue ?? null, setupComplete })
   } catch (err) {

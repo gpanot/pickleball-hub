@@ -611,7 +611,7 @@ export async function GET(req: NextRequest) {
   );
 
   // Max 2 items per player (follow events + played_today + you_are_playing are exempt)
-  const EXEMPT_TYPES = new Set(["just_followed", "new_follower", "played_today", "you_are_playing", "played_self"]);
+  const EXEMPT_TYPES = new Set(["just_followed", "new_follower", "played_today", "you_are_playing", "played_self", "gear_setup"]);
   const playerCount = new Map<string, number>();
   const filtered = items.filter((item) => {
     if (EXEMPT_TYPES.has(item.type)) return true;
