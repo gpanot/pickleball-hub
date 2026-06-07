@@ -640,7 +640,6 @@ export async function GET(req: NextRequest) {
           },
           update: {
             payload: item,
-            timestamp: new Date(item.timestamp),
           },
         })
       )

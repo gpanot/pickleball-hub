@@ -154,7 +154,7 @@ export async function sendSessionFinishedKudosNotifications(): Promise<{
     }
 
     for (const { follower } of followers) {
-      const todayItemId = `played_today_${playerId}_${session.id}`;
+      const todayItemId = `played_today_${playerId}_${session.id}_${follower.id}`;
       await prisma.feedItem.upsert({
         where: { id: todayItemId },
         create: {
