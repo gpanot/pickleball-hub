@@ -31,9 +31,11 @@ HEADERS_JSON = {
 }
 
 PICKLEBALL_SPORT_ID = 36
-# referenceType=1 = real user; 9, 10, 30 were legacy Nuxt SSR values — kept for safety
-VALID_REFERENCE_TYPES = {1, 9, 10, 30}
-CONFIRMED_STATUSES = {0, 1}
+# June 2026 /meets/by-ref/ API referenceType values:
+#   1 = own Reclub account  → batch-fetch profile via /players/userIds
+#   2 = guest slot (no account, added by admin/organiser) → no name, skip
+#   3 = bring-a-friend (added by another player) → use externalReference.name directly
+CONFIRMED_STATUS = 1
 PROFILE_CHUNK = 30
 PROFILE_SLEEP_S = 0.5
 
@@ -57,11 +59,15 @@ def fetch_participants_by_ref(reference_code: str) -> Optional[list[dict]]:
     """
     Fetch confirmed participants for a meet using the public /meets/by-ref/{ref} endpoint.
 
-    Reclub's Nuxt SSR no longer renders participant data server-side (returns HTTP 500
-    with empty meet payload for all sessions). The /meets/by-ref/{ref} REST endpoint
-    is publicly accessible without authentication and returns the full participants array.
+    Returns a list of dicts sorted by join order (lastStatusUpdatedAt ASC).
+    Each dict has:
+      - userId (int) — present for referenceType 1 (own account); None for type 3
+      - isHost (bool)
+      - is_added_by_friend (bool) — True for referenceType 3 (bring-a-friend slots)
+      - friend_name (str | None) — display name from externalReference.name, type 3 only
 
-    Returns a list of dicts with keys: userId (int), isHost (bool).
+    referenceType 2 (anonymous guest slots with no name) are silently dropped.
+
     Returns None on fetch/parse error so the caller can write an empty stats row.
     """
     try:
@@ -75,26 +81,53 @@ def fetch_participants_by_ref(reference_code: str) -> Optional[list[dict]]:
         print(f"[roster] No participants array in /meets/by-ref/{reference_code} response")
         return None
 
-    seen: dict[int, dict] = {}
-    for entry in raw_participants:
-        if not isinstance(entry, dict):
-            continue
-        # Only referenceType=1 entries are real users (not guests/externals)
-        if entry.get("referenceType") not in VALID_REFERENCE_TYPES:
-            continue
-        if entry.get("status") not in CONFIRMED_STATUSES:
-            continue
-        uid = entry.get("referenceId")
-        if not isinstance(uid, int):
-            continue
-        is_host = bool(entry.get("isHost", False))
-        if uid not in seen:
-            seen[uid] = {"userId": uid, "isHost": is_host}
-        else:
-            seen[uid]["isHost"] = seen[uid]["isHost"] or is_host
+    # Sort by join order before processing so result order is stable
+    confirmed = sorted(
+        (e for e in raw_participants if isinstance(e, dict) and e.get("status") == CONFIRMED_STATUS),
+        key=lambda e: e.get("lastStatusUpdatedAt") or 0,
+    )
 
-    result = list(seen.values())
-    print(f"[roster] fetch_participants_by_ref({reference_code}): {len(raw_participants)} raw → {len(result)} unique confirmed")
+    seen_type1: dict[int, dict] = {}   # deduplicate own-account users
+    type3_entries: list[dict] = []     # bring-a-friend (have a name, no DB player row)
+    skipped_type2 = 0
+
+    for entry in confirmed:
+        rt = entry.get("referenceType")
+        uid = entry.get("referenceId")
+        is_host = bool(entry.get("isHost", False))
+
+        if rt == 1:
+            # Own Reclub account — deduplicate by userId
+            if not isinstance(uid, int) or uid <= 0:
+                continue
+            if uid not in seen_type1:
+                seen_type1[uid] = {"userId": uid, "isHost": is_host, "is_added_by_friend": False, "friend_name": None}
+            else:
+                seen_type1[uid]["isHost"] = seen_type1[uid]["isHost"] or is_host
+
+        elif rt == 3:
+            # Bring-a-friend: name comes from externalReference, not a player profile
+            ext = entry.get("externalReference")
+            name = ext.get("name") if isinstance(ext, dict) else None
+            if name:
+                type3_entries.append({
+                    "userId": None,
+                    "isHost": is_host,
+                    "is_added_by_friend": True,
+                    "friend_name": name,
+                })
+
+        elif rt == 2:
+            # Anonymous guest slot — no name available, skip
+            skipped_type2 += 1
+
+    result = list(seen_type1.values()) + type3_entries
+    print(
+        f"[roster] fetch_participants_by_ref({reference_code}): "
+        f"{len(raw_participants)} raw → {len(confirmed)} confirmed → "
+        f"{len(seen_type1)} real users + {len(type3_entries)} bring-a-friend "
+        f"+ {skipped_type2} anon guests (skipped)"
+    )
     return result
 
 
@@ -238,7 +271,12 @@ def scrape_session_roster(
 
     print(f"[roster] {len(participants)} confirmed participants for {reference_code}")
 
-    user_ids = [p["userId"] for p in participants]
+    # Split into real Reclub users (have userId, stored in DB) vs bring-a-friend entries
+    # (userId=None, have a name but no player profile — counted in total, not in DB)
+    real_participants = [p for p in participants if p["userId"] is not None]
+    friend_count = len(participants) - len(real_participants)
+
+    user_ids = [p["userId"] for p in real_participants]
     profiles = fetch_player_profiles(user_ids)
     profile_map = {p["userId"]: p for p in profiles if isinstance(p, dict) and "userId" in p}
 
@@ -250,7 +288,7 @@ def scrape_session_roster(
     doubles_vals: list[float] = []
 
     try:
-        for participant in participants:
+        for participant in real_participants:
             uid = participant["userId"]
             profile = profile_map.get(uid, {})
             dupr = extract_dupr(profile)
@@ -323,8 +361,11 @@ def scrape_session_roster(
                 (session_id, uid, participant["isHost"]),
             )
 
+        # total_confirmed reflects all confirmed slots (real users + bring-a-friend)
+        # DUPR % is computed over real users only (bring-a-friend have no profile)
         total = len(participants)
-        dupr_pct = round((players_with_dupr / total) * 100, 2) if total > 0 else 0
+        dupr_denominator = len(real_participants)
+        dupr_pct = round((players_with_dupr / dupr_denominator) * 100, 2) if dupr_denominator > 0 else 0
         avg_s = round(sum(singles_vals) / len(singles_vals), 3) if singles_vals else None
         avg_d = round(sum(doubles_vals) / len(doubles_vals), 3) if doubles_vals else None
 
@@ -436,7 +477,8 @@ def scrape_session_roster(
 
         conn.commit()
         print(
-            f"[roster] {reference_code} — {players_with_dupr}/{total} with DUPR ({dupr_pct}%)"
+            f"[roster] {reference_code} — {len(real_participants)} real + {friend_count} bring-a-friend = {total} total | "
+            f"{players_with_dupr}/{dupr_denominator} with DUPR ({dupr_pct}%)"
             + (f", regulars {returning_pct}%" if returning_pct is not None else ", regulars=NULL")
         )
         return {
