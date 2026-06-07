@@ -210,7 +210,7 @@ async function main() {
   for (const r of friendsFinishedToday) {
     const s = r.session;
     const inPn6Window = s.endTime > windowStart6 && s.endTime <= nowTimeVN;
-    const playedTodayId = `played_today_${r.userId}_${s.id}`;
+    const playedTodayId = `played_today_${r.userId}_${s.id}_${user.profile.id}`;
     const feedExists = await prisma.feedItem.findUnique({ where: { id: playedTodayId }, select: { id: true } });
     console.log(
       `  ${r.player.displayName} session ${s.id} ${s.startTime}-${s.endTime} status=${s.status}`,

@@ -264,7 +264,7 @@ export async function GET(req: NextRequest) {
     if (seenTodayKeys.has(key)) continue;
     seenTodayKeys.add(key);
     items.push({
-      id: `played_today_${r.userId}_${r.sessionId}`,
+      id: `played_today_${r.userId}_${r.sessionId}_${user.profileId}`,
       type: "played_today",
       player: toPlayerPayload(r.player),
       isFollowing: true,
