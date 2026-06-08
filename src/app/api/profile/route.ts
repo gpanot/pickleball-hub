@@ -6,7 +6,7 @@ export async function POST(req: NextRequest) {
   try {
     const user = await getMobileUser(req);
     const body = await req.json();
-    const { profileId, zaloId, displayName, preferences, reclubUserId, gender } = body;
+    const { profileId, zaloId, displayName, preferences, reclubUserId, gender, market } = body;
 
     // Use authenticated profileId if available, fall back to body for legacy callers
     const resolvedProfileId = user?.profileId ?? profileId;
@@ -40,9 +40,15 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Merge gender into preferences JSON if provided
+    const validMarket = market === 'kl' ? 'kl' : market === 'hcm' ? 'hcm' : undefined;
+
+    // Merge gender and market into preferences JSON if provided
     const mergedPreferences = preferences != null
-      ? { ...(typeof preferences === 'object' ? preferences : {}), ...(gender ? { gender } : {}) }
+      ? {
+          ...(typeof preferences === 'object' ? preferences : {}),
+          ...(gender ? { gender } : {}),
+          ...(validMarket ? { market: validMarket } : {}),
+        }
       : undefined;
 
     const genderValue = typeof gender === 'string' && gender.trim() ? gender.trim() : undefined;
@@ -71,6 +77,7 @@ export async function POST(req: NextRequest) {
     console.log(
       `[POST /api/profile] saved profileId=${resolvedProfileId}`,
       `dupr=${(preferences as Record<string, unknown>)?.dupr ?? "n/a"}`,
+      `market=${validMarket ?? "unchanged"}`,
       `reclubUserId=${reclubId ?? "unchanged"}`
     );
 

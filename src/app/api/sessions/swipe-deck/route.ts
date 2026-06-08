@@ -20,9 +20,9 @@ const REGULARS_CAP = 5;
 // Does NOT include minTime (applied in-memory post-retrieval) so the cache is
 // shared across all users hitting the same date. Keyed as ['swipe-deck-sessions', date].
 const getCachedSwipeSessions = unstable_cache(
-  async (date: string) => {
+  async (date: string, market: string = "hcm") => {
     const sessions = await prisma.session.findMany({
-      where: { scrapedDate: date, status: "active", club: { market: "hcm" } },
+      where: { scrapedDate: date, status: "active", club: { market } },
       include: {
         club: { select: { name: true, slug: true } },
         venue: { select: { name: true, latitude: true, longitude: true } },
@@ -116,6 +116,9 @@ export async function GET(req: NextRequest) {
     const rangeKmParam = searchParams.get("rangeKm");
     const rangeKm = rangeKmParam ? parseFloat(rangeKmParam) : null;
 
+    const marketParam = searchParams.get("market") ?? "hcm";
+    const market = marketParam === "kl" ? "kl" : "hcm";
+
     // When filters are active, fetch a larger batch so post-map filtering has enough to work with.
     // Without this, limit=20 is applied at DB level, then filtering can reduce to just a few results.
     const filtersActive = (duprMin !== null) || (timeSlots !== null && timeSlots.length < 3);
@@ -146,7 +149,7 @@ export async function GET(req: NextRequest) {
 
     // Fetch all active sessions for the date from cache, then apply minTime in-memory.
     // This way the 10-min cache is shared across all users regardless of request time.
-    const allSessions = await getCachedSwipeSessions(date);
+    const allSessions = await getCachedSwipeSessions(date, market);
     const sessions = minTime
       ? allSessions.filter((s) => s.startTime >= minTime)
       : allSessions;

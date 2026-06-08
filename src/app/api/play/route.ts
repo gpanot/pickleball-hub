@@ -26,6 +26,7 @@ const getCachedSessions = unstable_cache(
     maxLat: number,
     minLng: number,
     maxLng: number,
+    market: string = "hcm",
   ) => {
     const geoFilter =
       minLat !== 0 || maxLat !== 0
@@ -40,7 +41,7 @@ const getCachedSessions = unstable_cache(
       where: {
         scrapedDate: dateStr,
         status: "active",
-        club: { market: "hcm" },
+        club: { market },
         ...geoFilter,
       },
       include: {
@@ -157,6 +158,8 @@ export async function GET(req: NextRequest) {
   const timeSlots = timeSlotsParam
     ? timeSlotsParam.split(",").filter((s) => ["morning", "afternoon", "evening"].includes(s))
     : ["morning", "afternoon", "evening"];
+  const marketParam = searchParams.get("market") ?? "hcm";
+  const market = marketParam === "kl" ? "kl" : "hcm";
   const today = vnCalendarDateString(0);
   const tomorrow = vnCalendarDateString(1);
   const dateStr = filter === "tomorrow" ? tomorrow : today;
@@ -192,7 +195,7 @@ export async function GET(req: NextRequest) {
           select: { followeeId: true },
         })
       : Promise.resolve([]),
-    getCachedSessions(dateStr, cacheMinLat, cacheMaxLat, cacheMinLng, cacheMaxLng),
+    getCachedSessions(dateStr, cacheMinLat, cacheMaxLat, cacheMinLng, cacheMaxLng, market),
     user?.profileId
       ? prisma.block.findMany({
           where: { blockerId: user.profileId },

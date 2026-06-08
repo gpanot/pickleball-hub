@@ -7,25 +7,39 @@ const GOOGLE_TOKEN_INFO = "https://oauth2.googleapis.com/tokeninfo";
 const APPLE_KEYS_URL = "https://appleid.apple.com/auth/keys";
 const APPLE_ISSUER = "https://appleid.apple.com";
 const DEV_EMAIL = "dev@thehub.local";
+const REVIEWER_EMAIL = "reviewer@thehub.local";
 
 /**
  * GET /api/auth/mobile-token?dev=1
  * Dev-only shortcut: creates/retrieves a dev user and returns a real JWT
  * so the full onboarding + follow flow can be tested without Google.
+ *
+ * GET /api/auth/mobile-token?reviewer=1
+ * Apple reviewer shortcut: a stable reviewer account (separate from dev) used by
+ * the App Store reviewer. The account has onboarding already completed so the reviewer
+ * lands directly on the main app with Ho Chi Minh City as the default location.
  */
 export async function GET(req: NextRequest) {
   const isDev = req.nextUrl.searchParams.get("dev");
-  if (!isDev) {
+  const isReviewer = req.nextUrl.searchParams.get("reviewer");
+
+  if (!isDev && !isReviewer) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  let user = await prisma.user.findUnique({ where: { email: DEV_EMAIL } });
+  const accountEmail = isReviewer ? REVIEWER_EMAIL : DEV_EMAIL;
+  const accountName = isReviewer ? "Reclub Player" : "Dev Player";
+  const accountImage = isReviewer
+    ? "https://i.pravatar.cc/80?img=12"
+    : "https://i.pravatar.cc/80?img=33";
+
+  let user = await prisma.user.findUnique({ where: { email: accountEmail } });
   if (!user) {
     user = await prisma.user.create({
       data: {
-        email: DEV_EMAIL,
-        name: "Dev Player",
-        image: "https://i.pravatar.cc/80?img=33",
+        email: accountEmail,
+        name: accountName,
+        image: accountImage,
       },
     });
   }
@@ -35,7 +49,18 @@ export async function GET(req: NextRequest) {
   });
   if (!profile) {
     profile = await prisma.playerProfile.create({
-      data: { userId: user.id, displayName: user.name },
+      data: {
+        userId: user.id,
+        displayName: accountName,
+        // Reviewer account: mark onboarding complete so they land on the main app
+        ...(isReviewer ? { onboardingCompleted: true } : {}),
+      },
+    });
+  } else if (isReviewer && !profile.onboardingCompleted) {
+    // Ensure reviewer always has onboarding complete
+    profile = await prisma.playerProfile.update({
+      where: { id: profile.id },
+      data: { onboardingCompleted: true },
     });
   }
 
@@ -58,9 +83,12 @@ export async function GET(req: NextRequest) {
   }
   const duprRating = reclubDuprDev ?? prefsDuprDev;
 
+  const tag = isReviewer ? "reviewer" : "dev";
   console.log(
-    `[DUPR_DEBUG] mobile-token (dev): profileId=${profile.id} preferences.dupr=${prefsDuprDev} reclubDupr=${reclubDuprDev} final=${duprRating}`
+    `[DUPR_DEBUG] mobile-token (${tag}): profileId=${profile.id} preferences.dupr=${prefsDuprDev} reclubDupr=${reclubDuprDev} final=${duprRating}`
   );
+
+  const marketDev = prefs.market === 'kl' ? 'kl' : 'hcm';
 
   return NextResponse.json({
     jwt,
@@ -74,6 +102,7 @@ export async function GET(req: NextRequest) {
     hasCompletedOnboarding: profile.onboardingCompleted,
     duprRating,
     gender: profile.gender ?? null,
+    market: marketDev,
   });
 }
 
@@ -184,6 +213,8 @@ async function buildAuthResponse(params: {
     `[DUPR_DEBUG] mobile-token: profileId=${profile.id} reclubUserId=${profile.reclubUserId ?? "none"} preferences.dupr=${prefsDupr} reclubDupr=${reclubDupr} final=${duprRating}`
   );
 
+  const market = prefs.market === 'kl' ? 'kl' : 'hcm';
+
   return NextResponse.json({
     jwt,
     userId: user.id,
@@ -194,6 +225,7 @@ async function buildAuthResponse(params: {
     hasCompletedOnboarding: profile.onboardingCompleted,
     duprRating,
     gender: profile.gender ?? null,
+    market,
   });
 }
 
