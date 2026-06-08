@@ -83,7 +83,7 @@ VN_TZ = timezone(timedelta(hours=7))
 NOW = datetime.now(VN_TZ)
 
 # Accept optional --date YYYY-MM-DD and --market MARKET argument(s).
-# --market can be 'hcm', 'kl', or 'all' (default = 'all' = run every market).
+# --market can be 'hcm', 'kl', or 'all' (default = 'hcm' — KL is on hold).
 _explicit_dates: list[str] = []
 _cli_market: str = "all"
 _args = sys.argv[1:]
@@ -104,8 +104,9 @@ while i < len(_args):
     else:
         i += 1
 
-# Which markets to run (CLI override or env var; default = all)
-_env_market = os.environ.get("INGEST_MARKET", "all")
+# Which markets to run (CLI override or env var).
+# Default is 'hcm' — KL is enabled by setting INGEST_MARKET=kl or INGEST_MARKET=all.
+_env_market = os.environ.get("INGEST_MARKET", "hcm")
 ACTIVE_MARKETS: list[str] = []
 _market_selector = _cli_market if _cli_market != "all" else _env_market
 if _market_selector == "all":
