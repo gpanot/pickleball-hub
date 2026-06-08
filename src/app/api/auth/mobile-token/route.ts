@@ -77,7 +77,19 @@ export async function GET(req: NextRequest) {
   });
 }
 
-/** Shared helper: find-or-create user + profile and return a JWT response. */
+/**
+ * Find-or-create a User + Account + PlayerProfile and return a signed JWT response.
+ *
+ * Identity strategy (by priority):
+ *  1. Always look up by provider + providerAccountId first — this is the stable
+ *     identifier that never changes and never depends on the user sharing their email.
+ *  2. If not found by account, fall back to email lookup (handles the case where
+ *     the same person previously signed in with Google using the same email).
+ *  3. If still not found, create a new User (email may be null — Apple allows it).
+ *
+ * This makes Apple Sign-In work correctly whether the user hides their email or not,
+ * on the first sign-in and on every subsequent sign-in.
+ */
 async function buildAuthResponse(params: {
   email: string | null | undefined;
   name: string | null | undefined;
@@ -89,12 +101,21 @@ async function buildAuthResponse(params: {
 }) {
   const { email, name, image, provider, providerAccountId, idToken, emailVerified } = params;
 
-  let user = email
-    ? await prisma.user.findUnique({ where: { email } })
-    : await prisma.account
-        .findUnique({ where: { provider_providerAccountId: { provider, providerAccountId } } })
-        .then((a) => (a ? prisma.user.findUnique({ where: { id: a.userId } }) : null));
+  // Step 1: look up by stable provider account ID
+  const existingAccount = await prisma.account.findUnique({
+    where: { provider_providerAccountId: { provider, providerAccountId } },
+    include: { user: true },
+  });
 
+  let user = existingAccount?.user ?? null;
+
+  // Step 2: if no account record yet, try to match an existing user by email
+  // (so a Google user who also sets up Apple uses the same profile)
+  if (!user && email) {
+    user = await prisma.user.findUnique({ where: { email } }) ?? null;
+  }
+
+  // Step 3: create new user if still not found
   if (!user) {
     user = await prisma.user.create({
       data: {
@@ -104,17 +125,36 @@ async function buildAuthResponse(params: {
         emailVerified: emailVerified ? new Date() : null,
       },
     });
-    await prisma.account.create({
-      data: {
+  } else {
+    // Update name/image if we now have them (Apple only sends on first sign-in)
+    const updates: Record<string, unknown> = {};
+    if (name && !user.name) updates.name = name;
+    if (image && !user.image) updates.image = image;
+    if (email && !user.email) {
+      updates.email = email;
+      if (emailVerified) updates.emailVerified = new Date();
+    }
+    if (Object.keys(updates).length > 0) {
+      user = await prisma.user.update({ where: { id: user.id }, data: updates });
+    }
+  }
+
+  // Step 4: ensure the Account record exists (idempotent upsert)
+  if (!existingAccount) {
+    await prisma.account.upsert({
+      where: { provider_providerAccountId: { provider, providerAccountId } },
+      create: {
         userId: user.id,
         type: "oauth",
         provider,
         providerAccountId,
         id_token: idToken,
       },
+      update: { id_token: idToken },
     });
   }
 
+  // Step 5: ensure PlayerProfile exists
   let profile = await prisma.playerProfile.findUnique({ where: { userId: user.id } });
   if (!profile) {
     profile = await prisma.playerProfile.create({
@@ -130,7 +170,6 @@ async function buildAuthResponse(params: {
     typeof rawDupr === "string" && rawDupr !== "" ? parseFloat(rawDupr) || null :
     null;
 
-  // Prefer player.duprDoubles (kept in sync by PATCH /api/players/profile) over preferences.dupr
   let reclubDupr: number | null = null;
   if (profile.reclubUserId) {
     const player = await prisma.player.findUnique({
@@ -160,15 +199,27 @@ async function buildAuthResponse(params: {
 
 /**
  * POST /api/auth/mobile-token
- * Body: { idToken: string, provider?: "google" | "apple" }
+ * Body: { idToken: string, provider?: "google" | "apple", givenName?, familyName?, credentialEmail? }
  *
  * Verifies a Google or Apple idToken, creates/retrieves the User + PlayerProfile,
  * and returns a lightweight JWT the mobile app uses for all subsequent calls.
+ *
+ * Apple compliance:
+ * - Email is optional. Users may hide their email (Apple private relay) — we never
+ *   require it. Identity is established via the stable `sub` (Apple user ID).
+ * - `givenName` / `familyName` are only provided by the credential on the very first
+ *   sign-in; the client forwards them here and we store them if the user has no name yet.
  */
 export async function POST(req: NextRequest) {
   try {
-    const body = (await req.json()) as { idToken?: string; provider?: string };
-    const { idToken, provider = "google" } = body;
+    const body = (await req.json()) as {
+      idToken?: string;
+      provider?: string;
+      givenName?: string | null;
+      familyName?: string | null;
+      credentialEmail?: string | null;
+    };
+    const { idToken, provider = "google", givenName, familyName, credentialEmail } = body;
     const ua = req.headers.get("user-agent") ?? "<unknown>";
     const xff = req.headers.get("x-forwarded-for") ?? "<unknown>";
     console.log("[POST /api/auth/mobile-token] incoming", {
@@ -201,12 +252,25 @@ export async function POST(req: NextRequest) {
       }
 
       const sub = payload.sub as string;
-      const email = payload.email as string | undefined;
+      // Email may be absent (user chose to hide it) — that is fine and expected.
+      // Prefer the JWT claim; fall back to the credential email forwarded by the client.
+      const jwtEmail = payload.email as string | undefined;
+      const email = jwtEmail || credentialEmail || null;
       const emailVerified = payload.email_verified === true || payload.email_verified === "true";
+
+      // Build a display name from the credential's fullName (only available on first sign-in).
+      const parts = [givenName, familyName].filter(Boolean);
+      const name = parts.length > 0 ? parts.join(" ") : null;
+
+      console.log("[POST /api/auth/mobile-token] apple sub", {
+        sub: sub ? `${sub.slice(0, 8)}...` : "<missing>",
+        hasEmail: Boolean(email),
+        hasName: Boolean(name),
+      });
 
       return buildAuthResponse({
         email,
-        name: null,
+        name,
         image: null,
         provider: "apple",
         providerAccountId: sub,
