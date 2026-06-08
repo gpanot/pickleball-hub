@@ -33,24 +33,90 @@ from roster_scraper import run_roster_pass_for_day
 # ─── Configuration ────────────────────────────────────────────────────
 
 API_BASE = "https://api.reclub.co"
-COMMUNITY_ID = 1
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
     "x-output-casing": "camelCase",
 }
 
+# ── Market definitions ─────────────────────────────────────────────────
+# Each market entry drives a fully independent scrape pass.
+# fee_threshold: raw feeAmount values below this are ambiguous (e.g. credits
+#   or small integers) and trigger price extraction from session title/notes.
+#   VN = 10000 (smallest real session ~30,000 VND), KL = 1 (MYR amounts are
+#   always small integers like 6–50, so trust them as-is).
+MARKETS = {
+    "hcm": {
+        "community_id": 1,
+        "tz": timezone(timedelta(hours=7)),
+        "currency": "VND",
+        "fee_threshold": 10000,
+        "label": "Ho Chi Minh City",
+    },
+    "kl": {
+        "community_id": 248,
+        "tz": timezone(timedelta(hours=8)),
+        "currency": "MYR",
+        "fee_threshold": 1,      # MYR fees are already small integers — trust them
+        "label": "Kuala Lumpur",
+    },
+}
+
+# Active market — set by run_market() before each pass; read by helpers below.
+_active_market: dict = MARKETS["hcm"]
+
+def _market_tz() -> timezone:
+    return _active_market["tz"]
+
+def _market_community_id() -> int:
+    return _active_market["community_id"]
+
+def _market_key() -> str:
+    for k, v in MARKETS.items():
+        if v is _active_market:
+            return k
+    return "hcm"
+
+# Backward-compat alias used by lots of helpers
+COMMUNITY_ID: int = 1   # will be overridden per pass via _active_market
+
 VN_TZ = timezone(timedelta(hours=7))
 NOW = datetime.now(VN_TZ)
 
-# Accept optional --date YYYY-MM-DD argument(s) to scrape specific days.
-# Multiple --date flags are supported. Without any, defaults to today + tomorrow.
-_explicit_dates = []
-for i, arg in enumerate(sys.argv[1:], 1):
-    if arg == "--date" and i < len(sys.argv) - 1:
-        _explicit_dates.append(sys.argv[i + 1])
-    elif arg.startswith("--date="):
-        _explicit_dates.append(arg.split("=", 1)[1])
+# Accept optional --date YYYY-MM-DD and --market MARKET argument(s).
+# --market can be 'hcm', 'kl', or 'all' (default = 'all' = run every market).
+_explicit_dates: list[str] = []
+_cli_market: str = "all"
+_args = sys.argv[1:]
+i = 0
+while i < len(_args):
+    if _args[i] == "--date" and i + 1 < len(_args):
+        _explicit_dates.append(_args[i + 1])
+        i += 2
+    elif _args[i].startswith("--date="):
+        _explicit_dates.append(_args[i].split("=", 1)[1])
+        i += 1
+    elif _args[i] == "--market" and i + 1 < len(_args):
+        _cli_market = _args[i + 1]
+        i += 2
+    elif _args[i].startswith("--market="):
+        _cli_market = _args[i].split("=", 1)[1]
+        i += 1
+    else:
+        i += 1
 
+# Which markets to run (CLI override or env var; default = all)
+_env_market = os.environ.get("INGEST_MARKET", "all")
+ACTIVE_MARKETS: list[str] = []
+_market_selector = _cli_market if _cli_market != "all" else _env_market
+if _market_selector == "all":
+    ACTIVE_MARKETS = list(MARKETS.keys())
+elif _market_selector in MARKETS:
+    ACTIVE_MARKETS = [_market_selector]
+else:
+    print(f"WARNING: unknown --market '{_market_selector}', defaulting to 'all'")
+    ACTIVE_MARKETS = list(MARKETS.keys())
+
+# Build TARGET_DAYS using HCM timezone for backward-compat date strings
 if _explicit_dates:
     TARGET_DAYS = [
         datetime.strptime(d, "%Y-%m-%d").replace(tzinfo=VN_TZ) for d in _explicit_dates
@@ -148,9 +214,12 @@ def extract_zalo_phone(text):
 def resolve_fee(meet):
     """
     Determine the best fee amount for a meet using this priority:
-      1. API feeAmount (raw) — unless < 10,000 VND (likely a typo/credit unit)
-      2. If API fee < 10k → try titlePrice, then notesPrice
+      1. API feeAmount (raw) — unless ambiguous (below market fee_threshold)
+      2. If ambiguous → try titlePrice, then notesPrice
       3. If API fee is 0 or missing → use notesPrice or titlePrice
+
+    For VND markets: fee_threshold = 10,000 (real sessions start at 30k+)
+    For MYR markets: fee_threshold = 1 (MYR fees are already correct small ints)
     """
     raw = meet.get("feeAmount") or 0
     if isinstance(raw, str):
@@ -159,14 +228,17 @@ def resolve_fee(meet):
     else:
         raw = int(raw)
 
+    fee_threshold = _active_market.get("fee_threshold", 10000)
     name = (meet.get("name") or "")
     notes = meet.get("notes") or ""
     title_price = extract_price_from_title(name)
     notes_price = extract_price_from_notes(notes)
 
-    if raw >= 10000:
+    if raw >= fee_threshold:
         return raw
-    if raw > 0 and raw < 10000:
+    if raw > 0 and raw < fee_threshold:
+        # VND path: small integer is likely "k" notation (e.g. 50 = 50,000 VND)
+        # MYR path: fee_threshold = 1 so this branch never fires for MYR
         if title_price:
             return title_price
         if notes_price:
@@ -234,7 +306,7 @@ def parse_perks(name):
 def fmt_time(ts):
     if not ts:
         return ""
-    return datetime.fromtimestamp(ts, VN_TZ).strftime("%H:%M")
+    return datetime.fromtimestamp(ts, _market_tz()).strftime("%H:%M")
 
 
 def haversine_m(lat1, lon1, lat2, lon2):
@@ -264,27 +336,29 @@ def api_get(path, params=None):
 def get_all_club_ids():
     club_map = {}
 
+    active_comm_id = _market_community_id()
     print("  [a] Community features...")
-    data = api_get(f"/communities/{COMMUNITY_ID}/features")
+    data = api_get(f"/communities/{active_comm_id}/features")
     if data:
         for c in data.get("topClubs", []):
             club_map[c["id"]] = {
                 "id": c["id"],
                 "name": c.get("name", ""),
                 "slug": c.get("slug", ""),
-                "communityId": c.get("communityId", COMMUNITY_ID),
+                "communityId": c.get("communityId", active_comm_id),
                 "sportId": c.get("sportId"),
                 "numMembers": c.get("numMembers", 0),
             }
     print(f"      {len(club_map)} clubs")
 
-    print("  [b] Sport features (global)...")
+    print("  [b] Sport features (global, filtered to community)...")
     for sid in SPORT_IDS_TO_SCAN:
         sdata = api_get(f"/sports/{sid}/features")
         if sdata:
             for c in sdata.get("topClubs", []):
                 cid = c.get("id")
-                if cid and cid not in club_map:
+                # Only include clubs from the active market's community
+                if cid and cid not in club_map and c.get("communityId") == active_comm_id:
                     club_map[cid] = {
                         "id": cid,
                         "name": c.get("name", ""),
@@ -295,11 +369,19 @@ def get_all_club_ids():
                     }
         time.sleep(0.05)
 
-    # [c] Load from hcm_pickleball_clubs.json (comprehensive list from scan)
+    # [c] Load from market-specific clubs JSON (comprehensive list from scan)
+    # Convention: {market}_pickleball_clubs.json  (e.g. kl_pickleball_clubs.json)
+    mk = _market_key()
     json_paths = [
-        os.path.join(os.path.dirname(__file__), "..", "..", "hcm_pickleball_clubs.json"),
-        os.path.join(os.path.dirname(__file__), "..", "hcm_pickleball_clubs.json"),
+        os.path.join(os.path.dirname(__file__), "..", "..", f"{mk}_pickleball_clubs.json"),
+        os.path.join(os.path.dirname(__file__), "..", f"{mk}_pickleball_clubs.json"),
     ]
+    # Backward-compat: legacy filename only for hcm market (do NOT load VN clubs when scraping KL)
+    if mk == "hcm":
+        json_paths += [
+            os.path.join(os.path.dirname(__file__), "..", "..", "hcm_pickleball_clubs.json"),
+            os.path.join(os.path.dirname(__file__), "..", "hcm_pickleball_clubs.json"),
+        ]
     added_from_json = 0
     for jp in json_paths:
         jp = os.path.abspath(jp)
@@ -355,7 +437,7 @@ def fetch_club_activities(club_id):
     meets = data if isinstance(data, list) else data.get("meets", data.get("activities", []))
     if not isinstance(meets, list):
         return []
-    return [m for m in meets if isinstance(m, dict) and m.get("communityId") == COMMUNITY_ID]
+    return [m for m in meets if isinstance(m, dict) and m.get("communityId") == _market_community_id()]
 
 
 def fetch_all_events(club_map):
@@ -415,6 +497,7 @@ def upsert_clubs(cur, meets):
     """Upsert clubs from scraped meets, enriched with Zalo/phone from notes. Returns reclub_id -> db_id map."""
     club_zalo, club_phone = collect_club_zalo_phone(meets)
 
+    market_key = _market_key()
     clubs = {}
     for m in meets.values():
         rid = m["_clubId"]
@@ -424,7 +507,8 @@ def upsert_clubs(cur, meets):
                 "name": m["_clubName"],
                 "slug": m["_clubSlug"],
                 "sport_id": m.get("_sportId"),
-                "community_id": m.get("communityId", COMMUNITY_ID),
+                "community_id": m.get("communityId", _market_community_id()),
+                "market": market_key,
                 "num_members": m.get("_numMembers", 0),
                 "zalo_url": club_zalo.get(rid),
                 "phone": club_phone.get(rid),
@@ -434,6 +518,7 @@ def upsert_clubs(cur, meets):
         ALTER TABLE clubs ADD COLUMN IF NOT EXISTS zalo_url TEXT;
         ALTER TABLE clubs ADD COLUMN IF NOT EXISTS phone TEXT;
         ALTER TABLE clubs ADD COLUMN IF NOT EXISTS admins TEXT[] DEFAULT '{}';
+        ALTER TABLE clubs ADD COLUMN IF NOT EXISTS market TEXT NOT NULL DEFAULT 'hcm';
     """)
 
     id_map = {}
@@ -446,11 +531,12 @@ def upsert_clubs(cur, meets):
             c["slug"] = f"{c['slug']}-{c['reclub_id']}"
 
         cur.execute("""
-            INSERT INTO clubs (reclub_id, name, slug, sport_id, community_id, num_members, zalo_url, phone, updated_at)
-            VALUES (%(reclub_id)s, %(name)s, %(slug)s, %(sport_id)s, %(community_id)s, %(num_members)s, %(zalo_url)s, %(phone)s, NOW())
+            INSERT INTO clubs (reclub_id, name, slug, sport_id, community_id, market, num_members, zalo_url, phone, updated_at)
+            VALUES (%(reclub_id)s, %(name)s, %(slug)s, %(sport_id)s, %(community_id)s, %(market)s, %(num_members)s, %(zalo_url)s, %(phone)s, NOW())
             ON CONFLICT (reclub_id) DO UPDATE SET
                 name = EXCLUDED.name,
                 slug = EXCLUDED.slug,
+                market = EXCLUDED.market,
                 num_members = EXCLUDED.num_members,
                 zalo_url = COALESCE(EXCLUDED.zalo_url, clubs.zalo_url),
                 phone = COALESCE(EXCLUDED.phone, clubs.phone),
@@ -546,9 +632,15 @@ def upsert_sessions_and_snapshots(cur, meets, club_id_map, venue_coord_map):
 
     for ref_code, m in meets.items():
         loc = m.get("location") or {}
+        # VN (community 1): joined/waitlisted come from participantsStatusCount
+        # KL (community 248): joined = numPlayers, waitlisted = numReserved
         psc = m.get("participantsStatusCount") or {}
-        joined = psc.get("joined", 0)
-        waitlisted = psc.get("waitlisted", 0)
+        if psc:
+            joined = psc.get("joined", 0)
+            waitlisted = psc.get("waitlisted", 0)
+        else:
+            joined = m.get("numPlayers", 0) or 0
+            waitlisted = m.get("numReserved", 0) or 0
 
         name = (m.get("name") or "").replace("\n", " ").strip()[:300]
         notes_raw = (m.get("notes") or "").strip()
@@ -681,7 +773,7 @@ def ingest_day(day, club_map):
     set_target_day(day)
 
     print(f"\n{'─' * 65}")
-    print(f"  Ingesting: {day.strftime('%A, %B %d, %Y')} (Vietnam time)")
+    print(f"  Ingesting: {day.strftime('%A, %B %d, %Y')} ({_active_market['label']})")
     print(f"{'─' * 65}")
 
     print(f"\n  Fetching events from {len(club_map)} clubs...")
@@ -752,20 +844,27 @@ def ingest_day(day, club_map):
         conn.close()
 
 
-def main():
-    if not DATABASE_URL:
-        print("ERROR: DATABASE_URL environment variable not set.")
-        print("  Export it or add to .env: DATABASE_URL=postgresql://user:pass@host:port/db")
-        sys.exit(1)
+def run_market(market_key: str) -> int:
+    """Run a complete ingest for one market (all TARGET_DAYS). Returns total sessions."""
+    global _active_market, COMMUNITY_ID
+    _active_market = MARKETS[market_key]
+    COMMUNITY_ID = _active_market["community_id"]   # keep backward-compat alias in sync
 
-    day_labels = ", ".join(d.strftime("%Y-%m-%d") for d in TARGET_DAYS)
+    # Re-compute TARGET_DAYS in the market's timezone so scraped_date is correct
+    mkt_tz = _market_tz()
+    now_mkt = datetime.now(mkt_tz)
+    if _explicit_dates:
+        days = [datetime.strptime(d, "%Y-%m-%d").replace(tzinfo=mkt_tz) for d in _explicit_dates]
+    else:
+        days = [now_mkt, now_mkt + timedelta(days=1)]
+
+    day_labels = ", ".join(d.strftime("%Y-%m-%d") for d in days)
     print("=" * 65)
-    print("  PICKLEBALL HUB INGEST")
-    print(f"  Days: {day_labels} (Vietnam time)")
+    print(f"  MARKET: {_active_market['label']} ({market_key})")
+    print(f"  Days: {day_labels}")
     print("=" * 65)
 
-    # Build the shared club map once (reused for all days)
-    set_target_day(TARGET_DAYS[0])
+    set_target_day(days[0])
 
     print("\n[1/3] Gathering club IDs from API...")
     club_map = get_all_club_ids()
@@ -773,7 +872,10 @@ def main():
     print("\n[2/3] Loading known clubs from database...")
     conn_pre = psycopg2.connect(DATABASE_URL)
     cur_pre = conn_pre.cursor()
-    cur_pre.execute("SELECT reclub_id, name, slug, sport_id, community_id, num_members FROM clubs")
+    cur_pre.execute(
+        "SELECT reclub_id, name, slug, sport_id, community_id, num_members FROM clubs WHERE market = %s",
+        (market_key,),
+    )
     db_clubs = cur_pre.fetchall()
     cur_pre.close()
     conn_pre.close()
@@ -792,13 +894,34 @@ def main():
             added += 1
     print(f"    Added {added} clubs from DB ({len(club_map)} total)")
 
-    print(f"\n[3/3] Ingesting {len(TARGET_DAYS)} day(s)...")
+    print(f"\n[3/3] Ingesting {len(days)} day(s)...")
     total = 0
-    for day in TARGET_DAYS:
+    for day in days:
         total += ingest_day(day, club_map)
 
+    print(f"\n{'─' * 65}")
+    print(f"  {_active_market['label']} done — {total} total sessions")
+    print(f"{'─' * 65}")
+    return total
+
+
+def main():
+    if not DATABASE_URL:
+        print("ERROR: DATABASE_URL environment variable not set.")
+        print("  Export it or add to .env: DATABASE_URL=postgresql://user:pass@host:port/db")
+        sys.exit(1)
+
+    print("=" * 65)
+    print("  PICKLEBALL HUB INGEST")
+    print(f"  Markets: {', '.join(ACTIVE_MARKETS)}")
+    print("=" * 65)
+
+    grand_total = 0
+    for mk in ACTIVE_MARKETS:
+        grand_total += run_market(mk)
+
     print(f"\n{'=' * 65}")
-    print(f"  DONE — {total} total sessions across {len(TARGET_DAYS)} day(s)")
+    print(f"  DONE — {grand_total} total sessions across {len(ACTIVE_MARKETS)} market(s)")
     print(f"{'=' * 65}")
 
 

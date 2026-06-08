@@ -15,6 +15,8 @@ export interface SessionFilters {
   venueId?: number;
   hasPerks?: boolean;
   search?: string;
+  /** Market scope — 'hcm' (Vietnam web default) | 'kl' (Kuala Lumpur) | undefined (all). */
+  market?: string;
 }
 
 /** Est. revenue rank for a calendar day (1 = highest revenue), tie-break by club name. */
@@ -41,7 +43,7 @@ export async function getScoringContextForDate(date: string): Promise<{
 }> {
   const rankByClubId = await getClubRevenueRanksForDate(date);
   const slim = await prisma.session.findMany({
-    where: { scrapedDate: date },
+    where: { scrapedDate: date, club: { market: "hcm" } },
     select: { feeAmount: true, durationMin: true, clubId: true },
   });
   const hcmMedianCostPerHour = computeHcmMedianCostPerHour(
@@ -92,10 +94,12 @@ export async function getSessions(filters: SessionFilters = {}) {
 
   const where: Record<string, unknown> = {
     scrapedDate: date,
+    // Default to 'hcm' so the Vietnam web app never accidentally shows KL data.
+    club: { market: filters.market ?? "hcm" },
   };
 
   if (filters.clubSlug) {
-    where.club = { slug: filters.clubSlug };
+    where.club = { ...(where.club as object), slug: filters.clubSlug };
   }
 
   if (filters.venueId) {
@@ -250,13 +254,13 @@ export type PublicSessionByReference = NonNullable<
   Awaited<ReturnType<typeof getSessionByReferenceCode>>
 >["session"];
 
-export async function getClubs() {
+export async function getClubs(market = "hcm") {
   const todayStr = vnCalendarDateString(0);
 
   const hcmMedianCostPerHour = await getHcmMedianCostPerHourForDate(todayStr);
 
   const todaySessionsForScores = await prisma.session.findMany({
-    where: { scrapedDate: todayStr },
+    where: { scrapedDate: todayStr, club: { market } },
     select: {
       clubId: true,
       name: true,
@@ -286,6 +290,7 @@ export async function getClubs() {
   }
 
   const clubs = await prisma.club.findMany({
+    where: { market },
     include: {
       _count: { select: { sessions: true } },
       dailyStats: {
@@ -875,6 +880,7 @@ export async function getHeatmapData(): Promise<HeatmapData> {
       session: {
         scrapedDate: { gte: cutoffStr },
         venue: { isNot: null },
+        club: { market: "hcm" },
       },
       isConfirmed: true,
     },

@@ -40,6 +40,7 @@ const getCachedSessions = unstable_cache(
       where: {
         scrapedDate: dateStr,
         status: "active",
+        club: { market: "hcm" },
         ...geoFilter,
       },
       include: {

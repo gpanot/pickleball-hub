@@ -22,7 +22,7 @@ const REGULARS_CAP = 5;
 const getCachedSwipeSessions = unstable_cache(
   async (date: string) => {
     const sessions = await prisma.session.findMany({
-      where: { scrapedDate: date, status: "active" },
+      where: { scrapedDate: date, status: "active", club: { market: "hcm" } },
       include: {
         club: { select: { name: true, slug: true } },
         venue: { select: { name: true, latitude: true, longitude: true } },

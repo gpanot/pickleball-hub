@@ -21,6 +21,8 @@ export async function GET(request: NextRequest) {
   if (searchParams.get("venueId")) filters.venueId = parseInt(searchParams.get("venueId")!);
   if (searchParams.get("hasPerks")) filters.hasPerks = searchParams.get("hasPerks") === "true";
   if (searchParams.get("search")) filters.search = searchParams.get("search")!;
+  // market defaults to 'hcm' inside getSessions; only override when explicitly provided
+  if (searchParams.get("market")) filters.market = searchParams.get("market")!;
 
   try {
     const [{ sessions, hcmMedianCostPerHour }, lastScrapedAt] = await Promise.all([

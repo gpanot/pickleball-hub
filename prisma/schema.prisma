@@ -15,6 +15,8 @@ model Club {
   slug        String    @unique
   sportId     Int?      @map("sport_id")
   communityId Int?      @map("community_id")
+  /// Market identifier — 'hcm' (Ho Chi Minh City) | 'kl' (Kuala Lumpur). Used to isolate data between regions.
+  market      String    @default("hcm")
   numMembers  Int       @default(0) @map("num_members")
   zaloUrl     String?   @map("zalo_url")
   phone       String?
