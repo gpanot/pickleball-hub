@@ -39,6 +39,17 @@ CONFIRMED_STATUS = 1
 PROFILE_CHUNK = 30
 PROFILE_SLEEP_S = 0.5
 
+# ── Phase 1: roster eligibility filter ─────────────────────────────────
+# Sessions below either threshold are skipped — not worth the API calls.
+# Configurable via env vars so thresholds can be tuned without a redeploy.
+ROSTER_MIN_MAX_PLAYERS = int(os.environ.get("ROSTER_MIN_MAX_PLAYERS", "16"))
+ROSTER_MIN_JOINED      = int(os.environ.get("ROSTER_MIN_JOINED", "5"))
+
+# ── Phase 2: player profile TTL cache ──────────────────────────────────
+# Skip /players/userIds for players whose record was updated within this window.
+# 24h covers all 4 intra-day scrape slots; DUPR rarely changes intraday.
+PROFILE_CACHE_TTL_HOURS = int(os.environ.get("PROFILE_CACHE_TTL_HOURS", "24"))
+
 
 def _strip_db_url(url: str) -> str:
     if url and "?" in url:
@@ -149,6 +160,77 @@ def fetch_player_profiles(user_ids: list[int]) -> list[dict]:
         if i + PROFILE_CHUNK < len(user_ids):
             time.sleep(PROFILE_SLEEP_S)
     return results
+
+
+def fetch_player_profiles_with_cache(
+    cur,
+    user_ids: list[int],
+) -> list[dict]:
+    """
+    Phase 2: profile TTL cache.
+    Players updated within PROFILE_CACHE_TTL_HOURS are loaded from the DB
+    instead of hitting the Reclub API again. Only truly stale or new players
+    are fetched from the API, then merged back.
+    """
+    if not user_ids:
+        return []
+
+    # Query which user_ids are already fresh in the DB
+    ph = ",".join(["%s"] * len(user_ids))
+    cur.execute(
+        f"""
+        SELECT user_id, username, display_name, image_url,
+               dupr_singles, dupr_doubles,
+               dupr_singles_reliability, dupr_doubles_reliability,
+               dupr_id, dupr_updated_at
+        FROM players
+        WHERE user_id IN ({ph})
+          AND updated_at >= NOW() - INTERVAL '{PROFILE_CACHE_TTL_HOURS} hours'
+        """,
+        user_ids,
+    )
+    cached_rows = cur.fetchall()
+    cached_map: dict[int, dict] = {}
+    for row in cached_rows:
+        uid = int(row[0])
+        cached_map[uid] = {
+            "userId": uid,
+            "username": row[1],
+            "name": row[2] or "",
+            "displayName": row[2] or "",
+            "imageUrl": row[3],
+            # Reconstruct minimal sport profile shape so extract_dupr() works
+            "sports": [
+                {
+                    "sportId": PICKLEBALL_SPORT_ID,
+                    "ratings": {
+                        "dupr": {
+                            "singles": row[4],
+                            "doubles": row[5],
+                            "singlesReliabilityScore": row[6],
+                            "doublesReliabilityScore": row[7],
+                            "duprId": row[8],
+                            "updatedAt": row[9],
+                        }
+                    },
+                }
+            ] if any(row[4:9]) else [],
+        }
+
+    stale_ids = [uid for uid in user_ids if uid not in cached_map]
+    cache_hits = len(cached_map)
+
+    print(
+        f"[roster]   profile cache: {cache_hits}/{len(user_ids)} fresh "
+        f"({cache_hits*100//max(len(user_ids),1)}% hit) — fetching {len(stale_ids)} from API"
+    )
+
+    api_profiles = fetch_player_profiles(stale_ids) if stale_ids else []
+    api_map = {p["userId"]: p for p in api_profiles if isinstance(p, dict) and "userId" in p}
+
+    # Merge: API result wins for stale/new players; cached result for fresh ones
+    return [api_map.get(uid) or cached_map.get(uid) for uid in user_ids
+            if api_map.get(uid) or cached_map.get(uid)]
 
 
 def extract_dupr(player: dict) -> dict[str, Any]:
@@ -277,12 +359,15 @@ def scrape_session_roster(
     friend_count = len(participants) - len(real_participants)
 
     user_ids = [p["userId"] for p in real_participants]
-    profiles = fetch_player_profiles(user_ids)
-    profile_map = {p["userId"]: p for p in profiles if isinstance(p, dict) and "userId" in p}
 
     url = _strip_db_url(database_url)
     conn = psycopg2.connect(url)
     cur = conn.cursor()
+
+    # Phase 2: use TTL cache — players updated within PROFILE_CACHE_TTL_HOURS
+    # are loaded from DB, only stale/new players hit the Reclub API.
+    profiles = fetch_player_profiles_with_cache(cur, user_ids)
+    profile_map = {p["userId"]: p for p in profiles if isinstance(p, dict) and "userId" in p}
     players_with_dupr = 0
     singles_vals: list[float] = []
     doubles_vals: list[float] = []
@@ -519,16 +604,33 @@ def run_roster_pass_for_day(
     conn = psycopg2.connect(url)
     cur = conn.cursor()
     pairs: list[tuple[int, str]] = []
+    skipped_phase1 = 0
     try:
         ph = ",".join(["%s"] * len(reference_codes))
         cur.execute(
             f"""
-            SELECT id, reference_code FROM sessions
-            WHERE scraped_date = %s AND reference_code IN ({ph})
+            SELECT
+                s.id,
+                s.reference_code,
+                s.max_players,
+                COALESCE(ds.joined, 0) AS joined
+            FROM sessions s
+            LEFT JOIN LATERAL (
+                SELECT joined FROM daily_snapshots
+                WHERE session_id = s.id
+                ORDER BY scraped_at DESC
+                LIMIT 1
+            ) ds ON true
+            WHERE s.scraped_date = %s
+              AND s.reference_code IN ({ph})
             """,
             [scraped_date_str, *reference_codes],
         )
-        for sid, ref in cur.fetchall():
+        for sid, ref, max_players, joined in cur.fetchall():
+            # Phase 1: skip sessions that are too small to yield useful roster data
+            if max_players < ROSTER_MIN_MAX_PLAYERS or joined < ROSTER_MIN_JOINED:
+                skipped_phase1 += 1
+                continue
             pairs.append((int(sid), str(ref)))
     finally:
         cur.close()
@@ -536,8 +638,9 @@ def run_roster_pass_for_day(
 
     print(
         f"[roster] run_roster_pass_for_day({scraped_date_str}): "
-        f"{len(reference_codes)} refs → {len(pairs)} sessions resolved"
-        + (f" (capped to {cap})" if cap is not None else "")
+        f"{len(reference_codes)} refs → {len(pairs)} eligible "
+        f"(skipped {skipped_phase1} by Phase-1 filter: max_players<{ROSTER_MIN_MAX_PLAYERS} OR joined<{ROSTER_MIN_JOINED})"
+        + (f", capped to {cap}" if cap is not None else "")
     )
 
     if cap is not None:
