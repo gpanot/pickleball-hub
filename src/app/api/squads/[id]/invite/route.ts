@@ -100,8 +100,11 @@ export async function POST(
 
   const founderProfile = await prisma.playerProfile.findUnique({
     where: { id: user.profileId },
-    select: { displayName: true },
+    select: { displayName: true, squadNickname: true },
   });
+  const founderLabel = founderProfile?.squadNickname
+    ? `@${founderProfile.squadNickname}`
+    : founderProfile?.displayName ?? null;
 
   for (const profileId of uniqueProfileIds) {
     if (memberIds.has(profileId)) continue;
@@ -120,7 +123,7 @@ export async function POST(
         profileId,
         squad,
         activeMembers,
-        founderProfile?.displayName ?? null,
+        founderLabel,
         existingInviteId,
       );
       resent.push({
@@ -167,7 +170,7 @@ export async function POST(
       profile.id,
       squad,
       activeMembers,
-      founderProfile?.displayName ?? null,
+      founderLabel,
       invite.id,
     );
   }

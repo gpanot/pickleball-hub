@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getMobileUser } from "@/lib/mobile-auth";
 import { prisma } from "@/lib/db";
+import { buildSquadInvitePreview } from "@/lib/squad-invite-preview";
 
 /** GET /api/squads/pending-invite — returns the newest pending invite for the current user. */
 export async function GET(req: NextRequest) {
@@ -17,6 +18,7 @@ export async function GET(req: NextRequest) {
     },
     orderBy: { createdAt: "desc" },
     include: {
+      inviter: { select: { displayName: true, squadNickname: true } },
       squad: {
         include: {
           members: {
@@ -26,6 +28,7 @@ export async function GET(req: NextRequest) {
                 select: {
                   id: true,
                   displayName: true,
+                  reclubUserId: true,
                   reclubPlayer: {
                     select: { imageUrl: true, duprDoubles: true },
                   },
@@ -42,39 +45,21 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ invite: null });
   }
 
-  const { squad } = invite;
-  const members = squad.members;
+  const inviterLabel = invite.inviter.squadNickname
+    ? `@${invite.inviter.squadNickname}`
+    : invite.inviter.displayName ?? null;
 
-  let avgDupr: number | null = null;
-  if (squad.showDupr) {
-    const duprs = members
-      .map((m) => m.profile.reclubPlayer?.duprDoubles)
-      .filter((d): d is NonNullable<typeof d> => d != null)
-      .map(Number);
-    if (duprs.length > 0) {
-      avgDupr = Math.round((duprs.reduce((a, b) => a + b, 0) / duprs.length) * 10) / 10;
-    }
-  }
-
-  const avatars = members.slice(0, 4).map((m) => ({
-    displayName: m.profile.displayName,
-    imageUrl: m.profile.reclubPlayer?.imageUrl ?? null,
-  }));
+  const preview = await buildSquadInvitePreview(
+    invite.squad,
+    { profileId: user.profileId, reclubUserId: user.reclubUserId },
+    inviterLabel,
+  );
 
   return NextResponse.json({
     invite: {
       id: invite.id,
-      squadId: squad.id,
-      preview: {
-        id: squad.id,
-        name: squad.name,
-        emoji: squad.emoji,
-        color: squad.color,
-        memberCount: members.length,
-        avgDupr,
-        avatars,
-        founderId: squad.founderId,
-      },
+      squadId: invite.squad.id,
+      preview,
     },
   });
 }

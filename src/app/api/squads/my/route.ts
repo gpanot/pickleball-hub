@@ -124,6 +124,36 @@ export async function GET(req: NextRequest) {
   });
 
   if (!membership) {
+    const disbandedMembership = await prisma.squadMember.findFirst({
+      where: {
+        profileId: user.profileId,
+        role: { not: "founder" },
+        leftAt: { not: null },
+        squad: { appSlug: "squadd", disbandedAt: { not: null } },
+      },
+      orderBy: { leftAt: "desc" },
+      include: {
+        squad: {
+          include: {
+            founder: { select: { displayName: true } },
+          },
+        },
+      },
+    });
+
+    if (disbandedMembership) {
+      return NextResponse.json({
+        squad: null,
+        disbandedNotice: {
+          squadId: disbandedMembership.squad.id,
+          squadName: disbandedMembership.squad.name,
+          founderName:
+            disbandedMembership.squad.founder.displayName ?? "The founder",
+          disbandedAt: disbandedMembership.squad.disbandedAt!.toISOString(),
+        },
+      });
+    }
+
     return NextResponse.json({ squad: null });
   }
 

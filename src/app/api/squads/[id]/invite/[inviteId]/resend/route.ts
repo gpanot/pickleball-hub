@@ -48,8 +48,11 @@ export async function POST(
 
   const founderProfile = await prisma.playerProfile.findUnique({
     where: { id: user.profileId },
-    select: { displayName: true },
+    select: { displayName: true, squadNickname: true },
   });
+  const founderLabel = founderProfile?.squadNickname
+    ? `@${founderProfile.squadNickname}`
+    : founderProfile?.displayName ?? null;
 
   const invitee = await prisma.playerProfile.findUnique({
     where: { id: invite.inviteeId },
@@ -64,7 +67,7 @@ export async function POST(
   if (invitee?.pushToken || invitee?.pushTokenIos) {
     await sendPushNotification(invite.inviteeId, {
       title: "Squad Invite",
-      body: `${founderProfile?.displayName ?? "Someone"} invited you to join ${squad.emoji} ${squad.name} · ${squad.members.length}/${MAX_SQUAD_MEMBERS} members`,
+      body: `${founderLabel ?? "Someone"} invited you to join ${squad.emoji} ${squad.name} · ${squad.members.length}/${MAX_SQUAD_MEMBERS} members`,
       data: {
         screen: "SquadInviteReceive",
         squadId: squad.id,

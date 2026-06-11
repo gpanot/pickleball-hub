@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getMobileUser } from "@/lib/mobile-auth";
 import { prisma } from "@/lib/db";
+import { buildSquadInvitePreview } from "@/lib/squad-invite-preview";
 
 /** GET /api/squads/:id/preview — squad preview for invite-receive screen. */
 export async function GET(
@@ -24,6 +25,7 @@ export async function GET(
             select: {
               id: true,
               displayName: true,
+              reclubUserId: true,
               reclubPlayer: {
                 select: { imageUrl: true, duprDoubles: true },
               },
@@ -38,32 +40,20 @@ export async function GET(
     return NextResponse.json({ error: "Squad not found" }, { status: 404 });
   }
 
-  const members = squad.members;
-
-  let avgDupr: number | null = null;
-  if (squad.showDupr) {
-    const duprs = members
-      .map((m) => m.profile.reclubPlayer?.duprDoubles)
-      .filter((d): d is NonNullable<typeof d> => d != null)
-      .map(Number);
-    if (duprs.length > 0) {
-      avgDupr = Math.round((duprs.reduce((a, b) => a + b, 0) / duprs.length) * 10) / 10;
-    }
-  }
-
-  const avatars = members.slice(0, 4).map((m) => ({
-    displayName: m.profile.displayName,
-    imageUrl: m.profile.reclubPlayer?.imageUrl ?? null,
-  }));
-
-  return NextResponse.json({
-    id: squad.id,
-    name: squad.name,
-    emoji: squad.emoji,
-    color: squad.color,
-    memberCount: members.length,
-    avgDupr,
-    avatars,
-    founderId: squad.founderId,
+  const founder = await prisma.playerProfile.findUnique({
+    where: { id: squad.founderId },
+    select: { displayName: true, squadNickname: true },
   });
+
+  const inviterLabel = founder?.squadNickname
+    ? `@${founder.squadNickname}`
+    : founder?.displayName ?? null;
+
+  const preview = await buildSquadInvitePreview(
+    squad,
+    { profileId: user.profileId, reclubUserId: user.reclubUserId },
+    inviterLabel,
+  );
+
+  return NextResponse.json(preview);
 }

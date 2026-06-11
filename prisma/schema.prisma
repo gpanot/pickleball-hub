@@ -215,6 +215,8 @@ model PlayerProfile {
   lastActiveAt          DateTime? @map("last_active_at")
   streakData            Json?     @map("streak_data")
   streakComputedAt      DateTime? @map("streak_computed_at")
+  squadNickname         String?   @unique @map("squad_nickname")
+  squadNicknameSetAt    DateTime? @map("squad_nickname_set_at")
   reportFlaggedAt       DateTime? @map("report_flagged_at")
   suspended             Boolean   @default(false)
   banned                Boolean   @default(false)
