@@ -553,6 +553,7 @@ const translations = {
     // Club detail page
     clubBackToClubs: "← Back to clubs",
     clubMembers: "members",
+    clubReclubGroupId: "Reclub group ID",
     clubViewOnReclub: "View on Reclub",
     clubSessionsWeek: "Sessions / week",
     clubAvgFillRate: "Avg fill rate",
@@ -1101,6 +1102,7 @@ const translations = {
     // Club detail page
     clubBackToClubs: "← Quay lại danh sách CLB",
     clubMembers: "thành viên",
+    clubReclubGroupId: "ID nhóm Reclub",
     clubViewOnReclub: "Xem trên Reclub",
     clubSessionsWeek: "Buổi chơi / tuần",
     clubAvgFillRate: "Tỷ lệ đầy TB",

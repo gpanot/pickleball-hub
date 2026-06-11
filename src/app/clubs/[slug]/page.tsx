@@ -19,6 +19,7 @@ const MapView = dynamic(() => import("@/components/MapView").then((m) => m.MapVi
 
 type ClubDetail = {
   id: number;
+  reclubId: number;
   name: string;
   slug: string;
   numMembers: number;
@@ -180,6 +181,8 @@ export default function ClubProfilePage({ params }: { params: Promise<{ slug: st
           <h1 className="text-xl sm:text-2xl font-bold">{club.name}</h1>
           <p className="text-sm text-muted mt-1">
             {club.numMembers.toLocaleString()} {t("clubMembers")}
+            <span className="mx-1.5">·</span>
+            {t("clubReclubGroupId")}: {club.reclubId}
           </p>
         </div>
         <a
