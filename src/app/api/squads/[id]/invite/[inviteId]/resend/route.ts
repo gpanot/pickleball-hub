@@ -68,6 +68,7 @@ export async function POST(
       data: {
         screen: "SquadInviteReceive",
         squadId: squad.id,
+        inviteId: String(inviteIdNum),
         type: "squad_invite",
       },
     });

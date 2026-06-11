@@ -9,6 +9,7 @@ async function sendInvitePush(
   squad: { id: string; emoji: string; name: string },
   memberCount: number,
   founderName: string | null,
+  inviteId: number,
 ) {
   const invitee = await prisma.playerProfile.findUnique({
     where: { id: inviteeId },
@@ -22,6 +23,7 @@ async function sendInvitePush(
       data: {
         screen: "SquadInviteReceive",
         squadId: squad.id,
+        inviteId: String(inviteId),
         type: "squad_invite",
       },
     });
@@ -119,6 +121,7 @@ export async function POST(
         squad,
         activeMembers,
         founderProfile?.displayName ?? null,
+        existingInviteId,
       );
       resent.push({
         profileId,
@@ -165,6 +168,7 @@ export async function POST(
       squad,
       activeMembers,
       founderProfile?.displayName ?? null,
+      invite.id,
     );
   }
 
