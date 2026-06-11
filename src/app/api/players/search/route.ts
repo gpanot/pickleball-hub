@@ -32,13 +32,40 @@ export async function GET(req: NextRequest) {
     orderBy: { lastSeenAt: "desc" },
   });
 
+  const reclubIds = players.map((p) => p.userId);
+  const profiles = await prisma.playerProfile.findMany({
+    where: { reclubUserId: { in: reclubIds } },
+    select: { id: true, reclubUserId: true },
+  });
+  const profileIds = profiles.map((p) => p.id);
+  const inSquad = new Set(
+    (
+      await prisma.squadMember.findMany({
+        where: { profileId: { in: profileIds }, leftAt: null },
+        select: { profileId: true },
+      })
+    ).map((m) => m.profileId),
+  );
+  const profileByReclubId = new Map(
+    profiles.map((p) => [
+      p.reclubUserId!.toString(),
+      { profileId: p.id, hasSquad: inSquad.has(p.id) },
+    ]),
+  );
+
   return NextResponse.json(
-    players.map((p) => ({
-      userId: p.userId.toString(),
-      displayName: p.displayName,
-      username: p.username,
-      imageUrl: p.imageUrl ?? reclubAvatarUrl(p.userId),
-      duprDoubles: p.duprDoubles ? Number(p.duprDoubles) : null,
-    }))
+    players.map((p) => {
+      const reclubId = p.userId.toString();
+      const linked = profileByReclubId.get(reclubId);
+      return {
+        userId: reclubId,
+        profileId: linked?.profileId ?? null,
+        hasSquad: linked?.hasSquad ?? false,
+        displayName: p.displayName,
+        username: p.username,
+        imageUrl: p.imageUrl ?? reclubAvatarUrl(p.userId),
+        duprDoubles: p.duprDoubles ? Number(p.duprDoubles) : null,
+      };
+    }),
   );
 }

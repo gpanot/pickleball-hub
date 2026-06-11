@@ -29,17 +29,44 @@ export async function GET(req: NextRequest) {
     orderBy: { createdAt: "desc" },
   });
 
+  const followeeIds = follows.map((f) => f.followee.userId);
+  const profiles = await prisma.playerProfile.findMany({
+    where: { reclubUserId: { in: followeeIds } },
+    select: { id: true, reclubUserId: true },
+  });
+  const profileIds = profiles.map((p) => p.id);
+  const inSquad = new Set(
+    (
+      await prisma.squadMember.findMany({
+        where: { profileId: { in: profileIds }, leftAt: null },
+        select: { profileId: true },
+      })
+    ).map((m) => m.profileId),
+  );
+  const profileByReclubId = new Map(
+    profiles.map((p) => [
+      p.reclubUserId!.toString(),
+      { profileId: p.id, hasSquad: inSquad.has(p.id) },
+    ]),
+  );
+
   return NextResponse.json(
-    follows.map((f) => ({
-      userId: f.followee.userId.toString(),
-      displayName: f.followee.displayName,
-      imageUrl:
-        f.followee.imageUrl ?? reclubAvatarUrl(f.followee.userId),
-      duprDoubles: f.followee.duprDoubles
-        ? Number(f.followee.duprDoubles)
-        : null,
-      followedAt: f.createdAt.toISOString(),
-    }))
+    follows.map((f) => {
+      const reclubId = f.followee.userId.toString();
+      const linked = profileByReclubId.get(reclubId);
+      return {
+        userId: reclubId,
+        profileId: linked?.profileId ?? null,
+        hasSquad: linked?.hasSquad ?? false,
+        displayName: f.followee.displayName,
+        imageUrl:
+          f.followee.imageUrl ?? reclubAvatarUrl(f.followee.userId),
+        duprDoubles: f.followee.duprDoubles
+          ? Number(f.followee.duprDoubles)
+          : null,
+        followedAt: f.createdAt.toISOString(),
+      };
+    }),
   );
 }
 
