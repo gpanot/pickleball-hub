@@ -127,5 +127,46 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ squad: null });
   }
 
+  const pendingRaw = membership.squad.invites.filter((i) => i.status === "pending");
+  const pendingByInvitee = new Map<string, (typeof pendingRaw)[number]>();
+  for (const invite of pendingRaw) {
+    const key = invite.inviteeId ?? `anon-${invite.id}`;
+    const existing = pendingByInvitee.get(key);
+    if (!existing || invite.createdAt > existing.createdAt) {
+      pendingByInvitee.set(key, invite);
+    }
+  }
+  const pendingInvites = [...pendingByInvitee.values()];
+
+  const inviteeIds = pendingInvites
+    .map((i) => i.inviteeId)
+    .filter((id): id is string => id !== null);
+
+  const inviteProfiles =
+    inviteeIds.length > 0
+      ? await prisma.playerProfile.findMany({
+          where: { id: { in: inviteeIds } },
+          select: {
+            id: true,
+            displayName: true,
+            reclubPlayer: { select: { imageUrl: true } },
+          },
+        })
+      : [];
+
+  const inviteProfileMap = new Map(inviteProfiles.map((p) => [p.id, p]));
+
+  membership.squad.invites = pendingInvites.map((invite) => {
+    const profile = invite.inviteeId
+      ? inviteProfileMap.get(invite.inviteeId)
+      : null;
+    return {
+      ...invite,
+      displayName: profile?.displayName ?? null,
+      avatar: profile?.reclubPlayer?.imageUrl ?? null,
+      channel: invite.inviteChannel,
+    };
+  }) as typeof membership.squad.invites;
+
   return NextResponse.json(serializeMySquad(membership));
 }

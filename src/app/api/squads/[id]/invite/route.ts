@@ -4,6 +4,30 @@ import { prisma } from "@/lib/db";
 import { sendPushNotification } from "@/lib/notifications";
 import { MAX_SQUAD_MEMBERS } from "@/lib/squad-constants";
 
+async function sendInvitePush(
+  inviteeId: string,
+  squad: { id: string; emoji: string; name: string },
+  memberCount: number,
+  founderName: string | null,
+) {
+  const invitee = await prisma.playerProfile.findUnique({
+    where: { id: inviteeId },
+    select: { pushToken: true, pushTokenIos: true },
+  });
+
+  if (invitee?.pushToken || invitee?.pushTokenIos) {
+    await sendPushNotification(inviteeId, {
+      title: "Squad Invite",
+      body: `${founderName ?? "Someone"} invited you to join ${squad.emoji} ${squad.name} · ${memberCount}/${MAX_SQUAD_MEMBERS} members`,
+      data: {
+        screen: "SquadInviteReceive",
+        squadId: squad.id,
+        type: "squad_invite",
+      },
+    });
+  }
+}
+
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -44,14 +68,32 @@ export async function POST(
   }
 
   const activeMembers = squad.members.length;
-  if (activeMembers + profileIds.length > MAX_SQUAD_MEMBERS) {
+  const memberIds = new Set(squad.members.map((m) => m.profileId));
+
+  const existingPending = await prisma.squadInvite.findMany({
+    where: { squadId, status: "pending" },
+    select: { id: true, inviteeId: true },
+  });
+  const pendingByInvitee = new Map(
+    existingPending
+      .filter((i) => i.inviteeId)
+      .map((i) => [i.inviteeId!, i.id]),
+  );
+
+  const uniqueProfileIds = [...new Set(profileIds)];
+  const newInviteeIds = uniqueProfileIds.filter(
+    (id) => !pendingByInvitee.has(id) && !memberIds.has(id),
+  );
+
+  if (activeMembers + pendingByInvitee.size + newInviteeIds.length > MAX_SQUAD_MEMBERS) {
     return NextResponse.json(
       { error: `Squad would exceed ${MAX_SQUAD_MEMBERS} members` },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
   const invited: Array<{ profileId: string; displayName: string | null }> = [];
+  const resent: Array<{ profileId: string; displayName: string | null; inviteId: number }> = [];
   const notOnApp: string[] = [];
 
   const founderProfile = await prisma.playerProfile.findUnique({
@@ -59,10 +101,36 @@ export async function POST(
     select: { displayName: true },
   });
 
-  for (const profileId of profileIds) {
+  for (const profileId of uniqueProfileIds) {
+    if (memberIds.has(profileId)) continue;
+
+    const existingInviteId = pendingByInvitee.get(profileId);
+    if (existingInviteId) {
+      const profile = await prisma.playerProfile.findUnique({
+        where: { id: profileId },
+        select: { id: true, displayName: true },
+      });
+      await prisma.squadInvite.update({
+        where: { id: existingInviteId },
+        data: { lastResentAt: new Date() },
+      });
+      await sendInvitePush(
+        profileId,
+        squad,
+        activeMembers,
+        founderProfile?.displayName ?? null,
+      );
+      resent.push({
+        profileId,
+        displayName: profile?.displayName ?? null,
+        inviteId: existingInviteId,
+      });
+      continue;
+    }
+
     const profile = await prisma.playerProfile.findUnique({
       where: { id: profileId },
-      select: { id: true, displayName: true, pushToken: true, pushTokenIos: true },
+      select: { id: true, displayName: true },
     });
 
     if (!profile) {
@@ -79,7 +147,7 @@ export async function POST(
       continue;
     }
 
-    await prisma.squadInvite.create({
+    const invite = await prisma.squadInvite.create({
       data: {
         squadId,
         inviterId: user.profileId,
@@ -89,20 +157,16 @@ export async function POST(
       },
     });
 
+    pendingByInvitee.set(profile.id, invite.id);
     invited.push({ profileId: profile.id, displayName: profile.displayName });
 
-    if (profile.pushToken || profile.pushTokenIos) {
-      await sendPushNotification(profile.id, {
-        title: "Squad Invite",
-        body: `${founderProfile?.displayName ?? "Someone"} invited you to join ${squad.emoji} ${squad.name} · ${activeMembers}/${MAX_SQUAD_MEMBERS} members`,
-        data: {
-          screen: "SquadInviteReceive",
-          squadId: squad.id,
-          type: "squad_invite",
-        },
-      });
-    }
+    await sendInvitePush(
+      profile.id,
+      squad,
+      activeMembers,
+      founderProfile?.displayName ?? null,
+    );
   }
 
-  return NextResponse.json({ invited, notOnApp });
+  return NextResponse.json({ invited, resent, notOnApp });
 }

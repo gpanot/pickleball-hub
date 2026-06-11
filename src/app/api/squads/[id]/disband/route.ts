@@ -35,6 +35,13 @@ export async function DELETE(
       where: { squadId, leftAt: null },
       data: { leftAt: now },
     }),
+    prisma.squadInvite.updateMany({
+      where: {
+        squadId,
+        status: { in: ["pending", "not_on_app"] },
+      },
+      data: { status: "cancelled", resolvedAt: now },
+    }),
     prisma.squad.update({
       where: { id: squadId },
       data: { disbandedAt: now },

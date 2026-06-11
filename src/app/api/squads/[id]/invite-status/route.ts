@@ -27,11 +27,19 @@ export async function GET(
   }
 
   const invites = await prisma.squadInvite.findMany({
-    where: { squadId },
+    where: { squadId, status: { in: ["pending", "declined", "accepted", "not_on_app"] } },
     orderBy: { createdAt: "desc" },
   });
 
-  const inviteIds = invites
+  const seenInvitees = new Set<string>();
+  const deduped = invites.filter((invite) => {
+    if (!invite.inviteeId) return true;
+    if (seenInvitees.has(invite.inviteeId)) return false;
+    seenInvitees.add(invite.inviteeId);
+    return true;
+  });
+
+  const inviteIds = deduped
     .map((i) => i.inviteeId)
     .filter((id): id is string => id !== null);
 
@@ -46,7 +54,7 @@ export async function GET(
 
   const profileMap = new Map(profiles.map((p) => [p.id, p]));
 
-  const enriched = invites.map((invite) => {
+  const enriched = deduped.map((invite) => {
     const profile = invite.inviteeId ? profileMap.get(invite.inviteeId) : null;
     return {
       id: invite.id,
