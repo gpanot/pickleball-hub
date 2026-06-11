@@ -233,6 +233,9 @@ model PlayerProfile {
   blockedBy         Block[]   @relation("Blocked")
   reportsMade       Report[]  @relation("Reporter")
   reportsReceived   Report[]  @relation("Reported")
+  foundedSquads     Squad[]       @relation("SquadFounder")
+  squadMemberships  SquadMember[]
+  sentInvites       SquadInvite[] @relation("InviterInvites")
 
   @@map("player_profiles")
 }
@@ -510,6 +513,76 @@ model SessionDuprStat {
   session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
   @@map("session_dupr_stats")
+}
+
+model Squad {
+  id           String        @id @default(uuid())
+  name         String
+  emoji        String
+  color        String
+  isPublic     Boolean       @default(true) @map("is_public")
+  showDupr     Boolean       @default(true) @map("show_dupr")
+  appSlug      String        @default("squadd") @map("app_slug")
+  founderId    String        @map("founder_id")
+  totalXp      Int           @default(0) @map("total_xp")
+  level        Int           @default(1)
+  createdAt    DateTime      @default(now()) @map("created_at")
+  disbandedAt  DateTime?     @map("disbanded_at")
+
+  founder      PlayerProfile @relation("SquadFounder", fields: [founderId], references: [id])
+  members      SquadMember[]
+  code         SquadCode?
+  invites      SquadInvite[]
+
+  @@index([founderId])
+  @@map("squads")
+}
+
+model SquadMember {
+  id        Int           @id @default(autoincrement())
+  squadId   String        @map("squad_id")
+  profileId String        @map("profile_id")
+  role      String        @default("member")
+  joinedAt  DateTime      @default(now()) @map("joined_at")
+  leftAt    DateTime?     @map("left_at")
+
+  squad     Squad         @relation(fields: [squadId], references: [id], onDelete: Cascade)
+  profile   PlayerProfile @relation(fields: [profileId], references: [id])
+
+  @@unique([squadId, profileId])
+  @@index([profileId])
+  @@map("squad_members")
+}
+
+model SquadCode {
+  id        Int      @id @default(autoincrement())
+  squadId   String   @unique @map("squad_id")
+  code      String   @unique
+  appSlug   String   @default("squadd") @map("app_slug")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  squad     Squad    @relation(fields: [squadId], references: [id], onDelete: Cascade)
+
+  @@map("squad_codes")
+}
+
+model SquadInvite {
+  id             Int       @id @default(autoincrement())
+  squadId        String    @map("squad_id")
+  inviterId      String    @map("inviter_id")
+  inviteeId      String?   @map("invitee_id")
+  inviteChannel  String    @default("push") @map("invite_channel")
+  status         String    @default("pending")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  resolvedAt     DateTime? @map("resolved_at")
+  lastResentAt   DateTime? @map("last_resent_at")
+
+  squad          Squad         @relation(fields: [squadId], references: [id], onDelete: Cascade)
+  inviter        PlayerProfile @relation("InviterInvites", fields: [inviterId], references: [id])
+
+  @@index([squadId])
+  @@index([inviteeId])
+  @@map("squad_invites")
 }
 
 model SquadWaitlist {
