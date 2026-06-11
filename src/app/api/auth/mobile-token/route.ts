@@ -9,6 +9,15 @@ const APPLE_ISSUER = "https://appleid.apple.com";
 const DEV_EMAIL = "dev@thehub.local";
 const REVIEWER_EMAIL = "reviewer@thehub.local";
 
+/** Local dev: sign in as a real prod-synced account (see scripts/sync-dev-account-from-prod.ts). */
+function resolveDevAccountEmail(): string {
+  const impersonate = process.env.DEV_IMPERSONATE_EMAIL?.trim();
+  if (process.env.NODE_ENV === "development" && impersonate) {
+    return impersonate;
+  }
+  return DEV_EMAIL;
+}
+
 /**
  * GET /api/auth/mobile-token?dev=1
  * Dev-only shortcut: creates/retrieves a dev user and returns a real JWT
@@ -27,19 +36,31 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  const accountEmail = isReviewer ? REVIEWER_EMAIL : DEV_EMAIL;
-  const accountName = isReviewer ? "Reclub Player" : "Dev Player";
+  const accountEmail = isReviewer ? REVIEWER_EMAIL : resolveDevAccountEmail();
+  const isImpersonatedDev =
+    !isReviewer && accountEmail !== DEV_EMAIL && process.env.NODE_ENV === "development";
+  const accountName = isReviewer ? "Reclub Player" : isImpersonatedDev ? null : "Dev Player";
   const accountImage = isReviewer
     ? "https://i.pravatar.cc/80?img=12"
-    : "https://i.pravatar.cc/80?img=33";
+    : isImpersonatedDev
+      ? null
+      : "https://i.pravatar.cc/80?img=33";
 
   let user = await prisma.user.findUnique({ where: { email: accountEmail } });
   if (!user) {
+    if (isImpersonatedDev) {
+      return NextResponse.json(
+        {
+          error: `Dev impersonation user not found: ${accountEmail}. Run: npx tsx scripts/sync-dev-account-from-prod.ts`,
+        },
+        { status: 404 }
+      );
+    }
     user = await prisma.user.create({
       data: {
         email: accountEmail,
-        name: accountName,
-        image: accountImage,
+        name: accountName ?? "Dev Player",
+        image: accountImage ?? "https://i.pravatar.cc/80?img=33",
       },
     });
   }
@@ -48,10 +69,16 @@ export async function GET(req: NextRequest) {
     where: { userId: user.id },
   });
   if (!profile) {
+    if (isImpersonatedDev) {
+      return NextResponse.json(
+        { error: `No profile for ${accountEmail}. Run sync-dev-account-from-prod.ts` },
+        { status: 404 }
+      );
+    }
     profile = await prisma.playerProfile.create({
       data: {
         userId: user.id,
-        displayName: accountName,
+        displayName: accountName ?? "Dev Player",
         // Reviewer account: mark onboarding complete so they land on the main app
         ...(isReviewer ? { onboardingCompleted: true } : {}),
       },
