@@ -57,16 +57,16 @@ export async function POST(
     return NextResponse.json({ error: "Only the founder can invite" }, { status: 403 });
   }
 
-  let body: { profileIds?: string[] };
+  let body: { profileIds?: string[]; notOnAppUserIds?: string[] };
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { profileIds } = body;
-  if (!Array.isArray(profileIds) || profileIds.length === 0) {
-    return NextResponse.json({ error: "profileIds required" }, { status: 400 });
+  const { profileIds = [], notOnAppUserIds = [] } = body;
+  if (profileIds.length === 0 && notOnAppUserIds.length === 0) {
+    return NextResponse.json({ error: "profileIds or notOnAppUserIds required" }, { status: 400 });
   }
 
   const activeMembers = squad.members.length;
@@ -94,9 +94,22 @@ export async function POST(
     );
   }
 
+  // Resolve display names for not-on-app players (Reclub userId → displayName)
+  const uniqueNotOnAppUserIds = [...new Set(notOnAppUserIds)].map((id) => BigInt(id));
+  const notOnAppPlayers =
+    uniqueNotOnAppUserIds.length > 0
+      ? await prisma.player.findMany({
+          where: { userId: { in: uniqueNotOnAppUserIds } },
+          select: { userId: true, displayName: true },
+        })
+      : [];
+  const notOnAppNameByUserId = new Map(
+    notOnAppPlayers.map((p) => [p.userId.toString(), p.displayName]),
+  );
+
   const invited: Array<{ profileId: string; displayName: string | null }> = [];
   const resent: Array<{ profileId: string; displayName: string | null; inviteId: number }> = [];
-  const notOnApp: string[] = [];
+  const notOnApp: Array<{ userId: string; name: string }> = [];
 
   const founderProfile = await prisma.playerProfile.findUnique({
     where: { id: user.profileId },
@@ -140,16 +153,7 @@ export async function POST(
     });
 
     if (!profile) {
-      await prisma.squadInvite.create({
-        data: {
-          squadId,
-          inviterId: user.profileId,
-          inviteeId: null,
-          inviteChannel: "link",
-          status: "not_on_app",
-        },
-      });
-      notOnApp.push(profileId);
+      // profileId passed but no profile found — skip silently (shouldn't happen normally)
       continue;
     }
 
@@ -173,6 +177,24 @@ export async function POST(
       founderLabel,
       invite.id,
     );
+  }
+
+  // Create not_on_app invite records for each Reclub user not yet on SQUADD
+  for (const userId of uniqueNotOnAppUserIds) {
+    const userIdStr = userId.toString();
+    await prisma.squadInvite.create({
+      data: {
+        squadId,
+        inviterId: user.profileId,
+        inviteeId: null,
+        inviteChannel: "link",
+        status: "not_on_app",
+      },
+    });
+    notOnApp.push({
+      userId: userIdStr,
+      name: notOnAppNameByUserId.get(userIdStr)?.split(" ")[0] ?? userIdStr,
+    });
   }
 
   return NextResponse.json({ invited, resent, notOnApp });
