@@ -35,18 +35,17 @@ export async function GET(req: NextRequest) {
     select: { id: true, reclubUserId: true },
   });
   const profileIds = profiles.map((p) => p.id);
-  const inSquad = new Set(
-    (
-      await prisma.squadMember.findMany({
-        where: { profileId: { in: profileIds }, leftAt: null },
-        select: { profileId: true },
-      })
-    ).map((m) => m.profileId),
+  const squadMemberships = await prisma.squadMember.findMany({
+    where: { profileId: { in: profileIds }, leftAt: null },
+    select: { profileId: true, squad: { select: { name: true } } },
+  });
+  const squadByProfileId = new Map(
+    squadMemberships.map((m) => [m.profileId, m.squad.name]),
   );
   const profileByReclubId = new Map(
     profiles.map((p) => [
       p.reclubUserId!.toString(),
-      { profileId: p.id, hasSquad: inSquad.has(p.id) },
+      { profileId: p.id, hasSquad: squadByProfileId.has(p.id), squadName: squadByProfileId.get(p.id) ?? null },
     ]),
   );
 
@@ -58,6 +57,7 @@ export async function GET(req: NextRequest) {
         userId: reclubId,
         profileId: linked?.profileId ?? null,
         hasSquad: linked?.hasSquad ?? false,
+        squadName: linked?.squadName ?? null,
         displayName: f.followee.displayName,
         imageUrl:
           f.followee.imageUrl ?? reclubAvatarUrl(f.followee.userId),
