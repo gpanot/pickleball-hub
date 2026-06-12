@@ -67,8 +67,8 @@ export async function GET(req: NextRequest) {
   // Avg DUPR
   const duprValues = members
     .map((m) => m.profile?.reclubPlayer?.duprDoubles)
-    .filter((v): v is { toNumber: () => number } | number => v != null)
-    .map((v) => (typeof v === "object" ? v.toNumber() : Number(v)))
+    .filter((v) => v != null)
+    .map((v) => Number(v))
     .filter((v) => v > 0);
   const avgDupr =
     duprValues.length > 0
@@ -398,7 +398,7 @@ export async function GET(req: NextRequest) {
                 display: "flex",
               }}
             >
-              {founderProfile?.reclubPlayer?.duprDoubles
+              {founderProfile?.reclubPlayer?.duprDoubles != null
                 ? `DUPR ${Number(founderProfile.reclubPlayer.duprDoubles).toFixed(1)}`
                 : "No DUPR yet"}
             </div>
