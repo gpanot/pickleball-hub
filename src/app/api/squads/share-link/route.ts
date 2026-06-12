@@ -40,11 +40,11 @@ export async function POST(req: NextRequest) {
     },
   });
 
+  const joinUrl = `https://hub.thecourtflow.com/join/${squad.code.code}`;
+  const cardUrl = `https://hub.thecourtflow.com/api/og/squad?code=${squad.code.code}`;
+
   if (recentShare) {
-    return NextResponse.json({
-      url: `https://hub.thecourtflow.com/join/${squad.code.code}`,
-      rateLimited: true,
-    });
+    return NextResponse.json({ url: joinUrl, cardUrl, rateLimited: true });
   }
 
   await prisma.squadInvite.create({
@@ -57,7 +57,5 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  return NextResponse.json({
-    url: `https://hub.thecourtflow.com/join/${squad.code.code}`,
-  });
+  return NextResponse.json({ url: joinUrl, cardUrl });
 }
