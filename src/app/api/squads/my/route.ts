@@ -30,6 +30,7 @@ function serializeMySquad(membership: {
       profile: {
         id: string;
         displayName: string | null;
+        squadNickname: string | null;
         reclubUserId: bigint | null;
         reclubPlayer: {
           imageUrl: string | null;
@@ -100,6 +101,7 @@ export async function GET(req: NextRequest) {
                 select: {
                   id: true,
                   displayName: true,
+                  squadNickname: true,
                   reclubUserId: true,
                   reclubPlayer: {
                     select: {
@@ -179,6 +181,7 @@ export async function GET(req: NextRequest) {
           select: {
             id: true,
             displayName: true,
+            squadNickname: true,
             reclubPlayer: { select: { imageUrl: true } },
           },
         })
@@ -190,9 +193,12 @@ export async function GET(req: NextRequest) {
     const profile = invite.inviteeId
       ? inviteProfileMap.get(invite.inviteeId)
       : null;
+    const label = profile?.squadNickname
+      ? `@${profile.squadNickname}`
+      : profile?.displayName ?? null;
     return {
       ...invite,
-      displayName: profile?.displayName ?? null,
+      displayName: label,
       avatar: profile?.reclubPlayer?.imageUrl ?? null,
       channel: invite.inviteChannel,
     };
