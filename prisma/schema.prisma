@@ -528,6 +528,8 @@ model Squad {
   founderId    String        @map("founder_id")
   totalXp      Int           @default(0) @map("total_xp")
   level        Int           @default(1)
+  latitude     Float?        @map("latitude")
+  longitude    Float?        @map("longitude")
   createdAt    DateTime      @default(now()) @map("created_at")
   disbandedAt  DateTime?     @map("disbanded_at")
 
@@ -537,6 +539,7 @@ model Squad {
   invites      SquadInvite[]
 
   @@index([founderId])
+  @@index([latitude, longitude])
   @@map("squads")
 }
 

@@ -22,12 +22,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { name, emoji, color, isPublic, showDupr } = body as {
+  const { name, emoji, color, isPublic, showDupr, latitude, longitude } = body as {
     name?: string;
     emoji?: string;
     color?: string;
     isPublic?: boolean;
     showDupr?: boolean;
+    latitude?: number;
+    longitude?: number;
   };
 
   if (
@@ -76,6 +78,9 @@ export async function POST(req: NextRequest) {
         isPublic: isPublic !== false,
         showDupr: showDupr !== false,
         founderId: user.profileId,
+        ...(typeof latitude === "number" && typeof longitude === "number"
+          ? { latitude, longitude }
+          : {}),
       },
     });
 
