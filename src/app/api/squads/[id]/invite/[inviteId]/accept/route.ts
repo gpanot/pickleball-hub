@@ -73,12 +73,16 @@ export async function POST(
 
   const joinerProfile = await prisma.playerProfile.findUnique({
     where: { id: user.profileId },
-    select: { displayName: true },
+    select: { displayName: true, squadNickname: true },
   });
+
+  const joinerLabel = joinerProfile?.squadNickname
+    ? `@${joinerProfile.squadNickname}`
+    : (joinerProfile?.displayName ?? "Someone");
 
   await sendPushNotification(squad.founderId, {
     title: "New Squad Member!",
-    body: `${joinerProfile?.displayName ?? "Someone"} joined ${squad.emoji} ${squad.name}!`,
+    body: `${joinerLabel} joined ${squad.emoji} ${squad.name}!`,
     data: {
       screen: "SquadHome",
       squadId: squad.id,
