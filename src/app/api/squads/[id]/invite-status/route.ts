@@ -31,11 +31,22 @@ export async function GET(
     orderBy: { createdAt: "desc" },
   });
 
+  // Deduplicate: keep only the most recent invite per invitee.
+  // For on-app invitees, key by inviteeId.
+  // For not_on_app invites (inviteeId = null), key by inviteeName so the same
+  // person doesn't appear twice when invited multiple times.
   const seenInvitees = new Set<string>();
+  const seenNames = new Set<string>();
   const deduped = invites.filter((invite) => {
-    if (!invite.inviteeId) return true;
-    if (seenInvitees.has(invite.inviteeId)) return false;
-    seenInvitees.add(invite.inviteeId);
+    if (invite.inviteeId) {
+      if (seenInvitees.has(invite.inviteeId)) return false;
+      seenInvitees.add(invite.inviteeId);
+      return true;
+    }
+    // not_on_app: deduplicate by name (case-insensitive)
+    const nameKey = (invite.inviteeName ?? '').toLowerCase();
+    if (nameKey && seenNames.has(nameKey)) return false;
+    if (nameKey) seenNames.add(nameKey);
     return true;
   });
 

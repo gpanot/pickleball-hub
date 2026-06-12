@@ -67,10 +67,10 @@ export default async function JoinSquadPage({ params }: Props) {
           {squad.members.length}/8 members · Level {squad.level}
         </p>
         <a
-          href="https://apps.apple.com/app/squadd/id6743439366"
+          href={`/download?code=${code.toUpperCase()}`}
           style={styles.cta}
         >
-          Download SQUADD & Join
+          📱 Download SQUADD & Join
         </a>
         <p style={styles.hint}>
           Code: <strong>{code.toUpperCase()}</strong>
