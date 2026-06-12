@@ -573,6 +573,7 @@ model SquadInvite {
   squadId        String    @map("squad_id")
   inviterId      String    @map("inviter_id")
   inviteeId      String?   @map("invitee_id")
+  inviteeName    String?   @map("invitee_name")
   inviteChannel  String    @default("push") @map("invite_channel")
   status         String    @default("pending")
   createdAt      DateTime  @default(now()) @map("created_at")

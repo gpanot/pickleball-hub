@@ -59,7 +59,7 @@ export async function GET(
     return {
       id: invite.id,
       inviteeId: invite.inviteeId,
-      displayName: profile?.displayName ?? null,
+      displayName: profile?.displayName ?? invite.inviteeName ?? null,
       avatar: profile?.reclubPlayer?.imageUrl ?? null,
       status: invite.status,
       channel: invite.inviteChannel,

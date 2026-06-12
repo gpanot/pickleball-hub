@@ -182,18 +182,20 @@ export async function POST(
   // Create not_on_app invite records for each Reclub user not yet on SQUADD
   for (const userId of uniqueNotOnAppUserIds) {
     const userIdStr = userId.toString();
+    const firstName = notOnAppNameByUserId.get(userIdStr)?.split(" ")[0] ?? null;
     await prisma.squadInvite.create({
       data: {
         squadId,
         inviterId: user.profileId,
         inviteeId: null,
+        inviteeName: firstName,
         inviteChannel: "link",
         status: "not_on_app",
       },
     });
     notOnApp.push({
       userId: userIdStr,
-      name: notOnAppNameByUserId.get(userIdStr)?.split(" ")[0] ?? userIdStr,
+      name: firstName ?? userIdStr,
     });
   }
 
