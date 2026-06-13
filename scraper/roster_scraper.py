@@ -18,6 +18,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
+from squad_chests import create_squad_chest_if_member
 from typing import Any, Optional
 
 import psycopg2
@@ -445,6 +446,12 @@ def scrape_session_roster(
                 """,
                 (session_id, uid, participant["isHost"]),
             )
+
+            # Squad chest: create if player is a squad member
+            try:
+                create_squad_chest_if_member(conn, reclub_user_id=uid, session_id=session_id)
+            except Exception as e:
+                print(f"[squad_chests] Skipped chest for uid={uid} session={session_id}: {e}")
 
         # total_confirmed reflects all confirmed slots (real users + bring-a-friend)
         # DUPR % is computed over real users only (bring-a-friend have no profile)

@@ -17,6 +17,9 @@ function serializeMySquad(membership: {
     founderId: string;
     totalXp: number;
     level: number;
+    city: string;
+    streakDays: number;
+    streakLastUpdated: Date | null;
     createdAt: Date;
     disbandedAt: Date | null;
     code: { id: number; squadId: string; code: string; appSlug: string; createdAt: Date } | null;
@@ -31,6 +34,7 @@ function serializeMySquad(membership: {
         id: string;
         displayName: string | null;
         squadNickname: string | null;
+        squadNicknameSetAt: Date | null;
         reclubUserId: bigint | null;
         reclubPlayer: {
           imageUrl: string | null;
@@ -60,6 +64,7 @@ function serializeMySquad(membership: {
         ...m,
         profile: {
           ...m.profile,
+          squadNicknameSetAt: m.profile.squadNicknameSetAt?.toISOString() ?? null,
           reclubUserId: m.profile.reclubUserId?.toString() ?? null,
           reclubPlayer: m.profile.reclubPlayer
             ? {
@@ -102,6 +107,7 @@ export async function GET(req: NextRequest) {
                   id: true,
                   displayName: true,
                   squadNickname: true,
+                  squadNicknameSetAt: true,
                   reclubUserId: true,
                   reclubPlayer: {
                     select: {
@@ -204,5 +210,133 @@ export async function GET(req: NextRequest) {
     };
   }) as typeof membership.squad.invites;
 
-  return NextResponse.json(serializeMySquad(membership));
+  // Phase 2: activeChest, myOpening, recentFeed, streak
+  const now = new Date();
+  const activeChest = await prisma.squadChest.findFirst({
+    where: {
+      squadId: membership.squad.id,
+      expiresAt: { gte: now },
+    },
+    orderBy: { createdAt: "desc" },
+    include: {
+      earner: { select: { id: true, displayName: true, squadNickname: true } },
+      openings: {
+        select: {
+          profileId: true, status: true, tappedAt: true,
+          unlocksAt: true, openedAt: true, kudosAwarded: true, xpAwarded: true,
+          profile: { select: { id: true, displayName: true, squadNickname: true } },
+        },
+      },
+    },
+  });
+
+  let activeChestData = null;
+  let myOpeningData = null;
+  if (activeChest) {
+    activeChestData = {
+      id: activeChest.id,
+      earnerId: activeChest.earnerId,
+      earnerName: activeChest.earner.squadNickname
+        ? `@${activeChest.earner.squadNickname}`
+        : activeChest.earner.displayName?.split(" ")[0] ?? "?",
+      source: activeChest.source,
+      venueName: activeChest.venueName,
+      createdAt: activeChest.createdAt.toISOString(),
+      expiresAt: activeChest.expiresAt.toISOString(),
+      openings: activeChest.openings.map((o) => ({
+        profileId: o.profileId,
+        displayName: o.profile.squadNickname
+          ? `@${o.profile.squadNickname}`
+          : o.profile.displayName?.split(" ")[0] ?? "?",
+        status: o.status,
+        unlocksAt: o.unlocksAt?.toISOString() ?? null,
+      })),
+    };
+
+    const myOp = activeChest.openings.find((o) => o.profileId === user.profileId);
+    if (myOp) {
+      myOpeningData = {
+        status: myOp.status,
+        unlocksAt: myOp.unlocksAt?.toISOString() ?? null,
+      };
+    }
+  }
+
+  // Recent feed (last 10 xp_log entries)
+  const recentLogs = await prisma.squadXpLog.findMany({
+    where: { squadId: membership.squad.id },
+    orderBy: { createdAt: "desc" },
+    take: 10,
+  });
+  const feedProfileIds = [...new Set(recentLogs.map((l) => l.profileId).filter(Boolean))] as string[];
+  const feedProfiles = feedProfileIds.length > 0
+    ? await prisma.playerProfile.findMany({
+        where: { id: { in: feedProfileIds } },
+        select: { id: true, displayName: true, squadNickname: true },
+      })
+    : [];
+  const feedProfileMap = new Map(feedProfiles.map((p) => [p.id, p]));
+
+  const recentFeed = recentLogs.map((log) => {
+    const profile = log.profileId ? feedProfileMap.get(log.profileId) : null;
+    const dn = profile?.squadNickname
+      ? `@${profile.squadNickname}`
+      : profile?.displayName?.split(" ")[0] ?? "Someone";
+
+    let type = log.source;
+    if (log.source === "chest") type = "chest_opened";
+    if (log.source === "new_member") type = "member_joined";
+    if (log.source === "streak") type = "streak_daily";
+    const milestoneMatch = log.source.match(/^streak_milestone:(\d+)$/);
+    if (milestoneMatch) type = "streak_milestone";
+
+    return {
+      type,
+      profileId: log.profileId,
+      displayName: log.source === "streak" || milestoneMatch
+        ? membership.squad.name
+        : dn,
+      xpAwarded: log.xpAmount,
+      streakDays: milestoneMatch ? parseInt(milestoneMatch[1], 10) : undefined,
+      createdAt: log.createdAt.toISOString(),
+    };
+  });
+
+  const streak = {
+    days: membership.squad.streakDays ?? 0,
+    lastPlayedAt: membership.squad.streakLastUpdated?.toISOString() ?? null,
+  };
+
+  // Player contribution stats
+  const [sessionCount, xpEarned, chestsOpened] = await Promise.all([
+    prisma.squadChest.count({
+      where: { squadId: membership.squad.id, earnerId: user.profileId },
+    }),
+    prisma.squadXpLog.aggregate({
+      where: { squadId: membership.squad.id, profileId: user.profileId },
+      _sum: { xpAmount: true },
+    }),
+    prisma.squadChestOpening.count({
+      where: {
+        profileId: user.profileId,
+        status: "opened",
+        chest: { squadId: membership.squad.id },
+      },
+    }),
+  ]);
+
+  const myContribution = {
+    sessions: sessionCount,
+    xpEarned: xpEarned._sum.xpAmount ?? 0,
+    chestsOpened,
+  };
+
+  return NextResponse.json({
+    ...serializeMySquad(membership),
+    activeChest: activeChestData,
+    myOpening: myOpeningData,
+    recentFeed,
+    streak,
+    myContribution,
+  });
 }

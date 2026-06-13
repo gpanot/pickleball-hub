@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getMobileUser } from "@/lib/mobile-auth";
 import { prisma } from "@/lib/db";
 import { generateSquadCode } from "@/lib/squad-codes";
+import { awardSquadXp, XP_AMOUNTS } from "@/lib/squad-xp";
 import {
   ALLOWED_EMOJIS,
   ALLOWED_COLORS,
@@ -98,6 +99,17 @@ export async function POST(req: NextRequest) {
 
     return { squad: { ...squad, code }, member };
   });
+
+  // Founder counts as the first member — award +40 XP (one-time, same as joining)
+  // hasReceivedNewMemberXp is intentionally NOT checked here: founder never went
+  // through join-by-code, so they would never have a prior new_member entry.
+  await awardSquadXp(
+    prisma,
+    result.squad.id,
+    user.profileId,
+    "new_member",
+    XP_AMOUNTS.new_member
+  );
 
   return NextResponse.json(result, { status: 201 });
 }

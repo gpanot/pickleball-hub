@@ -238,6 +238,8 @@ model PlayerProfile {
   foundedSquads     Squad[]       @relation("SquadFounder")
   squadMemberships  SquadMember[]
   sentInvites       SquadInvite[] @relation("InviterInvites")
+  chestsEarned      SquadChest[]       @relation("ChestEarner")
+  chestOpenings     SquadChestOpening[]
 
   @@map("player_profiles")
 }
@@ -528,6 +530,9 @@ model Squad {
   founderId    String        @map("founder_id")
   totalXp      Int           @default(0) @map("total_xp")
   level        Int           @default(1)
+  city         String        @default("hcm")
+  streakDays   Int           @default(0) @map("streak_days")
+  streakLastUpdated DateTime? @map("streak_last_updated") @db.Date
   latitude     Float?        @map("latitude")
   longitude    Float?        @map("longitude")
   createdAt    DateTime      @default(now()) @map("created_at")
@@ -537,6 +542,8 @@ model Squad {
   members      SquadMember[]
   code         SquadCode?
   invites      SquadInvite[]
+  chests       SquadChest[]
+  xpLog        SquadXpLog[]
 
   @@index([founderId])
   @@index([latitude, longitude])
@@ -589,6 +596,63 @@ model SquadInvite {
   @@index([squadId])
   @@index([inviteeId])
   @@map("squad_invites")
+}
+
+model SquadChest {
+  id          String              @id @default(uuid())
+  squadId     String              @map("squad_id")
+  earnerId    String              @map("earner_id")
+  sessionId   Int?                @map("session_id")
+  source      String              @default("checkin")
+  venueName   String?             @map("venue_name")
+  checkinDate DateTime?           @map("checkin_date") @db.Date
+  createdAt   DateTime            @default(now()) @map("created_at")
+  expiresAt   DateTime            @map("expires_at")
+
+  squad       Squad               @relation(fields: [squadId], references: [id], onDelete: Cascade)
+  earner      PlayerProfile       @relation("ChestEarner", fields: [earnerId], references: [id])
+  openings    SquadChestOpening[]
+
+  @@unique([squadId, earnerId, checkinDate])
+  @@index([squadId])
+  @@index([expiresAt])
+  @@map("squad_chests")
+}
+
+model SquadChestOpening {
+  id           Int           @id @default(autoincrement())
+  chestId      String        @map("chest_id")
+  profileId    String        @map("profile_id")
+  status       String        @default("pending")
+  tappedAt     DateTime?     @map("tapped_at")
+  unlocksAt    DateTime?     @map("unlocks_at")
+  openedAt     DateTime?     @map("opened_at")
+  kudosAwarded Int?          @map("kudos_awarded")
+  xpAwarded    Int?          @map("xp_awarded")
+
+  chest        SquadChest    @relation(fields: [chestId], references: [id], onDelete: Cascade)
+  profile      PlayerProfile @relation(fields: [profileId], references: [id])
+
+  @@unique([chestId, profileId])
+  @@index([chestId])
+  @@index([profileId])
+  @@index([unlocksAt])
+  @@map("squad_chest_openings")
+}
+
+model SquadXpLog {
+  id        Int           @id @default(autoincrement())
+  squadId   String        @map("squad_id")
+  profileId String?       @map("profile_id")
+  source    String
+  xpAmount  Int           @map("xp_amount")
+  createdAt DateTime      @default(now()) @map("created_at")
+
+  squad     Squad         @relation(fields: [squadId], references: [id], onDelete: Cascade)
+
+  @@index([squadId])
+  @@index([createdAt])
+  @@map("squad_xp_log")
 }
 
 model SquadWaitlist {

@@ -1,5 +1,5 @@
 export const ALLOWED_EMOJIS = [
-  "🦁", "🐉", "🦅", "🐺", "🐯", "🦈", "🦊", "🐻", "⚡", "🔥", "🌸", "💫",
+  "🦁", "🐉", "🦅", "🐺", "🐯", "🦈", "🦊", "🐻", "⚡", "🔥", "🎁", "💫",
 ] as const;
 
 export const ALLOWED_COLORS = [

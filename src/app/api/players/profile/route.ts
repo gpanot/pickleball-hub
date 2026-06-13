@@ -8,16 +8,63 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  if (!user.reclubUserId) {
-    return NextResponse.json(
-      { error: "No linked Reclub account" },
-      { status: 400 },
-    );
+  const body = (await req.json()) as { duprRating?: number; handle?: string };
+
+  if (body.handle !== undefined) {
+    const handle = body.handle.trim().toLowerCase();
+    if (!/^[a-z0-9_]{3,20}$/.test(handle)) {
+      return NextResponse.json(
+        { error: "Handle must be 3-20 characters: letters, numbers, underscores only" },
+        { status: 400 },
+      );
+    }
+
+    const me = await prisma.playerProfile.findUnique({
+      where: { id: user.profileId },
+      select: { squadNickname: true, squadNicknameSetAt: true },
+    });
+
+    if (me?.squadNicknameSetAt && me.squadNickname?.toLowerCase() !== handle) {
+      const daysSince =
+        (Date.now() - new Date(me.squadNicknameSetAt).getTime()) / (1000 * 60 * 60 * 24);
+      if (daysSince < 30) {
+        const nextAvailableAt = new Date(
+          new Date(me.squadNicknameSetAt).getTime() + 30 * 24 * 60 * 60 * 1000,
+        ).toISOString();
+        return NextResponse.json(
+          { error: "cooldown", nextAvailableAt },
+          { status: 429 },
+        );
+      }
+    }
+
+    const taken = await prisma.playerProfile.findFirst({
+      where: {
+        squadNickname: { equals: handle, mode: "insensitive" },
+        id: { not: user.profileId },
+      },
+      select: { id: true },
+    });
+
+    if (taken) {
+      return NextResponse.json({ error: "Handle already taken" }, { status: 409 });
+    }
+
+    await prisma.playerProfile.update({
+      where: { id: user.profileId },
+      data: { squadNickname: handle, squadNicknameSetAt: new Date() },
+    });
+
+    return NextResponse.json({ ok: true, handle });
   }
 
-  const body = (await req.json()) as { duprRating?: number };
-
   if (body.duprRating !== undefined) {
+    if (!user.reclubUserId) {
+      return NextResponse.json(
+        { error: "No linked Reclub account" },
+        { status: 400 },
+      );
+    }
     const rating = Number(body.duprRating);
     if (isNaN(rating) || rating < 0 || rating > 8) {
       return NextResponse.json(

@@ -3,6 +3,7 @@ import { getMobileUser } from "@/lib/mobile-auth";
 import { prisma } from "@/lib/db";
 import { sendPushNotification } from "@/lib/notifications";
 import { MAX_SQUAD_MEMBERS } from "@/lib/squad-constants";
+import { awardSquadXp, XP_AMOUNTS, hasReceivedNewMemberXp } from "@/lib/squad-xp";
 
 export async function POST(
   req: NextRequest,
@@ -57,6 +58,21 @@ export async function POST(
     return NextResponse.json({ error: "You are already in a squad" }, { status: 409 });
   }
 
+  const cooldownCutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const recentlyLeft = await prisma.squadMember.findFirst({
+    where: {
+      profileId: user.profileId,
+      leftAt: { gt: cooldownCutoff },
+    },
+    select: { leftAt: true },
+    orderBy: { leftAt: "desc" },
+  });
+
+  if (recentlyLeft?.leftAt) {
+    const cooldownEndsAt = new Date(recentlyLeft.leftAt.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    return NextResponse.json({ error: "cooldown", cooldownEndsAt }, { status: 403 });
+  }
+
   await prisma.$transaction([
     prisma.squadMember.create({
       data: {
@@ -70,6 +86,17 @@ export async function POST(
       data: { status: "accepted", resolvedAt: new Date() },
     }),
   ]);
+
+  const alreadyGotXp = await hasReceivedNewMemberXp(prisma, user.profileId);
+  if (!alreadyGotXp) {
+    await awardSquadXp(
+      prisma,
+      squadId,
+      user.profileId,
+      "new_member",
+      XP_AMOUNTS.new_member
+    );
+  }
 
   const joinerProfile = await prisma.playerProfile.findUnique({
     where: { id: user.profileId },
