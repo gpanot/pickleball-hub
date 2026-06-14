@@ -1,6 +1,9 @@
 [build]
 builder = "nixpacks"
 
+[build.nixpacksPlan.phases.setup]
+nixPkgs = ["nodejs_20"]
+
 [deploy]
 # Run migrations before starting Next.js — runs inside Railway network so postgres.railway.internal is reachable
 startCommand = "npx prisma migrate deploy && npx next start"
