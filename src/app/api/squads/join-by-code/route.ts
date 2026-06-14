@@ -34,21 +34,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "You are already in a squad" }, { status: 409 });
   }
 
-  const cooldownCutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-  const recentlyLeft = await prisma.squadMember.findFirst({
-    where: {
-      profileId: user.profileId,
-      leftAt: { gt: cooldownCutoff },
-    },
-    select: { leftAt: true },
-    orderBy: { leftAt: "desc" },
-  });
-
-  if (recentlyLeft?.leftAt) {
-    const cooldownEndsAt = new Date(recentlyLeft.leftAt.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString();
-    return NextResponse.json({ error: "cooldown", cooldownEndsAt }, { status: 403 });
-  }
-
   const squadCode = await prisma.squadCode.findUnique({
     where: { code: code.toUpperCase() },
     include: {
