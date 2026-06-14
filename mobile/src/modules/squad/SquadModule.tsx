@@ -349,6 +349,17 @@ export default function SquadModule({
     if (conquestScreen) {
       delete (globalThis as any).__conquestPushScreen;
       pushRouteLog(`runtime push → ${conquestScreen}`);
+      // When routing to rival reveal via push, first refresh session + load card data
+      if (conquestScreen === 'conquest-rival-reveal') {
+        void refreshSession().then(async () => {
+          try {
+            const card = await conquestApi.getSquadCard();
+            setConquestCardData(card.card);
+          } catch {}
+          setScreen('conquest-rival-reveal');
+        });
+        return;
+      }
       setScreen(conquestScreen as SquadScreen);
       return;
     }
@@ -593,8 +604,13 @@ export default function SquadModule({
             onClose={() => setShowCheckinSheet(false)}
             onSuccess={async (result) => {
               setShowCheckinSheet(false);
-              const data = await fetchMySquad();
-              extractPhase2Data(data);
+              // Fetch squad data and conquest session in parallel so both cards appear immediately
+              await Promise.all([
+                fetchMySquad().then(data => extractPhase2Data(data)),
+                refreshSession(),
+              ]);
+              // Retry session refresh after a short delay to catch any server-side lag
+              setTimeout(() => void refreshSession(), 1500);
             }}
             onCheckinComplete={(venue) => {
               debugLog('SQUADD', `check-in OK venue #${venue.id} ${venue.name}`);
@@ -766,8 +782,12 @@ export default function SquadModule({
           cardData={conquestCardData}
           onBack={() => setScreen('conquest-session')}
           onPlayCard={async () => {
+            if (!activeSession?.venueId) {
+              Alert.alert('Battle failed', 'No active session found. Please refresh.');
+              return;
+            }
             try {
-              const { battle } = await conquestApi.initiateBattle();
+              const { battle } = await conquestApi.initiateBattle(activeSession.venueId);
               setBattle(battle);
               setScreen('conquest-battle');
             } catch (e: any) {
