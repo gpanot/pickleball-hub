@@ -1,0 +1,10 @@
+[build]
+builder = "nixpacks"
+
+[deploy]
+# Run migrations before starting Next.js — runs inside Railway network so postgres.railway.internal is reachable
+startCommand = "npx prisma migrate deploy && npx next start"
+healthcheckPath = "/api/health"
+healthcheckTimeout = 60
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3

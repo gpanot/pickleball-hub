@@ -42,6 +42,10 @@ model Venue {
 
   sessions  Session[]
   accessCodes AccessCode[]
+  radarSessions    RadarSession[]
+  cardBattles      CardBattle[]
+  venueInfTotals   VenueInfTotal[]
+  pulseCooldowns   VenuePulseCooldown[]
 
   @@index([latitude, longitude])
   @@map("venues")
@@ -240,6 +244,9 @@ model PlayerProfile {
   sentInvites       SquadInvite[] @relation("InviterInvites")
   chestsEarned      SquadChest[]       @relation("ChestEarner")
   chestOpenings     SquadChestOpening[]
+  radarSessions    RadarSession[]
+  pulseCooldowns   VenuePulseCooldown[]
+  squadAlerts      SquadAlert[]
 
   @@map("player_profiles")
 }
@@ -544,6 +551,12 @@ model Squad {
   invites      SquadInvite[]
   chests       SquadChest[]
   xpLog        SquadXpLog[]
+  radarSessions     RadarSession[]
+  cardBattlesInit   CardBattle[]      @relation("InitiatingSquad")
+  cardBattlesRival  CardBattle[]      @relation("RivalSquad")
+  venueInfTotals    VenueInfTotal[]
+  squadCardState    SquadCardState?
+  squadAlerts       SquadAlert[]
 
   @@index([founderId])
   @@index([latitude, longitude])
@@ -669,4 +682,115 @@ model SquadWaitlist {
   createdAt   DateTime @default(now()) @map("created_at")
 
   @@map("squad_waitlist")
+}
+
+// ── Squad Conquest (Phase 4) ─────────────────────────────────────────────────
+
+model RadarSession {
+  id                    String    @id @default(uuid())
+  squadId               String    @map("squad_id")
+  playerId              String    @map("player_id")
+  venueId               Int       @map("venue_id")
+  startedAt             DateTime  @default(now()) @map("started_at")
+  autoEndsAt            DateTime  @map("auto_ends_at")
+  stoppedAt             DateTime? @map("stopped_at")
+  isClashActive         Boolean   @default(false) @map("is_clash_active")
+  clashPartnerSquadId   String?   @map("clash_partner_squad_id")
+  infBase               Int?      @map("inf_base")
+  infFinal              Int?      @map("inf_final")
+  state                 String    @default("active")
+
+  squad                 Squad           @relation(fields: [squadId], references: [id])
+  venue                 Venue           @relation(fields: [venueId], references: [id])
+  player                PlayerProfile   @relation(fields: [playerId], references: [id])
+
+  @@index([venueId, state])
+  @@index([squadId, state])
+  @@index([playerId, state])
+  @@index([autoEndsAt, state])
+  @@map("radar_sessions")
+}
+
+model CardBattle {
+  id                          String    @id @default(uuid())
+  venueId                     Int       @map("venue_id")
+  initiatingSquadId           String    @map("initiating_squad_id")
+  rivalSquadId                String    @map("rival_squad_id")
+  initiatingCardPower         Int       @map("initiating_card_power")
+  rivalCardPower              Int       @map("rival_card_power")
+  winnerSquadId               String?   @map("winner_squad_id")
+  initiatedAt                 DateTime  @default(now()) @map("initiated_at")
+  revealAt                    DateTime  @map("reveal_at")
+  counterAttackWindowEndsAt   DateTime  @map("counter_attack_window_ends_at")
+  battleNumber                Int       @default(1) @map("battle_number")
+  isCounterAttack             Boolean   @default(false) @map("is_counter_attack")
+  parentBattleId              String?   @map("parent_battle_id")
+
+  initiatingSquad             Squad     @relation("InitiatingSquad", fields: [initiatingSquadId], references: [id])
+  rivalSquad                  Squad     @relation("RivalSquad", fields: [rivalSquadId], references: [id])
+  venue                       Venue     @relation(fields: [venueId], references: [id])
+
+  @@index([venueId, initiatedAt])
+  @@index([initiatingSquadId])
+  @@index([rivalSquadId])
+  @@map("card_battles")
+}
+
+model VenueInfTotal {
+  squadId         String    @map("squad_id")
+  venueId         Int       @map("venue_id")
+  totalInf        Int       @default(0) @map("total_inf")
+  lastUpdatedAt   DateTime  @default(now()) @map("last_updated_at")
+
+  squad           Squad     @relation(fields: [squadId], references: [id])
+  venue           Venue     @relation(fields: [venueId], references: [id])
+
+  @@id([squadId, venueId])
+  @@index([venueId, totalInf(sort: Desc)])
+  @@map("venue_inf_totals")
+}
+
+model VenuePulseCooldown {
+  playerId          String    @map("player_id")
+  venueId           Int       @map("venue_id")
+  lastPulseAt       DateTime  @map("last_pulse_at")
+  cooldownEndsAt    DateTime  @map("cooldown_ends_at")
+
+  player            PlayerProfile   @relation(fields: [playerId], references: [id])
+  venue             Venue           @relation(fields: [venueId], references: [id])
+
+  @@id([playerId, venueId])
+  @@map("venue_pulse_cooldowns")
+}
+
+model SquadCardState {
+  squadId                 String    @id @map("squad_id")
+  cardPowerInf            Int       @map("card_power_inf")
+  cardLevelMultiplier     Decimal   @map("card_level_multiplier") @db.Decimal(4, 2)
+  venuesOwnedCount        Int       @default(0) @map("venues_owned_count")
+  activeMembersThisWeek   Int       @default(0) @map("active_members_this_week")
+  lastComputedAt          DateTime  @default(now()) @map("last_computed_at")
+
+  squad                   Squad     @relation(fields: [squadId], references: [id])
+
+  @@map("squad_card_state")
+}
+
+model SquadAlert {
+  id                  String    @id @default(uuid())
+  squadId             String    @map("squad_id")
+  recipientProfileId  String    @map("recipient_profile_id")
+  type                String
+  title               String
+  body                String
+  payload             Json?
+  readAt              DateTime? @map("read_at")
+  createdAt           DateTime  @default(now()) @map("created_at")
+
+  squad               Squad           @relation(fields: [squadId], references: [id])
+  recipient           PlayerProfile   @relation(fields: [recipientProfileId], references: [id])
+
+  @@index([recipientProfileId, readAt])
+  @@index([squadId, createdAt])
+  @@map("squad_alerts")
 }

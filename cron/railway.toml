@@ -1,0 +1,17 @@
+# Railway cron service for Conquest session auto-close.
+# Deploy this as a separate Railway service in the pickleball-hub project.
+#
+# Required env vars (set in Railway dashboard for this service):
+#   MOBILE_API_URL  — e.g. https://pickleball-hub-mobile-i9ag.up.railway.app
+#   CRON_SECRET     — same value as on the main service
+#
+# This service runs conquest-cron.sh every minute, which calls:
+#   GET /api/cron/conquest-session-close?secret=CRON_SECRET
+# That route closes expired RadarSessions, tallies INF, and fires push notifications.
+
+[build]
+builder = "nixpacks"
+
+[deploy]
+cronSchedule = "* * * * *"
+startCommand = "sh scripts/conquest-cron.sh"
