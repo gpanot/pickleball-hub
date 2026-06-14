@@ -13,10 +13,6 @@ function todayHCMC(): Date {
  * Dev only — clears today's check-in chest, radar sessions, pulse cooldowns for retesting.
  */
 export async function POST(req: NextRequest) {
-  if (process.env.NODE_ENV !== "development") {
-    return NextResponse.json({ error: "Not available in production" }, { status: 403 });
-  }
-
   const user = await getMobileUser(req);
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
