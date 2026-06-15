@@ -90,28 +90,26 @@ export async function POST(req: NextRequest) {
     clashDetected = true;
     rivalSquadId = rival.squadId;
 
-    const [mySquad, rivalSquad, clashVenue] = await Promise.all([
+    const [mySquad, , venue] = await Promise.all([
       prisma.squad.findUnique({ where: { id: squadId }, select: { name: true } }),
       prisma.squad.findUnique({ where: { id: rival.squadId }, select: { name: true } }),
       prisma.venue.findUnique({ where: { id: venueId }, select: { name: true } }),
     ]);
 
-    // Notify the NEW squad that checked in (they triggered the clash)
     notifySquadMembers({
       squadId,
       type: "conquest_clash_detected",
-      title: `⚔️ Arena Clash at ${clashVenue?.name ?? "your venue"}`,
-      body: `${rivalSquad?.name ?? "A rival squad"} is already here — battle for ownership!`,
+      title: `Arena Clash at ${venue?.name ?? "venue"}`,
+      body: `A rival squad just checked in — Battle for ownership now!`,
       payload: { venueId, sessionId: session.id },
       pushData: { screen: "ConquestBattle", venueId: String(venueId) },
     }).catch(() => {});
 
-    // Notify the EXISTING squad already at the venue
     notifySquadMembers({
       squadId: rival.squadId,
       type: "conquest_clash_detected",
-      title: `⚔️ Arena Clash at ${clashVenue?.name ?? "your venue"}`,
-      body: `${mySquad?.name ?? "A rival squad"} just checked in — battle to defend your turf!`,
+      title: `Arena Clash at ${venue?.name ?? "venue"}`,
+      body: `${mySquad?.name ?? "A rival squad"} is already here. Battle to claim it!`,
       payload: { venueId, sessionId: rival.id },
       pushData: { screen: "ConquestBattle", venueId: String(venueId) },
     }).catch(() => {});
@@ -127,7 +125,7 @@ export async function POST(req: NextRequest) {
         squadId: overlord.squadId,
         type: "conquest_rival_pulse",
         title: `Territory under threat`,
-        body: `${mySquad?.name ?? "A squad"} dropped a pulse at ${clashVenue?.name ?? "your venue"}`,
+        body: `${mySquad?.name ?? "A squad"} dropped a pulse at ${venue?.name ?? "your venue"}`,
         payload: { venueId },
         pushData: { screen: "ConquestRadar", venueId: String(venueId) },
       }).catch(() => {});

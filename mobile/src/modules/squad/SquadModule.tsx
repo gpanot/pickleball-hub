@@ -585,6 +585,7 @@ export default function SquadModule({
             onLeaderboard={() => setScreen('leaderboard')}
             onManage={() => setScreen('manage')}
             onDevReset={handleDevReset}
+            hasActiveSession={!!activeSession}
             conquestBanner={
               activeSession ? (
                 <ConquestLiveBanner

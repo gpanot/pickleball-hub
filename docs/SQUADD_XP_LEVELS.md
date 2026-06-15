@@ -13,7 +13,8 @@
 | Earner opens chest | +30 to +80 (random) | `POST /api/squads/chests/:id/open` | 4h unlock timer after tap |
 | Contributor opens chest | +10 to +30 (random) | `POST /api/squads/chests/:id/open` | 4h unlock timer after tap |
 | New member joins | +40 | `join-by-code` or `invite/accept` | **One-time only per player lifetime** — checked via `squad_xp_log` |
-| Daily streak | +20 | `squad-streak` cron (daily 23:55 HCMC) | Streak increments only once/day |
+| Daily streak (qualifying day) | +20 | `squad-streak` cron (daily 23:55 HCMC) | Once per qualifying check-in day in rolling window |
+| **Streak Chest open (all members)** | **+50 (fixed)** | 4th check-in in rolling 7-day window → chest auto-created | 1 Streak Chest per 7-day window per squad; 4h unlock timer |
 
 ### Hybrid check-in model
 
@@ -76,11 +77,66 @@ Duplicated on mobile in `SquadIdentityBar.tsx` for offline rendering.
 
 ## Streak System
 
-- **Source**: nightly cron `squad-streak` (23:55 HCMC time)
-- **Logic**: if any squad member created a chest today (any source), streak increments by 1 and awards **+20 squad XP** (`source: 'streak'`).
-- **Reset**: if no chest was created today and the last streak update was before yesterday, streak resets to 0.
-- **Milestones**: at 3, 7, 14, 30 days → feed-only event logged as `streak_milestone:N` (0 XP, display only).
-- **UI**: `SquadStreakTracker` shows 7-day pill row with `+20 XP/day` badge.
+### Overview
+
+The streak is a **weekly activity window**, not a consecutive-days counter. The squad must accumulate **4 check-in days within a rolling 7-day window**. On completing the 4th check-in, a **Streak Chest** is automatically granted to every squad member.
+
+### Rules
+
+| Rule | Value |
+|------|-------|
+| Check-ins required | **4** within any rolling 7-day window |
+| Window | 7 calendar days (HCMC timezone) |
+| Reward trigger | 4th qualifying check-in in the window |
+| Reward | **Streak Chest** for every squad member |
+| XP awarded on chest open (earner role) | **+50 XP** |
+| XP awarded on chest open (contributor role) | **+50 XP** (fixed — all members equal reward) |
+| Kudos awarded | +15 per member |
+| Chest unlock timer | **4 hours** (same as regular chests) |
+| Weekly XP per check-in day (baseline) | **+20 XP** (`source: 'streak'`) |
+
+### How it works — step by step
+
+1. Any squad member checks in at a court (manual or scraper) → counts as 1 check-in day for the squad.
+2. Nightly cron (`squad-streak`, 23:55 HCMC) counts distinct check-in days in the last 7 days.
+3. On each qualifying day the squad earns **+20 XP** (`source: 'streak'`).
+4. When the rolling count reaches **4**, the cron automatically:
+   - Creates a `squad_chests` row with `source: 'streak_chest'`.
+   - Creates a `squad_chest_openings` row for every active member (`status: 'pending'`).
+   - Logs a `streak_milestone:week` feed event (visible to all members).
+   - Resets the rolling window counter (the squad can earn one Streak Chest per 7-day window).
+5. Members tap → 4h unlock → open → **+50 XP + 15 kudos** each.
+
+### Rewards breakdown
+
+| Reward | Amount | Notes |
+|--------|--------|-------|
+| XP per check-in day | +20 | Awarded nightly, up to 4×/week = +80 XP max baseline |
+| Streak Chest XP (all members) | +50 | Fixed (not randomized — equal reward for teamwork) |
+| Streak Chest kudos (all members) | +15 | Fixed |
+| Streak Chest total squad value (8 members) | +400 XP + 120 kudos | If all 8 open |
+
+### Reset behavior
+
+- The 7-day window rolls forward daily. There is no "lose your streak" mechanic — if the squad misses days, they simply haven't hit 4 yet.
+- Once the Streak Chest fires, the window resets and the squad starts counting toward the next chest.
+- Maximum **1 Streak Chest per rolling 7-day window** per squad.
+
+### UI
+
+`SquadStreakTracker` shows:
+- A **4-node day track** (DAY 1 → DAY 2 → DAY 3 → DAY 4 → CHEST icon) replacing the old 7-day pill row.
+- Completed nodes show a green checkmark; the next target node pulses gold.
+- A **progress bar** fills proportionally (0–4 check-ins).
+- When complete: banner text "Streak complete — chest unlocked for everyone!" + gold "+50 XP each" pill.
+- The chest node shows the chest image, dimmed until unlocked.
+
+### Feed events
+
+| Event key | When | Display |
+|-----------|------|---------|
+| `streak` | Nightly, when a check-in day qualifies | "+20 XP — squad kept the streak alive" |
+| `streak_milestone:week` | When 4th check-in fires | "🔥 Streak chest unlocked! Tap to claim your reward" (push + feed) |
 
 ---
 
@@ -114,6 +170,7 @@ Duplicated on mobile in `SquadIdentityBar.tsx` for offline rendering.
 
 | Date | Change |
 |------|--------|
+| 2026-06-15 | Streak system redesigned: 4 check-ins in 7 days → Streak Chest for all members (+50 XP +15 kudos each, fixed). Old consecutive-day streak replaced by rolling-window model. `SquadStreakTracker` UI updated to 4-node day track with chest reward node. |
 | 2026-06-13 | Squad creation (`POST /api/squads`) now awards +40 XP to the founder |
 | 2026-06-13 | Production backfill: awarded +40 XP to all 4 existing members across 3 squads (Googo 80, Eagle 40, 3up 40) |
 | 2026-06-13 | Randomized chest XP: earner 30–80, contributor 10–30 (was fixed 80/50) |
