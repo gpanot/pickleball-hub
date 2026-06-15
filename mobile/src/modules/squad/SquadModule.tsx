@@ -809,6 +809,7 @@ export default function SquadModule({
           mySquadEmoji={squad.emoji}
           rivalSquadName={activeSession?.clashPartnerSquadName ?? 'Unknown Squad'}
           rivalSquadEmoji="❓"
+          onBack={() => setScreen(activeSession ? 'conquest-session' : 'home')}
           onRevealResult={() => {
             if (!activeBattle) return;
             // null winnerSquadId = draw — treat as lose (no bonus, but can still counter)
@@ -832,15 +833,22 @@ export default function SquadModule({
           rivalSquadEmoji="❓"
           counterAttackWindowEndsAt={activeBattle.counterAttackWindowEndsAt || new Date(Date.now() + 5 * 60 * 1000).toISOString()}
           onViewResults={() => {
-            if (conquestSessionId) {
-              conquestApi.getShareData(conquestSessionId).then(data => {
+            // Use conquestSessionId (set when session closes) or fall back to active session id
+            const sid = conquestSessionId ?? activeSession?.id ?? null;
+            if (sid) {
+              conquestApi.getShareData(sid).then(data => {
                 setConquestImpactData(data);
+                setConquestSessionId(sid);
                 setScreen('conquest-impact');
-              }).catch(() => setScreen('home'));
+              }).catch(() => {
+                // Share data not ready yet — go back to session, they'll see impact when session closes
+                setScreen(activeSession ? 'conquest-session' : 'home');
+              });
             } else {
               setScreen('home');
             }
           }}
+          onBack={() => setScreen(activeSession ? 'conquest-session' : 'home')}
         />
       )}
 
@@ -854,20 +862,30 @@ export default function SquadModule({
           rivalSquadEmoji="❓"
           counterAttackWindowEndsAt={activeBattle.counterAttackWindowEndsAt || new Date(Date.now() + 5 * 60 * 1000).toISOString()}
           onCounterAttack={async () => {
-            const { battle } = await conquestApi.counterAttack(activeBattle.id);
-            setBattle(battle);
-            setScreen('conquest-battle');
+            try {
+              const { battle } = await conquestApi.counterAttack(activeBattle.id);
+              setBattle(battle);
+              setBattlePending(true);
+              setScreen('conquest-battle');
+            } catch (e: any) {
+              Alert.alert('Counter-attack failed', e.message ?? 'Try again.');
+            }
           }}
           onViewResults={() => {
-            if (conquestSessionId) {
-              conquestApi.getShareData(conquestSessionId).then(data => {
+            const sid = conquestSessionId ?? activeSession?.id ?? null;
+            if (sid) {
+              conquestApi.getShareData(sid).then(data => {
                 setConquestImpactData(data);
+                setConquestSessionId(sid);
                 setScreen('conquest-impact');
-              }).catch(() => setScreen('home'));
+              }).catch(() => {
+                setScreen(activeSession ? 'conquest-session' : 'home');
+              });
             } else {
               setScreen('home');
             }
           }}
+          onBack={() => setScreen(activeSession ? 'conquest-session' : 'home')}
         />
       )}
 

@@ -20,6 +20,7 @@ interface BattleProps {
   rivalSquadName: string;
   rivalSquadEmoji: string;
   onRevealResult: () => void;
+  onBack?: () => void;
 }
 
 /**
@@ -34,6 +35,7 @@ export function ConquestBattleScreen({
   rivalSquadName,
   rivalSquadEmoji,
   onRevealResult,
+  onBack,
 }: BattleProps) {
   const insets = useSafeAreaInsets();
   const [revealSecs, setRevealSecs] = useState(() => {
@@ -105,6 +107,12 @@ export function ConquestBattleScreen({
 
   return (
     <View style={[b.container, { paddingTop: insets.top }]}>
+      {/* Back escape — doesn't cancel battle, just lets user browse while waiting */}
+      {onBack && (
+        <TouchableOpacity style={b.backBtn} onPress={onBack} activeOpacity={0.7}>
+          <Text style={b.backBtnText}>← Keep playing</Text>
+        </TouchableOpacity>
+      )}
       {/* Header */}
       <View style={b.header}>
         <Text style={b.headerLabel}>⚔️ BATTLE IN PROGRESS</Text>
@@ -166,6 +174,7 @@ interface WinProps {
   mySquadId: string;
   counterAttackWindowEndsAt: string;
   onViewResults: () => void;
+  onBack?: () => void;
 }
 
 export function ConquestBattleWinScreen({
@@ -177,6 +186,7 @@ export function ConquestBattleWinScreen({
   mySquadId,
   counterAttackWindowEndsAt,
   onViewResults,
+  onBack,
 }: WinProps) {
   const insets = useSafeAreaInsets();
   const [counterSecs, setCounterSecs] = useState(() =>
@@ -197,6 +207,11 @@ export function ConquestBattleWinScreen({
 
   return (
     <View style={[w.container, { paddingTop: insets.top }]}>
+      {onBack && (
+        <TouchableOpacity style={w.backBtn} onPress={onBack} activeOpacity={0.7}>
+          <Text style={w.backBtnText}>← Back to session</Text>
+        </TouchableOpacity>
+      )}
       <View style={w.header}>
         <Text style={w.winBadge}>⚡ VICTORY</Text>
         <Text style={w.winTitle}>You won the battle</Text>
@@ -256,6 +271,7 @@ interface LoseProps {
   counterAttackWindowEndsAt: string;
   onCounterAttack: () => Promise<void>;
   onViewResults: () => void;
+  onBack?: () => void;
 }
 
 export function ConquestBattleLoseScreen({
@@ -268,6 +284,7 @@ export function ConquestBattleLoseScreen({
   counterAttackWindowEndsAt,
   onCounterAttack,
   onViewResults,
+  onBack,
 }: LoseProps) {
   const insets = useSafeAreaInsets();
   const [counterSecs, setCounterSecs] = useState(() =>
@@ -300,6 +317,11 @@ export function ConquestBattleLoseScreen({
 
   return (
     <View style={[l.container, { paddingTop: insets.top }]}>
+      {onBack && (
+        <TouchableOpacity style={l.backBtn} onPress={onBack} activeOpacity={0.7}>
+          <Text style={l.backBtnText}>← Back to session</Text>
+        </TouchableOpacity>
+      )}
       <View style={l.header}>
         <Text style={l.loseBadge}>💀 DEFEAT</Text>
         <Text style={l.loseTitle}>You lost the battle</Text>
@@ -381,6 +403,8 @@ export function ConquestBattleLoseScreen({
 
 const b = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0a0a0a', padding: 16 },
+  backBtn: { paddingVertical: 8, paddingHorizontal: 4, marginBottom: 4 },
+  backBtnText: { fontSize: 13, color: '#52525b', fontWeight: '600' },
   header: { alignItems: 'center', paddingVertical: 20 },
   headerLabel: {
     fontFamily: BANGERS, fontSize: 18, color: RED, letterSpacing: 1,
@@ -420,6 +444,8 @@ const b = StyleSheet.create({
 
 const w = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#071a07', padding: 16 },
+  backBtn: { paddingVertical: 8, paddingHorizontal: 4, marginBottom: 4 },
+  backBtnText: { fontSize: 13, color: '#52525b', fontWeight: '600' },
   header: { alignItems: 'center', paddingVertical: 24 },
   winBadge: { fontFamily: BANGERS, fontSize: 16, letterSpacing: 2, color: LIME },
   winTitle: { fontFamily: BANGERS, fontSize: 38, color: '#fff', letterSpacing: 0.5 },
@@ -457,6 +483,8 @@ const w = StyleSheet.create({
 
 const l = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#1a0707', padding: 16 },
+  backBtn: { paddingVertical: 8, paddingHorizontal: 4, marginBottom: 4 },
+  backBtnText: { fontSize: 13, color: '#52525b', fontWeight: '600' },
   header: { alignItems: 'center', paddingVertical: 20 },
   loseBadge: { fontFamily: BANGERS, fontSize: 16, letterSpacing: 2, color: RED },
   loseTitle: { fontFamily: BANGERS, fontSize: 38, color: '#fff', letterSpacing: 0.5 },
