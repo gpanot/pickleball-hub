@@ -69,31 +69,10 @@ export async function initiateBattle(venueId: number) {
   if (!res.ok) {
     throw new Error(await parseApiError(res));
   }
-  // API returns { battleId, revealAt, yourCardPower, state } — wrap into battle-like shape
-  const raw = await res.json() as {
-    battleId: string;
-    revealAt: string;
-    yourCardPower: number;
-    state: string;
-  };
-  // Build a minimal ConquestBattle from the POST response so the battle screen can render
-  const battle: ConquestBattle = {
-    id: raw.battleId,
-    venueId,
-    initiatingSquadId: '',
-    rivalSquadId: '',
-    initiatingCardPower: raw.yourCardPower,
-    rivalCardPower: null,
-    winnerSquadId: null,
-    initiatedAt: new Date().toISOString(),
-    revealAt: raw.revealAt,
-    counterAttackWindowEndsAt: '',
-    battleNumber: 1,
-    isCounterAttack: false,
-    parentBattleId: null,
-    revealed: false,
-  };
-  return { battle };
+  const raw = await res.json() as { battleId: string; revealAt: string; yourCardPower: number; state: string };
+  // Immediately fetch the full battle record so we have all required fields (squads, power, etc.)
+  const full = await getBattleState(raw.battleId);
+  return full; // { battle: ConquestBattle }
 }
 
 export async function getBattleState(battleId: string) {

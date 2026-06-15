@@ -90,6 +90,7 @@ export default function SquadModule({
   const [conquestCardData, setConquestCardData] = useState<SquadCardData | null>(null);
   const [conquestImpactData, setConquestImpactData] = useState<ConquestImpactBreakdown | null>(null);
   const [conquestSessionId, setConquestSessionId] = useState<string | null>(null);
+  const [battlePending, setBattlePending] = useState(false);
   // Dev debug: last check-in / pulse (My Squadd screen panel)
   const initializedRef = useRef(false);
   const pendingCarouselContinueRef = useRef(false);
@@ -780,7 +781,9 @@ export default function SquadModule({
           rivalSquadName={activeSession.clashPartnerSquadName ?? 'Unknown Squad'}
           rivalSquadEmoji="❓"
           cardData={conquestCardData}
-          onBack={() => setScreen('conquest-session')}
+          onBack={() => { setBattlePending(false); setScreen('conquest-session'); }}
+          battlePending={battlePending}
+          onViewBattle={() => setScreen('conquest-battle')}
           onPlayCard={async () => {
             if (!activeSession?.venueId) {
               Alert.alert('Battle failed', 'No active session found. Please refresh.');
@@ -789,6 +792,7 @@ export default function SquadModule({
             try {
               const { battle } = await conquestApi.initiateBattle(activeSession.venueId);
               setBattle(battle);
+              setBattlePending(true);
               setScreen('conquest-battle');
             } catch (e: any) {
               Alert.alert('Battle failed', e.message ?? 'Could not start battle. Try again.');
@@ -826,7 +830,7 @@ export default function SquadModule({
           mySquadEmoji={squad.emoji}
           rivalSquadName={activeSession?.clashPartnerSquadName ?? 'Unknown Squad'}
           rivalSquadEmoji="❓"
-          counterAttackWindowEndsAt={activeBattle.counterAttackWindowEndsAt}
+          counterAttackWindowEndsAt={activeBattle.counterAttackWindowEndsAt || new Date(Date.now() + 5 * 60 * 1000).toISOString()}
           onViewResults={() => {
             if (conquestSessionId) {
               conquestApi.getShareData(conquestSessionId).then(data => {
@@ -848,7 +852,7 @@ export default function SquadModule({
           mySquadEmoji={squad.emoji}
           rivalSquadName={activeSession?.clashPartnerSquadName ?? 'Unknown Squad'}
           rivalSquadEmoji="❓"
-          counterAttackWindowEndsAt={activeBattle.counterAttackWindowEndsAt}
+          counterAttackWindowEndsAt={activeBattle.counterAttackWindowEndsAt || new Date(Date.now() + 5 * 60 * 1000).toISOString()}
           onCounterAttack={async () => {
             const { battle } = await conquestApi.counterAttack(activeBattle.id);
             setBattle(battle);

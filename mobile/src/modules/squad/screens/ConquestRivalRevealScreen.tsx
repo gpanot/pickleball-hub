@@ -22,6 +22,8 @@ interface Props {
   cardData: SquadCardData | null;
   onBack: () => void;
   onPlayCard: () => Promise<void>;
+  onViewBattle?: () => void;
+  battlePending?: boolean; // true once the battle has been initiated
 }
 
 export function ConquestRivalRevealScreen({
@@ -32,6 +34,8 @@ export function ConquestRivalRevealScreen({
   cardData,
   onBack,
   onPlayCard,
+  onViewBattle,
+  battlePending = false,
 }: Props) {
   const insets = useSafeAreaInsets();
   const [playing, setPlaying] = useState(false);
@@ -152,19 +156,29 @@ export function ConquestRivalRevealScreen({
                 <Text style={s.cardStatLabel}>Active this week</Text>
               </View>
             </View>
-            {/* CTA */}
-            <TouchableOpacity
-              style={s.playBtn}
-              onPress={handlePlayCard}
-              disabled={playing}
-              activeOpacity={0.82}
-            >
-              {playing ? (
-                <ActivityIndicator color="#000" />
-              ) : (
-                <Text style={s.playBtnText}>⚔️ Play Squad Card</Text>
-              )}
-            </TouchableOpacity>
+            {/* CTA — switches to "Check the Battle" once battle is initiated */}
+            {battlePending ? (
+              <TouchableOpacity
+                style={[s.playBtn, { backgroundColor: LIME }]}
+                onPress={onViewBattle}
+                activeOpacity={0.82}
+              >
+                <Text style={s.playBtnText}>⚔️ Check the Battle →</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={s.playBtn}
+                onPress={handlePlayCard}
+                disabled={playing}
+                activeOpacity={0.82}
+              >
+                {playing ? (
+                  <ActivityIndicator color="#000" />
+                ) : (
+                  <Text style={s.playBtnText}>⚔️ Play Squad Card</Text>
+                )}
+              </TouchableOpacity>
+            )}
             <Text style={s.gamblerNote}>You don't know their card power — it's a gamble</Text>
           </View>
         </View>
