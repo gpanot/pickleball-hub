@@ -42,6 +42,43 @@ export async function GET(req: NextRequest) {
     Math.floor((session.autoEndsAt.getTime() - now.getTime()) / 1000)
   );
 
+  // Include any active (unrevealed or just-revealed) battle for this squad at this venue
+  // so the client can restore battle state after an app restart
+  const activeBattleRecord = await prisma.cardBattle.findFirst({
+    where: {
+      venueId: session.venueId,
+      OR: [
+        { initiatingSquadId: session.squadId },
+        { rivalSquadId: session.squadId },
+      ],
+      initiatedAt: { gte: session.startedAt },
+      // Include up to 2 minutes after counterAttackWindowEndsAt so the result screen is still reachable
+      counterAttackWindowEndsAt: { gte: new Date(now.getTime() - 2 * 60 * 1000) },
+    },
+    orderBy: { initiatedAt: "desc" },
+  });
+
+  let activeBattle = null;
+  if (activeBattleRecord) {
+    const isRevealed = now >= activeBattleRecord.revealAt;
+    activeBattle = {
+      id: activeBattleRecord.id,
+      venueId: activeBattleRecord.venueId,
+      initiatingSquadId: activeBattleRecord.initiatingSquadId,
+      rivalSquadId: activeBattleRecord.rivalSquadId,
+      initiatingCardPower: activeBattleRecord.initiatingCardPower,
+      rivalCardPower: isRevealed ? activeBattleRecord.rivalCardPower : null,
+      winnerSquadId: isRevealed ? activeBattleRecord.winnerSquadId : null,
+      initiatedAt: activeBattleRecord.initiatedAt.toISOString(),
+      revealAt: activeBattleRecord.revealAt.toISOString(),
+      counterAttackWindowEndsAt: activeBattleRecord.counterAttackWindowEndsAt.toISOString(),
+      battleNumber: activeBattleRecord.battleNumber,
+      isCounterAttack: activeBattleRecord.isCounterAttack,
+      parentBattleId: activeBattleRecord.parentBattleId ?? null,
+      revealed: isRevealed,
+    };
+  }
+
   return NextResponse.json({
     session: {
       id: session.id,
@@ -56,5 +93,6 @@ export async function GET(req: NextRequest) {
       copresentCount,
       state: session.state,
     },
+    activeBattle,
   });
 }

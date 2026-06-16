@@ -41,7 +41,7 @@ export function useConquest(): UseConquestReturn {
     // Guard: don't call API before JWT is ready
     if (!useAuthStore.getState().jwt) return;
     try {
-      const { session } = await conquestApi.getActiveSession();
+      const { session, activeBattle: sessionBattle } = await conquestApi.getActiveSession();
 
       // Detect session just ended (was active, now null)
       if (!session && prevSessionRef.current && prevSessionRef.current.state === 'active') {
@@ -51,6 +51,15 @@ export function useConquest(): UseConquestReturn {
       setActiveSession(session);
       prevSessionRef.current = session;
       setLastSessionError(null);
+
+      // Restore battle state from session response (e.g. after app restart)
+      // Only update if we don't already have this battle loaded
+      if (sessionBattle) {
+        setActiveBattle((prev) => {
+          if (prev?.id === sessionBattle.id) return prev; // already tracking it
+          return sessionBattle;
+        });
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       setLastSessionError(message);

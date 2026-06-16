@@ -50,7 +50,7 @@ export async function dropPulse(venueId: number, taggedProfileIds?: string[]) {
 export async function getActiveSession() {
   const res = await authedFetch('/api/conquest/session/active');
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json() as Promise<{ session: ConquestSession | null }>;
+  return res.json() as Promise<{ session: ConquestSession | null; activeBattle: ConquestBattle | null }>;
 }
 
 export async function getShareData(sessionId: string) {
