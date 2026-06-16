@@ -91,6 +91,7 @@ export default function SquadModule({
   const [conquestImpactData, setConquestImpactData] = useState<ConquestImpactBreakdown | null>(null);
   const [conquestSessionId, setConquestSessionId] = useState<string | null>(null);
   const [battlePending, setBattlePending] = useState(false);
+  const [pendingBattleId, setPendingBattleId] = useState<string | null>(null);
   // Dev debug: last check-in / pulse (My Squadd screen panel)
   const initializedRef = useRef(false);
   const pendingCarouselContinueRef = useRef(false);
@@ -782,9 +783,28 @@ export default function SquadModule({
           rivalSquadName={activeSession.clashPartnerSquadName ?? 'Unknown Squad'}
           rivalSquadEmoji="❓"
           cardData={conquestCardData}
-          onBack={() => { setBattlePending(false); setScreen('conquest-session'); }}
+          onBack={() => { setBattlePending(false); setPendingBattleId(null); setScreen('conquest-session'); }}
           battlePending={battlePending}
-          onViewBattle={() => setScreen('conquest-battle')}
+          onViewBattle={async () => {
+            // If activeBattle is already in memory, go straight there
+            if (activeBattle) {
+              setScreen('conquest-battle');
+              return;
+            }
+            // activeBattle was cleared from memory — re-fetch by stored ID
+            if (pendingBattleId) {
+              try {
+                const { battle } = await conquestApi.getBattleState(pendingBattleId);
+                setBattle(battle);
+                setScreen('conquest-battle');
+              } catch {
+                Alert.alert('Could not load battle', 'Please refresh and try again.');
+              }
+            } else {
+              // No ID stored — nothing to show, go back to session
+              setScreen(activeSession ? 'conquest-session' : 'home');
+            }
+          }}
           onPlayCard={async () => {
             if (!activeSession?.venueId) {
               Alert.alert('Battle failed', 'No active session found. Please refresh.');
@@ -794,6 +814,7 @@ export default function SquadModule({
               const { battle } = await conquestApi.initiateBattle(activeSession.venueId);
               setBattle(battle);
               setBattlePending(true);
+              setPendingBattleId(battle.id);
               setScreen('conquest-battle');
             } catch (e: any) {
               Alert.alert('Battle failed', e.message ?? 'Could not start battle. Try again.');

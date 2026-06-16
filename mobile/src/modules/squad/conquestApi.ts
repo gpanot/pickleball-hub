@@ -66,27 +66,62 @@ export async function initiateBattle(venueId: number) {
     method: 'POST',
     body: JSON.stringify({ venueId }),
   });
-  if (!res.ok) {
-    throw new Error(await parseApiError(res));
+
+  // 409 = a battle already exists for this session — fetch and return it
+  if (res.status === 409) {
+    const body = await res.json() as { error: string; battleId?: string };
+    console.log(`[conquestApi] initiateBattle 409 — battle_already_exists battleId=${body.battleId}`);
+    if (body.battleId) {
+      return getBattleState(body.battleId);
+    }
+    throw new Error('Battle already exists but no battleId returned');
   }
+
+  if (!res.ok) {
+    const errMsg = await parseApiError(res);
+    console.error(`[conquestApi] initiateBattle failed ${res.status}: ${errMsg}`);
+    throw new Error(errMsg);
+  }
+
   const raw = await res.json() as { battleId: string; revealAt: string; yourCardPower: number; state: string };
-  // Immediately fetch the full battle record so we have all required fields (squads, power, etc.)
-  const full = await getBattleState(raw.battleId);
-  return full; // { battle: ConquestBattle }
+  console.log(`[conquestApi] initiateBattle created battleId=${raw.battleId} revealAt=${raw.revealAt}`);
+
+  // Immediately fetch the full battle record so we have all required fields
+  return getBattleState(raw.battleId);
 }
 
 export async function getBattleState(battleId: string) {
+  console.log(`[conquestApi] getBattleState battleId=${battleId}`);
   const res = await authedFetch(`/api/conquest/battle/${battleId}`);
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json() as Promise<{ battle: ConquestBattle }>;
+  if (!res.ok) {
+    console.error(`[conquestApi] getBattleState HTTP ${res.status} for battleId=${battleId}`);
+    throw new Error(`HTTP ${res.status}`);
+  }
+  const data = await res.json() as { battle: ConquestBattle };
+  console.log(`[conquestApi] getBattleState battleId=${battleId} revealed=${data.battle?.revealed} winnerSquadId=${data.battle?.winnerSquadId}`);
+  return data;
 }
 
 export async function counterAttack(battleId: string) {
+  console.log(`[conquestApi] counterAttack battleId=${battleId}`);
   const res = await authedFetch(`/api/conquest/battle/${battleId}/counter`, {
     method: 'POST',
   });
+
+  // 409 = counter already exists — fetch and return it
+  if (res.status === 409) {
+    const body = await res.json() as { error: string; battleId?: string };
+    console.log(`[conquestApi] counterAttack 409 — counter_already_exists battleId=${body.battleId}`);
+    if (body.battleId) {
+      return getBattleState(body.battleId);
+    }
+    throw new Error('Counter already exists but no battleId returned');
+  }
+
   if (!res.ok) {
-    throw new Error(await parseApiError(res));
+    const errMsg = await parseApiError(res);
+    console.error(`[conquestApi] counterAttack failed ${res.status}: ${errMsg}`);
+    throw new Error(errMsg);
   }
   return res.json() as Promise<{ battle: ConquestBattle }>;
 }

@@ -35,7 +35,8 @@ export async function POST(
   }
 
   const now = new Date();
-  const unlocksAt = new Date(now.getTime() + 4 * 60 * 60 * 1000);
+  // DEV: 2 minutes for testing (change back to 4 * 60 * 60 * 1000 for production)
+  const unlocksAt = new Date(now.getTime() + 2 * 60 * 1000);
 
   const updated = await prisma.squadChestOpening.update({
     where: { id: opening.id },
