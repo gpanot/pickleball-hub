@@ -211,20 +211,6 @@ export function SquadChestDetailScreen({ chest, squadId, squadName, myProfileId,
           />
         </View>
 
-        <View style={s.rewardPreview}>
-          <Text style={s.rewardLabel}>YOUR REWARDS WHEN YOU OPEN</Text>
-          <View style={s.rewardRow}>
-            <View style={s.rewardItem}>
-              <Text style={s.rewardValue}>+8</Text>
-              <Text style={s.rewardSub}>Kudos</Text>
-            </View>
-            <View style={s.rewardItem}>
-              <Text style={s.rewardValue}>+50</Text>
-              <Text style={s.rewardSub}>Squad XP</Text>
-            </View>
-          </View>
-        </View>
-
         <View style={s.actions}>
           {status === 'pending' && (
             <View style={s.unlockingBtn}>
@@ -290,17 +276,6 @@ const s = StyleSheet.create({
   sub: { fontSize: 13, color: '#a1a1aa', textAlign: 'center' },
   expiry: { fontSize: 12, color: GOLD, fontWeight: '700', marginTop: 6 },
   memberSection: { paddingHorizontal: 20, marginBottom: 20 },
-  rewardPreview: {
-    marginHorizontal: 20, marginBottom: 20,
-    backgroundColor: 'rgba(163,230,53,0.13)',
-    borderWidth: 1, borderColor: 'rgba(163,230,53,0.2)',
-    borderRadius: 16, padding: 14, alignItems: 'center',
-  },
-  rewardLabel: { fontSize: 11, fontWeight: '800', color: '#52525b', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 10 },
-  rewardRow: { flexDirection: 'row', gap: 20 },
-  rewardItem: { alignItems: 'center' },
-  rewardValue: { fontSize: 24, fontWeight: '900', color: LIME },
-  rewardSub: { fontSize: 11, color: '#a1a1aa', fontWeight: '700' },
   actions: { paddingHorizontal: 20, gap: 10, marginBottom: 16 },
   tapBtn: {
     backgroundColor: 'rgba(250,204,21,0.12)',

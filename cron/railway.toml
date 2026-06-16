@@ -6,8 +6,10 @@
 #   CRON_SECRET     — same value as on the main service
 #
 # This service runs conquest-cron.sh every minute, which calls:
-#   GET /api/cron/conquest-session-close?secret=CRON_SECRET
-# That route closes expired RadarSessions, tallies INF, and fires push notifications.
+#   GET /api/cron/conquest-session-close       — closes expired RadarSessions, tallies INF, pushes
+#   GET /api/cron/chest-unlock-notifications   — marks ready chests + sends PNS
+#   GET /api/cron/chest-expire                 — expires stale openings
+#   GET /api/cron/battle-reveal-notifications  — sends win/lost PNS when revealAt passes
 
 [build]
 builder = "nixpacks"

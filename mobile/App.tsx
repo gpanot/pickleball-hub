@@ -44,10 +44,14 @@ const CLASH_PUSH_TYPES = new Set([
   'conquest_clash_detected',
 ])
 
-// All other conquest FCM types that route to the alerts screen
-const CONQUEST_ALERT_PUSH_TYPES = new Set([
+// FCM types that open the battle result screen directly
+const BATTLE_RESULT_PUSH_TYPES = new Set([
   'battle_won',
   'battle_lost',
+])
+
+// All other conquest FCM types that route to the alerts screen
+const CONQUEST_ALERT_PUSH_TYPES = new Set([
   'territory_claimed',
   'territory_lost',
   'counter_attack',
@@ -61,8 +65,18 @@ const CONQUEST_ALERT_PUSH_TYPES = new Set([
 function isClashPush(data: any): boolean {
   return CLASH_PUSH_TYPES.has(data?.type) || data?.screen === 'ConquestRivalReveal'
 }
+function isBattleResultPush(data: any): boolean {
+  return BATTLE_RESULT_PUSH_TYPES.has(data?.type) || data?.screen === 'ConquestBattleResult'
+}
 function isConquestPush(data: any): boolean {
-  return isClashPush(data) || CONQUEST_ALERT_PUSH_TYPES.has(data?.type) || data?.screen === 'ConquestAlerts' || data?.screen === 'ConquestReveal' || data?.screen === 'ConquestLeaderboard'
+  return (
+    isClashPush(data) ||
+    isBattleResultPush(data) ||
+    CONQUEST_ALERT_PUSH_TYPES.has(data?.type) ||
+    data?.screen === 'ConquestAlerts' ||
+    data?.screen === 'ConquestReveal' ||
+    data?.screen === 'ConquestLeaderboard'
+  )
 }
 
 let Notifications: any = null
@@ -130,6 +144,10 @@ try {
       globalThis.__squadPushData = { squadId: data.squadId, inviteId: data.inviteId }
     } else if (isClashPush(data)) {
       ;(globalThis as any).__conquestPushScreen = 'conquest-rival-reveal'
+    } else if (isBattleResultPush(data)) {
+      ;(globalThis as any).__conquestPushScreen = 'conquest-battle-result'
+      ;(globalThis as any).__conquestPushBattleId = data?.battleId ?? null
+      ;(globalThis as any).__conquestPushBattleResult = data?.result ?? null
     } else if (isConquestPush(data)) {
       ;(globalThis as any).__conquestPushScreen = 'conquest-alerts'
     }
@@ -143,6 +161,10 @@ try {
         globalThis.__squadPushData = { squadId: data.squadId, inviteId: data.inviteId }
       } else if (isClashPush(data)) {
         ;(globalThis as any).__conquestPushScreen = 'conquest-rival-reveal'
+      } else if (isBattleResultPush(data)) {
+        ;(globalThis as any).__conquestPushScreen = 'conquest-battle-result'
+        ;(globalThis as any).__conquestPushBattleId = data?.battleId ?? null
+        ;(globalThis as any).__conquestPushBattleResult = data?.result ?? null
       } else if (isConquestPush(data)) {
         ;(globalThis as any).__conquestPushScreen = 'conquest-alerts'
       }
@@ -176,6 +198,10 @@ if (!IS_EXPO_GO && Notifications) {
       globalThis.__squadPushData = { squadId: data.squadId, inviteId: data.inviteId }
     } else if (isClashPush(data)) {
       ;(globalThis as any).__conquestPushScreen = 'conquest-rival-reveal'
+    } else if (isBattleResultPush(data)) {
+      ;(globalThis as any).__conquestPushScreen = 'conquest-battle-result'
+      ;(globalThis as any).__conquestPushBattleId = data?.battleId ?? null
+      ;(globalThis as any).__conquestPushBattleResult = data?.result ?? null
     } else if (isConquestPush(data)) {
       ;(globalThis as any).__conquestPushScreen = 'conquest-alerts'
     }

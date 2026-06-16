@@ -5,7 +5,7 @@ import { useAuthStore } from '../../stores/authStore';
 import { useSignUpModal } from '../../contexts/SignUpModalContext';
 import { useSquad } from './hooks/useSquad';
 import { useConquest } from './hooks/useConquest';
-import { getPendingInvite, disbandDismissKey, resetDevCheckinFlow } from './api';
+import { getPendingInvite, disbandDismissKey, resetDevCheckinFlow, tapChest, openChest } from './api';
 import * as conquestApi from './conquestApi';
 import type { SquadScreen, SquadDisbandedNotice } from './types';
 import type { Squad, SquadPreview, ConquestBattle, SquadCardData, ConquestImpactBreakdown } from './types';
@@ -362,6 +362,34 @@ export default function SquadModule({
         });
         return;
       }
+      // When routing to battle result via push, fetch the battle first
+      if (conquestScreen === 'conquest-battle-result') {
+        const battleId = (globalThis as any).__conquestPushBattleId;
+        const result = (globalThis as any).__conquestPushBattleResult;
+        delete (globalThis as any).__conquestPushBattleId;
+        delete (globalThis as any).__conquestPushBattleResult;
+        if (battleId) {
+          void (async () => {
+            try {
+              const { battle } = await conquestApi.getBattleState(battleId);
+              if (battle) {
+                setBattle(battle);
+                // Use squad from state to determine win/loss
+                const mySquad = squad;
+                if (mySquad) {
+                  const won = battle.winnerSquadId === mySquad.id || result === 'won';
+                  setScreen(won ? 'conquest-battle-win' : 'conquest-battle-lose');
+                  return;
+                }
+              }
+            } catch {}
+            setScreen('conquest-alerts');
+          })();
+          return;
+        }
+        setScreen('conquest-alerts');
+        return;
+      }
       setScreen(conquestScreen as SquadScreen);
       return;
     }
@@ -560,16 +588,36 @@ export default function SquadModule({
             onDisbandPress={() => setScreen('disband-confirm')}
             onLeavePress={() => setScreen('leave-confirm')}
             onChestPress={(chest) => {
+              // Always open detail for progress inspection
               setSelectedChest(chest);
               setScreen('chest-detail');
             }}
-            onChestTap={(chest) => {
-              setSelectedChest(chest);
-              setScreen('chest-detail');
+            onChestTap={async (chest) => {
+              // Start timer immediately — no intermediate screen
+              try {
+                await tapChest(chest.id);
+                const data = await fetchMySquad();
+                extractPhase2Data(data);
+              } catch (e: any) {
+                // 409 = already tapped, silently refresh
+                if (!e.message?.includes('Already tapped')) {
+                  Alert.alert('Error', e.message ?? 'Could not start chest timer');
+                }
+                const data = await fetchMySquad();
+                extractPhase2Data(data);
+              }
             }}
-            onChestOpen={(chest) => {
-              setSelectedChest(chest);
-              setScreen('chest-detail');
+            onChestOpen={async (chest) => {
+              // Open directly — no intermediate screen — then show confetti
+              try {
+                const result = await openChest(chest.id);
+                setChestOpenResult(result);
+                setScreen('chest-open');
+                const data = await fetchMySquad();
+                extractPhase2Data(data);
+              } catch (e: any) {
+                Alert.alert('Error', e.message ?? 'Could not open chest');
+              }
             }}
             onChestNudge={() => {}}
             onCheckin={() => {
@@ -587,6 +635,24 @@ export default function SquadModule({
             onManage={() => setScreen('manage')}
             onDevReset={handleDevReset}
             hasActiveSession={!!activeSession}
+            activeBattle={activeBattle}
+            onViewBattle={async () => {
+              if (activeBattle) {
+                setScreen('conquest-battle');
+                return;
+              }
+              if (pendingBattleId) {
+                try {
+                  const { battle } = await conquestApi.getBattleState(pendingBattleId);
+                  if (battle) {
+                    setBattle(battle);
+                    setScreen('conquest-battle');
+                    return;
+                  }
+                } catch {}
+              }
+              setScreen('home');
+            }}
             conquestBanner={
               activeSession ? (
                 <ConquestLiveBanner
