@@ -16,7 +16,15 @@ export async function GET(req: NextRequest) {
   });
 
   if (!session) {
-    return NextResponse.json({ session: null });
+    return NextResponse.json({ session: null, activeBattle: null });
+  }
+
+  // If the session has passed its autoEndsAt, treat it as ended from the client's perspective.
+  // The conquest-session-close cron will mark it as "revealed" on its next tick.
+  // Returning it as active after expiry causes the rival spotted card to linger forever.
+  const now = new Date();
+  if (session.autoEndsAt < now) {
+    return NextResponse.json({ session: null, activeBattle: null });
   }
 
   const copresentCount = await prisma.radarSession.count({
@@ -36,7 +44,6 @@ export async function GET(req: NextRequest) {
     clashPartnerSquadName = rival?.name ?? null;
   }
 
-  const now = new Date();
   const secondsRemaining = Math.max(
     0,
     Math.floor((session.autoEndsAt.getTime() - now.getTime()) / 1000)
