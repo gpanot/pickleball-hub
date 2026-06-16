@@ -362,6 +362,26 @@ export default function SquadModule({
         });
         return;
       }
+      // When routing to INF reveal via push, fetch session share data then show impact screen
+      if (conquestScreen === 'conquest-session-reveal') {
+        const sessionId = (globalThis as any).__conquestPushSessionId;
+        delete (globalThis as any).__conquestPushSessionId;
+        if (sessionId) {
+          void (async () => {
+            try {
+              const data = await conquestApi.getShareData(sessionId);
+              setConquestImpactData(data);
+              setConquestSessionId(sessionId);
+              setScreen('conquest-impact');
+            } catch {
+              setScreen('conquest-alerts');
+            }
+          })();
+          return;
+        }
+        setScreen('conquest-alerts');
+        return;
+      }
       // When routing to battle result via push, fetch the battle first
       if (conquestScreen === 'conquest-battle-result') {
         const battleId = (globalThis as any).__conquestPushBattleId;
@@ -1005,6 +1025,53 @@ export default function SquadModule({
         <ConquestAlertsScreen
           onBack={() => setScreen('home')}
           onAlertRead={refreshAlertBadge}
+          onAlertPress={async (alert) => {
+            const type = alert.type;
+            const payload = alert.payload as Record<string, any> | null;
+
+            // Session completed → open INF reveal
+            if (type === 'conquest_session_reveal') {
+              const sessionId = payload?.sessionId as string | undefined;
+              if (sessionId) {
+                try {
+                  const data = await conquestApi.getShareData(sessionId);
+                  setConquestImpactData(data);
+                  setConquestSessionId(sessionId);
+                  setScreen('conquest-impact');
+                } catch {
+                  // share data not ready yet
+                }
+              }
+              return;
+            }
+
+            // Battle result → open battle win/lose screen
+            if (type === 'battle_won' || type === 'battle_lost' || type.startsWith('battle_result_')) {
+              const battleId = payload?.battleId as string | undefined;
+              if (battleId) {
+                try {
+                  const { battle } = await conquestApi.getBattleState(battleId);
+                  if (battle && squad) {
+                    setBattle(battle);
+                    const won = battle.winnerSquadId === squad.id || type === 'battle_won';
+                    setScreen(won ? 'conquest-battle-win' : 'conquest-battle-lose');
+                  }
+                } catch {}
+              }
+              return;
+            }
+
+            // Clash alert → open rival reveal
+            if (type === 'clash_alert' || type === 'counter_attack') {
+              void refreshSession().then(async () => {
+                try {
+                  const card = await conquestApi.getSquadCard();
+                  setConquestCardData(card.card);
+                } catch {}
+                setScreen('conquest-rival-reveal');
+              });
+            }
+          }}
         />
       )}
 

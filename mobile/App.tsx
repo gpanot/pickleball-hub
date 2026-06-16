@@ -50,12 +50,14 @@ const BATTLE_RESULT_PUSH_TYPES = new Set([
   'battle_lost',
 ])
 
+// FCM type that opens the INF reveal screen directly
+const SESSION_REVEAL_PUSH_TYPE = 'conquest_session_reveal'
+
 // All other conquest FCM types that route to the alerts screen
 const CONQUEST_ALERT_PUSH_TYPES = new Set([
   'territory_claimed',
   'territory_lost',
   'counter_attack',
-  'conquest_session_reveal',
   'conquest_overlord_gained',
   'conquest_overlord_lost',
   'conquest_rival_posted',
@@ -68,13 +70,16 @@ function isClashPush(data: any): boolean {
 function isBattleResultPush(data: any): boolean {
   return BATTLE_RESULT_PUSH_TYPES.has(data?.type) || data?.screen === 'ConquestBattleResult'
 }
+function isSessionRevealPush(data: any): boolean {
+  return data?.type === SESSION_REVEAL_PUSH_TYPE || data?.screen === 'ConquestReveal'
+}
 function isConquestPush(data: any): boolean {
   return (
     isClashPush(data) ||
     isBattleResultPush(data) ||
+    isSessionRevealPush(data) ||
     CONQUEST_ALERT_PUSH_TYPES.has(data?.type) ||
     data?.screen === 'ConquestAlerts' ||
-    data?.screen === 'ConquestReveal' ||
     data?.screen === 'ConquestLeaderboard'
   )
 }
@@ -148,6 +153,9 @@ try {
       ;(globalThis as any).__conquestPushScreen = 'conquest-battle-result'
       ;(globalThis as any).__conquestPushBattleId = data?.battleId ?? null
       ;(globalThis as any).__conquestPushBattleResult = data?.result ?? null
+    } else if (isSessionRevealPush(data)) {
+      ;(globalThis as any).__conquestPushScreen = 'conquest-session-reveal'
+      ;(globalThis as any).__conquestPushSessionId = data?.sessionId ?? null
     } else if (isConquestPush(data)) {
       ;(globalThis as any).__conquestPushScreen = 'conquest-alerts'
     }
@@ -165,6 +173,9 @@ try {
         ;(globalThis as any).__conquestPushScreen = 'conquest-battle-result'
         ;(globalThis as any).__conquestPushBattleId = data?.battleId ?? null
         ;(globalThis as any).__conquestPushBattleResult = data?.result ?? null
+      } else if (isSessionRevealPush(data)) {
+        ;(globalThis as any).__conquestPushScreen = 'conquest-session-reveal'
+        ;(globalThis as any).__conquestPushSessionId = data?.sessionId ?? null
       } else if (isConquestPush(data)) {
         ;(globalThis as any).__conquestPushScreen = 'conquest-alerts'
       }
@@ -202,6 +213,9 @@ if (!IS_EXPO_GO && Notifications) {
       ;(globalThis as any).__conquestPushScreen = 'conquest-battle-result'
       ;(globalThis as any).__conquestPushBattleId = data?.battleId ?? null
       ;(globalThis as any).__conquestPushBattleResult = data?.result ?? null
+    } else if (isSessionRevealPush(data)) {
+      ;(globalThis as any).__conquestPushScreen = 'conquest-session-reveal'
+      ;(globalThis as any).__conquestPushSessionId = data?.sessionId ?? null
     } else if (isConquestPush(data)) {
       ;(globalThis as any).__conquestPushScreen = 'conquest-alerts'
     }
