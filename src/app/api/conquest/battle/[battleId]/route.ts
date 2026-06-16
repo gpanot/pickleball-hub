@@ -12,11 +12,13 @@ export async function GET(
   }
 
   const { battleId } = await params;
+  console.log(`[conquest/battle] GET battleId=${battleId} profileId=${user.profileId}`);
 
   const battle = await prisma.cardBattle.findUnique({
     where: { id: battleId },
   });
   if (!battle) {
+    console.warn(`[conquest/battle] GET battleId=${battleId} — not found`);
     return NextResponse.json({ error: "Battle not found" }, { status: 404 });
   }
 
@@ -27,50 +29,51 @@ export async function GET(
   const callerSquadId = membership?.squadId;
 
   if (callerSquadId !== battle.initiatingSquadId && callerSquadId !== battle.rivalSquadId) {
+    console.warn(`[conquest/battle] GET battleId=${battleId} — caller squad ${callerSquadId} not a participant`);
     return NextResponse.json({ error: "Not a participant" }, { status: 403 });
   }
 
-  const isInitiator = callerSquadId === battle.initiatingSquadId;
   const now = new Date();
-
-  if (now < battle.revealAt) {
-    return NextResponse.json({
-      state: "pending",
-      battleId: battle.id,
-      revealAt: battle.revealAt.toISOString(),
-      yourCardPower: isInitiator ? battle.initiatingCardPower : battle.rivalCardPower,
-      rivalCardPower: null,
-      battleNumber: battle.battleNumber,
-      isCounterAttack: battle.isCounterAttack,
-    });
-  }
+  // revealed is derived from the timestamp — there is no DB column for it
+  const isRevealed = now >= battle.revealAt;
 
   const youWon = battle.winnerSquadId === callerSquadId;
-  const yourCardPower = isInitiator ? battle.initiatingCardPower : battle.rivalCardPower;
-  const theirCardPower = isInitiator ? battle.rivalCardPower : battle.initiatingCardPower;
 
   const existingCounter = await prisma.cardBattle.findFirst({
     where: { parentBattleId: battle.id },
   });
 
   const counterAttackAvailable =
+    isRevealed &&
     !youWon &&
     now < battle.counterAttackWindowEndsAt &&
     !existingCounter &&
     !battle.isCounterAttack;
 
+  console.log(
+    `[conquest/battle] GET battleId=${battleId} isRevealed=${isRevealed} youWon=${youWon} counterAttackAvailable=${counterAttackAvailable}`
+  );
+
+  // Return the full ConquestBattle shape that the mobile app expects
   return NextResponse.json({
-    state: "revealed",
-    battleId: battle.id,
-    revealAt: battle.revealAt.toISOString(),
-    yourCardPower,
-    rivalCardPower: theirCardPower,
-    winnerSquadId: battle.winnerSquadId,
-    youWon,
-    cardBonusInf: youWon ? yourCardPower : 0,
-    counterAttackWindowEndsAt: battle.counterAttackWindowEndsAt.toISOString(),
-    counterAttackAvailable,
-    battleNumber: battle.battleNumber,
-    isCounterAttack: battle.isCounterAttack,
+    battle: {
+      id: battle.id,
+      venueId: battle.venueId,
+      initiatingSquadId: battle.initiatingSquadId,
+      rivalSquadId: battle.rivalSquadId,
+      initiatingCardPower: battle.initiatingCardPower,
+      rivalCardPower: isRevealed ? battle.rivalCardPower : null,
+      winnerSquadId: isRevealed ? battle.winnerSquadId : null,
+      initiatedAt: battle.initiatedAt.toISOString(),
+      revealAt: battle.revealAt.toISOString(),
+      counterAttackWindowEndsAt: battle.counterAttackWindowEndsAt.toISOString(),
+      battleNumber: battle.battleNumber,
+      isCounterAttack: battle.isCounterAttack,
+      parentBattleId: battle.parentBattleId ?? null,
+      revealed: isRevealed,
+      // Caller-specific helpers
+      youWon: isRevealed ? youWon : null,
+      counterAttackAvailable,
+    },
   });
 }

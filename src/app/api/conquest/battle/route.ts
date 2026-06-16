@@ -20,6 +20,7 @@ export async function POST(req: NextRequest) {
   if (!venueId) {
     return NextResponse.json({ error: "venueId required" }, { status: 400 });
   }
+  console.log(`[conquest/battle] POST venueId=${venueId} profileId=${user.profileId}`);
 
   const session = await prisma.radarSession.findFirst({
     where: { playerId: user.profileId, state: "active", venueId },
@@ -43,6 +44,7 @@ export async function POST(req: NextRequest) {
     },
   });
   if (existingBattle) {
+    console.log(`[conquest/battle] 409 battle_already_exists id=${existingBattle.id} revealAt=${existingBattle.revealAt.toISOString()}`);
     return NextResponse.json(
       { error: "battle_already_exists", battleId: existingBattle.id },
       { status: 409 }
@@ -80,6 +82,8 @@ export async function POST(req: NextRequest) {
       isCounterAttack: false,
     },
   });
+
+  console.log(`[conquest/battle] Created battle id=${battle.id} myPower=${myCardPower} rivalPower=${rivalCardPower} winner=${winnerSquadId} revealAt=${revealAt.toISOString()}`);
 
   const venue = await prisma.venue.findUnique({
     where: { id: venueId },

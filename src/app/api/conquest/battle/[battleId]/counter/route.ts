@@ -18,6 +18,7 @@ export async function POST(
   }
 
   const { battleId } = await params;
+  console.log(`[conquest/counter] POST battleId=${battleId} profileId=${user.profileId}`);
 
   const parentBattle = await prisma.cardBattle.findUnique({
     where: { id: battleId },
@@ -125,10 +126,27 @@ export async function POST(
     pushData: { screen: "ConquestBattle", battleId: battle.id },
   }).catch(() => {});
 
+  console.log(`[conquest/counter] Created counter-battle id=${battle.id} revealAt=${revealAt.toISOString()} venue=${parentBattle.venueId}`);
+
+  // Return full ConquestBattle shape (same as GET /battle/[battleId])
   return NextResponse.json({
-    battleId: battle.id,
-    revealAt: revealAt.toISOString(),
-    yourCardPower: myCardPower,
-    state: "pending",
+    battle: {
+      id: battle.id,
+      venueId: battle.venueId,
+      initiatingSquadId: battle.initiatingSquadId,
+      rivalSquadId: battle.rivalSquadId,
+      initiatingCardPower: battle.initiatingCardPower,
+      rivalCardPower: null, // hidden until revealAt
+      winnerSquadId: null,  // hidden until revealAt
+      initiatedAt: battle.initiatedAt.toISOString(),
+      revealAt: battle.revealAt.toISOString(),
+      counterAttackWindowEndsAt: battle.counterAttackWindowEndsAt.toISOString(),
+      battleNumber: battle.battleNumber,
+      isCounterAttack: battle.isCounterAttack,
+      parentBattleId: battle.parentBattleId ?? null,
+      revealed: false,
+      youWon: null,
+      counterAttackAvailable: false,
+    },
   });
 }
