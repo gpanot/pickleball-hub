@@ -108,6 +108,13 @@ export default function SquadModule({
     cancelInvite, resend, removeMember,
   } = useSquad();
 
+  const routeToBattleResult = useCallback((battle: ConquestBattle) => {
+    if (!squad) return false;
+    const won = battle.winnerSquadId === squad.id;
+    setScreen(won ? 'conquest-battle-win' : 'conquest-battle-lose');
+    return true;
+  }, [squad]);
+
   const {
     activeSession,
     activeBattle,
@@ -655,29 +662,29 @@ export default function SquadModule({
             onManage={() => setScreen('manage')}
             onDevReset={handleDevReset}
             hasActiveSession={!!activeSession}
-            activeBattle={activeBattle}
-            onViewBattle={async () => {
-              if (activeBattle) {
-                setScreen('conquest-battle');
-                return;
-              }
-              if (pendingBattleId) {
-                try {
-                  const { battle } = await conquestApi.getBattleState(pendingBattleId);
-                  if (battle) {
-                    setBattle(battle);
-                    setScreen('conquest-battle');
-                    return;
-                  }
-                } catch {}
-              }
-              setScreen('home');
-            }}
             conquestBanner={
               activeSession ? (
                 <ConquestLiveBanner
                   session={activeSession}
+                  mySquadName={squad?.name ?? ''}
+                  mySquadEmoji={squad?.emoji ?? '🐯'}
                   onPress={() => setScreen('conquest-session')}
+                  onAutoInitiateBattle={async (_rivalSquadId) => {
+                    if (!activeSession?.venueId) return;
+                    try {
+                      const { battle } = await conquestApi.initiateBattle(activeSession.venueId);
+                      setBattle(battle);
+                      setPendingBattleId(battle.id);
+                      // Don't navigate away — the battle countdown shows inside the rival card
+                    } catch (e: any) {
+                      // 409 = battle already exists — silently fetch and store it
+                      if (!e.message?.includes('already')) {
+                        Alert.alert('Battle failed', e.message ?? 'Could not start battle');
+                      }
+                    }
+                    // Refresh session so clashRivals.battle is updated
+                    await refreshSession();
+                  }}
                 />
               ) : undefined
             }
@@ -874,6 +881,9 @@ export default function SquadModule({
           onViewBattle={async () => {
             // If activeBattle is already in memory, go straight there
             if (activeBattle) {
+              if (activeBattle.revealed || activeBattle.winnerSquadId) {
+                if (routeToBattleResult(activeBattle)) return;
+              }
               setScreen('conquest-battle');
               return;
             }
@@ -882,6 +892,9 @@ export default function SquadModule({
               try {
                 const { battle } = await conquestApi.getBattleState(pendingBattleId);
                 setBattle(battle);
+                if (battle.revealed || battle.winnerSquadId) {
+                  if (routeToBattleResult(battle)) return;
+                }
                 setScreen('conquest-battle');
               } catch {
                 Alert.alert('Could not load battle', 'Please refresh and try again.');
