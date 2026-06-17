@@ -21,7 +21,6 @@ export async function GET(req: NextRequest) {
 
   // If the session has passed its autoEndsAt, treat it as ended from the client's perspective.
   // The conquest-session-close cron will mark it as "revealed" on its next tick.
-  // Returning it as active after expiry causes the rival spotted card to linger forever.
   const now = new Date();
   if (session.autoEndsAt < now) {
     return NextResponse.json({ session: null, activeBattle: null });
@@ -35,22 +34,73 @@ export async function GET(req: NextRequest) {
     },
   });
 
-  let clashPartnerSquadName: string | null = null;
-  if (session.clashPartnerSquadId) {
-    const rival = await prisma.squad.findUnique({
-      where: { id: session.clashPartnerSquadId },
-      select: { name: true },
-    });
-    clashPartnerSquadName = rival?.name ?? null;
-  }
-
   const secondsRemaining = Math.max(
     0,
     Math.floor((session.autoEndsAt.getTime() - now.getTime()) / 1000)
   );
 
-  // Include any active (unrevealed or just-revealed) battle for this squad at this venue
-  // so the client can restore battle state after an app restart
+  // ── Find ALL rival squads currently active at the same venue ──────────────
+  // A rival is any squad != ours that has an active session at the same venue
+  const rivalSessions = await prisma.radarSession.findMany({
+    where: {
+      venueId: session.venueId,
+      state: "active",
+      squadId: { not: session.squadId },
+    },
+    include: {
+      squad: { select: { id: true, name: true, emoji: true } },
+    },
+    distinct: ["squadId"],
+  });
+
+  // ── For each rival, find their battle with us (if any) ───────────────────
+  const clashRivals: Array<{
+    squadId: string;
+    squadName: string;
+    squadEmoji: string;
+    battle: {
+      id: string;
+      revealAt: string;
+      revealed: boolean;
+      winnerSquadId: string | null;
+      initiatingCardPower: number;
+      rivalCardPower: number | null;
+    } | null;
+  }> = [];
+
+  for (const rival of rivalSessions) {
+    const battleRecord = await prisma.cardBattle.findFirst({
+      where: {
+        venueId: session.venueId,
+        initiatedAt: { gte: session.startedAt },
+        OR: [
+          { initiatingSquadId: session.squadId, rivalSquadId: rival.squadId },
+          { initiatingSquadId: rival.squadId, rivalSquadId: session.squadId },
+        ],
+      },
+      orderBy: { initiatedAt: "desc" },
+    });
+
+    const isRevealed = battleRecord ? now >= battleRecord.revealAt : false;
+
+    clashRivals.push({
+      squadId: rival.squad.id,
+      squadName: rival.squad.name,
+      squadEmoji: rival.squad.emoji,
+      battle: battleRecord
+        ? {
+            id: battleRecord.id,
+            revealAt: battleRecord.revealAt.toISOString(),
+            revealed: isRevealed,
+            winnerSquadId: isRevealed ? battleRecord.winnerSquadId : null,
+            initiatingCardPower: battleRecord.initiatingCardPower,
+            rivalCardPower: isRevealed ? battleRecord.rivalCardPower : null,
+          }
+        : null,
+    });
+  }
+
+  // ── Most recent battle for this session (for the home screen ActiveBattleCard) ──
   const activeBattleRecord = await prisma.cardBattle.findFirst({
     where: {
       venueId: session.venueId,
@@ -59,7 +109,6 @@ export async function GET(req: NextRequest) {
         { rivalSquadId: session.squadId },
       ],
       initiatedAt: { gte: session.startedAt },
-      // Include up to 2 minutes after counterAttackWindowEndsAt so the result screen is still reachable
       counterAttackWindowEndsAt: { gte: new Date(now.getTime() - 2 * 60 * 1000) },
     },
     orderBy: { initiatedAt: "desc" },
@@ -86,6 +135,9 @@ export async function GET(req: NextRequest) {
     };
   }
 
+  // Legacy single-rival fields kept for backwards compatibility
+  const primaryRival = clashRivals[0] ?? null;
+
   return NextResponse.json({
     session: {
       id: session.id,
@@ -94,11 +146,12 @@ export async function GET(req: NextRequest) {
       startedAt: session.startedAt.toISOString(),
       autoEndsAt: session.autoEndsAt.toISOString(),
       secondsRemaining,
-      isClashActive: session.isClashActive,
-      clashPartnerSquadId: session.clashPartnerSquadId,
-      clashPartnerSquadName,
+      isClashActive: clashRivals.length > 0,
+      clashPartnerSquadId: primaryRival?.squadId ?? null,
+      clashPartnerSquadName: primaryRival?.squadName ?? null,
       copresentCount,
       state: session.state,
+      clashRivals,
     },
     activeBattle,
   });
