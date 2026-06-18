@@ -153,7 +153,6 @@ export type SquadScreen =
   | 'edit'
   // ── Phase 4 conquest screens ──
   | 'conquest-session'
-  | 'conquest-rival-reveal'
   | 'conquest-battle'
   | 'conquest-battle-win'
   | 'conquest-battle-lose'
