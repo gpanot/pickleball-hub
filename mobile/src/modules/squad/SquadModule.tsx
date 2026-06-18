@@ -675,15 +675,43 @@ export default function SquadModule({
                       const { battle } = await conquestApi.initiateBattle(activeSession.venueId);
                       setBattle(battle);
                       setPendingBattleId(battle.id);
-                      // Don't navigate away — the battle countdown shows inside the rival card
                     } catch (e: any) {
-                      // 409 = battle already exists — silently fetch and store it
                       if (!e.message?.includes('already')) {
                         Alert.alert('Battle failed', e.message ?? 'Could not start battle');
                       }
                     }
-                    // Refresh session so clashRivals.battle is updated
                     await refreshSession();
+                  }}
+                  onWatchBattle={() => {
+                    // Navigate directly to battle screen — skip Rival Reveal entirely
+                    if (activeBattle) {
+                      setScreen('conquest-battle');
+                    } else if (pendingBattleId) {
+                      conquestApi.getBattleState(pendingBattleId)
+                        .then(({ battle }) => {
+                          setBattle(battle);
+                          setScreen('conquest-battle');
+                        })
+                        .catch(() => setScreen('conquest-battle'));
+                    } else {
+                      // Battle not in memory yet — refresh session and retry
+                      refreshSession().then(() => setScreen('conquest-battle'));
+                    }
+                  }}
+                  onSeeResult={(_rivalSquadId) => {
+                    // Navigate directly to win/lose screen
+                    if (activeBattle) {
+                      routeToBattleResult(activeBattle);
+                    } else if (pendingBattleId) {
+                      conquestApi.getBattleState(pendingBattleId)
+                        .then(({ battle }) => {
+                          setBattle(battle);
+                          routeToBattleResult(battle);
+                        })
+                        .catch(() => Alert.alert('Could not load result', 'Please refresh.'));
+                    } else {
+                      refreshSession();
+                    }
                   }}
                 />
               ) : undefined

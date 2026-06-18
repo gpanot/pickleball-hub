@@ -76,10 +76,13 @@ interface BannerProps {
   mySquadEmoji: string;
   onPress: () => void;
   onAutoInitiateBattle?: (rivalSquadId: string) => void;
+  onWatchBattle?: () => void;
+  onSeeResult?: (rivalSquadId: string) => void;
 }
 
 export function ConquestLiveBanner({
   session, mySquadName, mySquadEmoji, onPress, onAutoInitiateBattle,
+  onWatchBattle, onSeeResult,
 }: BannerProps) {
   const dotAnim = useRef(new Animated.Value(1)).current;
   const scanAnim = useRef(new Animated.Value(0)).current;
@@ -198,7 +201,8 @@ export function ConquestLiveBanner({
           mySquadEmoji={mySquadEmoji}
           dotAnim={dotAnim}
           onInitiateBattle={() => onAutoInitiateBattle?.(rival.squadId)}
-          onViewBattle={onPress}
+          onWatchBattle={() => onWatchBattle?.()}
+          onSeeResult={() => onSeeResult?.(rival.squadId)}
         />
       ))}
     </View>
@@ -207,6 +211,8 @@ export function ConquestLiveBanner({
 
 // ─── Per-rival card with embedded battle countdown ────────────────────────────
 
+const AUTO_BATTLE_DELAY = 20; // seconds before battle auto-fires
+
 function RivalCard({
   rival,
   session,
@@ -214,7 +220,8 @@ function RivalCard({
   mySquadEmoji,
   dotAnim,
   onInitiateBattle,
-  onViewBattle,
+  onWatchBattle,
+  onSeeResult,
 }: {
   rival: ClashRival;
   session: ConquestSession;
@@ -222,12 +229,38 @@ function RivalCard({
   mySquadEmoji: string;
   dotAnim: Animated.Value;
   onInitiateBattle: () => void;
-  onViewBattle: () => void;
+  onWatchBattle: () => void;
+  onSeeResult: () => void;
 }) {
   const pulseScale = useRef(new Animated.Value(1)).current;
   const hasBattle = !!rival.battle;
 
-  // Pulse the card border if no battle yet
+  // 20-second auto-battle countdown (only when no battle yet)
+  const [autoCountdown, setAutoCountdown] = useState(AUTO_BATTLE_DELAY);
+  const firedRef = useRef(false);
+
+  useEffect(() => {
+    if (hasBattle) return; // battle already started, no need
+    firedRef.current = false;
+    setAutoCountdown(AUTO_BATTLE_DELAY);
+    const t = setInterval(() => {
+      setAutoCountdown(prev => {
+        const next = prev - 1;
+        if (next <= 0 && !firedRef.current) {
+          firedRef.current = true;
+          // Fire auto-battle after the state update
+          setTimeout(() => onInitiateBattle(), 0);
+          clearInterval(t);
+          return 0;
+        }
+        return next;
+      });
+    }, 1000);
+    return () => clearInterval(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasBattle]);
+
+  // Pulse the card border while waiting for battle
   useEffect(() => {
     if (hasBattle) return;
     const loop = Animated.loop(
@@ -240,7 +273,7 @@ function RivalCard({
     return () => loop.stop();
   }, [hasBattle, pulseScale]);
 
-  // Battle countdown state
+  // Battle reveal countdown
   const [battleSecsLeft, setBattleSecsLeft] = useState(() =>
     rival.battle
       ? Math.max(0, Math.floor((new Date(rival.battle.revealAt).getTime() - Date.now()) / 1000))
@@ -261,7 +294,9 @@ function RivalCard({
       <View style={s.topRow}>
         <Animated.View style={[s.dotRed, { opacity: dotAnim }]} />
         <Text style={s.rivalLabel}>
-          {hasBattle ? '⚔️ BATTLE IN PROGRESS' : '⚔️ RIVAL SPOTTED'}
+          {hasBattle
+            ? (battleRevealed ? '🏆 RESULT READY' : '⚔️ BATTLE IN PROGRESS')
+            : '⚔️ RIVAL SPOTTED'}
         </Text>
         <Text style={s.venueName}>{session.venueName}</Text>
       </View>
@@ -288,7 +323,10 @@ function RivalCard({
               </Text>
             </>
           ) : (
-            <Text style={[s.clashText, { color: RED }]}>CLASH</Text>
+            <>
+              <Text style={[s.clashText, { color: RED }]}>CLASH</Text>
+              <Text style={s.autoStartLabel}>starts in {autoCountdown}s</Text>
+            </>
           )}
         </View>
 
@@ -305,17 +343,21 @@ function RivalCard({
 
       {/* Action row */}
       {hasBattle ? (
-        // Battle in progress — show tap to watch CTA
-        <TouchableOpacity style={s.watchBattleBtn} onPress={onViewBattle} activeOpacity={0.8}>
-          <Text style={s.watchBattleBtnText}>
+        <TouchableOpacity
+          style={[s.watchBattleBtn, battleRevealed && s.resultBtn]}
+          onPress={battleRevealed ? onSeeResult : onWatchBattle}
+          activeOpacity={0.8}
+        >
+          <Text style={[s.watchBattleBtnText, battleRevealed && s.resultBtnText]}>
             {battleRevealed ? '🏆 See result →' : '⚡ Watch the battle →'}
           </Text>
         </TouchableOpacity>
       ) : (
-        // No battle yet — single auto-start button
-        <TouchableOpacity style={s.challengeBtn} onPress={onInitiateBattle} activeOpacity={0.85}>
-          <Text style={s.challengeBtnText}>⚔️ Start Battle Now</Text>
-        </TouchableOpacity>
+        // No tappable button — the auto-countdown handles initiation
+        <View style={s.autoStartBar}>
+          <View style={[s.autoStartFill, { width: `${(autoCountdown / AUTO_BATTLE_DELAY) * 100}%` as any }]} />
+          <Text style={s.autoStartBarText}>⚔️ Battle is starting in {autoCountdown}s</Text>
+        </View>
       )}
     </Animated.View>
   );
@@ -548,6 +590,26 @@ const s = StyleSheet.create({
     borderWidth: 1, borderColor: 'rgba(239,68,68,0.35)',
   },
   watchBattleBtnText: { fontSize: 14, fontWeight: '800', color: '#f87171' },
+  resultBtn: {
+    backgroundColor: 'rgba(250,204,21,0.15)',
+    borderColor: 'rgba(250,204,21,0.5)',
+  },
+  resultBtnText: { color: GOLD },
+
+  // ── Auto-start bar ──
+  autoStartBar: {
+    borderRadius: 12, overflow: 'hidden',
+    backgroundColor: 'rgba(239,68,68,0.08)',
+    borderWidth: 1, borderColor: 'rgba(239,68,68,0.25)',
+    height: 44, justifyContent: 'center', alignItems: 'center',
+  },
+  autoStartFill: {
+    position: 'absolute', left: 0, top: 0, bottom: 0,
+    backgroundColor: 'rgba(239,68,68,0.18)',
+    borderRadius: 12,
+  },
+  autoStartBarText: { fontSize: 13, fontWeight: '800', color: '#f87171', zIndex: 1 },
+  autoStartLabel: { fontSize: 10, color: '#f87171', fontWeight: '700', marginTop: 2 },
 
   // ── Modal ──
   modalOverlay: {

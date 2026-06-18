@@ -239,8 +239,8 @@ export function SquadHomeScreen({
 
       </ScrollView>
 
-      {/* FAB: Check in — with pulse glow */}
-      <PulsingFab onPress={onCheckin} bottom={insets.bottom + 20} />
+      {/* FAB: Check in — hidden while a session is active */}
+      {!hasActiveSession && <PulsingFab onPress={onCheckin} bottom={insets.bottom + 20} />}
     </View>
   );
 }
