@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, Animated, Modal,
+  View, Text, StyleSheet, TouchableOpacity, Animated, Easing, Modal,
   ScrollView, Pressable,
 } from 'react-native';
 import type { ConquestSession, ClashRival } from '../types';
@@ -115,6 +115,26 @@ export function ConquestLiveBanner({
 
   const scanRotate = scanAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
 
+  // Finale flash on the card (when any rival battle is in last 10s)
+  const cardFlash = useRef(new Animated.Value(0)).current;
+  const anyFinale = rivals.some(r => {
+    if (!r.battle) return false;
+    const secs = Math.max(0, Math.floor((new Date(r.battle.revealAt).getTime() - Date.now()) / 1000));
+    return secs <= 10 && secs > 0 && !r.battle.revealed;
+  });
+  useEffect(() => {
+    if (!anyFinale) { cardFlash.setValue(0); return; }
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(cardFlash, { toValue: 0.12, duration: 150, useNativeDriver: true }),
+        Animated.timing(cardFlash, { toValue: 0, duration: 500, useNativeDriver: true }),
+        Animated.delay(350),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [anyFinale, cardFlash]);
+
   // Determine the dominant state for the card styling
   const hasAnyBattle = rivals.some(r => r.battle);
   const allRevealed = rivals.length > 0 && rivals.every(r => r.battle?.revealed || (r.battle && true));
@@ -128,6 +148,9 @@ export function ConquestLiveBanner({
 
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.88} style={[s.activeCard, { backgroundColor: cardBg, borderColor: cardBorderColor }]}>
+      {/* Finale flash overlay */}
+      <Animated.View style={[s.cardFlashOverlay, { opacity: cardFlash }]} pointerEvents="none" />
+
       {/* ── Header ── */}
       <View style={s.topRow}>
         <Animated.View style={[s.dot, { opacity: dotAnim, backgroundColor: hasAnyBattle ? RED : LIME }]} />
@@ -250,6 +273,7 @@ function RivalBattleArena({
   }, [rival.battle?.revealAt]);
 
   const battleRevealed = rival.battle?.revealed || (rival.battle && battleSecsLeft === 0);
+  const isFinale = hasBattle && !battleRevealed && battleSecsLeft <= 10 && battleSecsLeft > 0;
 
   // ── Clash animation: emojis charge → collide → retreat → repeat ──
   const leftX = useRef(new Animated.Value(0)).current;
@@ -259,39 +283,55 @@ function RivalBattleArena({
 
   useEffect(() => {
     if (!hasBattle || battleRevealed) return;
+    const DIST = isFinale ? 26 : 22;
+    const SPEED = isFinale ? 200 : 350;
+    const PAUSE = isFinale ? 350 : 1400;
 
-    // Each cycle: charge in → flash → shake → retreat → pause → repeat
-    const CHARGE_DIST = 22; // px each emoji moves toward center
     const cycle = Animated.loop(
       Animated.sequence([
-        // 1. Charge toward each other
         Animated.parallel([
-          Animated.timing(leftX,  { toValue:  CHARGE_DIST, duration: 350, useNativeDriver: true }),
-          Animated.timing(rightX, { toValue: -CHARGE_DIST, duration: 350, useNativeDriver: true }),
+          Animated.timing(leftX,  { toValue:  DIST, duration: SPEED, useNativeDriver: true }),
+          Animated.timing(rightX, { toValue: -DIST, duration: SPEED, useNativeDriver: true }),
         ]),
-        // 2. Impact flash
         Animated.timing(flashOpacity, { toValue: 1, duration: 60, useNativeDriver: true }),
-        // 3. Shake center text
         Animated.sequence([
-          Animated.timing(shakeX, { toValue: -4, duration: 50, useNativeDriver: true }),
-          Animated.timing(shakeX, { toValue:  4, duration: 50, useNativeDriver: true }),
-          Animated.timing(shakeX, { toValue: -3, duration: 50, useNativeDriver: true }),
-          Animated.timing(shakeX, { toValue:  0, duration: 50, useNativeDriver: true }),
+          Animated.timing(shakeX, { toValue: -4, duration: 45, useNativeDriver: true }),
+          Animated.timing(shakeX, { toValue:  4, duration: 45, useNativeDriver: true }),
+          Animated.timing(shakeX, { toValue: -3, duration: 45, useNativeDriver: true }),
+          Animated.timing(shakeX, { toValue:  0, duration: 45, useNativeDriver: true }),
         ]),
-        // 4. Flash out
         Animated.timing(flashOpacity, { toValue: 0, duration: 120, useNativeDriver: true }),
-        // 5. Retreat to start
         Animated.parallel([
-          Animated.timing(leftX,  { toValue: 0, duration: 280, useNativeDriver: true }),
-          Animated.timing(rightX, { toValue: 0, duration: 280, useNativeDriver: true }),
+          Animated.timing(leftX,  { toValue: 0, duration: SPEED * 0.8, useNativeDriver: true }),
+          Animated.timing(rightX, { toValue: 0, duration: SPEED * 0.8, useNativeDriver: true }),
         ]),
-        // 6. Pause before next clash
-        Animated.delay(1400),
+        Animated.delay(PAUSE),
       ])
     );
     cycle.start();
     return () => cycle.stop();
-  }, [hasBattle, battleRevealed, leftX, rightX, flashOpacity, shakeX]);
+  }, [hasBattle, battleRevealed, isFinale, leftX, rightX, flashOpacity, shakeX]);
+
+  // ── "See result" button bounce + gold glow when revealed ──
+  const resultBounce = useRef(new Animated.Value(1)).current;
+  const resultGlow   = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (!battleRevealed) return;
+    // Entrance bounce
+    Animated.sequence([
+      Animated.timing(resultBounce, { toValue: 1.12, duration: 180, easing: Easing.out(Easing.back(2)), useNativeDriver: true }),
+      Animated.timing(resultBounce, { toValue: 1,    duration: 200, useNativeDriver: true }),
+    ]).start();
+    // Perpetual glow pulse
+    const glowLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(resultGlow, { toValue: 1, duration: 700, useNativeDriver: true }),
+        Animated.timing(resultGlow, { toValue: 0, duration: 700, useNativeDriver: true }),
+      ])
+    );
+    glowLoop.start();
+    return () => glowLoop.stop();
+  }, [battleRevealed, resultBounce, resultGlow]);
 
   return (
     <View style={[s.arenaWrapper, !isLast && s.arenaWrapperDivider]}>
@@ -340,17 +380,27 @@ function RivalBattleArena({
 
       {/* CTA row */}
       {hasBattle ? (
-        <TouchableOpacity
-          style={[s.ctaBtn, battleRevealed ? s.ctaBtnGold : s.ctaBtnRed]}
-          onPress={battleRevealed ? onSeeResult : onWatchBattle}
-          activeOpacity={0.8}
-        >
-          <Text style={[s.ctaBtnText, battleRevealed ? s.ctaBtnTextGold : s.ctaBtnTextRed]}>
-            {battleRevealed ? '🏆 See result →' : '⚡ Watch the battle →'}
-          </Text>
-        </TouchableOpacity>
+        battleRevealed ? (
+          // Animated "See result" button
+          <Animated.View style={{ transform: [{ scale: resultBounce }] }}>
+            <TouchableOpacity
+              style={[s.ctaBtn, s.ctaBtnGold, { opacity: resultGlow.interpolate({ inputRange: [0, 1], outputRange: [0.88, 1] }) as any }]}
+              onPress={onSeeResult}
+              activeOpacity={0.8}
+            >
+              <Animated.Text style={[s.ctaBtnText, s.ctaBtnTextGold, {
+                opacity: resultGlow.interpolate({ inputRange: [0, 1], outputRange: [0.85, 1] }),
+              }]}>
+                🏆 See result →
+              </Animated.Text>
+            </TouchableOpacity>
+          </Animated.View>
+        ) : (
+          <TouchableOpacity style={[s.ctaBtn, s.ctaBtnRed]} onPress={onWatchBattle} activeOpacity={0.8}>
+            <Text style={[s.ctaBtnText, s.ctaBtnTextRed]}>⚡ Watch the battle →</Text>
+          </TouchableOpacity>
+        )
       ) : (
-        // Auto-start progress bar
         <View style={s.autoBar}>
           <View style={[s.autoBarFill, { width: `${(autoCountdown / AUTO_BATTLE_DELAY) * 100}%` as any }]} />
           <Text style={s.autoBarText}>⚔️ Battle is starting in {autoCountdown}s</Text>
@@ -434,6 +484,12 @@ const s = StyleSheet.create({
     marginHorizontal: 16, marginBottom: 12,
     borderWidth: 1.5, borderRadius: 18, padding: 14,
     overflow: 'hidden',
+  },
+  cardFlashOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: RED,
+    borderRadius: 18,
+    zIndex: 5,
   },
 
   // ── Header ──

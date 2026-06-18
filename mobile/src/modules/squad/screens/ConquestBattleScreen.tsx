@@ -12,6 +12,8 @@ const GOLD = '#facc15';
 const GOLD_DARK = '#ca8a04';
 const RED = '#ef4444';
 
+const FINALE_THRESHOLD = 10; // seconds at which finale begins
+
 interface BattleProps {
   battle: ConquestBattle;
   mySquadId: string;
@@ -24,8 +26,8 @@ interface BattleProps {
 }
 
 /**
- * Shown while waiting for revealAt — animated countdown bars, the two squad cards,
- * and a live timer. Transitions automatically once the battle's revealed flag flips.
+ * Shown while waiting for revealAt — animated countdown, clash animation,
+ * and a dramatic finale in the last 10 seconds.
  */
 export function ConquestBattleScreen({
   battle,
@@ -38,40 +40,23 @@ export function ConquestBattleScreen({
   onBack,
 }: BattleProps) {
   const insets = useSafeAreaInsets();
-  const [revealSecs, setRevealSecs] = useState(() => {
-    return Math.max(0, Math.floor((new Date(battle.revealAt).getTime() - Date.now()) / 1000));
-  });
+  const [revealSecs, setRevealSecs] = useState(() =>
+    Math.max(0, Math.floor((new Date(battle.revealAt).getTime() - Date.now()) / 1000))
+  );
+  const isFinale = revealSecs <= FINALE_THRESHOLD && revealSecs > 0;
 
-  const shakeAnim = useRef(new Animated.Value(0)).current;
-  const glowAnim = useRef(new Animated.Value(0)).current;
+  // ── Shared animations ──────────────────────────────────────────────────────
+  const shakeAnim  = useRef(new Animated.Value(0)).current;
+  const glowAnim   = useRef(new Animated.Value(0)).current;
+  const flashAnim  = useRef(new Animated.Value(0)).current;  // full-screen flash
+  const scaleAnim  = useRef(new Animated.Value(1)).current;  // countdown scale pump
+  // Clash: emojis charge toward center
+  const leftX      = useRef(new Animated.Value(0)).current;
+  const rightX     = useRef(new Animated.Value(0)).current;
+  const impactFlash = useRef(new Animated.Value(0)).current;
+  const vsShake    = useRef(new Animated.Value(0)).current;
 
-  // Shake every 2s
-  useEffect(() => {
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.delay(1800),
-        Animated.timing(shakeAnim, { toValue: 1, duration: 100, useNativeDriver: true }),
-        Animated.timing(shakeAnim, { toValue: -1, duration: 100, useNativeDriver: true }),
-        Animated.timing(shakeAnim, { toValue: 0.5, duration: 80, useNativeDriver: true }),
-        Animated.timing(shakeAnim, { toValue: 0, duration: 80, useNativeDriver: true }),
-      ])
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [shakeAnim]);
-
-  // Glow pulse
-  useEffect(() => {
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(glowAnim, { toValue: 1, duration: 800, useNativeDriver: true }),
-        Animated.timing(glowAnim, { toValue: 0, duration: 800, useNativeDriver: true }),
-      ])
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [glowAnim]);
-
+  // Countdown ticker
   useEffect(() => {
     const t = setInterval(() => {
       setRevealSecs(s => {
@@ -83,56 +68,145 @@ export function ConquestBattleScreen({
     return () => clearInterval(t);
   }, [onRevealResult]);
 
-  // Only auto-transition when the battle's revealAt is reached from an external poll
-  // (i.e. revealed flag flips true). Do NOT fire just because winnerSquadId is already set —
-  // the winner is pre-computed server-side but we still show the countdown drama.
   useEffect(() => {
-    if (battle.revealed) {
-      onRevealResult();
-    }
+    if (battle.revealed) onRevealResult();
   }, [battle.revealed, onRevealResult]);
 
-  const translateX = shakeAnim.interpolate({
-    inputRange: [-1, 0, 1],
-    outputRange: [-3, 0, 3],
-  });
-  const glowOpacity = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0.4, 0.9] });
+  // Steady VS glow pulse
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(glowAnim, { toValue: 1, duration: 800, useNativeDriver: true }),
+        Animated.timing(glowAnim, { toValue: 0, duration: 800, useNativeDriver: true }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [glowAnim]);
 
-  const myPower = battle.initiatingSquadId === mySquadId
-    ? battle.initiatingCardPower
-    : (battle.rivalCardPower ?? null);
-  const rivalPower = battle.initiatingSquadId === mySquadId
-    ? (battle.rivalCardPower ?? null)
-    : battle.initiatingCardPower;
+  // Clash animation loop (emoji charge/bounce) — faster during finale
+  useEffect(() => {
+    const DIST = isFinale ? 28 : 20;
+    const SPEED = isFinale ? 220 : 350;
+    const PAUSE = isFinale ? 400 : 1200;
+
+    const cycle = Animated.loop(
+      Animated.sequence([
+        Animated.parallel([
+          Animated.timing(leftX,  { toValue:  DIST, duration: SPEED, useNativeDriver: true }),
+          Animated.timing(rightX, { toValue: -DIST, duration: SPEED, useNativeDriver: true }),
+        ]),
+        Animated.timing(impactFlash, { toValue: 1, duration: 50, useNativeDriver: true }),
+        Animated.sequence([
+          Animated.timing(vsShake, { toValue: -5, duration: 40, useNativeDriver: true }),
+          Animated.timing(vsShake, { toValue:  5, duration: 40, useNativeDriver: true }),
+          Animated.timing(vsShake, { toValue: -3, duration: 40, useNativeDriver: true }),
+          Animated.timing(vsShake, { toValue:  0, duration: 40, useNativeDriver: true }),
+        ]),
+        Animated.timing(impactFlash, { toValue: 0, duration: 100, useNativeDriver: true }),
+        Animated.parallel([
+          Animated.timing(leftX,  { toValue: 0, duration: SPEED * 0.8, useNativeDriver: true }),
+          Animated.timing(rightX, { toValue: 0, duration: SPEED * 0.8, useNativeDriver: true }),
+        ]),
+        Animated.delay(PAUSE),
+      ])
+    );
+    cycle.start();
+    return () => cycle.stop();
+  }, [isFinale, leftX, rightX, impactFlash, vsShake]);
+
+  // Finale: full-screen red flash bursts + countdown scale pumps on each second
+  useEffect(() => {
+    if (!isFinale) return;
+
+    // Screen flash every second
+    const flashLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(flashAnim, { toValue: 0.18, duration: 100, useNativeDriver: true }),
+        Animated.timing(flashAnim, { toValue: 0, duration: 400, useNativeDriver: true }),
+        Animated.delay(500),
+      ])
+    );
+    flashLoop.start();
+
+    // Countdown number pumps on each tick
+    const scaleLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(scaleAnim, { toValue: 1.35, duration: 120, easing: Easing.out(Easing.back(2)), useNativeDriver: true }),
+        Animated.timing(scaleAnim, { toValue: 1, duration: 300, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.delay(580),
+      ])
+    );
+    scaleLoop.start();
+
+    return () => { flashLoop.stop(); scaleLoop.stop(); };
+  }, [isFinale, flashAnim, scaleAnim]);
+
+  // Header shake every 2s (always)
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.delay(isFinale ? 600 : 1800),
+        Animated.timing(shakeAnim, { toValue: 1,   duration: 80, useNativeDriver: true }),
+        Animated.timing(shakeAnim, { toValue: -1,  duration: 80, useNativeDriver: true }),
+        Animated.timing(shakeAnim, { toValue: 0.5, duration: 60, useNativeDriver: true }),
+        Animated.timing(shakeAnim, { toValue: 0,   duration: 60, useNativeDriver: true }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [isFinale, shakeAnim]);
+
+  const translateX  = shakeAnim.interpolate({ inputRange: [-1, 0, 1], outputRange: [-4, 0, 4] });
+  const glowOpacity = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0.35, 1] });
+  const vsTranslateX = vsShake.interpolate({ inputRange: [-5, 0, 5], outputRange: [-5, 0, 5] });
+
+  const myPower    = battle.initiatingSquadId === mySquadId ? battle.initiatingCardPower : (battle.rivalCardPower ?? null);
+  const rivalPower = battle.initiatingSquadId === mySquadId ? (battle.rivalCardPower ?? null) : battle.initiatingCardPower;
+
+  const countdownColor = revealSecs <= 5 ? RED : revealSecs <= FINALE_THRESHOLD ? '#fb923c' : LIME;
 
   return (
-    <View style={[b.container, { paddingTop: insets.top }]}>
-      {/* Back escape — doesn't cancel battle, just lets user browse while waiting */}
+    <View style={[b.container, { paddingTop: insets.top, backgroundColor: isFinale ? '#110000' : '#0a0a0a' }]}>
+      {/* Full-screen red flash overlay */}
+      <Animated.View style={[b.flashOverlay, { opacity: flashAnim }]} pointerEvents="none" />
+
       {onBack && (
         <TouchableOpacity style={b.backBtn} onPress={onBack} activeOpacity={0.7}>
           <Text style={b.backBtnText}>← Keep playing</Text>
         </TouchableOpacity>
       )}
+
       {/* Header */}
       <View style={b.header}>
-        <Text style={b.headerLabel}>⚔️ BATTLE IN PROGRESS</Text>
+        <Text style={[b.headerLabel, isFinale && b.headerLabelFinale]}>
+          {isFinale ? '🔥 DECIDING NOW' : '⚔️ BATTLE IN PROGRESS'}
+        </Text>
+        {isFinale && (
+          <Text style={b.finaleSubtitle}>Cards are being locked in…</Text>
+        )}
       </View>
 
-      {/* VS banner */}
-      <Animated.View style={[b.vsBanner, { transform: [{ translateX }] }]}>
+      {/* VS / emoji clash banner */}
+      <Animated.View style={[b.vsBanner, { transform: [{ translateX }], borderColor: isFinale ? 'rgba(239,68,68,0.5)' : 'rgba(255,255,255,0.1)' }]}>
+        {/* Impact flash */}
+        <Animated.View style={[b.impactFlash, { opacity: impactFlash }]} pointerEvents="none" />
+
         <View style={b.vsSquad}>
-          <Text style={b.vsEmoji}>{mySquadEmoji}</Text>
+          <Animated.Text style={[b.vsEmoji, { transform: [{ translateX: leftX }] }]}>{mySquadEmoji}</Animated.Text>
           <Text style={[b.vsName, { color: LIME }]}>{mySquadName}</Text>
           <View style={b.powerBadge}>
             <Text style={b.powerValue}>{myPower ?? '?'}</Text>
             <Text style={b.powerLabel}>POWER</Text>
           </View>
         </View>
+
         <Animated.View style={[b.vsCenter, { opacity: glowOpacity }]}>
-          <Text style={b.vsText}>VS</Text>
+          <Animated.Text style={[b.vsText, { transform: [{ translateX: vsTranslateX }], color: isFinale ? RED : RED }]}>VS</Animated.Text>
         </Animated.View>
+
         <View style={b.vsSquad}>
-          <Text style={b.vsEmoji}>{rivalSquadEmoji}</Text>
+          <Animated.Text style={[b.vsEmoji, { transform: [{ translateX: rightX }] }]}>{rivalSquadEmoji}</Animated.Text>
           <Text style={[b.vsName, { color: GOLD }]}>{rivalSquadName}</Text>
           <View style={[b.powerBadge, { borderColor: 'rgba(250,204,21,0.3)', backgroundColor: 'rgba(250,204,21,0.1)' }]}>
             <Text style={[b.powerValue, { color: rivalPower !== null ? GOLD : '#52525b' }]}>
@@ -143,22 +217,27 @@ export function ConquestBattleScreen({
         </View>
       </Animated.View>
 
-      {/* Reveal countdown */}
+      {/* Countdown */}
       <View style={b.revealSection}>
-        <Text style={b.revealLabel}>REVEAL IN</Text>
-        <Text style={b.revealValue}>{formatCountdown(revealSecs)}</Text>
-        <Text style={b.revealSub}>Cards being locked in…</Text>
+        <Text style={[b.revealLabel, isFinale && { color: RED }]}>
+          {isFinale ? '⚠️ REVEALS IN' : 'REVEAL IN'}
+        </Text>
+        <Animated.Text style={[b.revealValue, { color: countdownColor, transform: [{ scale: scaleAnim }] }]}>
+          {formatCountdown(revealSecs)}
+        </Animated.Text>
+        {!isFinale && <Text style={b.revealSub}>Cards being locked in…</Text>}
       </View>
 
-      {/* Battle number badge */}
-      <View style={b.battleBadge}>
+      {/* Battle badge */}
+      <View style={[b.battleBadge, isFinale && { borderColor: 'rgba(239,68,68,0.4)', backgroundColor: 'rgba(239,68,68,0.1)' }]}>
         <Text style={b.battleBadgeText}>
           {battle.isCounterAttack ? '↩️ COUNTER-ATTACK' : `BATTLE #${battle.battleNumber}`}
         </Text>
       </View>
 
-      {/* Hint */}
-      <Text style={b.hint}>Keep playing while the battle resolves 🏓</Text>
+      <Text style={b.hint}>
+        {isFinale ? 'Almost there — result drops in seconds 🔥' : 'Keep playing while the battle resolves 🏓'}
+      </Text>
     </View>
   );
 }
@@ -402,21 +481,32 @@ export function ConquestBattleLoseScreen({
 // ─── Styles ────────────────────────────────────────────────────────
 
 const b = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0a0a0a', padding: 16 },
+  container: { flex: 1, padding: 16 },
+  flashOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: RED,
+    zIndex: 10,
+  },
   backBtn: { paddingVertical: 8, paddingHorizontal: 4, marginBottom: 4 },
   backBtnText: { fontSize: 13, color: '#52525b', fontWeight: '600' },
   header: { alignItems: 'center', paddingVertical: 20 },
-  headerLabel: {
-    fontFamily: BANGERS, fontSize: 18, color: RED, letterSpacing: 1,
-  },
+  headerLabel: { fontFamily: BANGERS, fontSize: 18, color: RED, letterSpacing: 1 },
+  headerLabelFinale: { fontSize: 22, color: '#ff6b35' },
+  finaleSubtitle: { fontSize: 12, color: '#ff6b35', marginTop: 4, fontWeight: '700', letterSpacing: 0.5 },
   vsBanner: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     backgroundColor: '#111',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
+    borderWidth: 1.5,
     borderRadius: 20, padding: 16, marginBottom: 20,
+    overflow: 'hidden',
+  },
+  impactFlash: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#fff',
+    borderRadius: 20,
   },
   vsSquad: { flex: 1, alignItems: 'center', gap: 6 },
-  vsEmoji: { fontSize: 40 },
+  vsEmoji: { fontSize: 44 },
   vsName: { fontFamily: BANGERS, fontSize: 16, letterSpacing: 0.5 },
   powerBadge: {
     backgroundColor: 'rgba(163,230,53,0.1)',
@@ -427,10 +517,10 @@ const b = StyleSheet.create({
   powerValue: { fontFamily: BANGERS, fontSize: 22, color: LIME },
   powerLabel: { fontSize: 8, fontWeight: '800', textTransform: 'uppercase', color: '#52525b', letterSpacing: 0.5 },
   vsCenter: { flexShrink: 0, width: 50, alignItems: 'center' },
-  vsText: { fontFamily: BANGERS, fontSize: 36, color: RED },
+  vsText: { fontFamily: BANGERS, fontSize: 40, color: RED },
   revealSection: { alignItems: 'center', marginBottom: 20 },
   revealLabel: { fontSize: 11, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1, color: '#52525b', marginBottom: 4 },
-  revealValue: { fontFamily: BANGERS, fontSize: 64, color: LIME },
+  revealValue: { fontFamily: BANGERS, fontSize: 72, letterSpacing: 1 },
   revealSub: { fontSize: 12, color: '#52525b' },
   battleBadge: {
     backgroundColor: 'rgba(239,68,68,0.08)',
