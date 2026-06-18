@@ -65,7 +65,7 @@ interface BannerProps {
   mySquadEmoji: string;
   onPress: () => void;
   onAutoInitiateBattle?: (rivalSquadId: string) => void;
-  onWatchBattle?: () => void;
+  onWatchBattle?: (rivalSquadId: string) => void;
   onSeeResult?: (rivalSquadId: string) => void;
 }
 
@@ -197,7 +197,7 @@ export function ConquestLiveBanner({
             mySquadEmoji={mySquadEmoji}
             isLast={idx === rivals.length - 1}
             onInitiateBattle={() => onAutoInitiateBattle?.(rival.squadId)}
-            onWatchBattle={() => onWatchBattle?.()}
+            onWatchBattle={() => onWatchBattle?.(rival.squadId)}
             onSeeResult={() => onSeeResult?.(rival.squadId)}
           />
         ))

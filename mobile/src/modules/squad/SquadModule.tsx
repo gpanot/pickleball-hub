@@ -670,46 +670,46 @@ export default function SquadModule({
                   mySquadName={squad?.name ?? ''}
                   mySquadEmoji={squad?.emoji ?? '🐯'}
                   onPress={() => setScreen('conquest-session')}
-                  onAutoInitiateBattle={async (_rivalSquadId) => {
+                  onAutoInitiateBattle={async (rivalSquadId) => {
                     if (!activeSession?.venueId) return;
+                    console.log(`[SquadModule] onAutoInitiateBattle rivalSquadId=${rivalSquadId} venueId=${activeSession.venueId}`);
                     try {
-                      const { battle } = await conquestApi.initiateBattle(activeSession.venueId);
+                      const { battle } = await conquestApi.initiateBattle(activeSession.venueId, rivalSquadId);
+                      console.log(`[SquadModule] battle initiated id=${battle?.id} revealAt=${battle?.revealAt}`);
                       setBattle(battle);
                       setPendingBattleId(battle.id);
                     } catch (e: any) {
+                      console.warn(`[SquadModule] initiateBattle error: ${e?.message}`);
                       if (!e.message?.includes('already')) {
                         Alert.alert('Battle failed', e.message ?? 'Could not start battle');
                       }
                     }
                     await refreshSession();
                   }}
-                  onWatchBattle={() => {
-                    // Navigate directly to battle screen — skip Rival Reveal entirely
-                    if (activeBattle) {
-                      setScreen('conquest-battle');
-                    } else if (pendingBattleId) {
-                      conquestApi.getBattleState(pendingBattleId)
-                        .then(({ battle }) => {
-                          setBattle(battle);
-                          setScreen('conquest-battle');
-                        })
+                  onWatchBattle={(rivalSquadId) => {
+                    // Find the battle for this specific rival from clashRivals
+                    const rivalData = activeSession?.clashRivals?.find(r => r.squadId === rivalSquadId);
+                    const battleId = rivalData?.battle?.id ?? activeBattle?.id ?? pendingBattleId;
+                    console.log(`[SquadModule] onWatchBattle rivalSquadId=${rivalSquadId} battleId=${battleId}`);
+                    if (battleId) {
+                      conquestApi.getBattleState(battleId)
+                        .then(({ battle }) => { setBattle(battle); setScreen('conquest-battle'); })
                         .catch(() => setScreen('conquest-battle'));
                     } else {
-                      // Battle not in memory yet — refresh session and retry
                       refreshSession().then(() => setScreen('conquest-battle'));
                     }
                   }}
-                  onSeeResult={(_rivalSquadId) => {
-                    // Navigate directly to win/lose screen
-                    if (activeBattle) {
-                      routeToBattleResult(activeBattle);
-                    } else if (pendingBattleId) {
-                      conquestApi.getBattleState(pendingBattleId)
-                        .then(({ battle }) => {
-                          setBattle(battle);
-                          routeToBattleResult(battle);
-                        })
+                  onSeeResult={(rivalSquadId) => {
+                    // Find the battle for this specific rival from clashRivals
+                    const rivalData = activeSession?.clashRivals?.find(r => r.squadId === rivalSquadId);
+                    const battleId = rivalData?.battle?.id ?? activeBattle?.id ?? pendingBattleId;
+                    console.log(`[SquadModule] onSeeResult rivalSquadId=${rivalSquadId} battleId=${battleId}`);
+                    if (battleId) {
+                      conquestApi.getBattleState(battleId)
+                        .then(({ battle }) => { setBattle(battle); routeToBattleResult(battle); })
                         .catch(() => Alert.alert('Could not load result', 'Please refresh.'));
+                    } else if (activeBattle) {
+                      routeToBattleResult(activeBattle);
                     } else {
                       refreshSession();
                     }
@@ -883,17 +883,17 @@ export default function SquadModule({
           cardData={conquestCardData}
           activeBattle={activeBattle}
           onBack={() => setScreen('home')}
-          onPlayCard={async () => {
+          onPlayCard={async (rivalSquadId) => {
             if (!activeSession?.venueId) {
               Alert.alert('Battle failed', 'No active session found. Please refresh.');
               return;
             }
-            // Fetch card data if not yet loaded
             if (!conquestCardData) {
               try { const c = await conquestApi.getSquadCard(); setConquestCardData(c.card); } catch {}
             }
+            console.log(`[SquadModule] session.onPlayCard rivalSquadId=${rivalSquadId}`);
             try {
-              const { battle } = await conquestApi.initiateBattle(activeSession.venueId);
+              const { battle } = await conquestApi.initiateBattle(activeSession.venueId, rivalSquadId);
               setBattle(battle);
               setBattlePending(true);
               setPendingBattleId(battle.id);
@@ -905,24 +905,26 @@ export default function SquadModule({
             }
             await refreshSession();
           }}
-          onWatchBattle={() => {
-            if (activeBattle) {
-              setScreen('conquest-battle');
-            } else if (pendingBattleId) {
-              conquestApi.getBattleState(pendingBattleId)
+          onWatchBattle={(rivalSquadId) => {
+            const rivalData = activeSession?.clashRivals?.find(r => r.squadId === rivalSquadId);
+            const battleId = rivalData?.battle?.id ?? activeBattle?.id ?? pendingBattleId;
+            if (battleId) {
+              conquestApi.getBattleState(battleId)
                 .then(({ battle }) => { setBattle(battle); setScreen('conquest-battle'); })
                 .catch(() => setScreen('conquest-battle'));
             } else {
               refreshSession().then(() => setScreen('conquest-battle'));
             }
           }}
-          onSeeResult={() => {
-            if (activeBattle) {
-              routeToBattleResult(activeBattle);
-            } else if (pendingBattleId) {
-              conquestApi.getBattleState(pendingBattleId)
+          onSeeResult={(rivalSquadId) => {
+            const rivalData = activeSession?.clashRivals?.find(r => r.squadId === rivalSquadId);
+            const battleId = rivalData?.battle?.id ?? activeBattle?.id ?? pendingBattleId;
+            if (battleId) {
+              conquestApi.getBattleState(battleId)
                 .then(({ battle }) => { setBattle(battle); routeToBattleResult(battle); })
                 .catch(() => Alert.alert('Could not load result', 'Please refresh.'));
+            } else if (activeBattle) {
+              routeToBattleResult(activeBattle);
             }
           }}
         />

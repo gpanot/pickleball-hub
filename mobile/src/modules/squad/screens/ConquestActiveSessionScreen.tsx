@@ -26,11 +26,11 @@ interface Props {
   cardData: SquadCardData | null;
   onBack: () => void;
   // Called when user taps "Watch battle" — goes straight to battle screen
-  onWatchBattle: () => void;
+  onWatchBattle: (rivalSquadId: string) => void;
   // Called when user taps "See result" — goes straight to win/lose screen
-  onSeeResult: () => void;
+  onSeeResult: (rivalSquadId: string) => void;
   // Called when "Start Battle" is tapped (or auto-fires after countdown)
-  onPlayCard: () => Promise<void>;
+  onPlayCard: (rivalSquadId: string) => Promise<void>;
   activeBattle?: { id: string; revealed: boolean; winnerSquadId: string | null } | null;
 }
 
@@ -243,11 +243,9 @@ export function ConquestActiveSessionScreen({
             rival={rival}
             mySquad={mySquad}
             cardData={cardData}
-            hasBattle={hasBattle}
-            battleRevealed={!!battleRevealed}
-            onPlayCard={onPlayCard}
-            onWatchBattle={onWatchBattle}
-            onSeeResult={onSeeResult}
+            onPlayCard={() => onPlayCard(rival.squadId)}
+            onWatchBattle={() => onWatchBattle(rival.squadId)}
+            onSeeResult={() => onSeeResult(rival.squadId)}
           />
         )) : (
           <View style={s.noRivalCard}>
@@ -291,8 +289,6 @@ function RivalSection({
   rival,
   mySquad,
   cardData,
-  hasBattle,
-  battleRevealed,
   onPlayCard,
   onWatchBattle,
   onSeeResult,
@@ -300,12 +296,13 @@ function RivalSection({
   rival: ClashRival;
   mySquad: { id: string; name: string; emoji: string; level: number };
   cardData: SquadCardData | null;
-  hasBattle: boolean;
-  battleRevealed: boolean;
   onPlayCard: () => Promise<void>;
   onWatchBattle: () => void;
   onSeeResult: () => void;
 }) {
+  const hasBattle = !!rival.battle;
+  const battleRevealed = !!(rival.battle?.revealed || (rival.battle && Date.now() >= new Date(rival.battle.revealAt).getTime()));
+
   const [autoCountdown, setAutoCountdown] = useState(AUTO_BATTLE_DELAY);
   const firedRef = useRef(false);
   const [playing, setPlaying] = useState(false);

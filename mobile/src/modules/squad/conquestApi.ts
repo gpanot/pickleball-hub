@@ -61,10 +61,10 @@ export async function getShareData(sessionId: string) {
 
 // ── Battle ─────────────────────────────────────────────────────────
 
-export async function initiateBattle(venueId: number) {
+export async function initiateBattle(venueId: number, rivalSquadId?: string) {
   const res = await authedFetch('/api/conquest/battle', {
     method: 'POST',
-    body: JSON.stringify({ venueId }),
+    body: JSON.stringify({ venueId, rivalSquadId }),
   });
 
   // 409 = a battle already exists for this session — fetch and return it
