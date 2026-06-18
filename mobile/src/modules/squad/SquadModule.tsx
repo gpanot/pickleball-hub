@@ -1014,6 +1014,7 @@ export default function SquadModule({
               setScreen('home');
             }
           }}
+          onBattleAnotherTime={() => setScreen('home')}
           onBack={() => setScreen(activeSession ? 'conquest-session' : 'home')}
         />
       )}

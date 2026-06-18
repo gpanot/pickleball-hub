@@ -350,6 +350,7 @@ interface LoseProps {
   counterAttackWindowEndsAt: string;
   onCounterAttack: () => Promise<void>;
   onViewResults: () => void;
+  onBattleAnotherTime: () => void;
   onBack?: () => void;
 }
 
@@ -363,6 +364,7 @@ export function ConquestBattleLoseScreen({
   counterAttackWindowEndsAt,
   onCounterAttack,
   onViewResults,
+  onBattleAnotherTime,
   onBack,
 }: LoseProps) {
   const insets = useSafeAreaInsets();
@@ -370,6 +372,8 @@ export function ConquestBattleLoseScreen({
     Math.max(0, Math.floor((new Date(counterAttackWindowEndsAt).getTime() - Date.now()) / 1000))
   );
   const [countering, setCountering] = useState(false);
+  // When the user taps "Battle Another Time" we locally close the counter window
+  const [counterDismissed, setCounterDismissed] = useState(false);
 
   useEffect(() => {
     const t = setInterval(() => setCounterSecs(s => Math.max(0, s - 1)), 1000);
@@ -392,7 +396,12 @@ export function ConquestBattleLoseScreen({
     }
   };
 
-  const counterWindowOpen = counterSecs > 0;
+  const handleBattleAnotherTime = () => {
+    setCounterDismissed(true);
+    onBattleAnotherTime();
+  };
+
+  const counterWindowOpen = counterSecs > 0 && !counterDismissed;
 
   return (
     <View style={[l.container, { paddingTop: insets.top }]}>
@@ -450,6 +459,15 @@ export function ConquestBattleLoseScreen({
           <View style={l.counterBar}>
             <View style={[l.counterBarFill, { width: `${(counterSecs / 300) * 100}%` }]} />
           </View>
+
+          {/* Battle Another Time — closes counter window and returns to home */}
+          <TouchableOpacity
+            style={l.skipBtn}
+            onPress={handleBattleAnotherTime}
+            activeOpacity={0.7}
+          >
+            <Text style={l.skipBtnText}>Battle Another Time</Text>
+          </TouchableOpacity>
         </View>
       )}
 
@@ -606,6 +624,19 @@ const l = StyleSheet.create({
     height: 3, backgroundColor: '#2a2a2a', borderRadius: 2, overflow: 'hidden',
   },
   counterBarFill: { height: '100%', borderRadius: 2, backgroundColor: RED },
+  skipBtn: {
+    marginTop: 14,
+    paddingVertical: 12,
+    alignItems: 'center',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.06)',
+  },
+  skipBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#71717a',
+    textDecorationLine: 'underline',
+  },
   windowClosed: {
     backgroundColor: '#111', borderRadius: 12, padding: 12, alignItems: 'center', marginBottom: 12,
   },
