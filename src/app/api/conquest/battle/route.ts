@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
   );
 
   const session = await prisma.radarSession.findFirst({
-    where: { playerId: user.profileId, state: "active", venueId },
+    where: { playerId: user.profileId, state: "active", venueId, autoEndsAt: { gt: new Date() } },
   });
   if (!session) {
     return NextResponse.json(
@@ -48,6 +48,7 @@ export async function POST(req: NextRequest) {
         squadId: requestedRivalSquadId,
         venueId,
         state: "active",
+        autoEndsAt: { gt: new Date() },
       },
     });
     if (!rivalSession) {
@@ -66,6 +67,7 @@ export async function POST(req: NextRequest) {
         venueId,
         state: "active",
         squadId: { not: session.squadId },
+        autoEndsAt: { gt: new Date() },
       },
     });
     targetRivalSquadId = anyRivalSession?.squadId ?? null;

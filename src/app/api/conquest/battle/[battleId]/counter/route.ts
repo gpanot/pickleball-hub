@@ -61,7 +61,7 @@ export async function POST(
   }
 
   const activeSession = await prisma.radarSession.findFirst({
-    where: { playerId: user.profileId, state: "active", venueId: parentBattle.venueId },
+    where: { playerId: user.profileId, state: "active", venueId: parentBattle.venueId, autoEndsAt: { gt: new Date() } },
   });
   if (!activeSession) {
     return NextResponse.json({ error: "No active session at this venue" }, { status: 400 });
