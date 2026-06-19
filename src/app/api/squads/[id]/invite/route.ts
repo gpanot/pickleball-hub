@@ -57,25 +57,15 @@ export async function POST(
     return NextResponse.json({ error: "Only the founder can invite" }, { status: 403 });
   }
 
-  let body: { profileIds?: string[]; notOnAppUserIds?: string[]; podId?: string };
+  let body: { profileIds?: string[]; notOnAppUserIds?: string[] };
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { profileIds = [], notOnAppUserIds = [], podId } = body;
+  const { profileIds = [], notOnAppUserIds = [] } = body;
 
-  // If a podId was supplied, verify it belongs to this squad and the caller is a member
-  if (podId) {
-    const pod = await prisma.pod.findFirst({
-      where: { id: podId, squadId, disbandedAt: null },
-      include: { members: { where: { leftAt: null, profileId: user.profileId } } },
-    });
-    if (!pod || pod.members.length === 0) {
-      return NextResponse.json({ error: "Invalid podId or not a pod member" }, { status: 403 });
-    }
-  }
   if (profileIds.length === 0 && notOnAppUserIds.length === 0) {
     return NextResponse.json({ error: "profileIds or notOnAppUserIds required" }, { status: 400 });
   }
@@ -133,6 +123,13 @@ export async function POST(
   for (const profileId of uniqueProfileIds) {
     if (memberIds.has(profileId)) continue;
 
+    // Skip anyone already in any squad — they are not invitable
+    const alreadyInSquad = await prisma.squadMember.findFirst({
+      where: { profileId, leftAt: null },
+      select: { id: true },
+    });
+    if (alreadyInSquad) continue;
+
     const existingInviteId = pendingByInvitee.get(profileId);
     if (existingInviteId) {
       const profile = await prisma.playerProfile.findUnique({
@@ -175,7 +172,6 @@ export async function POST(
         inviteeId: profile.id,
         inviteChannel: "push",
         status: "pending",
-        ...(podId ? { podId } : {}),
       },
     });
 

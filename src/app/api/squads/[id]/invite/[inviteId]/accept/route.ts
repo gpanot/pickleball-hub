@@ -73,6 +73,18 @@ export async function POST(
     return NextResponse.json({ error: "cooldown", cooldownEndsAt }, { status: 403 });
   }
 
+  // Resolve the inviter's current Pod in this squad — joiner goes into the same Pod.
+  // We look up the inviter's active PodMember row scoped to this squad so we never
+  // use a stale podId stored on the invite itself.
+  const inviterPodMember = await prisma.podMember.findFirst({
+    where: {
+      profileId: invite.inviterId,
+      leftAt: null,
+      pod: { squadId, disbandedAt: null },
+    },
+    select: { podId: true },
+  });
+
   await prisma.$transaction(async (tx) => {
     await tx.squadMember.create({
       data: { squadId, profileId: user.profileId, role: "member" },
@@ -82,15 +94,15 @@ export async function POST(
       data: { status: "accepted", resolvedAt: new Date() },
     });
 
-    // If this was a Pod invite, add the player to that Pod
-    if (invite.podId) {
-      const podMemberCount = await tx.podMember.count({
-        where: { podId: invite.podId, leftAt: null },
-      });
+    // Add joiner to the inviter's Pod if one was found and has capacity
+    if (inviterPodMember) {
       const { MAX_POD_MEMBERS } = await import("@/lib/pod-constants");
+      const podMemberCount = await tx.podMember.count({
+        where: { podId: inviterPodMember.podId, leftAt: null },
+      });
       if (podMemberCount < MAX_POD_MEMBERS) {
         await tx.podMember.create({
-          data: { podId: invite.podId, profileId: user.profileId },
+          data: { podId: inviterPodMember.podId, profileId: user.profileId },
         });
       }
     }
