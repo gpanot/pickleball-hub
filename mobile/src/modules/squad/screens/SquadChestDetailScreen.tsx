@@ -8,7 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SquadChestMemberGrid } from '../components/SquadChestMemberGrid';
 import { SquadBackButton } from '../components/SquadBackButton';
 import { useSquadChest } from '../hooks/useSquadChest';
-import type { SquadChest } from '../types';
+import type { SquadChest, ChestOpenResult } from '../types';
 
 const NUDGE_COOLDOWN_MS = 5 * 60 * 1000;
 function nudgeKey(chestId: string) { return `nudged_${chestId}`; }
@@ -30,7 +30,7 @@ interface Props {
   squadId: string;
   squadName: string;
   myProfileId?: string | null;
-  onOpen: (result: { kudosAwarded: number; xpAwarded: number; squadLevel: number; squadXp: number }) => void;
+  onOpen: (result: ChestOpenResult) => void;
   onBack: () => void;
   onRefresh: () => Promise<void>;
 }

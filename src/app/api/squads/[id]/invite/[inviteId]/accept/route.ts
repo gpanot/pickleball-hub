@@ -73,19 +73,28 @@ export async function POST(
     return NextResponse.json({ error: "cooldown", cooldownEndsAt }, { status: 403 });
   }
 
-  await prisma.$transaction([
-    prisma.squadMember.create({
-      data: {
-        squadId,
-        profileId: user.profileId,
-        role: "member",
-      },
-    }),
-    prisma.squadInvite.update({
+  await prisma.$transaction(async (tx) => {
+    await tx.squadMember.create({
+      data: { squadId, profileId: user.profileId, role: "member" },
+    });
+    await tx.squadInvite.update({
       where: { id: inviteIdNum },
       data: { status: "accepted", resolvedAt: new Date() },
-    }),
-  ]);
+    });
+
+    // If this was a Pod invite, add the player to that Pod
+    if (invite.podId) {
+      const podMemberCount = await tx.podMember.count({
+        where: { podId: invite.podId, leftAt: null },
+      });
+      const { MAX_POD_MEMBERS } = await import("@/lib/pod-constants");
+      if (podMemberCount < MAX_POD_MEMBERS) {
+        await tx.podMember.create({
+          data: { podId: invite.podId, profileId: user.profileId },
+        });
+      }
+    }
+  });
 
   const alreadyGotXp = await hasReceivedNewMemberXp(prisma, user.profileId);
   if (!alreadyGotXp) {
@@ -100,7 +109,7 @@ export async function POST(
 
   const joinerProfile = await prisma.playerProfile.findUnique({
     where: { id: user.profileId },
-    select: { displayName: true, squadNickname: true },
+    select: { displayName: true, squadNickname: true, welcomeChestClaimed: true },
   });
 
   const joinerLabel = joinerProfile?.squadNickname
@@ -117,5 +126,8 @@ export async function POST(
     },
   });
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({
+    ok: true,
+    welcomeChestClaimed: joinerProfile?.welcomeChestClaimed ?? false,
+  });
 }

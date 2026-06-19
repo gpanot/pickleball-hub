@@ -68,7 +68,11 @@ function isClashPush(data: any): boolean {
   return CLASH_PUSH_TYPES.has(data?.type) || data?.screen === 'ConquestRivalReveal'
 }
 function isBattleResultPush(data: any): boolean {
-  return BATTLE_RESULT_PUSH_TYPES.has(data?.type) || data?.screen === 'ConquestBattleResult'
+  return (
+    BATTLE_RESULT_PUSH_TYPES.has(data?.type) ||
+    (typeof data?.type === 'string' && data.type.startsWith('battle_result_')) ||
+    data?.screen === 'ConquestBattleResult'
+  )
 }
 function isSessionRevealPush(data: any): boolean {
   return data?.type === SESSION_REVEAL_PUSH_TYPE || data?.screen === 'ConquestReveal'
@@ -152,7 +156,10 @@ try {
     } else if (isBattleResultPush(data)) {
       ;(globalThis as any).__conquestPushScreen = 'conquest-battle-result'
       ;(globalThis as any).__conquestPushBattleId = data?.battleId ?? null
-      ;(globalThis as any).__conquestPushBattleResult = data?.result ?? null
+      ;(globalThis as any).__conquestPushBattleResult =
+        data?.result ??
+        (data?.type === 'battle_won' || data?.type === 'battle_result_won' ? 'won' : null) ??
+        (data?.type === 'battle_lost' || data?.type === 'battle_result_lost' ? 'lost' : null)
     } else if (isSessionRevealPush(data)) {
       ;(globalThis as any).__conquestPushScreen = 'conquest-session-reveal'
       ;(globalThis as any).__conquestPushSessionId = data?.sessionId ?? null
@@ -161,7 +168,10 @@ try {
     }
   })
 
-  messaging().getInitialNotification().then((remoteMessage: any) => {
+  Promise.race([
+    messaging().getInitialNotification(),
+    new Promise((resolve) => setTimeout(() => resolve(null), 3000)),
+  ]).then((remoteMessage: any) => {
     if (remoteMessage) {
       console.log('[FCM_DEBUG] app opened from quit state:', JSON.stringify(remoteMessage, null, 2))
       const data = remoteMessage?.data
@@ -172,7 +182,10 @@ try {
       } else if (isBattleResultPush(data)) {
         ;(globalThis as any).__conquestPushScreen = 'conquest-battle-result'
         ;(globalThis as any).__conquestPushBattleId = data?.battleId ?? null
-        ;(globalThis as any).__conquestPushBattleResult = data?.result ?? null
+        ;(globalThis as any).__conquestPushBattleResult =
+          data?.result ??
+          (data?.type === 'battle_won' || data?.type === 'battle_result_won' ? 'won' : null) ??
+          (data?.type === 'battle_lost' || data?.type === 'battle_result_lost' ? 'lost' : null)
       } else if (isSessionRevealPush(data)) {
         ;(globalThis as any).__conquestPushScreen = 'conquest-session-reveal'
         ;(globalThis as any).__conquestPushSessionId = data?.sessionId ?? null
@@ -212,7 +225,10 @@ if (!IS_EXPO_GO && Notifications) {
     } else if (isBattleResultPush(data)) {
       ;(globalThis as any).__conquestPushScreen = 'conquest-battle-result'
       ;(globalThis as any).__conquestPushBattleId = data?.battleId ?? null
-      ;(globalThis as any).__conquestPushBattleResult = data?.result ?? null
+      ;(globalThis as any).__conquestPushBattleResult =
+        data?.result ??
+        (data?.type === 'battle_won' || data?.type === 'battle_result_won' ? 'won' : null) ??
+        (data?.type === 'battle_lost' || data?.type === 'battle_result_lost' ? 'lost' : null)
     } else if (isSessionRevealPush(data)) {
       ;(globalThis as any).__conquestPushScreen = 'conquest-session-reveal'
       ;(globalThis as any).__conquestPushSessionId = data?.sessionId ?? null
@@ -242,6 +258,10 @@ export default function App() {
   console.log('[BOOT] App() component rendering')
   const overlayStyles = useThemedOverlayStyles()
   const [showSplash, setShowSplash] = useState(true)
+  useEffect(() => {
+    const t = setTimeout(() => setShowSplash(false), 3500)
+    return () => clearTimeout(t)
+  }, [])
   const [activeTab, setActiveTab] = useState<TabId>('swipe')
   const [flowScreen, setFlowScreen] = useState<FlowScreen>('main')
   const [gearReturnTo, setGearReturnTo] = useState<FlowScreen>('main')

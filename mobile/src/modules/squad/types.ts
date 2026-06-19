@@ -151,6 +151,15 @@ export type SquadScreen =
   | 'leaderboard'
   | 'manage'
   | 'edit'
+  // ── Phase 3: Pods, Tokens & Brands ──
+  | 'pod-playstyle'
+  | 'pod-create'
+  | 'brand-select'
+  | 'welcome-chest'
+  | 'token-split'
+  | 'brand-detail'
+  | 'clubhouse-detail'
+  | 'pod-edit'
   // ── Phase 4 conquest screens ──
   | 'conquest-session'
   | 'conquest-battle'
@@ -230,10 +239,39 @@ export interface CheckinPayload {
 }
 
 export interface ChestOpenResult {
-  kudosAwarded: number;
   xpAwarded: number;
   squadLevel: number;
   squadXp: number;
+  clubTokensAwarded: number;
+  brandTokensAwarded: number;
+}
+
+export interface WelcomeChestResult {
+  clubTokensAwarded: number;
+  brandTokensAwarded: number;
+  xpAwarded: number;
+}
+
+export interface PodSummary {
+  id: string;
+  name: string;
+  emoji: string;
+  founderId: string;
+  members: Array<{ profileId: string; displayName: string }>;
+}
+
+export interface PlayerBrandData {
+  id: string;
+  brand: string;
+  supportLevel: number;
+  brandXp: number;
+  switchedCount: number;
+  bonuses: { pvpRewardPct: number; territoryInfPct: number; label: string };
+}
+
+export interface PlayerWalletData {
+  clubTokens: number;
+  brandTokens: number;
 }
 
 export interface PlayerContribution {

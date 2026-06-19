@@ -1,24 +1,10 @@
 import { PrismaClient } from "@prisma/client";
+import { getLevelFromThresholds } from "./brand-constants";
 
-export const LEVEL_THRESHOLDS = [0, 300, 700, 1400, 2500, 4000, 6000, 8500, 11500, 15000];
+export const LEVEL_THRESHOLDS = [0, 300, 700, 1400, 2500, 4000, 6000, 8500, 11500, 15000] as const;
 
 export function getLevelFromXp(xp: number): number {
-  let level = 1;
-  for (let i = 0; i < LEVEL_THRESHOLDS.length; i++) {
-    if (xp >= LEVEL_THRESHOLDS[i]) level = i + 1;
-    else break;
-  }
-  // Level 10+ = previous threshold + 4000 XP per level
-  if (xp >= LEVEL_THRESHOLDS[LEVEL_THRESHOLDS.length - 1]) {
-    let threshold = LEVEL_THRESHOLDS[LEVEL_THRESHOLDS.length - 1];
-    level = LEVEL_THRESHOLDS.length;
-    while (true) {
-      threshold += 4000;
-      if (xp >= threshold) level++;
-      else break;
-    }
-  }
-  return level;
+  return getLevelFromThresholds(xp, LEVEL_THRESHOLDS, 4000);
 }
 
 export function getXpForNextLevel(currentXp: number): { current: number; threshold: number; progress: number } {
@@ -48,7 +34,8 @@ export type XpSource =
   | "scraper_session"
   | "chest"
   | "new_member"
-  | "streak";
+  | "streak"
+  | "donation";
 
 export const XP_AMOUNTS: Record<XpSource, number> = {
   checkin: 60,
@@ -56,23 +43,40 @@ export const XP_AMOUNTS: Record<XpSource, number> = {
   chest: 50,
   new_member: 40,
   streak: 20,
+  donation: 1, // 1 token = 1 XP, no multiplier — actual amount passed as parameter
 };
 
 /** Squad-wide streak bonus awarded once per day when the streak increments (cron). */
 export const STREAK_DAILY_XP = XP_AMOUNTS.streak;
 
-/** Chest open XP/kudos — randomized per open */
+/** Chest open XP — randomized per open */
 export const EARNER_CHEST_XP_MIN = 30;
 export const EARNER_CHEST_XP_MAX = 80;
-export const EARNER_CHEST_KUDOS = 12;
 export const CONTRIBUTOR_CHEST_XP_MIN = 10;
 export const CONTRIBUTOR_CHEST_XP_MAX = 30;
-export const CONTRIBUTOR_CHEST_KUDOS = 8;
 
 export function rollChestXp(isEarner: boolean): number {
   const min = isEarner ? EARNER_CHEST_XP_MIN : CONTRIBUTOR_CHEST_XP_MIN;
   const max = isEarner ? EARNER_CHEST_XP_MAX : CONTRIBUTOR_CHEST_XP_MAX;
   return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+export const EARNER_CLUB_TOKENS_MIN = 100;
+export const EARNER_CLUB_TOKENS_MAX = 180;
+export const CONTRIBUTOR_CLUB_TOKENS_MIN = 40;
+export const CONTRIBUTOR_CLUB_TOKENS_MAX = 80;
+
+export const EARNER_BRAND_TOKENS = 50;
+export const CONTRIBUTOR_BRAND_TOKENS = 20;
+
+export function rollChestClubTokens(isEarner: boolean): number {
+  const min = isEarner ? EARNER_CLUB_TOKENS_MIN : CONTRIBUTOR_CLUB_TOKENS_MIN;
+  const max = isEarner ? EARNER_CLUB_TOKENS_MAX : CONTRIBUTOR_CLUB_TOKENS_MAX;
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+export function rollChestBrandTokens(isEarner: boolean): number {
+  return isEarner ? EARNER_BRAND_TOKENS : CONTRIBUTOR_BRAND_TOKENS;
 }
 
 /**

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getMobileUser } from "@/lib/mobile-auth";
 import { prisma } from "@/lib/db";
+import { ensurePlayerHasPod } from "@/lib/pod-helpers";
 
 /** Prisma returns BigInt/Decimal — JSON.stringify throws without this. */
 function serializeMySquad(membership: {
@@ -331,6 +332,20 @@ export async function GET(req: NextRequest) {
     chestsOpened,
   };
 
+  // Active Pod — self-heals: if the player has no Pod in this squad, create one silently.
+  const podResult = await ensurePlayerHasPod(
+    user.profileId,
+    membership.squad.id,
+    null,
+  );
+  const myPod = {
+    id: podResult.pod.id,
+    name: podResult.pod.name,
+    emoji: podResult.pod.emoji,
+    founderId: podResult.pod.founderId,
+    members: podResult.pod.members,
+  };
+
   return NextResponse.json({
     ...serializeMySquad(membership),
     activeChest: activeChestData,
@@ -338,5 +353,6 @@ export async function GET(req: NextRequest) {
     recentFeed,
     streak,
     myContribution,
+    myPod,
   });
 }

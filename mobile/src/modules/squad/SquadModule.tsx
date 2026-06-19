@@ -5,7 +5,8 @@ import { useAuthStore } from '../../stores/authStore';
 import { useSignUpModal } from '../../contexts/SignUpModalContext';
 import { useSquad } from './hooks/useSquad';
 import { useConquest } from './hooks/useConquest';
-import { getPendingInvite, disbandDismissKey, resetDevCheckinFlow, tapChest, openChest } from './api';
+import { getPendingInvite, disbandDismissKey, resetDevCheckinFlow, tapChest, openChest, ensurePodForSquad } from './api';
+import * as api from './api';
 import * as conquestApi from './conquestApi';
 import type { SquadScreen, SquadDisbandedNotice } from './types';
 import type { Squad, SquadPreview, ConquestBattle, SquadCardData, ConquestImpactBreakdown } from './types';
@@ -29,6 +30,16 @@ import { SquadManageScreen } from './screens/SquadManageScreen';
 import { SquadEditScreen } from './screens/SquadEditScreen';
 import { CityLeaderboardScreen } from './screens/CityLeaderboardScreen';
 import { CheckInSheet } from './screens/CheckInSheet';
+// Phase 3: Pods, Tokens & Brands
+import { PodPlaystyleScreen } from './screens/PodPlaystyleScreen';
+import { PodCreateScreen } from './screens/PodCreateScreen';
+import { BrandSelectScreen } from './screens/BrandSelectScreen';
+import { WelcomeChestScreen } from './screens/WelcomeChestScreen';
+import { TokenSplitScreen } from './screens/TokenSplitScreen';
+import { BrandDetailScreen } from './screens/BrandDetailScreen';
+import { ClubhouseDetailScreen } from './screens/ClubhouseDetailScreen';
+import type { PlayStyle } from './podConstants';
+import type { WelcomeChestResult, PlayerBrandData } from './types';
 // Phase 4 Conquest screens
 import { ConquestLiveBanner } from './components/ConquestLiveBanner';
 import { ConquestActiveSessionScreen } from './screens/ConquestActiveSessionScreen';
@@ -40,7 +51,7 @@ import {
 import { ConquestImpactRevealScreen } from './screens/ConquestImpactRevealScreen';
 import { ConquestShareScreen } from './screens/ConquestShareScreen';
 import { ConquestAlertsScreen } from './screens/ConquestAlertsScreen';
-import type { SquadChest, FeedItem, SquadStreak, ChestOpenResult, PlayerContribution } from './types';
+import type { SquadChest, FeedItem, SquadStreak, ChestOpenResult, PlayerContribution, PlayerWalletData } from './types';
 import {
   HAS_SEEN_CAROUSEL_KEY,
   subscribeSquaddOnboardingReset,
@@ -84,6 +95,20 @@ export default function SquadModule({
   const [cityRank, setCityRank] = useState<number | null>(null);
   const [selectedChest, setSelectedChest] = useState<SquadChest | null>(null);
   const [chestOpenResult, setChestOpenResult] = useState<ChestOpenResult | null>(null);
+  // Phase 3: Pods, Tokens & Brands
+  const [createdPodId, setCreatedPodId] = useState<string | null>(null);
+  const [selectedPlayStyle, setSelectedPlayStyle] = useState<PlayStyle | null>(null);
+  const [welcomeChestResult, setWelcomeChestResult] = useState<WelcomeChestResult | null>(null);
+  const [playerBrandData, setPlayerBrandData] = useState<PlayerBrandData | null>(null);
+  const [walletData, setWalletData] = useState<PlayerWalletData | null>(null);
+  const [myPodData, setMyPodData] = useState<import('./types').PodSummary | null>(null);
+  // Join path — tracks whether brand/chest flow was entered via join-by-code/accept
+  const [joinPath, setJoinPath] = useState(false);
+  const [joinedSquadId, setJoinedSquadId] = useState<string | null>(null);
+  // Where to go back from brand-select (varies by entry point)
+  const [brandSelectBackScreen, setBrandSelectBackScreen] = useState<SquadScreen>('pod-playstyle');
+  // When true, pod-playstyle's "selected" action skips pod-create and goes to invite screen
+  const [podPlaystyleForInvite, setPodPlaystyleForInvite] = useState(false);
   const [showCheckinSheet, setShowCheckinSheet] = useState(false);
   // Phase 4 Conquest state
   const [conquestCardData, setConquestCardData] = useState<SquadCardData | null>(null);
@@ -132,6 +157,18 @@ export default function SquadModule({
     void refreshSession();
     void refreshAlertBadge();
   }, [isActive, refreshSession, refreshAlertBadge]);
+
+  // Fetch wallet + brand data when the home screen is active
+  useEffect(() => {
+    if (screen !== 'home') return;
+    void Promise.all([
+      useAuthStore.getState().authedFetch('/api/wallet/me').then((r) => r.ok ? r.json() : null),
+      useAuthStore.getState().authedFetch('/api/brand/me').then((r) => r.ok ? r.json() : null),
+    ]).then(([w, b]) => {
+      if (w) setWalletData(w);
+      if (b?.brand) setPlayerBrandData(b.brand);
+    }).catch(() => {});
+  }, [screen]);
 
   // Pre-fetch squad card data as soon as a clash is detected, so stats show immediately
   useEffect(() => {
@@ -195,12 +232,21 @@ export default function SquadModule({
     if (data.streak !== undefined) setStreak(data.streak);
     if (data.myContribution !== undefined) setMyContribution(data.myContribution);
     if (data.mySquad?.rank !== undefined) setCityRank(data.mySquad.rank);
+    // Phase 3: Pod data embedded in the squads/my response
+    if (data.myPod !== undefined) setMyPodData(data.myPod);
   }, []);
 
   const handleDevReset = useCallback(async () => {
     try {
       const result = await resetDevCheckinFlow();
+      // Clear all local phase-3 state so the UI reflects the reset immediately
       setActiveChest(null);
+      setPlayerBrandData(null);
+      setWalletData(null);
+      setWelcomeChestResult(null);
+      setJoinPath(false);
+      setJoinedSquadId(null);
+      setBrandSelectBackScreen('pod-playstyle');
       const [data] = await Promise.all([
         fetchMySquad(),
         refreshSession(),
@@ -210,7 +256,7 @@ export default function SquadModule({
       const { chests, radarSessions, pulseCooldowns } = result.cleared;
       Alert.alert(
         'Flow reset',
-        `Cleared ${chests} chest(s), ${radarSessions} session(s), ${pulseCooldowns} cooldown(s). You can check in again.`,
+        `Cleared ${chests} chest(s), ${radarSessions} session(s), ${pulseCooldowns} cooldown(s). Brand + wallet reset. You can re-run onboarding.`,
       );
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : 'Reset failed';
@@ -472,14 +518,40 @@ export default function SquadModule({
   }, []);
 
   const handleJoin = useCallback(async (code?: string, inviteId?: number, squadId?: string) => {
+    let resolvedSquadId: string | null = null;
+    let chestClaimed = false;
+
     if (code) {
-      await joinByCode(code);
+      const data = await joinByCode(code);
+      resolvedSquadId = data.squad?.id ?? null;
+      chestClaimed = data.welcomeChestClaimed ?? false;
+      // joinByCode hook already sets squad in state; no extra fetch needed
     } else if (inviteId && squadId) {
-      await accept(squadId, inviteId);
+      // Call api directly to capture welcomeChestClaimed from the response
+      const data = await api.acceptInvite(squadId, inviteId);
+      resolvedSquadId = squadId;
+      chestClaimed = data.welcomeChestClaimed ?? false;
+      // Hook's accept() was not called, so squad is not yet loaded — fetch it now
+      const squadData = await fetchMySquad();
+      extractPhase2Data(squadData);
     }
+
     await AsyncStorage.removeItem(PENDING_INVITE_KEY);
-    setScreen('home');
-  }, [joinByCode, accept]);
+
+    if (!chestClaimed && resolvedSquadId) {
+      setJoinPath(true);
+      setJoinedSquadId(resolvedSquadId);
+      setScreen('brand-select');
+    } else {
+      // Returning player — ensure Pod silently, then go home
+      if (resolvedSquadId) {
+        void ensurePodForSquad(resolvedSquadId);
+      }
+      setJoinPath(false);
+      setJoinedSquadId(null);
+      setScreen('home');
+    }
+  }, [joinByCode, fetchMySquad, extractPhase2Data]);
 
   const handleMaybeLater = useCallback(async (preview: SquadPreview | null, inviteId?: number) => {
     if (preview) {
@@ -556,8 +628,21 @@ export default function SquadModule({
       {screen === 'invite' && createdSquad && (
         <SquadInviteScreen
           squad={createdSquad}
-          onInvitesSent={handleInvitesSent}
-          onSkip={() => setScreen('created')}
+          onInvitesSent={(result) => {
+            // Non-onboarding return paths skip the "created" confirmation screen
+            if (inviteReturnScreen === 'home' || inviteReturnScreen === 'clubhouse-detail') {
+              setScreen(inviteReturnScreen);
+            } else {
+              handleInvitesSent(result);
+            }
+          }}
+          onSkip={() => {
+            if (inviteReturnScreen === 'home' || inviteReturnScreen === 'clubhouse-detail') {
+              setScreen(inviteReturnScreen);
+            } else {
+              setScreen('created');
+            }
+          }}
           onBack={() => setScreen(inviteReturnScreen)}
         />
       )}
@@ -565,7 +650,7 @@ export default function SquadModule({
         <SquadCreatedScreen
           squad={createdSquad}
           inviteResult={inviteResult}
-          onGoToSquad={() => { void fetchMySquad(); setScreen('home'); }}
+          onGoToSquad={() => { void fetchMySquad(); setScreen('pod-playstyle'); }}
           onInviteMore={() => {
             setInviteReturnScreen('created');
             setScreen('invite');
@@ -719,6 +804,23 @@ export default function SquadModule({
             }
             alertBadgeCount={unreadAlertCount}
             onAlerts={() => setScreen('conquest-alerts')}
+            myPod={myPodData}
+            brandData={playerBrandData}
+            walletData={walletData}
+            onClubhouseDetail={() => setScreen('clubhouse-detail')}
+            onBrandDetail={() => {
+              if (playerBrandData) {
+                setScreen('brand-detail');
+              } else {
+                setBrandSelectBackScreen('home');
+                setScreen('brand-select');
+              }
+            }}
+            onPodCreate={() => setScreen('pod-playstyle')}
+            onPodInvite={() => {
+              setPodPlaystyleForInvite(true);
+              setScreen('pod-playstyle');
+            }}
           />
           <CheckInSheet
             visible={showCheckinSheet}
@@ -809,7 +911,8 @@ export default function SquadModule({
       )}
       {screen === 'chest-open' && chestOpenResult && squad && (
         <SquadChestOpenScreen
-          kudosAwarded={chestOpenResult.kudosAwarded}
+          clubTokensAwarded={chestOpenResult.clubTokensAwarded}
+          brandTokensAwarded={chestOpenResult.brandTokensAwarded}
           xpAwarded={chestOpenResult.xpAwarded}
           squadName={squad.name}
           onDone={async () => {
@@ -817,6 +920,115 @@ export default function SquadModule({
             extractPhase2Data(data);
             setScreen('home');
           }}
+        />
+      )}
+      {screen === 'pod-playstyle' && (
+        <PodPlaystyleScreen
+          onSelected={(playStyle) => {
+            setSelectedPlayStyle(playStyle);
+            if (podPlaystyleForInvite) {
+              // From Squad Home "Invite" — go straight to the squad invite screen
+              setPodPlaystyleForInvite(false);
+              setCreatedSquad(squad);
+              setInviteReturnScreen('home');
+              setScreen('invite');
+            } else {
+              setScreen('pod-create');
+            }
+          }}
+          onSkip={() => {
+            if (podPlaystyleForInvite) {
+              setPodPlaystyleForInvite(false);
+              setCreatedSquad(squad);
+              setInviteReturnScreen('home');
+              setScreen('invite');
+            } else {
+              setScreen('brand-select');
+            }
+          }}
+          onBack={() => {
+            setPodPlaystyleForInvite(false);
+            setScreen('home');
+          }}
+        />
+      )}
+      {screen === 'pod-create' && squad && (
+        <PodCreateScreen
+          squadId={squad.id}
+          playStyle={selectedPlayStyle}
+          onCreated={(podId) => { setCreatedPodId(podId); void fetchMySquad(); setScreen('brand-select'); }}
+          onSkip={() => { void ensurePodForSquad(squad.id); setScreen('brand-select'); }}
+          onBack={() => setScreen('pod-playstyle')}
+        />
+      )}
+      {screen === 'brand-select' && (
+        <BrandSelectScreen
+          onSelected={(brand) => {
+            setPlayerBrandData(brand);
+            // If coming from Squad Home (back target is home), skip chest — already claimed
+            setScreen(brandSelectBackScreen === 'home' ? 'home' : 'welcome-chest');
+          }}
+          onSkip={() => setScreen(brandSelectBackScreen === 'home' ? 'home' : 'welcome-chest')}
+          onBack={joinPath ? undefined : () => setScreen(brandSelectBackScreen)}
+        />
+      )}
+      {screen === 'welcome-chest' && squad && (
+        <WelcomeChestScreen
+          squadName={squad.name}
+          onOpened={(result) => { setWelcomeChestResult(result); setScreen('token-split'); }}
+        />
+      )}
+      {screen === 'token-split' && squad && welcomeChestResult && (
+        <TokenSplitScreen
+          squadId={squad.id}
+          squadName={squad.name}
+          squadEmoji={squad.emoji}
+          totalClubTokens={welcomeChestResult.clubTokensAwarded}
+          onConfirmExtra={joinPath && joinedSquadId
+            ? async () => { await ensurePodForSquad(joinedSquadId); }
+            : undefined}
+          onDone={async () => {
+            setJoinPath(false);
+            setJoinedSquadId(null);
+            const data = await fetchMySquad();
+            extractPhase2Data(data);
+            setScreen('home');
+          }}
+        />
+      )}
+      {screen === 'brand-detail' && playerBrandData && walletData && (
+        <BrandDetailScreen
+          brandData={playerBrandData}
+          brandTokens={walletData.brandTokens}
+          onSwitchBrand={() => { setBrandSelectBackScreen('home'); setScreen('brand-select'); }}
+          onBack={() => setScreen('home')}
+        />
+      )}
+      {screen === 'clubhouse-detail' && squad && (
+        <ClubhouseDetailScreen
+          squad={squad as any}
+          myPod={myPodData}
+          wallet={walletData}
+          onBack={() => setScreen('home')}
+          onPodCreate={() => setScreen('pod-playstyle')}
+          onPodInvite={() => {
+            setCreatedSquad(squad);
+            setInviteReturnScreen('clubhouse-detail');
+            setScreen('invite');
+          }}
+          onPodEdit={() => setScreen('pod-edit')}
+        />
+      )}
+      {screen === 'pod-edit' && squad && myPodData && (
+        <PodCreateScreen
+          squadId={squad.id}
+          playStyle={null}
+          editPodId={myPodData.id}
+          initialName={myPodData.name}
+          initialEmoji={myPodData.emoji}
+          onCreated={async () => { await fetchMySquad(); setScreen('clubhouse-detail'); }}
+          onSkip={() => setScreen('clubhouse-detail')}
+          onBack={() => setScreen('clubhouse-detail')}
         />
       )}
       {screen === 'leaderboard' && (

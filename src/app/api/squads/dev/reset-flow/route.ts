@@ -10,7 +10,8 @@ function todayHCMC(): Date {
 
 /**
  * POST /api/squads/dev/reset-flow
- * Dev only — clears today's check-in chest, radar sessions, pulse cooldowns for retesting.
+ * Dev only — clears today's check-in chest, radar sessions, pulse cooldowns,
+ * and optionally resets brand/wallet/welcomeChest so the onboarding flow can be retested.
  */
 export async function POST(req: NextRequest) {
   const user = await getMobileUser(req);
@@ -48,12 +49,24 @@ export async function POST(req: NextRequest) {
     }),
   ]);
 
+  // Reset brand, wallet, and welcome chest so the full onboarding flow can be re-run
+  await prisma.$transaction([
+    prisma.playerBrand.deleteMany({ where: { profileId: user.profileId } }),
+    prisma.playerWallet.deleteMany({ where: { profileId: user.profileId } }),
+    prisma.tokenLedger.deleteMany({ where: { profileId: user.profileId } }),
+    prisma.playerProfile.update({
+      where: { id: user.profileId },
+      data: { welcomeChestClaimed: false },
+    }),
+  ]);
+
   return NextResponse.json({
     ok: true,
     cleared: {
       chests: chestsDeleted.count,
       radarSessions: sessionsDeleted.count,
       pulseCooldowns: cooldownsDeleted.count,
+      brandReset: true,
     },
   });
 }

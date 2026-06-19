@@ -213,6 +213,7 @@ model PlayerProfile {
   gender                String?
   preferences           Json      @default("{}")
   onboardingCompleted   Boolean   @default(false) @map("onboarding_completed")
+  welcomeChestClaimed   Boolean   @default(false) @map("welcome_chest_claimed")
   pushToken             String?   @map("push_token")
   pushTokenIos          String?   @map("push_token_ios")
   pushTokenUpdatedAt    DateTime? @map("push_token_updated_at")
@@ -247,6 +248,10 @@ model PlayerProfile {
   radarSessions    RadarSession[]
   pulseCooldowns   VenuePulseCooldown[]
   squadAlerts      SquadAlert[]
+  podMemberships   PodMember[]
+  foundedPods      Pod[]         @relation("PodFounder")
+  brand            PlayerBrand?
+  wallet           PlayerWallet?
 
   @@map("player_profiles")
 }
@@ -551,6 +556,7 @@ model Squad {
   invites      SquadInvite[]
   chests       SquadChest[]
   xpLog        SquadXpLog[]
+  pods         Pod[]
   radarSessions     RadarSession[]
   cardBattlesInit   CardBattle[]      @relation("InitiatingSquad")
   cardBattlesRival  CardBattle[]      @relation("RivalSquad")
@@ -599,15 +605,18 @@ model SquadInvite {
   inviteeName    String?   @map("invitee_name")
   inviteChannel  String    @default("push") @map("invite_channel")
   status         String    @default("pending")
+  podId          String?   @map("pod_id")
   createdAt      DateTime  @default(now()) @map("created_at")
   resolvedAt     DateTime? @map("resolved_at")
   lastResentAt   DateTime? @map("last_resent_at")
 
   squad          Squad         @relation(fields: [squadId], references: [id], onDelete: Cascade)
   inviter        PlayerProfile @relation("InviterInvites", fields: [inviterId], references: [id])
+  pod            Pod?          @relation(fields: [podId], references: [id])
 
   @@index([squadId])
   @@index([inviteeId])
+  @@index([podId])
   @@map("squad_invites")
 }
 
@@ -682,6 +691,83 @@ model SquadWaitlist {
   createdAt   DateTime @default(now()) @map("created_at")
 
   @@map("squad_waitlist")
+}
+
+// ── Pods, Tokens & Brands ────────────────────────────────────────────────────
+
+model Pod {
+  id          String    @id @default(uuid())
+  squadId     String    @map("squad_id")
+  name        String
+  emoji       String
+  founderId   String    @map("founder_id")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  disbandedAt DateTime? @map("disbanded_at")
+
+  squad       Squad         @relation(fields: [squadId], references: [id])
+  founder     PlayerProfile @relation("PodFounder", fields: [founderId], references: [id])
+  members     PodMember[]
+  invites     SquadInvite[]
+
+  @@index([squadId])
+  @@map("pods")
+}
+
+model PodMember {
+  id        Int       @id @default(autoincrement())
+  podId     String    @map("pod_id")
+  profileId String    @map("profile_id")
+  joinedAt  DateTime  @default(now()) @map("joined_at")
+  leftAt    DateTime? @map("left_at")
+
+  pod       Pod           @relation(fields: [podId], references: [id])
+  profile   PlayerProfile @relation(fields: [profileId], references: [id])
+
+  @@unique([podId, profileId])
+  @@index([profileId])
+  @@map("pod_members")
+}
+
+/// One paddle brand record per player. Created lazily on first selection.
+model PlayerBrand {
+  id            String   @id @default(uuid())
+  profileId     String   @unique @map("profile_id")
+  brand         String
+  supportLevel  Int      @default(1) @map("support_level")
+  brandXp       Int      @default(0) @map("brand_xp")
+  selectedAt    DateTime @default(now()) @map("selected_at")
+  switchedCount Int      @default(0) @map("switched_count")
+
+  profile       PlayerProfile @relation(fields: [profileId], references: [id])
+
+  @@map("player_brands")
+}
+
+/// Running personal token balance. One row per player, lazily created.
+model PlayerWallet {
+  id           String   @id @default(uuid())
+  profileId    String   @unique @map("profile_id")
+  clubTokens   Int      @default(0) @map("club_tokens")
+  brandTokens  Int      @default(0) @map("brand_tokens")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  profile      PlayerProfile @relation(fields: [profileId], references: [id])
+
+  @@map("player_wallets")
+}
+
+/// Audit log for every token movement.
+model TokenLedger {
+  id        Int      @id @default(autoincrement())
+  profileId String   @map("profile_id")
+  tokenType String   @map("token_type")
+  delta     Int
+  reason    String
+  squadId   String?  @map("squad_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([profileId, createdAt])
+  @@map("token_ledger")
 }
 
 // ── Squad Conquest (Phase 4) ─────────────────────────────────────────────────

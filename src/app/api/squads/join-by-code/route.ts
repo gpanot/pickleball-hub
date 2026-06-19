@@ -83,24 +83,33 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const updated = await prisma.squad.findUnique({
-    where: { id: squad.id },
-    include: {
-      code: true,
-      members: {
-        where: { leftAt: null },
-        include: {
-          profile: {
-            select: {
-              id: true,
-              displayName: true,
-              reclubPlayer: { select: { imageUrl: true } },
+  const [updated, joinerProfile] = await Promise.all([
+    prisma.squad.findUnique({
+      where: { id: squad.id },
+      include: {
+        code: true,
+        members: {
+          where: { leftAt: null },
+          include: {
+            profile: {
+              select: {
+                id: true,
+                displayName: true,
+                reclubPlayer: { select: { imageUrl: true } },
+              },
             },
           },
         },
       },
-    },
-  });
+    }),
+    prisma.playerProfile.findUnique({
+      where: { id: user.profileId },
+      select: { welcomeChestClaimed: true },
+    }),
+  ]);
 
-  return NextResponse.json({ squad: updated });
+  return NextResponse.json({
+    squad: updated,
+    welcomeChestClaimed: joinerProfile?.welcomeChestClaimed ?? false,
+  });
 }

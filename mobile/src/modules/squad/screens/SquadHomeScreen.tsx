@@ -13,12 +13,13 @@ import { SquadContributionCard } from '../components/SquadContributionCard';
 import { SquadActivityFeed } from '../components/SquadActivityFeed';
 import { SquadPlaceholderChest } from '../components/SquadPlaceholderChest';
 import { ConquestRadarInactiveCard } from '../components/ConquestLiveBanner';
-import type { Squad, SquadChest, FeedItem, SquadStreak, PlayerContribution } from '../types';
+import type { Squad, SquadChest, FeedItem, SquadStreak, PlayerContribution, PodSummary, PlayerBrandData, PlayerWalletData } from '../types';
 
 const BANGERS = 'Bangers_400Regular';
 const GOLD = '#facc15';
 const LIME = '#a3e635';
 const RED = '#ef4444';
+const PURPLE = '#a78bfa';
 
 
 interface Props {
@@ -47,6 +48,14 @@ interface Props {
   onCheckin: () => void;
   onLeaderboard: () => void;
   onManage?: () => void;
+  // Phase 3: Pods, Tokens & Brands
+  myPod?: PodSummary | null;
+  brandData?: PlayerBrandData | null;
+  walletData?: PlayerWalletData | null;
+  onClubhouseDetail?: () => void;
+  onBrandDetail?: () => void;
+  onPodCreate?: () => void;
+  onPodInvite?: () => void;
   // Phase 4 Conquest
   conquestBanner?: React.ReactNode;
   hasActiveSession?: boolean;
@@ -62,6 +71,8 @@ export function SquadHomeScreen({
   onExitSquad, onRemoveMember, onDisbandPress, onLeavePress,
   onChestPress, onChestTap, onChestOpen, onChestNudge,
   onCheckin, onLeaderboard, onManage,
+  myPod, brandData, walletData,
+  onClubhouseDetail, onBrandDetail, onPodCreate, onPodInvite,
   conquestBanner, hasActiveSession,
   alertBadgeCount, onAlerts, onDevReset,
 }: Props) {
@@ -155,7 +166,57 @@ export function SquadHomeScreen({
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={LIME} />}
         contentContainerStyle={{ paddingBottom: 100 }}
       >
+        {/* Clickable header → Clubhouse Detail */}
+        <TouchableOpacity
+          style={s.clubhouseHeader}
+          onPress={onClubhouseDetail}
+          activeOpacity={0.75}
+        >
+          <Text style={s.clubhouseEmoji}>{squad.emoji}</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={s.clubhouseName}>{squad.name}</Text>
+            <Text style={s.clubhouseLevel}>Level {squad.level} · {squad.totalXp.toLocaleString()} XP</Text>
+          </View>
+          <Text style={s.clubhouseArrow}>›</Text>
+        </TouchableOpacity>
+
         <SquadIdentityBar squad={squad} cityRank={cityRank} />
+
+        {/* Phase 3: Pod + Brand cards */}
+        <View style={s.phase3Row}>
+          {/* Pod card — myPod is always present (backend self-heals) */}
+          {myPod ? (
+            <TouchableOpacity style={s.phase3Card} onPress={onClubhouseDetail} activeOpacity={0.8}>
+              <Text style={s.phase3CardEmoji}>{myPod.emoji}</Text>
+              <Text style={s.phase3CardTitle}>{myPod.name}</Text>
+              <Text style={s.phase3CardSub}>{myPod.members.length} members</Text>
+              <TouchableOpacity style={s.phase3CardCta} onPress={onPodInvite}>
+                <Text style={s.phase3CardCtaText}>+ Invite</Text>
+              </TouchableOpacity>
+            </TouchableOpacity>
+          ) : null}
+          {/* Brand card */}
+          {brandData ? (
+            <TouchableOpacity style={s.phase3Card} onPress={onBrandDetail} activeOpacity={0.8}>
+              <Text style={s.phase3CardEmoji}>🏓</Text>
+              <Text style={s.phase3CardTitle}>{brandData.brand.toUpperCase().replace('_', ' ')}</Text>
+              <Text style={s.phase3CardSub}>Lv {brandData.supportLevel} · {walletData?.brandTokens ?? 0} ★</Text>
+              <View style={[s.phase3CardCta, { borderColor: PURPLE }]}>
+                <Text style={[s.phase3CardCtaText, { color: PURPLE }]}>My Brand</Text>
+              </View>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity style={s.phase3Card} onPress={onBrandDetail} activeOpacity={0.8}>
+              <Text style={s.phase3CardEmoji}>🏓</Text>
+              <Text style={s.phase3CardTitle}>No Brand</Text>
+              <Text style={s.phase3CardSub}>Pick your paddle brand</Text>
+              <View style={[s.phase3CardCta, { borderColor: '#52525b' }]}>
+                <Text style={[s.phase3CardCtaText, { color: '#a1a1aa' }]}>Choose →</Text>
+              </View>
+            </TouchableOpacity>
+          )}
+        </View>
+
         {/* Radar card: show inactive placeholder when no session, live banner when active */}
         {conquestBanner ?? (
           <ConquestRadarInactiveCard onCheckin={onCheckin} sessionActive={hasActiveSession} />
@@ -372,4 +433,30 @@ const s = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3,
   },
   bellBadgeText: { fontSize: 9, fontWeight: '900', color: '#fff' },
+  // Phase 3: Clubhouse header
+  clubhouseHeader: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    marginHorizontal: 16, marginTop: 12, marginBottom: 4,
+    backgroundColor: '#141414',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)', borderRadius: 14, padding: 14,
+  },
+  clubhouseEmoji: { fontSize: 32 },
+  clubhouseName: { fontSize: 18, fontWeight: '900', color: '#fff' },
+  clubhouseLevel: { fontSize: 12, color: LIME, fontWeight: '700', marginTop: 1 },
+  clubhouseArrow: { fontSize: 22, color: '#52525b' },
+  // Phase 3: Pod + Brand row
+  phase3Row: { flexDirection: 'row', gap: 10, marginHorizontal: 16, marginTop: 12, marginBottom: 4 },
+  phase3Card: {
+    flex: 1, backgroundColor: '#141414',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)',
+    borderRadius: 14, padding: 14, alignItems: 'center', gap: 2,
+  },
+  phase3CardEmoji: { fontSize: 28, marginBottom: 4 },
+  phase3CardTitle: { fontSize: 13, fontWeight: '900', color: '#fff', textAlign: 'center' },
+  phase3CardSub: { fontSize: 11, color: '#71717a', textAlign: 'center', marginBottom: 8 },
+  phase3CardCta: {
+    borderWidth: 1.5, borderColor: LIME,
+    borderRadius: 100, paddingHorizontal: 12, paddingVertical: 4,
+  },
+  phase3CardCtaText: { fontSize: 11, fontWeight: '800', color: LIME },
 });
