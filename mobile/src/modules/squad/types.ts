@@ -53,6 +53,7 @@ export interface SquadMemberProfile {
 
 export interface SquadMemberWithProfile extends SquadMember {
   profile: SquadMemberProfile;
+  podName?: string | null;
 }
 
 export interface SquadInviteEnriched {

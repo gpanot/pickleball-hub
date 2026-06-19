@@ -109,6 +109,8 @@ export default function SquadModule({
   const [brandSelectBackScreen, setBrandSelectBackScreen] = useState<SquadScreen>('pod-playstyle');
   // When true, pod-playstyle's "selected" action skips pod-create and goes to invite screen
   const [podPlaystyleForInvite, setPodPlaystyleForInvite] = useState(false);
+  // podId to tag invites with (set when entering invite from pod card)
+  const [invitePodId, setInvitePodId] = useState<string | null>(null);
   const [showCheckinSheet, setShowCheckinSheet] = useState(false);
   // Phase 4 Conquest state
   const [conquestCardData, setConquestCardData] = useState<SquadCardData | null>(null);
@@ -628,7 +630,9 @@ export default function SquadModule({
       {screen === 'invite' && createdSquad && (
         <SquadInviteScreen
           squad={createdSquad}
+          podId={invitePodId ?? undefined}
           onInvitesSent={(result) => {
+            setInvitePodId(null);
             // Non-onboarding return paths skip the "created" confirmation screen
             if (inviteReturnScreen === 'home' || inviteReturnScreen === 'clubhouse-detail') {
               setScreen(inviteReturnScreen);
@@ -637,13 +641,14 @@ export default function SquadModule({
             }
           }}
           onSkip={() => {
+            setInvitePodId(null);
             if (inviteReturnScreen === 'home' || inviteReturnScreen === 'clubhouse-detail') {
               setScreen(inviteReturnScreen);
             } else {
               setScreen('created');
             }
           }}
-          onBack={() => setScreen(inviteReturnScreen)}
+          onBack={() => { setInvitePodId(null); setScreen(inviteReturnScreen); }}
         />
       )}
       {screen === 'created' && createdSquad && (
@@ -818,8 +823,10 @@ export default function SquadModule({
             }}
             onPodCreate={() => setScreen('pod-playstyle')}
             onPodInvite={() => {
-              setPodPlaystyleForInvite(true);
-              setScreen('pod-playstyle');
+              setCreatedSquad(squad);
+              setInviteReturnScreen('home');
+              setInvitePodId(myPodData?.id ?? null);
+              setScreen('invite');
             }}
           />
           <CheckInSheet
@@ -1014,6 +1021,7 @@ export default function SquadModule({
           onPodInvite={() => {
             setCreatedSquad(squad);
             setInviteReturnScreen('clubhouse-detail');
+            setInvitePodId(myPodData?.id ?? null);
             setScreen('invite');
           }}
           onPodEdit={() => setScreen('pod-edit')}
@@ -1026,7 +1034,11 @@ export default function SquadModule({
           editPodId={myPodData.id}
           initialName={myPodData.name}
           initialEmoji={myPodData.emoji}
-          onCreated={async () => { await fetchMySquad(); setScreen('clubhouse-detail'); }}
+          onCreated={() => setScreen('clubhouse-detail')}
+          onSaved={(pod) => {
+            setMyPodData({ ...myPodData, name: pod.name, emoji: pod.emoji, members: pod.members });
+            setScreen('clubhouse-detail');
+          }}
           onSkip={() => setScreen('clubhouse-detail')}
           onBack={() => setScreen('clubhouse-detail')}
         />

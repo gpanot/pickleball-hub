@@ -346,8 +346,32 @@ export async function GET(req: NextRequest) {
     members: podResult.pod.members,
   };
 
+  // Fetch pod membership for all squad members so we can show their pod name
+  const memberProfileIds = membership.squad.members.map((m) => m.profileId);
+  const podMemberships = memberProfileIds.length > 0
+    ? await prisma.podMember.findMany({
+        where: {
+          profileId: { in: memberProfileIds },
+          leftAt: null,
+          pod: { squadId: membership.squad.id, disbandedAt: null },
+        },
+        select: {
+          profileId: true,
+          pod: { select: { name: true, emoji: true } },
+        },
+      })
+    : [];
+  const podByProfile = new Map(podMemberships.map((pm) => [pm.profileId, pm.pod]));
+
+  const serialized = serializeMySquad(membership);
+  const membersWithPod = serialized.squad.members.map((m) => {
+    const pod = podByProfile.get(m.profileId);
+    return { ...m, podName: pod ? `${pod.emoji} ${pod.name}` : null };
+  });
+
   return NextResponse.json({
-    ...serializeMySquad(membership),
+    ...serialized,
+    squad: { ...serialized.squad, members: membersWithPod },
     activeChest: activeChestData,
     myOpening: myOpeningData,
     recentFeed,

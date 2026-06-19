@@ -57,14 +57,25 @@ export async function POST(
     return NextResponse.json({ error: "Only the founder can invite" }, { status: 403 });
   }
 
-  let body: { profileIds?: string[]; notOnAppUserIds?: string[] };
+  let body: { profileIds?: string[]; notOnAppUserIds?: string[]; podId?: string };
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { profileIds = [], notOnAppUserIds = [] } = body;
+  const { profileIds = [], notOnAppUserIds = [], podId } = body;
+
+  // If a podId was supplied, verify it belongs to this squad and the caller is a member
+  if (podId) {
+    const pod = await prisma.pod.findFirst({
+      where: { id: podId, squadId, disbandedAt: null },
+      include: { members: { where: { leftAt: null, profileId: user.profileId } } },
+    });
+    if (!pod || pod.members.length === 0) {
+      return NextResponse.json({ error: "Invalid podId or not a pod member" }, { status: 403 });
+    }
+  }
   if (profileIds.length === 0 && notOnAppUserIds.length === 0) {
     return NextResponse.json({ error: "profileIds or notOnAppUserIds required" }, { status: 400 });
   }
@@ -164,6 +175,7 @@ export async function POST(
         inviteeId: profile.id,
         inviteChannel: "push",
         status: "pending",
+        ...(podId ? { podId } : {}),
       },
     });
 
