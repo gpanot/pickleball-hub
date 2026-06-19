@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
   const squadId = membership.squadId;
 
   const existingActive = await prisma.radarSession.findFirst({
-    where: { playerId: user.profileId, state: "active" },
+    where: { playerId: user.profileId, state: "active", autoEndsAt: { gt: new Date() } },
   });
   if (existingActive) {
     return NextResponse.json(

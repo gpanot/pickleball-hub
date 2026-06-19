@@ -11,11 +11,13 @@ export async function detectClash(
   mySquadId: string,
   mySessionId: string
 ): Promise<RadarSession | null> {
+  const now = new Date();
   const rival = await prisma.radarSession.findFirst({
     where: {
       venueId,
       state: "active",
       squadId: { not: mySquadId },
+      autoEndsAt: { gt: now },
     },
   });
 

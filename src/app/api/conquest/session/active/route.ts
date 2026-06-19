@@ -46,6 +46,7 @@ export async function GET(req: NextRequest) {
       venueId: session.venueId,
       state: "active",
       squadId: { not: session.squadId },
+      autoEndsAt: { gt: now },
     },
     include: {
       squad: { select: { id: true, name: true, emoji: true } },

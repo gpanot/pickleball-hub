@@ -46,7 +46,7 @@ export async function GET(
     rivalSquadName = rival?.name ?? null;
   } else {
     const rivalSession = await prisma.radarSession.findFirst({
-      where: { venueId: venueIdNum, state: "active", squadId: { not: membership.squadId } },
+      where: { venueId: venueIdNum, state: "active", squadId: { not: membership.squadId }, autoEndsAt: { gt: new Date() } },
       select: { id: true },
     });
     if (rivalSession) {
