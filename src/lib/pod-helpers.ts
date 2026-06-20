@@ -4,7 +4,7 @@ import type { PlayStyle } from "@/lib/pod-constants";
 
 export interface PodWithMembers {
   id: string;
-  squadId: string;
+  squadId: string | null;
   name: string;
   emoji: string;
   founderId: string;
@@ -22,14 +22,20 @@ export interface EnsurePodResult {
 
 /**
  * Idempotent — if the player already has an active PodMember row in this squad,
- * returns it immediately. Otherwise creates a Pod + PodMember in a transaction
- * and returns the full pod data so callers don't need a second query.
+ * returns it immediately.
+ *
+ * Gang-first behaviour: if the player has a solo Gang (squadId IS NULL), attach
+ * it to the squad rather than creating a new Pod. This preserves the Gang name
+ * and member list the player set up during onboarding.
+ *
+ * Falls back to creating a brand-new Pod only when neither of the above applies.
  */
 export async function ensurePlayerHasPod(
   profileId: string,
   squadId: string,
   playStyle: PlayStyle | null = null,
 ): Promise<EnsurePodResult> {
+  // Check: already has an active pod in this squad
   const existing = await prisma.podMember.findFirst({
     where: { profileId, leftAt: null, pod: { squadId, disbandedAt: null } },
     include: {
@@ -56,6 +62,39 @@ export async function ensurePlayerHasPod(
     };
   }
 
+  // Check: player has a solo Gang (squadId IS NULL) — attach it to this squad
+  const soloMembership = await prisma.podMember.findFirst({
+    where: { profileId, leftAt: null, pod: { squadId: null, disbandedAt: null } },
+    include: {
+      pod: {
+        include: {
+          members: {
+            where: { leftAt: null },
+            include: {
+              profile: {
+                select: { id: true, displayName: true, squadNickname: true },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (soloMembership) {
+    await prisma.pod.update({
+      where: { id: soloMembership.podId },
+      data: { squadId },
+    });
+    const updatedPod = { ...soloMembership.pod, squadId };
+    return {
+      podId: soloMembership.podId,
+      created: false,
+      pod: serializePod(updatedPod),
+    };
+  }
+
+  // Fallback: create a new Pod in this squad
   const name = generateAutoPodName(playStyle);
   const emoji = pickRandomPodEmoji();
 
@@ -92,7 +131,7 @@ export async function ensurePlayerHasPod(
 
 function serializePod(pod: {
   id: string;
-  squadId: string;
+  squadId: string | null;
   name: string;
   emoji: string;
   founderId: string;

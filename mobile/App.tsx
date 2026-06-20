@@ -268,6 +268,8 @@ export default function App() {
   const [gearSheetOpen, setGearSheetOpen] = useState(false)
   const [onboardingInitialStep, setOnboardingInitialStep] = useState(0)
   const [squadDeeplinkCode, setSquadDeeplinkCode] = useState<string | null>(null)
+  /** Gang-level invite code (type=gang in URL). Routes to gang onboarding, skips gang-setup. */
+  const [gangInviteCode, setGangInviteCode] = useState<string | null>(null)
   const circleScreenRef = useRef<CircleScreenHandle>(null)
   const [squadDeeplinkInviteId, setSquadDeeplinkInviteId] = useState<string | null>(null)
   const [squadDeeplinkSquadId, setSquadDeeplinkSquadId] = useState<string | null>(null)
@@ -323,13 +325,25 @@ export default function App() {
     if (ok) setGearSheetOpen(false)
   }
 
-  // Deep link + push routing for squads
+  // Deep link + push routing for squads and gangs
   useEffect(() => {
     function parseSquadDeeplink(url: string | null) {
       if (!url) return
+      // Match /join/CODE with optional ?type=gang|clubhouse
       const match = url.match(/\/join\/([A-Za-z0-9]+)/)
       if (match) {
-        setSquadDeeplinkCode(match[1].toUpperCase())
+        const code = match[1].toUpperCase()
+        // Discriminate by ?type param:
+        //   type=gang       → Gang invite (friend-to-friend) — skip gang-setup in orchestrator
+        //   type=clubhouse  → Clubhouse admin invite — routes to join-preview
+        //   (no type)       → Legacy default — treat as clubhouse invite for backward compat
+        const typeMatch = url.match(/[?&]type=([a-z]+)/)
+        const inviteType = typeMatch?.[1] ?? 'clubhouse'
+        if (inviteType === 'gang') {
+          setGangInviteCode(code)
+        } else {
+          setSquadDeeplinkCode(code)
+        }
         setActiveTab('squadd')
       }
     }
@@ -672,6 +686,7 @@ export default function App() {
                 onComplete={handleOrchestratorComplete}
                 onExplorePause={handleExplorePause}
                 pendingInviteCode={pendingInviteCode ?? squadDeeplinkCode}
+                pendingGangInviteCode={gangInviteCode}
               />
             </ThemedAppChrome>
           </SafeAreaProvider>

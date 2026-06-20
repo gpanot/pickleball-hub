@@ -606,6 +606,8 @@ model SquadInvite {
   inviteChannel  String    @default("push") @map("invite_channel")
   status         String    @default("pending")
   podId          String?   @map("pod_id")
+  /// 'gang' = friend-to-friend Gang invite (default); 'clubhouse' = admin/squad-level invite
+  inviteType     String    @default("gang") @map("invite_type")
   createdAt      DateTime  @default(now()) @map("created_at")
   resolvedAt     DateTime? @map("resolved_at")
   lastResentAt   DateTime? @map("last_resent_at")
@@ -697,19 +699,22 @@ model SquadWaitlist {
 
 model Pod {
   id          String    @id @default(uuid())
-  squadId     String    @map("squad_id")
+  /// Nullable — a solo Gang created during onboarding has no clubhouse yet.
+  /// Set when the Gang joins or founds a Squad (clubhouse).
+  squadId     String?   @map("squad_id")
   name        String
   emoji       String
   founderId   String    @map("founder_id")
   createdAt   DateTime  @default(now()) @map("created_at")
   disbandedAt DateTime? @map("disbanded_at")
 
-  squad       Squad         @relation(fields: [squadId], references: [id])
+  squad       Squad?        @relation(fields: [squadId], references: [id])
   founder     PlayerProfile @relation("PodFounder", fields: [founderId], references: [id])
   members     PodMember[]
   invites     SquadInvite[]
 
   @@index([squadId])
+  @@index([founderId])
   @@map("pods")
 }
 
