@@ -351,10 +351,13 @@ export default function SquadModule({
       if (await tryRouteDisbanded(squadData?.disbandedNotice)) return true;
       return false;
     }
+    // Populate pod/chest/feed data so the home screen is fully loaded without
+    // needing a manual pull-to-refresh.
+    extractPhase2Data(squadData);
     pushRouteLog(`routeIfHasSquad: "${squadData.squad.name}" → home`);
     setScreen('home');
     return true;
-  }, [resolveActiveAuth, fetchMySquad, tryRouteDisbanded, pushRouteLog]);
+  }, [resolveActiveAuth, fetchMySquad, tryRouteDisbanded, extractPhase2Data, pushRouteLog]);
 
   const syncSquaddRoute = useCallback(async (reason: string) => {
     pushRouteLog(`sync (${reason})`);
