@@ -10,6 +10,7 @@ import { CircleScreen, type CircleScreenHandle } from './src/screens/CircleScree
 import SquadModule from './src/modules/squad/SquadModule'
 import { OnboardingScreen } from './src/screens/OnboardingScreen'
 import { OnboardingOrchestrator } from './src/onboarding/OnboardingOrchestrator'
+import { useIpGeolocation } from './src/onboarding/useIpGeolocation'
 import { PeopleYouMayKnowScreen } from './src/screens/PeopleYouMayKnowScreen'
 import { ProfileSheet } from './src/components/ProfileSheet'
 import { GearSetupScreen } from './src/components/gear/GearSetupScreen'
@@ -307,6 +308,7 @@ export default function App() {
   const bootStatusHydrated = useAuthStore((s) => s.bootStatusHydrated)
   const pushTokenRegistered = useRef(false)
   const bootStatusFetched = useRef(false)
+  const prevJwtRef = useRef<string | null | undefined>(undefined)
   const [orchestratorMode, setOrchestratorMode] = useState<'full' | 'squad-only'>('full')
   const [pendingInviteCode, setPendingInviteCode] = useState<string | null>(null)
 
@@ -407,6 +409,10 @@ export default function App() {
     void useAvatarCacheStore.getState().hydrate()
   }, [])
 
+  // Resolve IP geolocation once after sign-in — sets showReclub + market in authStore.
+  // This is what gates the 'reclub' step in the onboarding sequence.
+  useIpGeolocation()
+
   // Auto-refresh content when app returns from background after 30+ minutes
   const backgroundTimestampRef = useRef<number | null>(null)
   useEffect(() => {
@@ -489,14 +495,30 @@ export default function App() {
         return
       }
 
-      // completed=false, squad=false → full orchestrator (new user / mid-funnel resume)
-      // Use displayName heuristic to determine if identity was already saved
-      const profile = useAuthStore.getState()
-      const hasSavedIdentity = !!profile.profileId && !!profile.displayName
-      setOrchestratorMode(hasSavedIdentity ? 'squad-only' : 'full')
+      // completed=false, squad=false → full orchestrator (new user / mid-funnel resume).
+      // Always start in 'full' mode — the orchestrator's init will resume from the
+      // correct step via AsyncStorage (which was saved with the correct mode).
+      // The displayName heuristic was unreliable: Google sign-in always populates
+      // displayName even for brand-new accounts, falsely triggering squad-only mode.
+      setOrchestratorMode('full')
       setFlowScreen('orchestrator')
     })
   }, [jwt]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Detect sign-out / account deletion: when jwt transitions from a value to null,
+  // reset all per-session refs and routing state so the next sign-in starts fresh.
+  useEffect(() => {
+    const wasSignedIn = prevJwtRef.current != null && prevJwtRef.current !== undefined
+    const isNowSignedOut = !jwt
+    if (wasSignedIn && isNowSignedOut) {
+      debugLog('App', 'jwt cleared — resetting boot state for next sign-in')
+      bootStatusFetched.current = false
+      pushTokenRegistered.current = false
+      setFlowScreen('main')
+      setOrchestratorMode('full')
+    }
+    prevJwtRef.current = jwt
+  }, [jwt])
 
   // Register push token after authentication + listen for FCM token rotation
   useEffect(() => {

@@ -23,6 +23,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  // Optional custom name/emoji/playstyle from the Gang creation flow
+  let bodyName: string | null = null;
+  let bodyEmoji: string | null = null;
+  let bodyPlaystyle: string | null = null;
+  try {
+    const body = await req.json().catch(() => ({}));
+    if (typeof body.name === "string" && body.name.trim()) bodyName = body.name.trim();
+    if (typeof body.emoji === "string" && body.emoji.trim()) bodyEmoji = body.emoji.trim();
+    if (typeof body.playstyle === "string") bodyPlaystyle = body.playstyle;
+  } catch {}
+
   // Look for an existing solo pod (squadId IS NULL, not disbanded, player is active member)
   const existingMembership = await prisma.podMember.findFirst({
     where: {
@@ -34,6 +45,18 @@ export async function POST(req: NextRequest) {
   });
 
   if (existingMembership) {
+    // If a custom name/emoji was provided, update the existing pod
+    if (bodyName || bodyEmoji) {
+      const updated = await prisma.pod.update({
+        where: { id: existingMembership.pod.id },
+        data: {
+          ...(bodyName ? { name: bodyName } : {}),
+          ...(bodyEmoji ? { emoji: bodyEmoji } : {}),
+        },
+        select: { id: true, name: true, emoji: true },
+      });
+      return NextResponse.json({ podId: updated.id, name: updated.name, emoji: updated.emoji, isNew: false });
+    }
     return NextResponse.json({
       podId: existingMembership.pod.id,
       name: existingMembership.pod.name,
@@ -42,18 +65,14 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  // Create a new solo Gang
-  const name = generateAutoPodName(null);
-  const emoji = pickRandomPodEmoji();
+  // Create a new solo Gang with the provided or auto-generated name/emoji
+  const playstyleKey = bodyPlaystyle as import("@/lib/pod-constants").PlayStyle | null;
+  const name = bodyName ?? generateAutoPodName(playstyleKey);
+  const emoji = bodyEmoji ?? pickRandomPodEmoji();
 
   const pod = await prisma.$transaction(async (tx) => {
     const created = await tx.pod.create({
-      data: {
-        squadId: null,
-        name,
-        emoji,
-        founderId: user.profileId,
-      },
+      data: { squadId: null, name, emoji, founderId: user.profileId },
     });
     await tx.podMember.create({
       data: { podId: created.id, profileId: user.profileId },
@@ -61,12 +80,7 @@ export async function POST(req: NextRequest) {
     return created;
   });
 
-  console.log(`[pods/solo] created solo Gang podId=${pod.id} for profileId=${user.profileId}`);
+  console.log(`[pods/solo] created solo Gang podId=${pod.id} name="${name}" for profileId=${user.profileId}`);
 
-  return NextResponse.json({
-    podId: pod.id,
-    name: pod.name,
-    emoji: pod.emoji,
-    isNew: true,
-  });
+  return NextResponse.json({ podId: pod.id, name: pod.name, emoji: pod.emoji, isNew: true });
 }
