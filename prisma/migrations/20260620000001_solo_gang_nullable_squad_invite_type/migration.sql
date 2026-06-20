@@ -33,3 +33,14 @@ BEGIN
     ALTER TABLE "squad_invites" ADD COLUMN "invite_type" TEXT NOT NULL DEFAULT 'gang';
   END IF;
 END $$;
+
+-- 4. Make squad_invites.squad_id nullable (solo Gang invites have no clubhouse yet)
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'squad_invites' AND column_name = 'squad_id' AND is_nullable = 'NO'
+  ) THEN
+    ALTER TABLE "squad_invites" ALTER COLUMN "squad_id" DROP NOT NULL;
+  END IF;
+END $$;

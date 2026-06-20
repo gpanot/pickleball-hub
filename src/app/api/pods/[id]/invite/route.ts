@@ -41,12 +41,15 @@ export async function POST(
     return NextResponse.json({ error: "Pod is full" }, { status: 409 });
   }
 
-  // Invitee must be in the same squad
-  const squadMembership = await prisma.squadMember.findFirst({
-    where: { squadId: pod.squadId, profileId: inviteeId, leftAt: null },
-  });
-  if (!squadMembership) {
-    return NextResponse.json({ error: "Invitee is not in your squad" }, { status: 422 });
+  // For clubhouse pods (squadId set), invitee must be in the same squad.
+  // For solo Gangs (squadId IS NULL), anyone can be invited — squad check is skipped.
+  if (pod.squadId) {
+    const squadMembership = await prisma.squadMember.findFirst({
+      where: { squadId: pod.squadId, profileId: inviteeId, leftAt: null },
+    });
+    if (!squadMembership) {
+      return NextResponse.json({ error: "Invitee is not in your squad" }, { status: 422 });
+    }
   }
 
   // Prevent duplicate invite
@@ -59,10 +62,11 @@ export async function POST(
 
   const invite = await prisma.squadInvite.create({
     data: {
-      squadId: pod.squadId,
+      ...(pod.squadId ? { squadId: pod.squadId } : {}),
       inviterId: user.profileId,
       inviteeId,
       inviteChannel: "push",
+      inviteType: "gang",
       podId,
     },
   });

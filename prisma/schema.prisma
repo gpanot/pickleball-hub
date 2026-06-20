@@ -599,7 +599,8 @@ model SquadCode {
 
 model SquadInvite {
   id             Int       @id @default(autoincrement())
-  squadId        String    @map("squad_id")
+  /// Nullable for solo Gang invites (no clubhouse yet). Set when the Gang joins a squad.
+  squadId        String?   @map("squad_id")
   inviterId      String    @map("inviter_id")
   inviteeId      String?   @map("invitee_id")
   inviteeName    String?   @map("invitee_name")
@@ -612,7 +613,7 @@ model SquadInvite {
   resolvedAt     DateTime? @map("resolved_at")
   lastResentAt   DateTime? @map("last_resent_at")
 
-  squad          Squad         @relation(fields: [squadId], references: [id], onDelete: Cascade)
+  squad          Squad?        @relation(fields: [squadId], references: [id], onDelete: Cascade)
   inviter        PlayerProfile @relation("InviterInvites", fields: [inviterId], references: [id])
   pod            Pod?          @relation(fields: [podId], references: [id])
 

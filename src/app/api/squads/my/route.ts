@@ -45,7 +45,7 @@ function serializeMySquad(membership: {
     }>;
     invites: Array<{
       id: number;
-      squadId: string;
+      squadId: string | null;
       inviterId: string;
       inviteeId: string | null;
       inviteChannel: string;

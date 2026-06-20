@@ -14,6 +14,7 @@ export async function GET(req: NextRequest) {
     where: {
       inviteeId: user.profileId,
       status: "pending",
+      inviteType: "clubhouse",
       squad: { disbandedAt: null },
     },
     orderBy: { createdAt: "desc" },
@@ -41,7 +42,7 @@ export async function GET(req: NextRequest) {
     },
   });
 
-  if (!invite) {
+  if (!invite || !invite.squad) {
     return NextResponse.json({ invite: null });
   }
 
