@@ -34,12 +34,36 @@ export async function DELETE(req: NextRequest) {
     // SquadMember — remove from all squads first
     await tx.squadMember.deleteMany({ where: { profileId: pid } });
 
-    // Squads founded by this user — reassign or disband
-    // Simplest GDPR-safe approach: disband by deleting the squad cascade
-    // (SquadMember, SquadCode, SquadInvite, SquadChest, SquadXpLog all cascade from Squad)
-    await tx.squad.deleteMany({ where: { founderId: pid } });
+    // Pods must be deleted before Squads (pods_squad_id_fkey, no cascade in schema)
+    // Find squads founded by this user, then delete their pods and the squads
+    const foundedSquads = await tx.squad.findMany({
+      where: { founderId: pid },
+      select: { id: true },
+    });
+    const foundedSquadIds = foundedSquads.map((s) => s.id);
 
-    // Pods founded by this user
+    if (foundedSquadIds.length > 0) {
+      // Delete all Squad-referencing tables that lack onDelete: Cascade
+      await tx.squadAlert.deleteMany({ where: { squadId: { in: foundedSquadIds } } });
+      await tx.squadCardState.deleteMany({ where: { squadId: { in: foundedSquadIds } } });
+      await tx.venueInfTotal.deleteMany({ where: { squadId: { in: foundedSquadIds } } });
+      await tx.cardBattle.deleteMany({
+        where: {
+          OR: [
+            { initiatingSquadId: { in: foundedSquadIds } },
+            { rivalSquadId: { in: foundedSquadIds } },
+          ],
+        },
+      });
+      await tx.radarSession.deleteMany({ where: { squadId: { in: foundedSquadIds } } });
+      await tx.podMember.deleteMany({ where: { pod: { squadId: { in: foundedSquadIds } } } });
+      await tx.pod.deleteMany({ where: { squadId: { in: foundedSquadIds } } });
+      // SquadMember, SquadCode, SquadInvite, SquadChest, SquadXpLog cascade from Squad
+      await tx.squad.deleteMany({ where: { id: { in: foundedSquadIds } } });
+    }
+
+    // Pods where this user is founder but squad belongs to someone else
+    await tx.podMember.deleteMany({ where: { pod: { founderId: pid } } });
     await tx.pod.deleteMany({ where: { founderId: pid } });
 
     // Wallet and brand (no cascade)
