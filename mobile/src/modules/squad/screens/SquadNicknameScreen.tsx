@@ -5,9 +5,15 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useAuthStore } from '../../../stores/authStore';
+import { useAuthStore, resolveApiBase } from '../../../stores/authStore';
 import { SquadNicknameShieldIcon } from '../components/SquadNicknameShieldIcon';
 import { SquadBackButton } from '../components/SquadBackButton';
+import { debugLog, debugError } from '../../../lib/debug';
+import {
+  normalizeSquadNickname,
+  sanitizeSquadNicknameInput,
+  SQUAD_NICKNAME_MAX,
+} from '../../../lib/squadNickname';
 
 // Use getState() so we never capture a stale/new-reference authedFetch from a re-render
 function api(path: string, init?: RequestInit) {
@@ -56,8 +62,10 @@ export function SquadNicknameScreen({ onConfirmed, onBack }: Props) {
   useEffect(() => {
     (async () => {
       if (__DEV__) await useAuthStore.getState().ensureDevApiBase();
+      debugLog('squad-nickname', 'prefill start', { apiBase: resolveApiBase() });
       try {
         const r = await api('/api/squads/nickname');
+        debugLog('squad-nickname', `prefill → HTTP ${r.status}`);
         const data = await r.json();
         setProfileInfo({
           displayName: data.displayName ?? authDisplayName,
@@ -71,18 +79,23 @@ export function SquadNicknameScreen({ onConfirmed, onBack }: Props) {
           // Suggestion is already available (server checked), current is always ok
           setCheckState('available');
         }
-      } catch {}
+      } catch (e) {
+        debugError('squad-nickname', 'prefill failed', e);
+      }
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const checkNickname = useCallback((value: string) => {
-    const trimmed = value.trim().toLowerCase();
+    const trimmed = normalizeSquadNickname(value);
     if (!trimmed) { setCheckState('idle'); setReason(''); return; }
 
     setCheckState('checking');
     api(`/api/squads/nickname?q=${encodeURIComponent(trimmed)}`)
-      .then((r) => r.json())
+      .then((r) => {
+        debugLog('squad-nickname', `availability check → HTTP ${r.status}`, { nickname: trimmed });
+        return r.json();
+      })
       .then((data) => {
         if (data.reason) {
           setCheckState('invalid');
@@ -95,11 +108,14 @@ export function SquadNicknameScreen({ onConfirmed, onBack }: Props) {
           setReason('Already taken');
         }
       })
-      .catch(() => { setCheckState('idle'); });
+      .catch((e) => {
+        debugError('squad-nickname', 'availability check failed', e);
+        setCheckState('idle');
+      });
   }, []);
 
   const handleChange = (text: string) => {
-    const cleaned = text.replace(/[^a-zA-Z0-9_]/g, '').toLowerCase().slice(0, 20);
+    const cleaned = sanitizeSquadNicknameInput(text);
     setInput(cleaned);
     setSaveError('');
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -117,20 +133,35 @@ export function SquadNicknameScreen({ onConfirmed, onBack }: Props) {
     }
     setSaving(true);
     setSaveError('');
-    const nickname = input.trim().toLowerCase();
+    const nickname = normalizeSquadNickname(input);
+    debugLog('squad-nickname', 'Confirm tapped', {
+      nickname,
+      checkState,
+      apiBase: resolveApiBase(),
+    });
     let success = false;
     try {
+      if (__DEV__) await useAuthStore.getState().ensureDevApiBase();
+      const authOk = await useAuthStore.getState().ensureServerAuth();
+      debugLog('squad-nickname', 'pre-flight complete', { authOk, apiBase: resolveApiBase() });
+      if (!authOk) {
+        if (mountedRef.current) setSaveError('Network error — please try again');
+        return;
+      }
       const res = await api('/api/squads/nickname', {
         method: 'POST',
         body: JSON.stringify({ nickname }),
       });
+      debugLog('squad-nickname', `POST /api/squads/nickname → HTTP ${res.status}`, { nickname });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: 'Failed to save' }));
+        debugError('squad-nickname', 'POST rejected', err);
         if (mountedRef.current) setSaveError(err.error ?? 'Failed to save');
         return;
       }
       success = true;
-    } catch {
+    } catch (e) {
+      debugError('squad-nickname', 'POST network error', e);
       if (mountedRef.current) setSaveError('Network error — please try again');
     } finally {
       if (mountedRef.current) setSaving(false);
@@ -190,9 +221,9 @@ export function SquadNicknameScreen({ onConfirmed, onBack }: Props) {
             onChangeText={handleChange}
             autoCapitalize="none"
             autoCorrect={false}
-            placeholder="yourhandle"
+            placeholder="yourhandle🔥"
             placeholderTextColor="rgba(255,255,255,0.2)"
-            maxLength={20}
+            maxLength={SQUAD_NICKNAME_MAX * 4}
           />
           {checkState === 'checking' && (
             <ActivityIndicator color={GOLD} size="small" style={{ marginRight: 12 }} />
@@ -230,7 +261,7 @@ export function SquadNicknameScreen({ onConfirmed, onBack }: Props) {
         {/* Rules */}
         <View style={s.rulesCard}>
           <Text style={s.rulesTitle}>RULES</Text>
-          <Text style={s.rulesText}>3–20 characters · letters, numbers, underscores only</Text>
+          <Text style={s.rulesText}>3–20 characters · letters, numbers, emoji</Text>
           <Text style={s.rulesText}>No spaces · can be changed at any time</Text>
         </View>
 

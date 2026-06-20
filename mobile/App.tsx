@@ -9,6 +9,7 @@ import { ExploreSessionsScreen } from './src/screens/ExploreSessionsScreen'
 import { CircleScreen, type CircleScreenHandle } from './src/screens/CircleScreen'
 import SquadModule from './src/modules/squad/SquadModule'
 import { OnboardingScreen } from './src/screens/OnboardingScreen'
+import { OnboardingOrchestrator } from './src/onboarding/OnboardingOrchestrator'
 import { PeopleYouMayKnowScreen } from './src/screens/PeopleYouMayKnowScreen'
 import { ProfileSheet } from './src/components/ProfileSheet'
 import { GearSetupScreen } from './src/components/gear/GearSetupScreen'
@@ -247,12 +248,11 @@ try {
   console.log('[BOOT] UXCam not available')
 }
 import { PostHogProvider, PostHogMaskView } from 'posthog-react-native'
+import { posthog as posthogClient } from './src/lib/posthog'
 console.log('[BOOT] All top-level imports done')
 
-type FlowScreen = 'main' | 'onboarding' | 'people' | 'profile' | 'gear' | 'explore' | 'pushDebug'
+type FlowScreen = 'main' | 'onboarding' | 'orchestrator' | 'people' | 'profile' | 'gear' | 'explore' | 'pushDebug'
 
-const POSTHOG_API_KEY = 'phc_uZqiFnt6NpnpjL3QPbD4RmpJZaByiJChD5pcrcySXjGJ'
-const POSTHOG_HOST = 'https://us.i.posthog.com'
 
 export default function App() {
   console.log('[BOOT] App() component rendering')
@@ -300,7 +300,13 @@ export default function App() {
   const authStore = useAuthStore()
   const profileId = useAuthStore((s) => s.profileId)
   const storedGender = useAuthStore((s) => s.gender)
+  const hasCompletedOnboarding = useAuthStore((s) => s.hasCompletedOnboarding)
+  const hasActiveSquad = useAuthStore((s) => s.hasActiveSquad)
+  const bootStatusHydrated = useAuthStore((s) => s.bootStatusHydrated)
   const pushTokenRegistered = useRef(false)
+  const bootStatusFetched = useRef(false)
+  const [orchestratorMode, setOrchestratorMode] = useState<'full' | 'squad-only'>('full')
+  const [pendingInviteCode, setPendingInviteCode] = useState<string | null>(null)
 
   const setGenderInStore = useAuthStore((s) => s.setGender)
 
@@ -412,8 +418,6 @@ export default function App() {
   }, [])
 
   // Re-fetch the swipe deck once authenticated so friend data is included.
-  // On first boot the deck is fetched before the JWT is ready (jwt=none),
-  // meaning swipe-deck can't resolve followedPlayerIds → friendCount=0 everywhere.
   const didRefetchForAuth = useRef(false)
   useEffect(() => {
     if (!jwt || didRefetchForAuth.current) return
@@ -425,6 +429,60 @@ export default function App() {
       useSessionStore.getState()._lastDate,
     )
   }, [jwt])
+
+  // Boot-status hydration — single call after JWT is available.
+  // Determines hasCompletedOnboarding + hasActiveSquad from server truth.
+  // Routes to orchestrator if onboarding is incomplete.
+  //
+  // NOTE: All routing decisions read from useAuthStore.getState() (not React state)
+  // to avoid stale-closure issues — the effect only closes over `jwt`.
+  useEffect(() => {
+    if (!jwt || bootStatusFetched.current) return
+    bootStatusFetched.current = true
+
+    void useAuthStore.getState().hydrateBootStatus().then(() => {
+      const { hasCompletedOnboarding: completed, hasActiveSquad: activeSquad } =
+        useAuthStore.getState()
+
+      debugLog('App', `boot-status: onboardingCompleted=${completed} hasActiveSquad=${activeSquad}`)
+
+      // Plan routing table (from boot-status):
+      // completed=true  + squad=true  → Main app (MY SQUADD)
+      // completed=true  + squad=false → Legacy squad-setup only (orchestrator squad-only mode)
+      // completed=false + squad=true  → Auto-healed server-side; client sees completed=true
+      // completed=false + squad=false → Full orchestrator (new user or mid-funnel resume)
+
+      if (completed && activeSquad) {
+        // Normal case — fully done
+        setFlowScreen('main')
+        return
+      }
+
+      if (completed && !activeSquad) {
+        // Legacy: profile onboarding completed (old flag) but never joined a squad.
+        // Show orchestrator in squad-only mode — skip identity steps.
+        debugLog('App', 'boot-status: legacy squad-setup mode (onboardingCompleted=true, no squad)')
+        setOrchestratorMode('squad-only')
+        setFlowScreen('orchestrator')
+        return
+      }
+
+      // onboardingCompleted=false + hasActiveSquad=true should have been auto-healed
+      // by the boot-status endpoint. If it somehow reaches here, route to main defensively.
+      if (activeSquad) {
+        debugLog('App', 'boot-status: unexpected false+squad — routing to main as fallback')
+        setFlowScreen('main')
+        return
+      }
+
+      // completed=false, squad=false → full orchestrator (new user / mid-funnel resume)
+      // Use displayName heuristic to determine if identity was already saved
+      const profile = useAuthStore.getState()
+      const hasSavedIdentity = !!profile.profileId && !!profile.displayName
+      setOrchestratorMode(hasSavedIdentity ? 'squad-only' : 'full')
+      setFlowScreen('orchestrator')
+    })
+  }, [jwt]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Register push token after authentication + listen for FCM token rotation
   useEffect(() => {
@@ -517,19 +575,25 @@ export default function App() {
 
   const handleSignedIn = (needsOnboarding: boolean) => {
     if (needsOnboarding) {
-      setOnboardingInitialStep(0)
-      setFlowScreen('onboarding')
+      // Re-fetch boot-status after sign-in to determine orchestrator mode
+      bootStatusFetched.current = false
+      // hydrateBootStatus will be triggered by the jwt effect above on next render
+      // For now route to orchestrator immediately; boot-status will correct if needed
+      setOrchestratorMode('full')
+      setFlowScreen('orchestrator')
     } else {
       setFlowScreen('main')
     }
   }
 
   const startLinkReclub = () => {
+    // Legacy path — still available for profile menu "Link Reclub" action
     setOnboardingInitialStep(4)
     setFlowScreen('onboarding')
   }
 
   const startRedoOnboarding = () => {
+    // Dev-only or legacy reset path — kept for backward compatibility
     setOnboardingInitialStep(0)
     setFlowScreen('onboarding')
   }
@@ -548,6 +612,17 @@ export default function App() {
       setFlowScreen('main')
       setActiveTab('swipe')
     }
+  }
+
+  const handleOrchestratorComplete = () => {
+    useSessionStore.getState().fetchSessions(null, null)
+    setFlowScreen('main')
+    setActiveTab('squadd')
+  }
+
+  const handleExplorePause = () => {
+    setFlowScreen('main')
+    setActiveTab('swipe')
   }
 
   const handlePeopleComplete = () => {
@@ -586,6 +661,25 @@ export default function App() {
     )
   }
 
+  if (flowScreen === 'orchestrator') {
+    return (
+      <PostHogProvider client={posthogClient} autocapture>
+        <GestureHandlerRootView style={{ flex: 1 }}>
+          <SafeAreaProvider>
+            <ThemedAppChrome>
+              <OnboardingOrchestrator
+                mode={orchestratorMode}
+                onComplete={handleOrchestratorComplete}
+                onExplorePause={handleExplorePause}
+                pendingInviteCode={pendingInviteCode ?? squadDeeplinkCode}
+              />
+            </ThemedAppChrome>
+          </SafeAreaProvider>
+        </GestureHandlerRootView>
+      </PostHogProvider>
+    )
+  }
+
   if (flowScreen === 'people') {
     return (
       <GestureHandlerRootView style={{ flex: 1 }}>
@@ -612,9 +706,8 @@ export default function App() {
 
   return (
     <PostHogProvider
-      apiKey={POSTHOG_API_KEY}
+      client={posthogClient}
       options={{
-        host: POSTHOG_HOST,
         enableSessionReplay: true,
         sessionReplayConfig: {
           maskAllTextInputs: true,

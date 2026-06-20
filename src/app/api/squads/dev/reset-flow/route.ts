@@ -23,50 +23,62 @@ export async function POST(req: NextRequest) {
     where: { profileId: user.profileId, leftAt: null },
     select: { squadId: true },
   });
-  if (!membership) {
-    return NextResponse.json({ error: "Not in a squad" }, { status: 403 });
-  }
 
   const today = todayHCMC();
   const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
-  const [chestsDeleted, sessionsDeleted, cooldownsDeleted] = await prisma.$transaction([
-    prisma.squadChest.deleteMany({
-      where: {
-        squadId: membership.squadId,
-        earnerId: user.profileId,
-        OR: [
-          { checkinDate: today },
-          { createdAt: { gte: oneDayAgo } },
-        ],
-      },
-    }),
-    prisma.radarSession.deleteMany({
-      where: { playerId: user.profileId },
-    }),
-    prisma.venuePulseCooldown.deleteMany({
-      where: { playerId: user.profileId },
-    }),
-  ]);
+  if (membership) {
+    const [chestsDeleted, sessionsDeleted, cooldownsDeleted] = await prisma.$transaction([
+      prisma.squadChest.deleteMany({
+        where: {
+          squadId: membership.squadId,
+          earnerId: user.profileId,
+          OR: [
+            { checkinDate: today },
+            { createdAt: { gte: oneDayAgo } },
+          ],
+        },
+      }),
+      prisma.radarSession.deleteMany({
+        where: { playerId: user.profileId },
+      }),
+      prisma.venuePulseCooldown.deleteMany({
+        where: { playerId: user.profileId },
+      }),
+    ]);
 
-  // Reset brand, wallet, and welcome chest so the full onboarding flow can be re-run
+    console.log(`[reset-flow] cleared chests=${chestsDeleted.count} sessions=${sessionsDeleted.count} cooldowns=${cooldownsDeleted.count}`);
+  }
+
+  // Reset brand, wallet, welcome chest, onboardingCompleted, and squad membership
+  // so the full unified onboarding funnel can be re-run from scratch.
   await prisma.$transaction([
     prisma.playerBrand.deleteMany({ where: { profileId: user.profileId } }),
     prisma.playerWallet.deleteMany({ where: { profileId: user.profileId } }),
     prisma.tokenLedger.deleteMany({ where: { profileId: user.profileId } }),
+    // Remove pod memberships
+    prisma.podMember.deleteMany({ where: { profileId: user.profileId } }),
+    // Remove squad memberships (marks leftAt so history is preserved)
+    prisma.squadMember.updateMany({
+      where: { profileId: user.profileId, leftAt: null },
+      data: { leftAt: new Date() },
+    }),
     prisma.playerProfile.update({
       where: { id: user.profileId },
-      data: { welcomeChestClaimed: false },
+      data: {
+        welcomeChestClaimed: false,
+        onboardingCompleted: false,
+      },
     }),
   ]);
 
   return NextResponse.json({
     ok: true,
     cleared: {
-      chests: chestsDeleted.count,
-      radarSessions: sessionsDeleted.count,
-      pulseCooldowns: cooldownsDeleted.count,
       brandReset: true,
+      walletReset: true,
+      onboardingReset: true,
+      squadMembershipReset: true,
     },
   });
 }

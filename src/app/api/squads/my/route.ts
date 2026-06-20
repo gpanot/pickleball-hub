@@ -332,19 +332,29 @@ export async function GET(req: NextRequest) {
     chestsOpened,
   };
 
-  // Active Pod — self-heals: if the player has no Pod in this squad, create one silently.
-  const podResult = await ensurePlayerHasPod(
-    user.profileId,
-    membership.squad.id,
-    null,
-  );
-  const myPod = {
-    id: podResult.pod.id,
-    name: podResult.pod.name,
-    emoji: podResult.pod.emoji,
-    founderId: podResult.pod.founderId,
-    members: podResult.pod.members,
-  };
+  // Active Pod — self-heals only when onboarding is complete.
+  // Guard: skip implicit pod creation during the funnel so CREATE POD does not 409.
+  const profileForPod = await prisma.playerProfile.findUnique({
+    where: { id: user.profileId },
+    select: { onboardingCompleted: true },
+  });
+  const onboardingCompleted = profileForPod?.onboardingCompleted ?? false;
+
+  let myPod: { id: string; name: string; emoji: string; founderId: string; members: unknown[] } | null = null;
+  if (onboardingCompleted) {
+    const podResult = await ensurePlayerHasPod(
+      user.profileId,
+      membership.squad.id,
+      null,
+    );
+    myPod = {
+      id: podResult.pod.id,
+      name: podResult.pod.name,
+      emoji: podResult.pod.emoji,
+      founderId: podResult.pod.founderId,
+      members: podResult.pod.members,
+    };
+  }
 
   // Fetch pod membership for all squad members so we can show their pod name
   const memberProfileIds = membership.squad.members.map((m) => m.profileId);

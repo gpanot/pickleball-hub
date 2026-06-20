@@ -1,31 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getMobileUser } from "@/lib/mobile-auth";
 import { prisma } from "@/lib/db";
+import {
+  normalizeSquadNickname,
+  SQUAD_NICKNAME_MAX,
+  SQUAD_NICKNAME_MIN,
+  validateSquadNickname,
+} from "@/lib/squad-nickname";
 
-const NICKNAME_MIN = 3;
-const NICKNAME_MAX = 20;
-const NICKNAME_RE = /^[a-zA-Z0-9_]+$/;
 const COOLDOWN_DAYS = 30;
-
-function validateNickname(raw: string): string | null {
-  const n = raw.trim().toLowerCase();
-  if (n.length < NICKNAME_MIN) return `At least ${NICKNAME_MIN} characters`;
-  if (n.length > NICKNAME_MAX) return `Max ${NICKNAME_MAX} characters`;
-  if (!NICKNAME_RE.test(n)) return "Letters, numbers and underscores only";
-  return null; // ok
-}
 
 /** Derive a clean handle base from a display name (first name, lowercase, letters+digits only). */
 function handleBase(displayName: string | null): string {
   if (!displayName) return "player";
   const first = displayName.trim().split(/\s+/)[0];
   const cleaned = first.toLowerCase().replace(/[^a-z0-9_]/g, "");
-  return cleaned.length >= NICKNAME_MIN ? cleaned : "player";
+  return cleaned.length >= SQUAD_NICKNAME_MIN ? cleaned : "player";
 }
 
 /** Find an available handle: base, base2, base3, ... (max 20 attempts). */
 async function suggestHandle(base: string, ownNickname: string | null): Promise<string> {
-  const attempt = base.slice(0, NICKNAME_MAX);
+  const attempt = base.slice(0, SQUAD_NICKNAME_MAX);
   if (
     ownNickname?.toLowerCase() === attempt ||
     !(await prisma.playerProfile.findFirst({
@@ -37,7 +32,7 @@ async function suggestHandle(base: string, ownNickname: string | null): Promise<
   }
   for (let i = 2; i <= 20; i++) {
     const suffix = String(i);
-    const candidate = base.slice(0, NICKNAME_MAX - suffix.length) + suffix;
+    const candidate = base.slice(0, SQUAD_NICKNAME_MAX - suffix.length) + suffix;
     if (
       ownNickname?.toLowerCase() === candidate ||
       !(await prisma.playerProfile.findFirst({
@@ -57,7 +52,7 @@ export async function GET(req: NextRequest) {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { searchParams } = new URL(req.url);
-  const q = (searchParams.get("q") ?? "").trim().toLowerCase();
+  const q = normalizeSquadNickname(searchParams.get("q") ?? "");
 
   const me = await prisma.playerProfile.findUnique({
     where: { id: user.profileId },
@@ -88,7 +83,7 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  const validationError = validateNickname(q);
+  const validationError = validateSquadNickname(q);
   if (validationError) {
     return NextResponse.json({ available: false, reason: validationError });
   }
@@ -119,9 +114,9 @@ export async function POST(req: NextRequest) {
   }
 
   const raw = body.nickname ?? "";
-  const nickname = raw.trim().toLowerCase();
+  const nickname = normalizeSquadNickname(raw);
 
-  const validationError = validateNickname(nickname);
+  const validationError = validateSquadNickname(nickname);
   if (validationError) {
     return NextResponse.json({ error: validationError }, { status: 422 });
   }

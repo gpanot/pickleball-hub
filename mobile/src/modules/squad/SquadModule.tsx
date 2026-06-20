@@ -97,6 +97,7 @@ export default function SquadModule({
   const jwt = useAuthStore((s) => s.jwt);
   const profileId = useAuthStore((s) => s.profileId);
   const authHydrated = useAuthStore((s) => s.hydrated);
+  const hasCompletedOnboarding = useAuthStore((s) => s.hasCompletedOnboarding);
   const { openSignUp } = useSignUpModal();
   const [screen, setScreen] = useState<SquadScreen>('carousel');
   const [createdSquad, setCreatedSquad] = useState<Squad | null>(null);
@@ -357,6 +358,11 @@ export default function SquadModule({
 
   const syncSquaddRoute = useCallback(async (reason: string) => {
     pushRouteLog(`sync (${reason})`);
+    // Do not sync while the orchestrator owns the funnel — prevents jump to home
+    if (!useAuthStore.getState().hasCompletedOnboarding) {
+      pushRouteLog(`sync skipped — onboarding incomplete`);
+      return;
+    }
     if (deeplinkCode || deeplinkInviteId || deeplinkSquadId) return;
     if (await routeIfHasSquad()) return;
     const seen = await AsyncStorage.getItem(HAS_SEEN_CAROUSEL_KEY);
@@ -400,6 +406,11 @@ export default function SquadModule({
     initializedRef.current = true;
 
     (async () => {
+      // Skip boot sync if onboarding orchestrator is still active
+      if (!useAuthStore.getState().hasCompletedOnboarding) {
+        pushRouteLog('boot → skipped (orchestrator owns funnel)');
+        return;
+      }
       if (deeplinkCode) {
         setReceiveCode(deeplinkCode);
         setScreen('invite-receive');
@@ -493,6 +504,7 @@ export default function SquadModule({
       pushRouteLog(`runtime push → invite-receive (squadId=${deeplinkSquadId})`);
       return;
     }
+    // syncSquaddRoute already guards !hasCompletedOnboarding internally
     void syncSquaddRoute('tab active');
   }, [isActive, jwt, profileId, deeplinkSquadId, deeplinkInviteId, syncSquaddRoute, pushRouteLog]);
 
@@ -608,7 +620,7 @@ export default function SquadModule({
       )}
       {screen === 'ready' && (
         <SquadReadyScreen
-          onCreateSquad={() => setScreen('nickname')}
+          onCreateSquad={() => setScreen('create')}
           onBrowseSquads={() => setScreen('browse')}
           onAcceptInvite={(code) => {
             setReceiveCode(code);
@@ -633,7 +645,7 @@ export default function SquadModule({
       {screen === 'create' && (
         <SquadCreateScreen
           onCreated={handleCreateSquad}
-          onBack={() => setScreen('nickname')}
+          onBack={() => setScreen('ready')}
           loading={loading}
         />
       )}
@@ -1120,7 +1132,7 @@ export default function SquadModule({
           notice={disbandedNotice}
           onCreateSquad={async () => {
             await dismissDisbanded(disbandedNotice);
-            setScreen('nickname');
+            setScreen('create');
           }}
           onBrowseSquads={async () => {
             await dismissDisbanded(disbandedNotice);

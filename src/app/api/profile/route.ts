@@ -18,8 +18,6 @@ export async function POST(req: NextRequest) {
     const reclubId =
       reclubUserId != null ? BigInt(reclubUserId) : undefined;
 
-    const markOnboardingComplete = preferences != null;
-
     // If reclubUserId is being set, check for conflicts first
     if (reclubId !== undefined) {
       const conflict = await prisma.playerProfile.findFirst({
@@ -40,7 +38,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const validMarket = market === 'kl' ? 'kl' : market === 'hcm' ? 'hcm' : undefined;
+    const validMarket = market === 'kl' ? 'kl' : market === 'hcm' ? 'hcm' : market === 'us' ? 'us' : undefined;
 
     // Merge gender and market into preferences JSON if provided
     const mergedPreferences = preferences != null
@@ -62,7 +60,7 @@ export async function POST(req: NextRequest) {
         gender: genderValue ?? null,
         preferences: mergedPreferences ?? {},
         reclubUserId: reclubId ?? null,
-        onboardingCompleted: markOnboardingComplete,
+        // onboardingCompleted is NOT set here — use POST /api/profile/complete-onboarding
       },
       update: {
         zaloId: zaloId ?? undefined,
@@ -70,7 +68,7 @@ export async function POST(req: NextRequest) {
         preferences: mergedPreferences ?? undefined,
         ...(genderValue !== undefined ? { gender: genderValue } : {}),
         ...(reclubId !== undefined ? { reclubUserId: reclubId } : {}),
-        ...(markOnboardingComplete ? { onboardingCompleted: true } : {}),
+        // onboardingCompleted is NOT touched here — use POST /api/profile/complete-onboarding
       },
     });
 
