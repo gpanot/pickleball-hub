@@ -45,11 +45,12 @@ export function SquadIdentityBar({ squad, cityRank }: Props) {
         {cityLabel}{cityRank ? ` · #${cityRank} on leaderboard` : ''}
       </Text>
       <View style={s.xpRow}>
-        <View style={s.xpTrack}>
-          <View style={[s.xpFill, { width: `${pct}%` }]} />
+          <View style={s.xpTrack}>
+            <View style={[s.xpFill, { width: `${pct}%` }]} />
+          </View>
+          <Text style={s.xpLabel}>{current} / {threshold} XP</Text>
         </View>
-        <Text style={s.xpLabel}>{current} / {threshold} XP</Text>
-      </View>
+      <Text style={s.clubhouseHint}>🏛 Clubhouse →</Text>
     </View>
   );
 }
@@ -81,4 +82,5 @@ const s = StyleSheet.create({
   },
   xpFill: { height: '100%', borderRadius: 3, backgroundColor: LIME },
   xpLabel: { fontSize: 11, fontWeight: '800', color: '#52525b' },
+  clubhouseHint: { fontSize: 11, fontWeight: '700', color: 'rgba(163,230,53,0.5)', marginTop: 10, textAlign: 'right' },
 });

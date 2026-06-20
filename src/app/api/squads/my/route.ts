@@ -363,6 +363,10 @@ export async function GET(req: NextRequest) {
     : [];
   const podByProfile = new Map(podMemberships.map((pm) => [pm.profileId, pm.pod]));
 
+  const battlesWon = await prisma.cardBattle.count({
+    where: { winnerSquadId: membership.squad.id },
+  });
+
   const serialized = serializeMySquad(membership);
   const membersWithPod = serialized.squad.members.map((m) => {
     const pod = podByProfile.get(m.profileId);
@@ -371,7 +375,7 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({
     ...serialized,
-    squad: { ...serialized.squad, members: membersWithPod },
+    squad: { ...serialized.squad, members: membersWithPod, battlesWon },
     activeChest: activeChestData,
     myOpening: myOpeningData,
     recentFeed,

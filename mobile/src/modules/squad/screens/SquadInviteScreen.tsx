@@ -16,8 +16,6 @@ const GOLD = '#facc15';
 const LIME = '#a3e635';
 const LIME_DARK = '#65a30d';
 const LIME_DIM = 'rgba(163,230,53,0.13)';
-const BLUE = '#60a5fa';
-const BLUE_DIM = 'rgba(96,165,250,0.12)';
 const MAX_INVITES = 7;
 
 type Tab = 'following' | 'search' | 'share';
@@ -98,11 +96,9 @@ interface Props {
   }) => void;
   onSkip: () => void;
   onBack: () => void;
-  /** When set, invites are tagged with this podId so the joinee is added to that Pod on accept */
-  podId?: string;
 }
 
-export function SquadInviteScreen({ squad, onInvitesSent, onSkip, onBack, podId }: Props) {
+export function SquadInviteScreen({ squad, onInvitesSent, onSkip, onBack }: Props) {
   const insets = useSafeAreaInsets();
   const [tab, setTab] = useState<Tab>('following');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -246,7 +242,7 @@ export function SquadInviteScreen({ squad, onInvitesSent, onSkip, onBack, podId 
 
     setSending(true);
     try {
-      const result = await sendInvites(squad.id, profileIds, notOnAppUserIds, podId);
+      const result = await sendInvites(squad.id, profileIds, notOnAppUserIds);
       await loadPendingInvites();
       setSelectedIds(new Set());
       onInvitesSent({
@@ -298,20 +294,20 @@ export function SquadInviteScreen({ squad, onInvitesSent, onSkip, onBack, podId 
         <View style={s.playerAvatar}>
           <Text style={s.playerInitial}>{player.displayName?.charAt(0).toUpperCase() ?? '?'}</Text>
         </View>
-        <View style={{ flex: 1 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <Text style={s.playerName}>{player.displayName}</Text>
-            <View style={[s.sourceBadge, player.source === 'reclub' ? s.badgeReclub : s.badgeSquadd]}>
-              <Text style={[s.sourceText, player.source === 'reclub' ? { color: BLUE } : { color: LIME }]}>
-                {player.source === 'reclub' ? 'Reclub' : 'SQUADD'}
-              </Text>
+          <View style={{ flex: 1 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Text style={s.playerName}>{player.displayName}</Text>
+              {player.onApp && (
+                <View style={s.badgeSquaddOn}>
+                  <Text style={s.badgeSquaddOnText}>SQUADD ✓</Text>
+                </View>
+              )}
             </View>
+            <Text style={s.playerMeta}>
+              {player.dupr ? `DUPR ${player.dupr}` : 'DUPR —'} ·{' '}
+              {!player.onApp ? 'Not on SQUADD' : player.hasSquad ? 'In a squad' : 'No squad'}
+            </Text>
           </View>
-          <Text style={s.playerMeta}>
-            {player.dupr ? `DUPR ${player.dupr}` : 'DUPR —'} ·{' '}
-            {!player.onApp ? 'Not on SQUADD' : player.hasSquad ? 'In a squad' : 'No squad'}
-          </Text>
-        </View>
         {player.hasSquad ? (
           <View style={s.inSquadBlock}>
             <Text style={s.inSquadText}>In squad</Text>
@@ -547,10 +543,8 @@ const s = StyleSheet.create({
   playerInitial: { fontSize: 20, fontWeight: '800', color: '#fff' },
   playerName: { fontSize: 14, fontWeight: '800', color: '#fff' },
   playerMeta: { fontSize: 12, color: '#a1a1aa', marginTop: 2 },
-  sourceBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 100 },
-  badgeReclub: { backgroundColor: BLUE_DIM },
-  badgeSquadd: { backgroundColor: LIME_DIM },
-  sourceText: { fontSize: 11, fontWeight: '800' },
+  badgeSquaddOn: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 100, backgroundColor: LIME_DIM, borderWidth: 1, borderColor: 'rgba(163,230,53,0.3)' },
+  badgeSquaddOnText: { fontSize: 10, fontWeight: '800', color: LIME },
   inviteBtn: { paddingVertical: 7, paddingHorizontal: 14, borderRadius: 100, borderWidth: 1.5, borderColor: LIME },
   invitedBtn: { backgroundColor: LIME_DIM },
   inviteBtnText: { fontSize: 12, fontWeight: '800', color: LIME },

@@ -166,21 +166,10 @@ export function SquadHomeScreen({
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={LIME} />}
         contentContainerStyle={{ paddingBottom: 100 }}
       >
-        {/* Clickable header → Clubhouse Detail */}
-        <TouchableOpacity
-          style={s.clubhouseHeader}
-          onPress={onClubhouseDetail}
-          activeOpacity={0.75}
-        >
-          <Text style={s.clubhouseEmoji}>{squad.emoji}</Text>
-          <View style={{ flex: 1 }}>
-            <Text style={s.clubhouseName}>{squad.name}</Text>
-            <Text style={s.clubhouseLevel}>Level {squad.level} · {squad.totalXp.toLocaleString()} XP</Text>
-          </View>
-          <Text style={s.clubhouseArrow}>›</Text>
+        {/* Squad identity card with XP progress — tap opens Clubhouse */}
+        <TouchableOpacity onPress={onClubhouseDetail} activeOpacity={0.75}>
+          <SquadIdentityBar squad={squad} cityRank={cityRank} />
         </TouchableOpacity>
-
-        <SquadIdentityBar squad={squad} cityRank={cityRank} />
 
         {/* Phase 3: Pod + Brand cards */}
         <View style={s.phase3Row}>
@@ -433,17 +422,6 @@ const s = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3,
   },
   bellBadgeText: { fontSize: 9, fontWeight: '900', color: '#fff' },
-  // Phase 3: Clubhouse header
-  clubhouseHeader: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    marginHorizontal: 16, marginTop: 12, marginBottom: 4,
-    backgroundColor: '#141414',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)', borderRadius: 14, padding: 14,
-  },
-  clubhouseEmoji: { fontSize: 32 },
-  clubhouseName: { fontSize: 18, fontWeight: '900', color: '#fff' },
-  clubhouseLevel: { fontSize: 12, color: LIME, fontWeight: '700', marginTop: 1 },
-  clubhouseArrow: { fontSize: 22, color: '#52525b' },
   // Phase 3: Pod + Brand row
   phase3Row: { flexDirection: 'row', gap: 10, marginHorizontal: 16, marginTop: 12, marginBottom: 4 },
   phase3Card: {

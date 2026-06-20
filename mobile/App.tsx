@@ -525,7 +525,7 @@ export default function App() {
   }
 
   const startLinkReclub = () => {
-    setOnboardingInitialStep(2)
+    setOnboardingInitialStep(4)
     setFlowScreen('onboarding')
   }
 

@@ -1,9 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Animated, Easing,
+  View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Animated, Easing, ScrollView,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import type { ConquestBattle } from '../types';
+import type { ConquestBattle, SquadCardData } from '../types';
 import { formatCountdown } from '../hooks/useConquest';
 
 const BANGERS = 'Bangers_400Regular';
@@ -19,6 +19,8 @@ interface BattleProps {
   mySquadId: string;
   mySquadName: string;
   mySquadEmoji: string;
+  mySquadLevel?: number;
+  cardData?: SquadCardData | null;
   rivalSquadName: string;
   rivalSquadEmoji: string;
   onRevealResult: () => void;
@@ -34,6 +36,8 @@ export function ConquestBattleScreen({
   mySquadId,
   mySquadName,
   mySquadEmoji,
+  mySquadLevel,
+  cardData,
   rivalSquadName,
   rivalSquadEmoji,
   onRevealResult,
@@ -173,7 +177,7 @@ export function ConquestBattleScreen({
 
       {onBack && (
         <TouchableOpacity style={b.backBtn} onPress={onBack} activeOpacity={0.7}>
-          <Text style={b.backBtnText}>← Keep playing</Text>
+          <Text style={b.backBtnText}>← My Squadd</Text>
         </TouchableOpacity>
       )}
 
@@ -187,57 +191,93 @@ export function ConquestBattleScreen({
         )}
       </View>
 
-      {/* VS / emoji clash banner */}
-      <Animated.View style={[b.vsBanner, { transform: [{ translateX }], borderColor: isFinale ? 'rgba(239,68,68,0.5)' : 'rgba(255,255,255,0.1)' }]}>
-        {/* Impact flash */}
-        <Animated.View style={[b.impactFlash, { opacity: impactFlash }]} pointerEvents="none" />
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
+        {/* VS / emoji clash banner */}
+        <Animated.View style={[b.vsBanner, { transform: [{ translateX }], borderColor: isFinale ? 'rgba(239,68,68,0.5)' : 'rgba(255,255,255,0.1)' }]}>
+          {/* Impact flash */}
+          <Animated.View style={[b.impactFlash, { opacity: impactFlash }]} pointerEvents="none" />
 
-        <View style={b.vsSquad}>
-          <Animated.Text style={[b.vsEmoji, { transform: [{ translateX: leftX }] }]}>{mySquadEmoji}</Animated.Text>
-          <Text style={[b.vsName, { color: LIME }]}>{mySquadName}</Text>
-          <View style={b.powerBadge}>
-            <Text style={b.powerValue}>{myPower ?? '?'}</Text>
-            <Text style={b.powerLabel}>POWER</Text>
+          <View style={b.vsSquad}>
+            <Animated.Text style={[b.vsEmoji, { transform: [{ translateX: leftX }] }]}>{mySquadEmoji}</Animated.Text>
+            <Text style={[b.vsName, { color: LIME }]}>{mySquadName}</Text>
+            <View style={b.powerBadge}>
+              <Text style={b.powerValue}>{myPower ?? '?'}</Text>
+              <Text style={b.powerLabel}>POWER</Text>
+            </View>
           </View>
-        </View>
 
-        <Animated.View style={[b.vsCenter, { opacity: glowOpacity }]}>
-          <Animated.Text style={[b.vsText, { transform: [{ translateX: vsTranslateX }], color: isFinale ? RED : RED }]}>VS</Animated.Text>
+          <Animated.View style={[b.vsCenter, { opacity: glowOpacity }]}>
+            <Animated.Text style={[b.vsText, { transform: [{ translateX: vsTranslateX }], color: isFinale ? RED : RED }]}>VS</Animated.Text>
+          </Animated.View>
+
+          <View style={b.vsSquad}>
+            <Animated.Text style={[b.vsEmoji, { transform: [{ translateX: rightX }] }]}>{rivalSquadEmoji}</Animated.Text>
+            <Text style={[b.vsName, { color: GOLD }]}>{rivalSquadName}</Text>
+            <View style={[b.powerBadge, { borderColor: 'rgba(250,204,21,0.3)', backgroundColor: 'rgba(250,204,21,0.1)' }]}>
+              <Text style={[b.powerValue, { color: rivalPower !== null ? GOLD : '#52525b' }]}>
+                {rivalPower !== null ? rivalPower : '???'}
+              </Text>
+              <Text style={[b.powerLabel, { color: '#52525b' }]}>POWER</Text>
+            </View>
+          </View>
         </Animated.View>
 
-        <View style={b.vsSquad}>
-          <Animated.Text style={[b.vsEmoji, { transform: [{ translateX: rightX }] }]}>{rivalSquadEmoji}</Animated.Text>
-          <Text style={[b.vsName, { color: GOLD }]}>{rivalSquadName}</Text>
-          <View style={[b.powerBadge, { borderColor: 'rgba(250,204,21,0.3)', backgroundColor: 'rgba(250,204,21,0.1)' }]}>
-            <Text style={[b.powerValue, { color: rivalPower !== null ? GOLD : '#52525b' }]}>
-              {rivalPower !== null ? rivalPower : '???'}
-            </Text>
-            <Text style={[b.powerLabel, { color: '#52525b' }]}>POWER</Text>
+        {/* My Squad Card */}
+        <View style={b.squadCard}>
+          <View style={b.cardWatermark}><Text style={b.cardWatermarkText}>SQUAD CARD</Text></View>
+          <View style={b.cardTopRow}>
+            <View style={b.cardEmojiBox}><Text style={b.cardEmoji}>{mySquadEmoji}</Text></View>
+            <View style={b.cardNameWrap}>
+              <Text style={b.cardName}>{mySquadName}</Text>
+              <Text style={b.cardSubName}>Level {mySquadLevel ?? 1}</Text>
+            </View>
+            <View style={b.cardPowerWrap}>
+              <Text style={b.cardPowerLabel}>CARD POWER</Text>
+              <Text style={b.cardPower}>{cardData?.cardPowerInf ?? myPower ?? '…'}</Text>
+              <Text style={b.cardPowerSub}>INF bonus</Text>
+            </View>
+          </View>
+          <View style={b.cardStats}>
+            <View style={b.cardStat}>
+              <Text style={b.cardStatIcon}>🏆</Text>
+              <Text style={b.cardStatValue}>{cardData?.venuesOwnedCount ?? 0}</Text>
+              <Text style={b.cardStatLabel}>Venues owned</Text>
+            </View>
+            <View style={b.cardStat}>
+              <Text style={b.cardStatIcon}>⚡</Text>
+              <Text style={[b.cardStatValue, { color: LIME }]}>LV {mySquadLevel ?? 1}</Text>
+              <Text style={b.cardStatLabel}>Squad level</Text>
+            </View>
+            <View style={b.cardStat}>
+              <Text style={b.cardStatIcon}>🏓</Text>
+              <Text style={[b.cardStatValue, { color: LIME }]}>{cardData?.activeMembersThisWeek ?? 0}</Text>
+              <Text style={b.cardStatLabel}>Active this week</Text>
+            </View>
           </View>
         </View>
-      </Animated.View>
 
-      {/* Countdown */}
-      <View style={b.revealSection}>
-        <Text style={[b.revealLabel, isFinale && { color: RED }]}>
-          {isFinale ? '⚠️ REVEALS IN' : 'REVEAL IN'}
+        {/* Countdown */}
+        <View style={b.revealSection}>
+          <Text style={[b.revealLabel, isFinale && { color: RED }]}>
+            {isFinale ? '⚠️ REVEALS IN' : 'REVEAL IN'}
+          </Text>
+          <Animated.Text style={[b.revealValue, { color: countdownColor, transform: [{ scale: scaleAnim }] }]}>
+            {formatCountdown(revealSecs)}
+          </Animated.Text>
+          {!isFinale && <Text style={b.revealSub}>Cards being locked in…</Text>}
+        </View>
+
+        {/* Battle badge */}
+        <View style={[b.battleBadge, isFinale && { borderColor: 'rgba(239,68,68,0.4)', backgroundColor: 'rgba(239,68,68,0.1)' }]}>
+          <Text style={b.battleBadgeText}>
+            {battle.isCounterAttack ? '↩️ COUNTER-ATTACK' : `BATTLE #${battle.battleNumber}`}
+          </Text>
+        </View>
+
+        <Text style={b.hint}>
+          {isFinale ? 'Almost there — result drops in seconds 🔥' : 'Keep playing while the battle resolves 🏓'}
         </Text>
-        <Animated.Text style={[b.revealValue, { color: countdownColor, transform: [{ scale: scaleAnim }] }]}>
-          {formatCountdown(revealSecs)}
-        </Animated.Text>
-        {!isFinale && <Text style={b.revealSub}>Cards being locked in…</Text>}
-      </View>
-
-      {/* Battle badge */}
-      <View style={[b.battleBadge, isFinale && { borderColor: 'rgba(239,68,68,0.4)', backgroundColor: 'rgba(239,68,68,0.1)' }]}>
-        <Text style={b.battleBadgeText}>
-          {battle.isCounterAttack ? '↩️ COUNTER-ATTACK' : `BATTLE #${battle.battleNumber}`}
-        </Text>
-      </View>
-
-      <Text style={b.hint}>
-        {isFinale ? 'Almost there — result drops in seconds 🔥' : 'Keep playing while the battle resolves 🏓'}
-      </Text>
+      </ScrollView>
     </View>
   );
 }
@@ -407,91 +447,94 @@ export function ConquestBattleLoseScreen({
     <View style={[l.container, { paddingTop: insets.top }]}>
       {onBack && (
         <TouchableOpacity style={l.backBtn} onPress={onBack} activeOpacity={0.7}>
-          <Text style={l.backBtnText}>← Back to session</Text>
+          <Text style={l.backBtnText}>← My Squadd</Text>
         </TouchableOpacity>
       )}
-      <View style={l.header}>
-        <Text style={l.loseBadge}>💀 DEFEAT</Text>
-        <Text style={l.loseTitle}>You lost the battle</Text>
-        <Text style={l.loseSub}>But you can still hit back</Text>
-      </View>
 
-      {/* Score reveal */}
-      <View style={l.scoreCard}>
-        <View style={l.scoreRow}>
-          <View style={l.scoreTeam}>
-            <Text style={l.scoreEmoji}>{mySquadEmoji}</Text>
-            <Text style={[l.scorePower, { color: '#52525b' }]}>{myPower}</Text>
-            <Text style={[l.scoreLabel, { color: '#52525b' }]}>You</Text>
-          </View>
-          <View style={l.scoreDivider} />
-          <View style={l.scoreTeam}>
-            <Text style={l.scoreEmoji}>{rivalSquadEmoji}</Text>
-            <Text style={[l.scorePower, { color: GOLD }]}>{rivalPower}</Text>
-            <Text style={l.scoreLabel}>{rivalSquadName}</Text>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
+        <View style={l.header}>
+          <Text style={l.loseBadge}>💀 DEFEAT</Text>
+          <Text style={l.loseTitle}>You lost the battle</Text>
+          <Text style={l.loseSub}>But you can still hit back</Text>
+        </View>
+
+        {/* Score reveal */}
+        <View style={l.scoreCard}>
+          <View style={l.scoreRow}>
+            <View style={l.scoreTeam}>
+              <Text style={l.scoreEmoji}>{mySquadEmoji}</Text>
+              <Text style={[l.scorePower, { color: '#52525b' }]}>{myPower}</Text>
+              <Text style={[l.scoreLabel, { color: '#52525b' }]}>You</Text>
+            </View>
+            <View style={l.scoreDivider} />
+            <View style={l.scoreTeam}>
+              <Text style={l.scoreEmoji}>{rivalSquadEmoji}</Text>
+              <Text style={[l.scorePower, { color: GOLD }]}>{rivalPower}</Text>
+              <Text style={l.scoreLabel}>{rivalSquadName}</Text>
+            </View>
           </View>
         </View>
-      </View>
 
-      {/* Counter-attack window */}
-      {counterWindowOpen && (
-        <View style={l.counterCard}>
-          <View style={l.counterHeader}>
-            <Text style={l.counterTitle}>🔁 Counter-Attack Window</Text>
-            <Text style={l.counterTimer}>{formatCountdown(counterSecs)}</Text>
+        {/* Counter-attack window */}
+        {counterWindowOpen && (
+          <View style={l.counterCard}>
+            <View style={l.counterHeader}>
+              <Text style={l.counterTitle}>🔁 Counter-Attack Window</Text>
+              <Text style={l.counterTimer}>{formatCountdown(counterSecs)}</Text>
+            </View>
+            <Text style={l.counterDesc}>
+              Fire a counter-attack against <Text style={{ color: GOLD, fontWeight: '700' }}>{rivalSquadName}</Text>.
+              {' '}Winner gets the venue INF bonus. Each session allows one counter.
+            </Text>
+            <TouchableOpacity
+              style={l.counterBtn}
+              onPress={handleCounter}
+              disabled={countering}
+              activeOpacity={0.82}
+            >
+              {countering ? (
+                <ActivityIndicator color={RED} />
+              ) : (
+                <Text style={l.counterBtnText}>↩️ Fire Counter-Attack</Text>
+              )}
+            </TouchableOpacity>
+            <View style={l.counterBar}>
+              <View style={[l.counterBarFill, { width: `${(counterSecs / 300) * 100}%` }]} />
+            </View>
+
+            {/* Battle Another Time — closes counter window and returns to home */}
+            <TouchableOpacity
+              style={l.skipBtn}
+              onPress={handleBattleAnotherTime}
+              activeOpacity={0.7}
+            >
+              <Text style={l.skipBtnText}>Battle Another Time</Text>
+            </TouchableOpacity>
           </View>
-          <Text style={l.counterDesc}>
-            Fire a counter-attack against <Text style={{ color: GOLD, fontWeight: '700' }}>{rivalSquadName}</Text>.
-            {' '}Winner gets the venue INF bonus. Each session allows one counter.
-          </Text>
-          <TouchableOpacity
-            style={l.counterBtn}
-            onPress={handleCounter}
-            disabled={countering}
-            activeOpacity={0.82}
-          >
-            {countering ? (
-              <ActivityIndicator color={RED} />
-            ) : (
-              <Text style={l.counterBtnText}>↩️ Fire Counter-Attack</Text>
-            )}
-          </TouchableOpacity>
-          <View style={l.counterBar}>
-            <View style={[l.counterBarFill, { width: `${(counterSecs / 300) * 100}%` }]} />
+        )}
+
+        {!counterWindowOpen && (
+          <View style={l.windowClosed}>
+            <Text style={l.windowClosedText}>Counter-attack window has closed</Text>
           </View>
+        )}
 
-          {/* Battle Another Time — closes counter window and returns to home */}
-          <TouchableOpacity
-            style={l.skipBtn}
-            onPress={handleBattleAnotherTime}
-            activeOpacity={0.7}
-          >
-            <Text style={l.skipBtnText}>Battle Another Time</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-
-      {!counterWindowOpen && (
-        <View style={l.windowClosed}>
-          <Text style={l.windowClosedText}>Counter-attack window has closed</Text>
-        </View>
-      )}
-
-      {/* Rival intel */}
-      <View style={l.intelCard}>
-        <Text style={l.intelTitle}>Rival Intel</Text>
-        <View style={l.intelRow}>
-          <Text style={l.intelEmoji}>{rivalSquadEmoji}</Text>
-          <View>
-            <Text style={l.intelName}>{rivalSquadName}</Text>
-            <Text style={l.intelPowerText}>Card power: {rivalPower}</Text>
+        {/* Rival intel */}
+        <View style={l.intelCard}>
+          <Text style={l.intelTitle}>Rival Intel</Text>
+          <View style={l.intelRow}>
+            <Text style={l.intelEmoji}>{rivalSquadEmoji}</Text>
+            <View>
+              <Text style={l.intelName}>{rivalSquadName}</Text>
+              <Text style={l.intelPowerText}>Card power: {rivalPower}</Text>
+            </View>
           </View>
         </View>
-      </View>
 
-      <TouchableOpacity style={l.viewResultsBtn} onPress={onViewResults} activeOpacity={0.82}>
-        <Text style={l.viewResultsText}>See Full Impact →</Text>
-      </TouchableOpacity>
+        <TouchableOpacity style={l.viewResultsBtn} onPress={onViewResults} activeOpacity={0.82}>
+          <Text style={l.viewResultsText}>Close →</Text>
+        </TouchableOpacity>
+      </ScrollView>
     </View>
   );
 }
@@ -548,6 +591,33 @@ const b = StyleSheet.create({
   },
   battleBadgeText: { fontSize: 12, fontWeight: '800', color: RED },
   hint: { fontSize: 11, color: '#52525b', textAlign: 'center' },
+
+  // My squad card
+  squadCard: {
+    backgroundColor: '#1a1a0a', borderWidth: 1.5,
+    borderColor: 'rgba(250,204,21,0.3)', borderRadius: 18,
+    padding: 16, marginHorizontal: 0, marginBottom: 16, overflow: 'hidden',
+  },
+  cardWatermark: { position: 'absolute', top: 10, right: 14, opacity: 0.07 },
+  cardWatermarkText: { fontSize: 28, fontWeight: '900', color: '#fff', letterSpacing: 2 },
+  cardTopRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 14 },
+  cardEmojiBox: {
+    width: 48, height: 48, borderRadius: 14,
+    backgroundColor: 'rgba(250,204,21,0.1)', alignItems: 'center', justifyContent: 'center',
+  },
+  cardEmoji: { fontSize: 28 },
+  cardNameWrap: { flex: 1 },
+  cardName: { fontSize: 16, fontWeight: '900', color: '#fff' },
+  cardSubName: { fontSize: 11, color: '#71717a', marginTop: 2 },
+  cardPowerWrap: { alignItems: 'center' },
+  cardPowerLabel: { fontSize: 9, fontWeight: '800', color: '#52525b', textTransform: 'uppercase', letterSpacing: 0.5 },
+  cardPower: { fontSize: 26, fontWeight: '900', color: GOLD },
+  cardPowerSub: { fontSize: 9, color: '#52525b', fontWeight: '600' },
+  cardStats: { flexDirection: 'row', justifyContent: 'space-around', paddingTop: 12, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.07)' },
+  cardStat: { alignItems: 'center', gap: 3 },
+  cardStatIcon: { fontSize: 16 },
+  cardStatValue: { fontSize: 14, fontWeight: '900', color: '#fff' },
+  cardStatLabel: { fontSize: 10, color: '#52525b', fontWeight: '600', textAlign: 'center' },
 });
 
 const w = StyleSheet.create({

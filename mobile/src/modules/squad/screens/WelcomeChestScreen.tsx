@@ -1,13 +1,15 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Image } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '../../../stores/authStore';
 import { ChestOpenAnimation } from '../components/ChestOpenAnimation';
+import { ClubTokenIcon, BrandTokenIcon } from '../components/TokenIcons';
 import type { WelcomeChestResult } from '../types';
 
 const LIME = '#a3e635';
 const LIME_DARK = '#65a30d';
 const GOLD = '#facc15';
+const CHEST_IMAGE = require('../../../../assets/images/pickleball_chest_clash_of_clan small.png');
 
 interface Props {
   squadName: string;
@@ -28,9 +30,9 @@ export function WelcomeChestScreen({ squadName, onOpened }: Props) {
         method: 'POST',
       });
       if (!res.ok) {
-        // 409 means already claimed — treat as success and move on
+        // 409 means already claimed — still show split with the known preview amounts
         if (res.status === 409) {
-          onOpened({ clubTokensAwarded: 0, brandTokensAwarded: 0, xpAwarded: 0 });
+          onOpened({ clubTokensAwarded: 150, brandTokensAwarded: 50, xpAwarded: 200 });
           return;
         }
         setPhase('error');
@@ -86,7 +88,7 @@ export function WelcomeChestScreen({ squadName, onOpened }: Props) {
   return (
     <View style={[s.container, { paddingBottom: insets.bottom + 20 }]}>
       <View style={[s.content, { paddingTop: insets.top + 24 }]}>
-        <Text style={s.emoji}>🎁</Text>
+        <Image source={CHEST_IMAGE} style={s.chestImage} resizeMode="contain" />
         <Text style={s.title}>Welcome Chest</Text>
         <Text style={s.sub}>
           Your Squad is set up. Open this one-time chest to see your first Club Tokens and Brand Tokens.
@@ -94,16 +96,12 @@ export function WelcomeChestScreen({ squadName, onOpened }: Props) {
 
         <View style={s.previewRow}>
           <View style={s.previewCard}>
-            <View style={[s.tokenIcon, { backgroundColor: '#60a5fa' }]}>
-              <Text style={s.tokenLetter}>C</Text>
-            </View>
+            <ClubTokenIcon size={32} />
             <Text style={s.previewAmount}>150</Text>
             <Text style={s.previewLabel}>Club Tokens</Text>
           </View>
           <View style={s.previewCard}>
-            <View style={[s.tokenIcon, { backgroundColor: '#a78bfa' }]}>
-              <Text style={s.tokenLetter}>★</Text>
-            </View>
+            <BrandTokenIcon size={32} />
             <Text style={s.previewAmount}>50</Text>
             <Text style={s.previewLabel}>Brand Tokens</Text>
           </View>
@@ -117,7 +115,7 @@ export function WelcomeChestScreen({ squadName, onOpened }: Props) {
 
       <View style={s.bottom}>
         <TouchableOpacity style={s.openBtn} onPress={handleOpen} activeOpacity={0.85}>
-          <Text style={s.openBtnText}>Open Welcome Chest 🎁</Text>
+          <Text style={s.openBtnText}>Open Welcome Chest</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -128,7 +126,7 @@ const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#050a02' },
   centered: { alignItems: 'center', justifyContent: 'center' },
   content: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 },
-  emoji: { fontSize: 64, marginBottom: 16 },
+  chestImage: { width: 140, height: 140, marginBottom: 16 },
   title: {
     fontSize: 28, fontWeight: '900', color: '#facc15',
     textShadowColor: '#000', textShadowOffset: { width: 1, height: 1 }, textShadowRadius: 0,
@@ -141,8 +139,6 @@ const s = StyleSheet.create({
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
     borderRadius: 14, padding: 14, alignItems: 'center', flex: 1,
   },
-  tokenIcon: { width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
-  tokenLetter: { fontSize: 16, fontWeight: '900', color: '#fff' },
   previewAmount: { fontSize: 22, fontWeight: '900', color: '#fff', marginBottom: 2 },
   previewLabel: { fontSize: 10, color: '#71717a', fontWeight: '700', textAlign: 'center' },
   bottom: { paddingHorizontal: 24, paddingBottom: 8 },

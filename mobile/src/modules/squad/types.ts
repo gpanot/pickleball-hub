@@ -16,6 +16,7 @@ export interface Squad {
   city?: string;
   streakDays?: number;
   cityRank?: number;
+  battlesWon?: number;
   createdAt: string;
   disbandedAt: string | null;
   code?: SquadCode | null;
@@ -149,6 +150,7 @@ export type SquadScreen =
   | 'leave-confirm'
   | 'chest-detail'
   | 'chest-open'
+  | 'chest-token-split'
   | 'leaderboard'
   | 'manage'
   | 'edit'

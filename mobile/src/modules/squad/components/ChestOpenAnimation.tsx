@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, Animated, Easing, Image, Dimensions } from 'react-native';
+import { ClubTokenIcon, BrandTokenIcon } from './TokenIcons';
 
 const BANGERS = 'Bangers_400Regular';
 const LIME = '#a3e635';
@@ -27,38 +28,6 @@ interface Particle {
 
 const PARTICLE_COLORS = [LIME, GOLD, '#22c55e', '#facc15', BLUE, PURPLE, '#f472b6'];
 
-function ClubTokenIcon() {
-  return (
-    <View style={icon.hexWrap}>
-      <View style={[icon.hex, { backgroundColor: BLUE }]}>
-        <Text style={icon.letter}>C</Text>
-      </View>
-    </View>
-  );
-}
-
-function BrandTokenIcon() {
-  return (
-    <View style={icon.hexWrap}>
-      <View style={[icon.hex, { backgroundColor: PURPLE }]}>
-        <Text style={icon.star}>★</Text>
-      </View>
-    </View>
-  );
-}
-
-const icon = StyleSheet.create({
-  hexWrap: { alignItems: 'center', marginBottom: 6 },
-  hex: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  letter: { fontSize: 18, fontWeight: '900', color: '#fff' },
-  star: { fontSize: 18, color: '#fff' },
-});
 
 export function ChestOpenAnimation({ clubTokensAwarded, brandTokensAwarded, xpAwarded, squadName }: Props) {
   const chestScale = useRef(new Animated.Value(0.5)).current;
@@ -160,12 +129,12 @@ export function ChestOpenAnimation({ clubTokensAwarded, brandTokensAwarded, xpAw
 
         <Animated.View style={[s.rewards, { opacity: rewardsOpacity, transform: [{ translateY: rewardsTranslateY }] }]}>
           <View style={[s.rewardCard, { borderColor: 'rgba(96,165,250,0.3)' }]}>
-            <ClubTokenIcon />
+            <View style={s.iconWrap}><ClubTokenIcon size={32} /></View>
             <Text style={[s.rewardValue, { color: BLUE }]}>+{clubTokensAwarded}</Text>
             <Text style={s.rewardLabel}>CLUB TOKENS</Text>
           </View>
           <View style={[s.rewardCard, { borderColor: 'rgba(167,139,250,0.3)' }]}>
-            <BrandTokenIcon />
+            <View style={s.iconWrap}><BrandTokenIcon size={32} /></View>
             <Text style={[s.rewardValue, { color: PURPLE }]}>+{brandTokensAwarded}</Text>
             <Text style={s.rewardLabel}>BRAND TOKENS</Text>
           </View>
@@ -217,6 +186,7 @@ const s = StyleSheet.create({
     alignItems: 'center',
     minWidth: 100,
   },
+  iconWrap: { marginBottom: 6 },
   rewardValue: { fontSize: 28, fontWeight: '900' },
   rewardLabel: {
     fontSize: 11,

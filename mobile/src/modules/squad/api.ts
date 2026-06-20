@@ -41,11 +41,10 @@ export async function sendInvites(
   squadId: string,
   profileIds: string[],
   notOnAppUserIds: string[] = [],
-  podId?: string,
 ) {
   const res = await authedFetch(`/api/squads/${squadId}/invite`, {
     method: 'POST',
-    body: JSON.stringify({ profileIds, notOnAppUserIds, ...(podId ? { podId } : {}) }),
+    body: JSON.stringify({ profileIds, notOnAppUserIds }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: 'Unknown error' }));

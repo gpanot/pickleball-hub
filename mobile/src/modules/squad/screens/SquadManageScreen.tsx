@@ -226,31 +226,6 @@ export function SquadManageScreen({
           </View>
         </LinearGradient>
 
-        {/* Squad stats 2x2 grid */}
-        <Text style={s.sectionLabel}>SQUAD STATS</Text>
-        <View style={s.statsGrid}>
-          <View style={s.statCell}>
-            <Text style={s.statValue}>Lv.{squad.level ?? 1}</Text>
-            <Text style={s.statLabel}>LEVEL</Text>
-          </View>
-          <View style={s.statCell}>
-            <Text style={s.statValue}>{squad.totalXp ?? 0}</Text>
-            <Text style={s.statLabel}>TOTAL XP</Text>
-          </View>
-          <View style={s.statCell}>
-            <Text style={[s.statValue, { color: GOLD }]}>
-              {squad.streakDays && squad.streakDays > 0 ? `${squad.streakDays}` : '—'}
-            </Text>
-            <Text style={s.statLabel}>SESSIONS</Text>
-          </View>
-          <View style={s.statCell}>
-            <Text style={s.statValue}>
-              {squad.cityRank ? `#${squad.cityRank}` : '—'}
-            </Text>
-            <Text style={s.statLabel}>DISTRICT RANK</Text>
-          </View>
-        </View>
-
         {/* Members section */}
         <Text style={s.sectionLabel}>MEMBERS ({members.length}/8)</Text>
 
@@ -574,17 +549,6 @@ const s = StyleSheet.create({
     fontSize: 11, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1.2,
     color: '#52525b', marginTop: 24, marginBottom: 12, marginHorizontal: 20,
   },
-
-  statsGrid: {
-    flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: 16, gap: 8,
-  },
-  statCell: {
-    width: '48%' as any, backgroundColor: '#141414', borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.07)', borderRadius: 16,
-    paddingVertical: 16, alignItems: 'center', flexGrow: 1,
-  },
-  statValue: { fontFamily: BANGERS, fontSize: 28, color: LIME, marginBottom: 2 },
-  statLabel: { fontSize: 10, fontWeight: '800', color: '#52525b', letterSpacing: 1 },
 
   memberRow: {
     flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20,

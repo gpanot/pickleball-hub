@@ -112,7 +112,7 @@ export function SquadCreateScreen({ onCreated, onBack, loading }: Props) {
         </View>
 
         {/* Toggles */}
-        <View style={s.toggleRow}>
+        <View style={[s.toggleRow, { borderBottomWidth: 0 }]}>
           <View style={{ flex: 1 }}>
             <Text style={s.toggleTitle}>Open squad</Text>
             <Text style={s.toggleSub}>Anyone can request to join</Text>
@@ -120,19 +120,6 @@ export function SquadCreateScreen({ onCreated, onBack, loading }: Props) {
           <Switch
             value={isPublic}
             onValueChange={setIsPublic}
-            trackColor={{ false: '#2a2a2a', true: LIME }}
-            thumbColor="#fff"
-          />
-        </View>
-
-        <View style={[s.toggleRow, { borderBottomWidth: 0 }]}>
-          <View style={{ flex: 1 }}>
-            <Text style={s.toggleTitle}>Show DUPR range</Text>
-            <Text style={s.toggleSub}>Visible on your public profile</Text>
-          </View>
-          <Switch
-            value={showDupr}
-            onValueChange={setShowDupr}
             trackColor={{ false: '#2a2a2a', true: LIME }}
             thumbColor="#fff"
           />
