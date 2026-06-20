@@ -8,8 +8,9 @@ import { SwipeScreen } from './src/screens/SwipeScreen'
 import { ExploreSessionsScreen } from './src/screens/ExploreSessionsScreen'
 import { CircleScreen, type CircleScreenHandle } from './src/screens/CircleScreen'
 import SquadModule from './src/modules/squad/SquadModule'
-import { OnboardingScreen } from './src/screens/OnboardingScreen'
+import { ReclubLinkScreen } from './src/screens/ReclubLinkScreen'
 import { OnboardingOrchestrator } from './src/onboarding/OnboardingOrchestrator'
+import { onboardingStorage } from './src/onboarding/onboardingStorage'
 import { useIpGeolocation } from './src/onboarding/useIpGeolocation'
 import { PeopleYouMayKnowScreen } from './src/screens/PeopleYouMayKnowScreen'
 import { ProfileSheet } from './src/components/ProfileSheet'
@@ -252,7 +253,7 @@ import { PostHogProvider, PostHogMaskView } from 'posthog-react-native'
 import { posthog as posthogClient } from './src/lib/posthog'
 console.log('[BOOT] All top-level imports done')
 
-type FlowScreen = 'main' | 'onboarding' | 'orchestrator' | 'people' | 'profile' | 'gear' | 'explore' | 'pushDebug'
+type FlowScreen = 'main' | 'reclub-link' | 'orchestrator' | 'people' | 'profile' | 'gear' | 'explore' | 'pushDebug'
 
 
 export default function App() {
@@ -267,7 +268,6 @@ export default function App() {
   const [flowScreen, setFlowScreen] = useState<FlowScreen>('main')
   const [gearReturnTo, setGearReturnTo] = useState<FlowScreen>('main')
   const [gearSheetOpen, setGearSheetOpen] = useState(false)
-  const [onboardingInitialStep, setOnboardingInitialStep] = useState(0)
   const [squadDeeplinkCode, setSquadDeeplinkCode] = useState<string | null>(null)
   /** Gang-level invite code (type=gang in URL). Routes to gang onboarding, skips gang-setup. */
   const [gangInviteCode, setGangInviteCode] = useState<string | null>(null)
@@ -623,31 +623,17 @@ export default function App() {
   }
 
   const startLinkReclub = () => {
-    // Legacy path — still available for profile menu "Link Reclub" action
-    setOnboardingInitialStep(4)
-    setFlowScreen('onboarding')
+    setFlowScreen('reclub-link')
   }
 
-  const startRedoOnboarding = () => {
-    // Dev-only or legacy reset path — kept for backward compatibility
-    setOnboardingInitialStep(0)
-    setFlowScreen('onboarding')
-  }
-
-  const cancelOnboarding = () => {
-    setFlowScreen('main')
-    setActiveTab('swipe')
-  }
-
-  const handleOnboardingComplete = () => {
-    const { reclubUserId } = useAuthStore.getState()
-    useSessionStore.getState().fetchSessions(null, null)
-    if (reclubUserId) {
-      setFlowScreen('people')
-    } else {
-      setFlowScreen('main')
-      setActiveTab('swipe')
-    }
+  /**
+   * Called from ReclubLinkScreen when the user has no squad after linking.
+   * Seeds the orchestrator at clubhouse-choice in squad-only mode.
+   */
+  const handleFindClubhouse = async () => {
+    await onboardingStorage.setStep('clubhouse-choice', 'squad-only')
+    setOrchestratorMode('squad-only')
+    setFlowScreen('orchestrator')
   }
 
   const handleOrchestratorComplete = () => {
@@ -681,16 +667,15 @@ export default function App() {
   }
   console.log('[BOOT] GATE: past splash, flowScreen:', flowScreen)
 
-  if (flowScreen === 'onboarding') {
+  if (flowScreen === 'reclub-link') {
     return (
       <GestureHandlerRootView style={{ flex: 1 }}>
         <SafeAreaProvider>
           <ThemedAppChrome>
-          <OnboardingScreen
-            initialStep={onboardingInitialStep}
-            onComplete={handleOnboardingComplete}
-            onCancel={cancelOnboarding}
-          />
+            <ReclubLinkScreen
+              onClose={() => setFlowScreen('main')}
+              onFindClubhouse={handleFindClubhouse}
+            />
           </ThemedAppChrome>
         </SafeAreaProvider>
       </GestureHandlerRootView>
@@ -812,7 +797,6 @@ export default function App() {
                 <ProfileSheet
                   onClose={() => setFlowScreen('main')}
                   onLinkReclub={startLinkReclub}
-                  onRedoOnboarding={startRedoOnboarding}
                   onOpenGear={() => {
                     setGearReturnTo('profile')
                     setFlowScreen('gear')
