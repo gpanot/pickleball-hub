@@ -962,6 +962,9 @@ export default function SquadModule({
         <DayOneIntentModal
           mode="first"
           onDismiss={() => setShowDayOneIntentModal(false)}
+          onRewardReceived={() => {
+            void fetchMySquad().then(data => extractPhase2Data(data));
+          }}
         />
       )}
       {screen === 'manage' && squad && (

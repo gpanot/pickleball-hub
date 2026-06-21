@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { getMobileUser } from '@/lib/mobile-auth'
+import { sendPushNotification } from '@/lib/notifications'
 
 const VALID_WINDOWS = ['today', 'in_next_few_days', 'today_after_work', 'this_weekend', 'not_sure'] as const
 type IntentWindow = (typeof VALID_WINDOWS)[number]
@@ -128,6 +129,22 @@ export async function POST(req: NextRequest) {
         reason: 'play_intent',
       },
     })
+
+    // Fire-and-forget PNS to the earner
+    ;(async () => {
+      try {
+        await sendPushNotification(user.profileId, {
+          title: 'Your chest is ready to open 📦',
+          body: `You earned a squad chest + ${INTENT_REWARD_CLUB_TOKENS} tokens for committing to play. Go open it!`,
+          data: {
+            screen: rewardChestId ? 'ChestDetail' : 'SquadHome',
+            ...(rewardChestId ? { chestId: rewardChestId } : {}),
+          },
+        })
+      } catch (e) {
+        console.error('[PLAY_INTENT] PNS error:', e)
+      }
+    })()
   }
 
   // ── 3. Aggregate count ──────────────────────────────────────────────────
