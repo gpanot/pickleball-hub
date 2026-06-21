@@ -2,13 +2,30 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getMobileUser } from "@/lib/mobile-auth";
 
+export async function GET(req: NextRequest) {
+  const user = await getMobileUser(req);
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const profile = await prisma.playerProfile.findUnique({
+    where: { id: user.profileId },
+    select: { preferences: true },
+  });
+
+  return NextResponse.json({ preferences: profile?.preferences ?? {} });
+}
+
 export async function PATCH(req: NextRequest) {
   const user = await getMobileUser(req);
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const body = (await req.json()) as { duprRating?: number; handle?: string };
+  const body = (await req.json()) as {
+    duprRating?: number
+    handle?: string
+    playstyles?: string[]
+    preferences?: Record<string, unknown>
+  }
 
   if (body.handle !== undefined) {
     const handle = body.handle.trim().toLowerCase();
@@ -96,6 +113,50 @@ export async function PATCH(req: NextRequest) {
     console.log(
       `[DUPR_DEBUG] saved: profileId=${user.profileId} reclubUserId=${user.reclubUserId} duprDoubles=${rating}`
     );
+  }
+
+  if (body.playstyles !== undefined) {
+    const VALID = ['partner', 'friend', 'group', 'colleagues', 'open_play', 'solo'];
+    const playstyles = (Array.isArray(body.playstyles) ? body.playstyles : [])
+      .filter((s) => VALID.includes(s))
+      .slice(0, 2);
+
+    const currentProfile = await prisma.playerProfile.findUnique({
+      where: { id: user.profileId },
+      select: { preferences: true },
+    });
+    const currentPrefs = (currentProfile?.preferences as Record<string, unknown>) ?? {};
+    await prisma.playerProfile.update({
+      where: { id: user.profileId },
+      data: { preferences: { ...currentPrefs, playstyles } },
+    });
+
+    return NextResponse.json({ ok: true, playstyles });
+  }
+
+  // Generic preferences merge — used by engagement layer and other feature flags
+  if (body.preferences !== undefined && typeof body.preferences === 'object') {
+    const ALLOWED_KEYS = [
+      'engagementPlayStyle', 'playWindow', 'vibeTag',
+      'dayOneIntentShown', 'dayOneIntent', 'intentMatchLog',
+      'engagementBackoff', 'timezone',
+    ]
+    const filtered = Object.fromEntries(
+      Object.entries(body.preferences).filter(([k]) => ALLOWED_KEYS.includes(k))
+    )
+    if (Object.keys(filtered).length > 0) {
+      const currentProfile = await prisma.playerProfile.findUnique({
+        where: { id: user.profileId },
+        select: { preferences: true },
+      })
+      const currentPrefs = (currentProfile?.preferences as Record<string, unknown>) ?? {}
+      const merged = { ...currentPrefs, ...filtered }
+      await prisma.playerProfile.update({
+        where: { id: user.profileId },
+        data: { preferences: merged as Parameters<typeof prisma.playerProfile.update>[0]['data']['preferences'] },
+      })
+    }
+    return NextResponse.json({ ok: true })
   }
 
   return NextResponse.json({ ok: true });
