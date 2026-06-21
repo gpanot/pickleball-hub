@@ -3,13 +3,11 @@ import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useAuthStore } from '../../../stores/authStore';
 import { SquadScreenHeader } from '../components/SquadScreenHeader';
 import type { PlayerBrandData } from '../types';
 
 const LIME = '#a3e635';
-const LIME_DARK = '#65a30d';
 
 const BRANDS: Array<{
   key: string;
@@ -35,23 +33,26 @@ interface Props {
 
 export function BrandSelectScreen({ onSelected, onSkip, onBack }: Props) {
   const insets = useSafeAreaInsets();
-  const [selected, setSelected] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
 
-  const handleConfirm = async () => {
-    if (!selected || confirming) return;
+  const handleSelect = async (brandKey: string) => {
+    if (confirming) return;
     setConfirming(true);
     try {
       const res = await useAuthStore.getState().authedFetch('/api/brand/select', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ brand: selected }),
+        body: JSON.stringify({ brand: brandKey }),
       });
-      if (!res.ok) return;
+      if (!res.ok) {
+        setConfirming(false);
+        return;
+      }
       const data: PlayerBrandData = await res.json();
       onSelected(data);
-    } catch {}
-    setConfirming(false);
+    } catch {
+      setConfirming(false);
+    }
   };
 
   return (
@@ -67,9 +68,10 @@ export function BrandSelectScreen({ onSelected, onSkip, onBack }: Props) {
         {BRANDS.map((brand) => (
           <TouchableOpacity
             key={brand.key}
-            style={[s.card, selected === brand.key && s.cardSelected]}
-            onPress={() => setSelected(brand.key)}
-            activeOpacity={0.8}
+            style={s.card}
+            onPress={() => handleSelect(brand.key)}
+            disabled={confirming}
+            activeOpacity={0.75}
           >
             <Text style={s.brandEmoji}>{brand.emoji}</Text>
             <View style={{ flex: 1 }}>
@@ -84,32 +86,13 @@ export function BrandSelectScreen({ onSelected, onSkip, onBack }: Props) {
                 </View>
               </View>
             </View>
-            {selected === brand.key && (
-              <View style={s.checkCircle}>
-                <Text style={{ color: '#000', fontSize: 14, fontWeight: '900' }}>✓</Text>
-              </View>
+            {confirming && (
+              <ActivityIndicator size="small" color={LIME} />
             )}
           </TouchableOpacity>
         ))}
 
-        <TouchableOpacity
-          style={[s.ctaWrap, { opacity: selected ? 1 : 0.4 }]}
-          onPress={handleConfirm}
-          disabled={!selected || confirming}
-          activeOpacity={0.8}
-        >
-          <LinearGradient colors={[LIME, LIME_DARK]} style={s.ctaGrad}>
-            {confirming ? (
-              <ActivityIndicator color="#000" />
-            ) : (
-              <Text style={s.ctaText}>
-                {selected ? `Choose ${BRANDS.find((b) => b.key === selected)?.name ?? ''} →` : 'Select a brand →'}
-              </Text>
-            )}
-          </LinearGradient>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={s.skipBtn} onPress={onSkip} activeOpacity={0.7}>
+        <TouchableOpacity style={s.skipBtn} onPress={onSkip} activeOpacity={0.7} disabled={confirming}>
           <Text style={s.skipText}>Skip — choose later</Text>
         </TouchableOpacity>
       </ScrollView>
@@ -128,7 +111,6 @@ const s = StyleSheet.create({
     borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.07)',
     borderRadius: 14, padding: 16, marginBottom: 10,
   },
-  cardSelected: { borderColor: LIME, backgroundColor: 'rgba(163,230,53,0.06)' },
   brandEmoji: { fontSize: 28, marginTop: 2 },
   brandName: { fontSize: 16, fontWeight: '900', color: '#fff', marginBottom: 2 },
   brandLabel: { fontSize: 12, color: '#a1a1aa', marginBottom: 8 },
@@ -138,13 +120,6 @@ const s = StyleSheet.create({
     borderRadius: 100, paddingHorizontal: 8, paddingVertical: 3,
   },
   bonusText: { fontSize: 11, fontWeight: '700', color: '#d4d4d8' },
-  checkCircle: {
-    width: 26, height: 26, borderRadius: 13,
-    backgroundColor: LIME, alignItems: 'center', justifyContent: 'center',
-  },
-  ctaWrap: { marginTop: 20 },
-  ctaGrad: { paddingVertical: 15, borderRadius: 16, alignItems: 'center', borderBottomWidth: 3, borderBottomColor: '#365314' },
-  ctaText: { fontSize: 16, fontWeight: '900', color: '#000' },
   skipBtn: { marginTop: 14, alignItems: 'center', paddingVertical: 12 },
   skipText: { fontSize: 14, color: '#52525b', fontWeight: '600' },
 });

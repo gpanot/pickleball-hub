@@ -5,7 +5,7 @@ import { useAuthStore } from '../../stores/authStore';
 import { useSignUpModal } from '../../contexts/SignUpModalContext';
 import { useSquad } from './hooks/useSquad';
 import { useConquest } from './hooks/useConquest';
-import { getPendingInvite, disbandDismissKey, resetDevCheckinFlow, tapChest, openChest, ensurePodForSquad } from './api';
+import { getPendingInvite, disbandDismissKey, resetDevCheckinFlow, resetDevSquadd, tapChest, openChest, ensurePodForSquad } from './api';
 import * as api from './api';
 import * as conquestApi from './conquestApi';
 import type { SquadScreen, SquadDisbandedNotice } from './types';
@@ -29,6 +29,7 @@ import { SquadManageScreen } from './screens/SquadManageScreen';
 import { SquadEditScreen } from './screens/SquadEditScreen';
 import { CityLeaderboardScreen } from './screens/CityLeaderboardScreen';
 import { CheckInSheet } from './screens/CheckInSheet';
+import { DayOneIntentModal } from '../../components/DayOneIntentModal';
 // Phase 3: Pods, Tokens & Brands
 import { PodPlaystyleScreen } from './screens/PodPlaystyleScreen';
 import { PodCreateScreen } from './screens/PodCreateScreen';
@@ -130,6 +131,8 @@ export default function SquadModule({
   // When true, pod-playstyle's "selected" action skips pod-create and goes to invite screen
   const [podPlaystyleForInvite, setPodPlaystyleForInvite] = useState(false);
   const [showCheckinSheet, setShowCheckinSheet] = useState(false);
+  const [showDayOneIntentModal, setShowDayOneIntentModal] = useState(false);
+  const dayOneModalChecked = useRef(false);
   // Phase 4 Conquest state
   const [conquestCardData, setConquestCardData] = useState<SquadCardData | null>(null);
   const [conquestImpactData, setConquestImpactData] = useState<ConquestImpactBreakdown | null>(null);
@@ -257,32 +260,67 @@ export default function SquadModule({
   }, []);
 
   const handleDevReset = useCallback(async () => {
-    try {
-      const result = await resetDevCheckinFlow();
-      // Clear all local phase-3 state so the UI reflects the reset immediately
-      setActiveChest(null);
-      setPlayerBrandData(null);
-      setWalletData(null);
-      setWelcomeChestResult(null);
-      setJoinPath(false);
-      setJoinedSquadId(null);
-      setBrandSelectBackScreen('pod-playstyle');
-      const [data] = await Promise.all([
-        fetchMySquad(),
-        refreshSession(),
-        refreshAlertBadge(),
-      ]);
-      extractPhase2Data(data);
-      const { chests, radarSessions, pulseCooldowns } = result.cleared;
-      Alert.alert(
-        'Flow reset',
-        `Cleared ${chests} chest(s), ${radarSessions} session(s), ${pulseCooldowns} cooldown(s). Brand + wallet reset. You can re-run onboarding.`,
-      );
-    } catch (e: unknown) {
-      const message = e instanceof Error ? e.message : 'Reset failed';
-      Alert.alert('Reset failed', message);
-      throw e;
-    }
+    Alert.alert(
+      'Dev Reset',
+      'Choose what to reset:',
+      [
+        {
+          text: 'Reset Squadd',
+          onPress: async () => {
+            try {
+              const result = await resetDevSquadd();
+              setActiveChest(null);
+              const [data] = await Promise.all([
+                fetchMySquad(),
+                refreshSession(),
+                refreshAlertBadge(),
+              ]);
+              extractPhase2Data(data);
+              const { chests, radarSessions, pulseCooldowns, alerts } = result.cleared;
+              Alert.alert(
+                'Squadd reset',
+                `Cleared ${chests} chest(s), ${radarSessions} session(s), ${pulseCooldowns} cooldown(s), ${alerts} alert(s). Streak reset.`,
+              );
+            } catch (e: unknown) {
+              const message = e instanceof Error ? e.message : 'Reset failed';
+              Alert.alert('Reset failed', message);
+            }
+          },
+        },
+        {
+          text: 'All reset',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const result = await resetDevCheckinFlow();
+              setActiveChest(null);
+              setPlayerBrandData(null);
+              setWalletData(null);
+              setWelcomeChestResult(null);
+              setJoinPath(false);
+              setJoinedSquadId(null);
+              setBrandSelectBackScreen('pod-playstyle');
+              const [data] = await Promise.all([
+                fetchMySquad(),
+                refreshSession(),
+                refreshAlertBadge(),
+              ]);
+              extractPhase2Data(data);
+              const { chests, radarSessions, pulseCooldowns } = result.cleared;
+              Alert.alert(
+                'All reset',
+                `Cleared ${chests} chest(s), ${radarSessions} session(s), ${pulseCooldowns} cooldown(s). Brand + wallet + onboarding reset.`,
+              );
+            } catch (e: unknown) {
+              const message = e instanceof Error ? e.message : 'Reset failed';
+              Alert.alert('Reset failed', message);
+              throw e;
+            }
+          },
+        },
+        { text: 'Cancel', style: 'cancel' },
+      ],
+    );
   }, [fetchMySquad, refreshSession, refreshAlertBadge, extractPhase2Data]);
 
   const routeToSignedInScreen = useCallback(async () => {
@@ -388,6 +426,14 @@ export default function SquadModule({
     if (!activeJwt || !activeProfileId) {
       pendingCarouselContinueRef.current = true;
       openSignUp();
+      return;
+    }
+
+    // If the player is mid-onboarding (explore-paused or killed mid-funnel), the
+    // OnboardingOrchestrator owns the funnel — don't continue through SquadModule's
+    // old carousel flow, which routes to the legacy ready/create screens.
+    if (!useAuthStore.getState().hasCompletedOnboarding) {
+      debugLog('SquadModule', 'handleCarouselCta: onboarding incomplete — ignoring carousel CTA');
       return;
     }
 
@@ -501,6 +547,13 @@ export default function SquadModule({
       return;
     }
     if (deeplinkSquadId || deeplinkInviteId) {
+      // Guard: if the player is still mid-onboarding, the orchestrator owns the funnel.
+      // Don't route to invite-receive now — the server-side invite persists and will be
+      // picked up by routeToSignedInScreen → getPendingInvite() once onboarding completes.
+      if (!useAuthStore.getState().hasCompletedOnboarding) {
+        pushRouteLog(`runtime push → skipped invite-receive (onboarding incomplete, invite will persist for squadId=${deeplinkSquadId})`);
+        return;
+      }
       if (deeplinkInviteId) setReceiveInviteId(parseInt(deeplinkInviteId, 10));
       if (deeplinkSquadId) setReceiveSquadId(deeplinkSquadId);
       setScreen('invite-receive');
@@ -537,6 +590,22 @@ export default function SquadModule({
       await routeToSignedInScreen();
     })();
   }, [screen, squad, loading, disbandedNotice, tryRouteDisbanded, routeToSignedInScreen]);
+
+  // Day-One Intent Modal: fire once when landing on home for the first time
+  // after onboarding completes. Guard by preferences.dayOneIntentShown.
+  const { authedFetch } = useAuthStore();
+  useEffect(() => {
+    if (screen !== 'home' || !squad || dayOneModalChecked.current) return;
+    dayOneModalChecked.current = true;
+    void authedFetch('/api/players/profile').then(async (res) => {
+      if (!res.ok) return;
+      const data = await res.json().catch(() => ({}));
+      const prefs = data?.preferences ?? {};
+      if (!prefs.dayOneIntentShown) {
+        setShowDayOneIntentModal(true);
+      }
+    }).catch(() => {});
+  }, [screen, squad, authedFetch]);
 
   const handleCreateSquad = useCallback(async (payload: Parameters<typeof create>[0]) => {
     const result = await create(payload);
@@ -887,6 +956,13 @@ export default function SquadModule({
             }}
           />
         </>
+      )}
+      {/* Day-One Intent Modal — overlays home screen once per player */}
+      {showDayOneIntentModal && screen === 'home' && (
+        <DayOneIntentModal
+          mode="first"
+          onDismiss={() => setShowDayOneIntentModal(false)}
+        />
       )}
       {screen === 'manage' && squad && (
         <SquadManageScreen

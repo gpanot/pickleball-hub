@@ -460,20 +460,51 @@ export default function App() {
     if (!jwt || bootStatusFetched.current) return
     bootStatusFetched.current = true
 
-    void useAuthStore.getState().hydrateBootStatus().then(() => {
+    void useAuthStore.getState().hydrateBootStatus().then(async () => {
       const { hasCompletedOnboarding: completed, hasActiveSquad: activeSquad } =
         useAuthStore.getState()
 
       debugLog('App', `boot-status: onboardingCompleted=${completed} hasActiveSquad=${activeSquad}`)
 
+      // Read the locally-persisted onboarding step before making any routing decision.
+      // This is the key guard: a persisted step means the player was mid-funnel on THIS
+      // device and should resume via the orchestrator — even if the server auto-healed.
+      const persistedStep = await onboardingStorage.getStep()
+      debugLog('App', `boot-status: persistedStep=${JSON.stringify(persistedStep)}`)
+
+      // Steps from which the player should resume the orchestrator rather than be
+      // auto-healed to main. Anything at or after create-squad means a squad may exist
+      // server-side but the reward flow (brand-select / welcome-chest / token-split) has
+      // not been completed yet.
+      const POST_SQUAD_STEPS = new Set([
+        'create-squad',
+        'join-preview',
+        'brand-select',
+        'welcome-chest',
+        'token-split',
+      ])
+      const persistedStepIsPostSquad =
+        persistedStep != null && POST_SQUAD_STEPS.has(persistedStep.step)
+
       // Plan routing table (from boot-status):
-      // completed=true  + squad=true  → Main app (MY SQUADD)
+      // completed=true  + squad=true  → Main app (MY SQUADD), UNLESS local step is post-squad
       // completed=true  + squad=false → Legacy squad-setup only (orchestrator squad-only mode)
       // completed=false + squad=true  → Auto-healed server-side; client sees completed=true
       // completed=false + squad=false → Full orchestrator (new user or mid-funnel resume)
 
       if (completed && activeSquad) {
-        // Normal case — fully done
+        if (persistedStepIsPostSquad) {
+          // Player was killed mid-funnel after squad creation. The server auto-healed but
+          // the reward steps haven't been shown yet — resume the orchestrator at the
+          // persisted step so they get brand-select / welcome-chest / token-split.
+          debugLog('App', `boot-status: auto-heal suppressed — resuming orchestrator at persisted step "${persistedStep!.step}"`)
+          const resumeMode = persistedStep!.mode ?? 'full'
+          setOrchestratorMode(resumeMode)
+          setFlowScreen('orchestrator')
+          return
+        }
+        // Normal case — fully done (or auto-healed with no local state = genuine legacy).
+        debugLog('App', 'boot-status: fully done → main')
         setFlowScreen('main')
         return
       }
@@ -487,20 +518,29 @@ export default function App() {
         return
       }
 
-      // onboardingCompleted=false + hasActiveSquad=true should have been auto-healed
-      // by the boot-status endpoint. If it somehow reaches here, route to main defensively.
+      // onboardingCompleted=false + hasActiveSquad=true — the server tried to auto-heal
+      // but the flag hasn't propagated yet, or auto-heal was skipped. Same guard applies:
+      // if a post-squad step is persisted, resume the orchestrator; otherwise fall through.
       if (activeSquad) {
-        debugLog('App', 'boot-status: unexpected false+squad — routing to main as fallback')
+        if (persistedStepIsPostSquad) {
+          debugLog('App', `boot-status: unexpected false+squad but post-squad step persisted — resuming orchestrator at "${persistedStep!.step}"`)
+          const resumeMode = persistedStep!.mode ?? 'full'
+          setOrchestratorMode(resumeMode)
+          setFlowScreen('orchestrator')
+          return
+        }
+        // No local state and squad already exists — genuine legacy account. Route to main.
+        debugLog('App', 'boot-status: unexpected false+squad, no persisted step — routing to main as legacy fallback')
         setFlowScreen('main')
         return
       }
 
       // completed=false, squad=false → full orchestrator (new user / mid-funnel resume).
-      // Always start in 'full' mode — the orchestrator's init will resume from the
-      // correct step via AsyncStorage (which was saved with the correct mode).
-      // The displayName heuristic was unreliable: Google sign-in always populates
-      // displayName even for brand-new accounts, falsely triggering squad-only mode.
-      setOrchestratorMode('full')
+      // This includes explore-paused players returning on cold reboot.
+      // Clear the explore-pause flag so tab-switch re-routing doesn't fire again
+      // once they've re-entered the orchestrator.
+      void onboardingStorage.setExplorePaused(false)
+      setOrchestratorMode(persistedStep?.mode ?? 'full')
       setFlowScreen('orchestrator')
     })
   }, [jwt]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -646,6 +686,29 @@ export default function App() {
     setFlowScreen('main')
     setActiveTab('swipe')
   }
+
+  // When a player used "Explore app first" and later navigates to the Squadd tab,
+  // resume the orchestrator at their persisted step instead of showing the old
+  // SquadModule carousel/ready screen.
+  useEffect(() => {
+    if (flowScreen !== 'main') return
+    if (activeTab !== 'squadd') return
+    const { hasCompletedOnboarding } = useAuthStore.getState()
+    if (hasCompletedOnboarding) return
+
+    void (async () => {
+      const paused = await onboardingStorage.isExplorePaused()
+      if (!paused) return
+      debugLog('App', 'squadd tab active while explore-paused + onboarding incomplete — resuming orchestrator')
+      // Clear the flag before re-entering so this effect doesn't re-fire on the
+      // next tab switch after the player completes onboarding.
+      await onboardingStorage.setExplorePaused(false)
+      // Mode is stored alongside the persisted step; fall back to 'full'.
+      const persisted = await onboardingStorage.getStep()
+      setOrchestratorMode(persisted?.mode ?? 'full')
+      setFlowScreen('orchestrator')
+    })()
+  }, [activeTab, flowScreen])
 
   const handlePeopleComplete = () => {
     useSessionStore.getState().fetchSessions(null, null)

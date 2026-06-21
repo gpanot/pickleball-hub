@@ -97,17 +97,17 @@ export function WelcomeChestScreen({ squadName, onOpened }: Props) {
         <View style={s.previewRow}>
           <View style={s.previewCard}>
             <ClubTokenIcon size={32} />
-            <Text style={s.previewAmount}>150</Text>
+            <Text style={s.previewAmount}>?</Text>
             <Text style={s.previewLabel}>Club Tokens</Text>
           </View>
           <View style={s.previewCard}>
             <BrandTokenIcon size={32} />
-            <Text style={s.previewAmount}>50</Text>
+            <Text style={s.previewAmount}>?</Text>
             <Text style={s.previewLabel}>Brand Tokens</Text>
           </View>
           <View style={s.previewCard}>
             <Text style={{ fontSize: 22, marginBottom: 4 }}>⚡</Text>
-            <Text style={s.previewAmount}>200</Text>
+            <Text style={s.previewAmount}>?</Text>
             <Text style={s.previewLabel}>Squad XP</Text>
           </View>
         </View>

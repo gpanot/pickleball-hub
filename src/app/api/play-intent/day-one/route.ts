@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { getMobileUser } from '@/lib/mobile-auth'
 
-const VALID_WINDOWS = ['today_after_work', 'this_weekend', 'not_sure'] as const
+const VALID_WINDOWS = ['today', 'in_next_few_days', 'today_after_work', 'this_weekend', 'not_sure'] as const
 type IntentWindow = (typeof VALID_WINDOWS)[number]
 
 /**

@@ -278,6 +278,18 @@ export async function resetDevCheckinFlow() {
   }>;
 }
 
+export async function resetDevSquadd() {
+  const res = await authedFetch('/api/squads/dev/reset-squadd', { method: 'POST' });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Unknown error' }));
+    throw new Error(err.error ?? `HTTP ${res.status}`);
+  }
+  return res.json() as Promise<{
+    ok: boolean;
+    cleared: { chests: number; radarSessions: number; pulseCooldowns: number; alerts: number; streakReset: boolean };
+  }>;
+}
+
 export async function checkin(payload: CheckinPayload) {
   const res = await authedFetch('/api/squads/checkin', {
     method: 'POST',

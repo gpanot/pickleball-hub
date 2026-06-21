@@ -2,6 +2,9 @@ import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, Animated, Easing, Image, Dimensions } from 'react-native';
 import { ClubTokenIcon, BrandTokenIcon } from './TokenIcons';
 
+/** Easing that decelerates like a slot machine reel — fast at start, slow at end. */
+const SLOT_EASING = Easing.out(Easing.cubic);
+
 const BANGERS = 'Bangers_400Regular';
 const LIME = '#a3e635';
 const GOLD = '#facc15';
@@ -38,6 +41,16 @@ export function ChestOpenAnimation({ clubTokensAwarded, brandTokensAwarded, xpAw
   const rewardsOpacity = useRef(new Animated.Value(0)).current;
   const rewardsTranslateY = useRef(new Animated.Value(8)).current;
 
+  // Counter animated values — useNativeDriver: false so we can read as integers
+  const clubCounter = useRef(new Animated.Value(0)).current;
+  const brandCounter = useRef(new Animated.Value(0)).current;
+  const xpCounter = useRef(new Animated.Value(0)).current;
+
+  // Displayed integer state, driven by listener on each animated value
+  const [clubDisplay, setClubDisplay] = useState(0);
+  const [brandDisplay, setBrandDisplay] = useState(0);
+  const [xpDisplay, setXpDisplay] = useState(0);
+
   const [particles] = useState<Particle[]>(() =>
     Array.from({ length: 32 }, (_, i) => ({
       id: i,
@@ -69,6 +82,38 @@ export function ChestOpenAnimation({ clubTokensAwarded, brandTokensAwarded, xpAw
       Animated.timing(rewardsTranslateY, { toValue: 0, duration: 500, delay: 700, useNativeDriver: true }),
     ]).start();
 
+    // Casino counter: starts at delay 700ms (same as rewards fade-in), runs 3 seconds
+    const COUNTER_DELAY = 700;
+    const COUNTER_DURATION = 3000;
+
+    Animated.timing(clubCounter, {
+      toValue: clubTokensAwarded,
+      duration: COUNTER_DURATION,
+      delay: COUNTER_DELAY,
+      easing: SLOT_EASING,
+      useNativeDriver: false,
+    }).start();
+
+    Animated.timing(brandCounter, {
+      toValue: brandTokensAwarded,
+      duration: COUNTER_DURATION,
+      delay: COUNTER_DELAY,
+      easing: SLOT_EASING,
+      useNativeDriver: false,
+    }).start();
+
+    Animated.timing(xpCounter, {
+      toValue: xpAwarded ?? 0,
+      duration: COUNTER_DURATION,
+      delay: COUNTER_DELAY,
+      easing: SLOT_EASING,
+      useNativeDriver: false,
+    }).start();
+
+    const idClub = clubCounter.addListener(({ value }) => setClubDisplay(Math.round(value)));
+    const idBrand = brandCounter.addListener(({ value }) => setBrandDisplay(Math.round(value)));
+    const idXp = xpCounter.addListener(({ value }) => setXpDisplay(Math.round(value)));
+
     particles.forEach((p) => {
       const angle = Math.random() * Math.PI * 2;
       const distance = 80 + Math.random() * 120;
@@ -88,6 +133,12 @@ export function ChestOpenAnimation({ clubTokensAwarded, brandTokensAwarded, xpAw
         ]),
       ]).start();
     });
+
+    return () => {
+      clubCounter.removeListener(idClub);
+      brandCounter.removeListener(idBrand);
+      xpCounter.removeListener(idXp);
+    };
   }, []);
 
   return (
@@ -130,18 +181,18 @@ export function ChestOpenAnimation({ clubTokensAwarded, brandTokensAwarded, xpAw
         <Animated.View style={[s.rewards, { opacity: rewardsOpacity, transform: [{ translateY: rewardsTranslateY }] }]}>
           <View style={[s.rewardCard, { borderColor: 'rgba(96,165,250,0.3)' }]}>
             <View style={s.iconWrap}><ClubTokenIcon size={32} /></View>
-            <Text style={[s.rewardValue, { color: BLUE }]}>+{clubTokensAwarded}</Text>
+            <Text style={[s.rewardValue, { color: BLUE }]}>+{clubDisplay}</Text>
             <Text style={s.rewardLabel}>CLUB TOKENS</Text>
           </View>
           <View style={[s.rewardCard, { borderColor: 'rgba(167,139,250,0.3)' }]}>
             <View style={s.iconWrap}><BrandTokenIcon size={32} /></View>
-            <Text style={[s.rewardValue, { color: PURPLE }]}>+{brandTokensAwarded}</Text>
+            <Text style={[s.rewardValue, { color: PURPLE }]}>+{brandDisplay}</Text>
             <Text style={s.rewardLabel}>BRAND TOKENS</Text>
           </View>
           {xpAwarded !== undefined && (
             <View style={[s.rewardCard, { borderColor: 'rgba(163,230,53,0.3)' }]}>
               <Text style={{ fontSize: 24, marginBottom: 6 }}>⚡</Text>
-              <Text style={[s.rewardValue, { color: LIME }]}>+{xpAwarded}</Text>
+              <Text style={[s.rewardValue, { color: LIME }]}>+{xpDisplay}</Text>
               <Text style={s.rewardLabel}>SQUAD XP</Text>
             </View>
           )}
