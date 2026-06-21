@@ -3,6 +3,7 @@ import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   RefreshControl, Alert, Animated, Easing,
 } from 'react-native';
+import { Medal } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SquadIdentityBar } from '../components/SquadIdentityBar';
 import { SquadMembersRow } from '../components/SquadMembersRow';
@@ -187,7 +188,7 @@ export function SquadHomeScreen({
           {/* Brand card */}
           {brandData ? (
             <TouchableOpacity style={s.phase3Card} onPress={onBrandDetail} activeOpacity={0.8}>
-              <Text style={s.phase3CardEmoji}>🏓</Text>
+              <Medal size={28} color={PURPLE} strokeWidth={1.75} style={s.phase3CardIcon} />
               <Text style={s.phase3CardTitle}>{brandData.brand.toUpperCase().replace('_', ' ')}</Text>
               <Text style={s.phase3CardSub}>Lv {brandData.supportLevel} · {walletData?.brandTokens ?? 0} ★</Text>
               <View style={[s.phase3CardCta, { borderColor: PURPLE }]}>
@@ -196,7 +197,7 @@ export function SquadHomeScreen({
             </TouchableOpacity>
           ) : (
             <TouchableOpacity style={s.phase3Card} onPress={onBrandDetail} activeOpacity={0.8}>
-              <Text style={s.phase3CardEmoji}>🏓</Text>
+              <Medal size={28} color="#52525b" strokeWidth={1.75} style={s.phase3CardIcon} />
               <Text style={s.phase3CardTitle}>No Brand</Text>
               <Text style={s.phase3CardSub}>Pick your paddle brand</Text>
               <View style={[s.phase3CardCta, { borderColor: '#52525b' }]}>
@@ -430,6 +431,7 @@ const s = StyleSheet.create({
     borderRadius: 14, padding: 14, alignItems: 'center', gap: 2,
   },
   phase3CardEmoji: { fontSize: 28, marginBottom: 4 },
+  phase3CardIcon: { marginBottom: 4 },
   phase3CardTitle: { fontSize: 13, fontWeight: '900', color: '#fff', textAlign: 'center' },
   phase3CardSub: { fontSize: 11, color: '#71717a', textAlign: 'center', marginBottom: 8 },
   phase3CardCta: {

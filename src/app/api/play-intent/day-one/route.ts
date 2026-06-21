@@ -5,6 +5,8 @@ import { getMobileUser } from '@/lib/mobile-auth'
 const VALID_WINDOWS = ['today', 'in_next_few_days', 'today_after_work', 'this_weekend', 'not_sure'] as const
 type IntentWindow = (typeof VALID_WINDOWS)[number]
 
+const INTENT_REWARD_CLUB_TOKENS = 75
+
 /**
  * POST /api/play-intent/day-one
  *
@@ -61,6 +63,8 @@ export async function POST(req: NextRequest) {
 
   // ── 2. Persist intent + mark modal as shown ─────────────────────────────
 
+  const alreadyRewarded = myPrefs.playIntentChestClaimed === true
+
   await prisma.playerProfile.update({
     where: { id: user.profileId },
     data: {
@@ -68,9 +72,63 @@ export async function POST(req: NextRequest) {
         ...myPrefs,
         dayOneIntent: intentWindow,
         dayOneIntentShown: true,
+        playIntentChestClaimed: true,
       },
     },
   })
+
+  // ── 2b. Award one-time reward chest + club tokens ───────────────────────
+
+  let rewardChestId: string | null = null
+
+  if (!alreadyRewarded) {
+    const membership = await prisma.squadMember.findFirst({
+      where: { profileId: user.profileId, leftAt: null },
+      select: { squadId: true },
+    })
+
+    if (membership?.squadId) {
+      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000)
+      const chest = await prisma.squadChest.create({
+        data: {
+          squadId: membership.squadId,
+          earnerId: user.profileId,
+          source: 'play_intent',
+          expiresAt,
+        },
+      })
+      rewardChestId = chest.id
+
+      // Create opening rows for all active squad members
+      const activeMembers = await prisma.squadMember.findMany({
+        where: { squadId: membership.squadId, leftAt: null },
+        select: { profileId: true },
+      })
+      await prisma.squadChestOpening.createMany({
+        data: activeMembers.map((m) => ({
+          chestId: chest.id,
+          profileId: m.profileId,
+          status: 'pending',
+        })),
+        skipDuplicates: true,
+      })
+    }
+
+    // Award club tokens regardless of squad membership
+    await prisma.playerWallet.upsert({
+      where: { profileId: user.profileId },
+      create: { profileId: user.profileId, clubTokens: INTENT_REWARD_CLUB_TOKENS, brandTokens: 0 },
+      update: { clubTokens: { increment: INTENT_REWARD_CLUB_TOKENS } },
+    })
+    await prisma.tokenLedger.create({
+      data: {
+        profileId: user.profileId,
+        tokenType: 'club',
+        delta: INTENT_REWARD_CLUB_TOKENS,
+        reason: 'play_intent',
+      },
+    })
+  }
 
   // ── 3. Aggregate count ──────────────────────────────────────────────────
 
@@ -157,7 +215,14 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ aggregateCount, match })
+  return NextResponse.json({
+    aggregateCount,
+    match,
+    reward: alreadyRewarded ? null : {
+      clubTokensAwarded: INTENT_REWARD_CLUB_TOKENS,
+      chestId: rewardChestId,
+    },
+  })
 }
 
 /**

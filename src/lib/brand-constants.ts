@@ -1,6 +1,6 @@
-export type PaddleBrand = 'joola' | 'selkirk' | 'gearbox' | 'six_zero' | 'crbn' | 'vatic_pro';
+export type PaddleBrand = 'joola' | 'selkirk' | 'gearbox' | 'six_zero' | 'crbn' | 'vatic_pro' | 'facolos' | 'sypik';
 
-export const PADDLE_BRANDS: PaddleBrand[] = ['joola', 'selkirk', 'gearbox', 'six_zero', 'crbn', 'vatic_pro'];
+export const PADDLE_BRANDS: PaddleBrand[] = ['joola', 'selkirk', 'gearbox', 'six_zero', 'crbn', 'vatic_pro', 'facolos', 'sypik'];
 
 /**
  * Shared XP-to-level lookup. Works for both squad XP and brand XP.
@@ -51,6 +51,8 @@ export const BRAND_BONUSES: Record<
   six_zero:  { pvpRewardPct: 2, territoryInfPct: 6, label: 'Team play — Pod synergy' },
   crbn:      { pvpRewardPct: 7, territoryInfPct: 1, label: 'High risk — power spikes' },
   vatic_pro: { pvpRewardPct: 4, territoryInfPct: 4, label: 'Underdog — efficient leveling' },
+  facolos:   { pvpRewardPct: 3, territoryInfPct: 6, label: 'Precision — control & placement' },
+  sypik:     { pvpRewardPct: 6, territoryInfPct: 2, label: 'Dynamic — momentum builder' },
 };
 
 export const BRAND_SWITCH_RESET_THRESHOLD_LEVEL = 1;
