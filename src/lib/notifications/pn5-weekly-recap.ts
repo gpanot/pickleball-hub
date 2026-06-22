@@ -142,6 +142,16 @@ export async function sendEngagementWeeklyRecaps(): Promise<{
       continue;
     }
 
+    // Suppress intent-prompt if player already has an active, specific intent —
+    // they've already committed this week, no need to ask again.
+    const activeIntent = (prefs.dayOneIntent as string | null) ?? null
+    const intentExpiresAt = (prefs.dayOneIntentExpiresAt as string | null) ?? null
+    const hasActiveSpecificIntent =
+      activeIntent != null &&
+      activeIntent !== 'not_sure' &&
+      intentExpiresAt != null &&
+      new Date(intentExpiresAt) > new Date()
+
     const name = profile.displayName ?? "there";
 
     // Check for real weekly content (≥1 session in last 7 days)
@@ -156,20 +166,27 @@ export async function sendEngagementWeeklyRecaps(): Promise<{
     }
 
     if (sessionCount >= 1) {
-      // Real content exists — send recap + intent CTA
+      // Real content exists — send recap (strip the intent CTA if they already committed)
       const sessionWord = sessionCount === 1 ? "session" : "sessions";
+      const body = hasActiveSpecificIntent
+        ? `${sessionCount} ${sessionWord} this week. Keep it up!`
+        : `${sessionCount} ${sessionWord} this week. Got a game planned in the coming days?`;
       await sendPushNotification(profile.id, {
         title: `Not bad, ${name}.`,
-        body: `${sessionCount} ${sessionWord} this week. Got a game planned in the coming days?`,
+        body,
         data: {
           type: PN5_ENGAGEMENT_TYPE,
           screen: "Squadd",
-          deeplink: "intent_modal",
+          ...(hasActiveSpecificIntent ? {} : { deeplink: "intent_modal" }),
         },
       });
       sentRecap++;
     } else {
-      // No real content — intent-only nudge, no fabricated recap
+      // No real content — skip entirely if intent already active, otherwise nudge
+      if (hasActiveSpecificIntent) {
+        skipped++;
+        continue;
+      }
       await sendPushNotification(profile.id, {
         title: "Got a game planned this week?",
         body: "Tap to see who else is playing soon.",

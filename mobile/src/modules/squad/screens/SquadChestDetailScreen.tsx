@@ -176,6 +176,16 @@ export function SquadChestDetailScreen({ chest, squadId, squadName, myProfileId,
 
   const isReady = status === 'ready' || (status === 'unlocking' && myOpening?.unlocksAt && new Date(myOpening.unlocksAt) <= new Date());
 
+  // Auto-open the chest as soon as it's ready — skip the "Ready to open" intermediate
+  const autoOpenFired = useRef(false);
+  useEffect(() => {
+    if (isReady && !autoOpenFired.current && !loading) {
+      autoOpenFired.current = true;
+      handleOpen();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isReady]);
+
   return (
     <View style={[s.container, { paddingTop: insets.top }]}>
       <View style={s.topBar}>

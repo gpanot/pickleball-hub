@@ -227,13 +227,14 @@ interface Props {
   wallet: PlayerWalletData | null;
   brandData?: PlayerBrandData | null;
   onBack: () => void;
+  onManage?: () => void;
   onPodCreate: () => void;
   onPodInvite: () => void;
   onPodEdit: () => void;
   onBrandDetail?: () => void;
 }
 
-export function ClubhouseDetailScreen({ squad, myPod, wallet, brandData, onBack, onPodCreate, onPodInvite, onPodEdit, onBrandDetail }: Props) {
+export function ClubhouseDetailScreen({ squad, myPod, wallet, brandData, onBack, onManage, onPodCreate, onPodInvite, onPodEdit, onBrandDetail }: Props) {
   const insets = useSafeAreaInsets();
   const { current: xpCurrent, threshold: xpThreshold } = getXpProgress(squad.totalXp, squad.level);
   const xpPct = Math.min(100, (xpCurrent / xpThreshold) * 100);
@@ -268,7 +269,13 @@ export function ClubhouseDetailScreen({ squad, myPod, wallet, brandData, onBack,
       <View style={s.topBar}>
         <SquadBackButton onPress={onBack} />
         <Text style={s.topTitle}>{squad.emoji} Clubhouse</Text>
-        <View style={{ width: 32 }} />
+        {onManage ? (
+          <TouchableOpacity style={s.manageBtn} onPress={onManage} hitSlop={8}>
+            <Text style={s.manageBtnText}>⚙️</Text>
+          </TouchableOpacity>
+        ) : (
+          <View style={{ width: 32 }} />
+        )}
       </View>
 
       <ScrollView contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
@@ -446,6 +453,12 @@ const s = StyleSheet.create({
   topTitle: {
     flex: 1, fontSize: 18, fontWeight: '800', color: '#fff', textAlign: 'center',
   },
+  manageBtn: {
+    width: 32, height: 32, borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  manageBtnText: { fontSize: 18 },
 
   content: { padding: 20, gap: 16, paddingBottom: 60 },
 

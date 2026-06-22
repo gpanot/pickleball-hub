@@ -23,9 +23,9 @@ const DEFAULT_SQUAD_EMOJI = '🦁';
 
 const SUGGESTIONS = ['D2 Lions', 'District Wolves', 'The Smashers', 'Court Kings', 'Net Crushers', 'The Regulars', 'Drop Shot FC'];
 
-// 2 rows × 4 cols = 8 tiles; first 2 are "active" (gold), rest are open (dashed)
+// 2 rows × 4 cols = 8 tiles; first 1 is "active" (gold), rest are open (dashed)
 const TOTAL_TILES = 8;
-const ACTIVE_TILES = 2;
+const ACTIVE_TILES = 1;
 
 interface Props {
   onCreated: (payload: CreateSquadPayload) => Promise<any>;

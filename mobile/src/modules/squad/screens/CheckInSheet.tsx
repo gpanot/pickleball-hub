@@ -473,9 +473,17 @@ export function CheckInSheet({
     } catch (e: any) {
       debugLog('CHECKIN', `check-in ERROR: ${e?.message ?? String(e)} (type=${e?.constructor?.name ?? 'unknown'})`);
       if (e.message === 'already_checked_in') {
-        Alert.alert('Already checked in', 'You can only check in once per day.');
+        const reset = e.nextCheckinAt ? new Date(e.nextCheckinAt) : null;
+        const resetStr = reset
+          ? reset.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          : 'tomorrow';
+        Alert.alert('Already checked in', `You already checked in today. Come back at ${resetStr} for your next chest.`);
       } else if (e.message === 'rate_limited') {
-        Alert.alert('Too soon', 'Wait a bit before checking in again.');
+        const retry = e.retryAfter ? new Date(e.retryAfter) : null;
+        const retryStr = retry
+          ? retry.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          : 'in a bit';
+        Alert.alert('Too soon', `You already earned a chest recently. Try again after ${retryStr}.`);
       } else {
         Alert.alert('Error', e.message);
       }

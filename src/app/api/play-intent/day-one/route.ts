@@ -2,57 +2,227 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { getMobileUser } from '@/lib/mobile-auth'
 import { sendPushNotification } from '@/lib/notifications'
+import { localHourForTimezone, localDayOfWeekForTimezone } from '@/lib/notifications/session-time'
 
-const VALID_WINDOWS = ['today', 'in_next_few_days', 'today_after_work', 'this_weekend', 'not_sure'] as const
-type IntentWindow = (typeof VALID_WINDOWS)[number]
+const VALID_WINDOWS = ['today', 'specific_day', 'this_weekend', 'not_sure'] as const
+type StoredIntent = (typeof VALID_WINDOWS)[number]
 
 const INTENT_REWARD_CLUB_TOKENS = 75
+
+// ─── Timezone-aware expiry ────────────────────────────────────────────────────
+//
+// Reads preferences.timezone (IANA string). Falls back to Asia/Ho_Chi_Minh.
+// Uses localHourForTimezone / localDayOfWeekForTimezone from session-time.ts —
+// the same helpers used by pn-engagement.ts to avoid ICT hardcoding.
+
+function computeExpiresAt(
+  intentWindow: StoredIntent,
+  resolvedDate: string | null, // 'YYYY-MM-DD', only when intentWindow === 'specific_day'
+  tz: string | null | undefined,
+): Date {
+  const safeTz = tz ?? 'Asia/Ho_Chi_Minh'
+  const now = new Date()
+
+  if (intentWindow === 'specific_day' && resolvedDate) {
+    // End of the specific picked calendar day, 23:59:59 in player's local tz.
+    // Use a midday reference on the target date for DST-correct offset.
+    const targetMidday = new Date(`${resolvedDate}T12:00:00Z`)
+    return new Date(`${resolvedDate}T23:59:59${tzOffsetString(safeTz, targetMidday)}`)
+  }
+
+  if (intentWindow === 'today') {
+    // 23:59:59 of today in local tz
+    const todayStr = localDateString(safeTz)
+    return new Date(`${todayStr}T23:59:59${tzOffsetString(safeTz, now)}`)
+  }
+
+  if (intentWindow === 'this_weekend') {
+    // Coming Sunday 23:59:59 local. If today IS Sunday, that same Sunday.
+    const dow = localDayOfWeekForTimezone(safeTz) // 0=Sun
+    const daysUntilSunday = dow === 0 ? 0 : 7 - dow
+    const localSundayStr = localDateStringOffsetDays(safeTz, daysUntilSunday)
+    const sundayMidday = new Date(`${localSundayStr}T12:00:00Z`)
+    return new Date(`${localSundayStr}T23:59:59${tzOffsetString(safeTz, sundayMidday)}`)
+  }
+
+  // 'not_sure' — 24h flat
+  return new Date(now.getTime() + 24 * 60 * 60 * 1000)
+}
+
+/** Returns current local date as 'YYYY-MM-DD' for the given IANA timezone. */
+function localDateString(tz: string): string {
+  try {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      timeZone: tz,
+    }).formatToParts(new Date())
+    const y = parts.find((p) => p.type === 'year')?.value ?? '2000'
+    const m = parts.find((p) => p.type === 'month')?.value ?? '01'
+    const d = parts.find((p) => p.type === 'day')?.value ?? '01'
+    return `${y}-${m}-${d}`
+  } catch {
+    return new Date().toISOString().slice(0, 10)
+  }
+}
+
+/** Returns local date N days from now as 'YYYY-MM-DD'. */
+function localDateStringOffsetDays(tz: string, days: number): string {
+  const d = new Date()
+  d.setDate(d.getDate() + days)
+  try {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      timeZone: tz,
+    }).formatToParts(d)
+    const y = parts.find((p) => p.type === 'year')?.value ?? '2000'
+    const mo = parts.find((p) => p.type === 'month')?.value ?? '01'
+    const da = parts.find((p) => p.type === 'day')?.value ?? '01'
+    return `${y}-${mo}-${da}`
+  } catch {
+    return d.toISOString().slice(0, 10)
+  }
+}
+
+/**
+ * Returns UTC offset string like '+07:00' for a given IANA timezone AT a specific date.
+ * Passing the target date (not always `new Date()`) ensures DST-correctness when
+ * computing expiry for a specific future date like a day pill or upcoming Sunday.
+ */
+function tzOffsetString(tz: string, atDate: Date = new Date()): string {
+  try {
+    const formatter = new Intl.DateTimeFormat('en', {
+      timeZone: tz,
+      timeZoneName: 'shortOffset',
+    })
+    const parts = formatter.formatToParts(atDate)
+    const tzName = parts.find((p) => p.type === 'timeZoneName')?.value ?? 'GMT+0'
+    // Handles 'GMT+7', 'GMT+5:30', 'GMT-8', 'UTC+7', 'GMT' (no offset = UTC)
+    const match = tzName.match(/(?:GMT|UTC)([+-]\d+(?::\d+)?)?/)
+    if (!match) return '+00:00'
+    const raw = match[1] ?? '+0'
+    const sign = raw[0] === '-' ? '-' : '+'
+    const digits = raw.replace(/^[+-]/, '')
+    const [hPart, mPart] = digits.split(':')
+    const h = String(Number(hPart ?? '0')).padStart(2, '0')
+    const m = String(Number(mPart ?? '0')).padStart(2, '0')
+    return `${sign}${h}:${m}`
+  } catch {
+    return '+00:00'
+  }
+}
+
+// ─── GET — current active intent state ───────────────────────────────────────
+
+/**
+ * GET /api/play-intent/day-one
+ * Returns the current player's active intent state for the IntentCard.
+ */
+export async function GET(req: NextRequest) {
+  const user = await getMobileUser(req)
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const profile = await prisma.playerProfile.findUnique({
+    where: { id: user.profileId },
+    select: { preferences: true },
+  })
+
+  let prefs = (profile?.preferences as Record<string, unknown>) ?? {}
+  let intent = (prefs.dayOneIntent as StoredIntent | null) ?? null
+  let intentDate = (prefs.dayOneIntentDate as string | null) ?? null
+  let expiresAt = (prefs.dayOneIntentExpiresAt as string | null) ?? null
+  const now = new Date()
+
+  const isActive = intent !== null && expiresAt !== null && new Date(expiresAt) > now
+
+  // On-read expiry: if expired and fulfillment not yet resolved, silently mark unfulfilled
+  // and clear the active fields — no cron job needed.
+  if (intent !== null && expiresAt !== null && new Date(expiresAt) <= now && prefs.dayOneIntentFulfilled == null) {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { dayOneIntent, dayOneIntentDate, dayOneIntentExpiresAt, ...rest } = prefs
+    const updated = { ...rest, dayOneIntentFulfilled: false }
+    try {
+      await prisma.playerProfile.update({
+        where: { id: user.profileId },
+        data: { preferences: updated },
+      })
+    } catch {}
+    prefs = updated
+    intent = null
+    intentDate = null
+    expiresAt = null
+  }
+
+  // Live aggregate count for IntentCard prompt copy ("7 others are in")
+  let aggregateCount = 0
+  try {
+    const result = await prisma.$queryRaw<{ count: bigint }[]>`
+      SELECT COUNT(*) AS count
+      FROM player_profiles
+      WHERE preferences->>'dayOneIntentExpiresAt' IS NOT NULL
+        AND (preferences->>'dayOneIntentExpiresAt')::timestamptz > NOW()
+        AND id != ${user.profileId}
+        AND onboarding_completed = true
+        AND banned = false
+        AND suspended = false
+    `
+    aggregateCount = Number(result[0]?.count ?? 0)
+  } catch {}
+
+  return NextResponse.json({ intent, intentDate, expiresAt, isActive: isActive && intent !== null, aggregateCount })
+}
+
+// ─── POST — submit or update intent ──────────────────────────────────────────
 
 /**
  * POST /api/play-intent/day-one
  *
- * Day-One Intent modal backend. Open to all authenticated players (no gender gate).
+ * Body: {
+ *   intentWindow: 'today' | 'specific_day' | 'this_weekend' | 'not_sure'
+ *   resolvedDate?: 'YYYY-MM-DD'  // required when intentWindow === 'specific_day'
+ * }
  *
- * Body: { intentWindow: 'today_after_work' | 'this_weekend' | 'not_sure' }
+ * Writes into preferences:
+ *   dayOneIntent        — stored window
+ *   dayOneIntentDate    — 'YYYY-MM-DD' or null
+ *   dayOneIntentExpiresAt — ISO timestamp
+ *   dayOneIntentShown   — true
+ *   playIntentCount     — incremented each call
+ *   playIntentChestClaimed — set true on first reward
  *
- * Writes:
- *   preferences.dayOneIntent      = intentWindow
- *   preferences.dayOneIntentShown = true
- *
- * Returns:
- *   { aggregateCount: number, match: MatchResult | null }
- *
- * Match quality bar (all three required for a named suggestion):
- *   1. Same intentWindow
- *   2. DUPR within ±0.5 of the requesting player (duprDoubles on Player table)
- *   3. At least one shared vibeTag in preferences
- *
- * Honesty rules:
- *   - aggregateCount is always a real DB count
- *   - match is null if the quality bar is not met
- *   - No fabricated names, times, or distances
+ * One-time reward (chest + tokens) only when playIntentChestClaimed is false.
  */
 export async function POST(req: NextRequest) {
   const user = await getMobileUser(req)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await req.json().catch(() => ({}))
-  const { intentWindow } = body as { intentWindow?: IntentWindow }
+  const { intentWindow, resolvedDate } = body as {
+    intentWindow?: StoredIntent
+    resolvedDate?: string
+  }
 
   if (!intentWindow || !VALID_WINDOWS.includes(intentWindow)) {
     return NextResponse.json({ error: 'Invalid intentWindow' }, { status: 400 })
   }
 
-  // ── 1. Read caller's profile + DUPR + vibeTag ───────────────────────────
+  if (intentWindow === 'specific_day') {
+    if (!resolvedDate || !/^\d{4}-\d{2}-\d{2}$/.test(resolvedDate)) {
+      return NextResponse.json({ error: 'resolvedDate required for specific_day (YYYY-MM-DD)' }, { status: 400 })
+    }
+  }
+
+  // ── 1. Read caller's profile ─────────────────────────────────────────────
 
   const myProfile = await prisma.playerProfile.findUnique({
     where: { id: user.profileId },
     select: {
       preferences: true,
       reclubUserId: true,
-      reclubPlayer: {
-        select: { duprDoubles: true },
-      },
+      reclubPlayer: { select: { duprDoubles: true } },
     },
   })
 
@@ -61,10 +231,19 @@ export async function POST(req: NextRequest) {
     ? Number(myProfile.reclubPlayer.duprDoubles)
     : null
   const myVibeTag = (myPrefs.vibeTag as string | null) ?? null
+  const tz = (myPrefs.timezone as string | null) ?? null
 
-  // ── 2. Persist intent + mark modal as shown ─────────────────────────────
+  // ── 2. Compute expiry ────────────────────────────────────────────────────
+
+  const expiresAt = computeExpiresAt(intentWindow, resolvedDate ?? null, tz)
+
+  // ── 3. Check reward eligibility ──────────────────────────────────────────
 
   const alreadyRewarded = myPrefs.playIntentChestClaimed === true
+
+  // ── 4. Persist intent ────────────────────────────────────────────────────
+
+  const currentCount = typeof myPrefs.playIntentCount === 'number' ? myPrefs.playIntentCount : 0
 
   await prisma.playerProfile.update({
     where: { id: user.profileId },
@@ -72,13 +251,16 @@ export async function POST(req: NextRequest) {
       preferences: {
         ...myPrefs,
         dayOneIntent: intentWindow,
+        dayOneIntentDate: intentWindow === 'specific_day' ? (resolvedDate ?? null) : null,
+        dayOneIntentExpiresAt: expiresAt.toISOString(),
         dayOneIntentShown: true,
         playIntentChestClaimed: true,
+        playIntentCount: currentCount + 1,
       },
     },
   })
 
-  // ── 2b. Award one-time reward chest + club tokens ───────────────────────
+  // ── 5. One-time reward ───────────────────────────────────────────────────
 
   let rewardChestId: string | null = null
 
@@ -89,18 +271,17 @@ export async function POST(req: NextRequest) {
     })
 
     if (membership?.squadId) {
-      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000)
+      const chestExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000)
       const chest = await prisma.squadChest.create({
         data: {
           squadId: membership.squadId,
           earnerId: user.profileId,
           source: 'play_intent',
-          expiresAt,
+          expiresAt: chestExpiresAt,
         },
       })
       rewardChestId = chest.id
 
-      // Create opening rows for all active squad members
       const activeMembers = await prisma.squadMember.findMany({
         where: { squadId: membership.squadId, leftAt: null },
         select: { profileId: true },
@@ -115,7 +296,6 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    // Award club tokens regardless of squad membership
     await prisma.playerWallet.upsert({
       where: { profileId: user.profileId },
       create: { profileId: user.profileId, clubTokens: INTENT_REWARD_CLUB_TOKENS, brandTokens: 0 },
@@ -130,7 +310,6 @@ export async function POST(req: NextRequest) {
       },
     })
 
-    // Fire-and-forget PNS to the earner
     ;(async () => {
       try {
         await sendPushNotification(user.profileId, {
@@ -147,7 +326,7 @@ export async function POST(req: NextRequest) {
     })()
   }
 
-  // ── 3. Aggregate count ──────────────────────────────────────────────────
+  // ── 6. Aggregate count ───────────────────────────────────────────────────
 
   const aggregateResult = await prisma.$queryRaw<{ count: bigint }[]>`
     SELECT COUNT(*) AS count
@@ -160,19 +339,16 @@ export async function POST(req: NextRequest) {
   `
   const aggregateCount = Number(aggregateResult[0]?.count ?? 0)
 
-  // ── 4. Match query ──────────────────────────────────────────────────────
-  // Only run the match query if we have enough data to enforce the full bar.
-  // Missing DUPR or vibeTag on either side → no named match (graceful degrade).
+  // ── 7. Match query ───────────────────────────────────────────────────────
 
   let match: {
     displayName: string
     dupr: number | null
     vibeTag: string | null
-    intentWindow: IntentWindow
+    intentWindow: StoredIntent
   } | null = null
 
   if (myVibeTag !== null) {
-    // Find candidates: same intentWindow, not the caller, not banned/suspended
     const candidates = await prisma.$queryRaw<
       { id: string; display_name: string | null; preferences: unknown; reclub_user_id: bigint | null }[]
     >`
@@ -187,7 +363,6 @@ export async function POST(req: NextRequest) {
     `
 
     if (candidates.length > 0) {
-      // Fetch DUPR for candidates that have a reclub_user_id
       const reclubIds = candidates
         .map((c) => c.reclub_user_id)
         .filter((id): id is bigint => id !== null)
@@ -203,24 +378,18 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // Apply quality bar: DUPR within ±0.5 AND shared vibeTag
       for (const candidate of candidates) {
         const prefs = (candidate.preferences as Record<string, unknown>) ?? {}
         const theirVibeTag = (prefs.vibeTag as string | null) ?? null
         const theirDupr = candidate.reclub_user_id ? duprMap.get(candidate.reclub_user_id) ?? null : null
 
-        // Condition 1: at least one shared vibeTag
         if (theirVibeTag !== myVibeTag) continue
-
-        // Condition 2: DUPR within ±0.5 — if either side is missing DUPR, skip match
         if (myDupr !== null && theirDupr !== null) {
           if (Math.abs(myDupr - theirDupr) > 0.5) continue
         } else {
-          // One or both sides have no DUPR — cannot confirm skill match, degrade
           continue
         }
 
-        // Quality bar passed — use this candidate
         match = {
           displayName: candidate.display_name ?? 'Player',
           dupr: theirDupr,
@@ -242,9 +411,12 @@ export async function POST(req: NextRequest) {
   })
 }
 
+// ─── PATCH — log match accept ─────────────────────────────────────────────────
+
 /**
- * POST /api/play-intent/day-one/accept
+ * PATCH /api/play-intent/day-one
  * Called when the player taps "I'm in too". Logs the match for Discovery Layer seeding.
+ * matchedProfileId is optional — in recurring mode there may be no named match.
  */
 export async function PATCH(req: NextRequest) {
   const user = await getMobileUser(req)
@@ -256,8 +428,8 @@ export async function PATCH(req: NextRequest) {
     intentWindow?: string
   }
 
-  if (!matchedProfileId || !intentWindow) {
-    return NextResponse.json({ error: 'Missing matchedProfileId or intentWindow' }, { status: 400 })
+  if (!intentWindow) {
+    return NextResponse.json({ error: 'Missing intentWindow' }, { status: 400 })
   }
 
   const profile = await prisma.playerProfile.findUnique({
@@ -276,11 +448,11 @@ export async function PATCH(req: NextRequest) {
         intentMatchLog: [
           ...existingLog,
           {
-            matchedProfileId,
+            matchedProfileId: matchedProfileId ?? null,
             intentWindow,
             timestamp: new Date().toISOString(),
           },
-        ].slice(-20), // keep last 20 for Discovery Layer
+        ].slice(-20),
       },
     },
   })

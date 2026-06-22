@@ -14,6 +14,10 @@ import { SquadContributionCard } from '../components/SquadContributionCard';
 import { SquadActivityFeed } from '../components/SquadActivityFeed';
 import { SquadPlaceholderChest } from '../components/SquadPlaceholderChest';
 import { ConquestRadarInactiveCard } from '../components/ConquestLiveBanner';
+import { IntentCard } from '../components/IntentCard';
+import type { IntentData } from '../components/IntentCard';
+import { PlacesCard } from '../components/PlacesCard';
+import type { PreferredPlace } from '../../../services/locationPicker';
 import type { Squad, SquadChest, FeedItem, SquadStreak, PlayerContribution, PodSummary, PlayerBrandData, PlayerWalletData } from '../types';
 
 const BANGERS = 'Bangers_400Regular';
@@ -63,6 +67,12 @@ interface Props {
   alertBadgeCount?: number;
   onAlerts?: () => void;
   onDevReset?: () => Promise<void>;
+  // Intent card
+  intentData?: IntentData | null;
+  onIntentPress?: () => void;
+  // Places card
+  placesData?: PreferredPlace[] | null;
+  onPlacesPress?: () => void;
 }
 
 export function SquadHomeScreen({
@@ -76,10 +86,13 @@ export function SquadHomeScreen({
   onClubhouseDetail, onBrandDetail, onPodCreate, onPodInvite,
   conquestBanner, hasActiveSession,
   alertBadgeCount, onAlerts, onDevReset,
+  intentData, onIntentPress,
+  placesData, onPlacesPress,
 }: Props) {
   const insets = useSafeAreaInsets();
   const [refreshing, setRefreshing] = useState(false);
   const [resetting, setResetting] = useState(false);
+  const [phase3DotIdx, setPhase3DotIdx] = useState(0);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -142,9 +155,9 @@ export function SquadHomeScreen({
             <Text style={s.rankText}>#{cityRank} City</Text>
           </TouchableOpacity>
         )}
-        {/* Conquest bell icon */}
+        {/* Conquest bell icon — right side, same position as the old manage button */}
         {onAlerts && (
-          <TouchableOpacity style={s.bellBtn} onPress={onAlerts}>
+          <TouchableOpacity style={s.alertBtn} onPress={onAlerts}>
             <Text style={s.bellIcon}>🔔</Text>
             {(alertBadgeCount ?? 0) > 0 && (
               <View style={s.bellBadge}>
@@ -153,11 +166,6 @@ export function SquadHomeScreen({
                 </Text>
               </View>
             )}
-          </TouchableOpacity>
-        )}
-        {onManage && (
-          <TouchableOpacity style={s.manageBtn} onPress={onManage}>
-            <Text style={s.manageBtnText}>⚙️</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -172,9 +180,33 @@ export function SquadHomeScreen({
           <SquadIdentityBar squad={squad} cityRank={cityRank} />
         </TouchableOpacity>
 
-        {/* Phase 3: Pod + Brand cards */}
-        <View style={s.phase3Row}>
-          {/* Pod card — myPod is always present (backend self-heals) */}
+        {/* Intent card — persistent "When are you playing next?" feature */}
+        {onIntentPress && (
+          <IntentCard
+            intentData={intentData ?? null}
+            squadMembers={(squad.members ?? []).map((m) => ({
+              profileId: m.profileId,
+              displayName: m.profile?.squadNickname ?? m.profile?.displayName ?? null,
+            }))}
+            onPress={onIntentPress}
+          />
+        )}
+
+        {/* Phase 3: Pod + Brand + Places cards — horizontal scrollable row */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={s.phase3Row}
+          contentContainerStyle={s.phase3RowContent}
+          pagingEnabled={false}
+          onScroll={(e) => {
+            const x = e.nativeEvent.contentOffset.x;
+            const cardWidth = 160 + 10; // card width + gap
+            setPhase3DotIdx(Math.round(x / cardWidth));
+          }}
+          scrollEventThrottle={16}
+        >
+          {/* Pod card */}
           {myPod ? (
             <TouchableOpacity style={s.phase3Card} onPress={onClubhouseDetail} activeOpacity={0.8}>
               <Text style={s.phase3CardEmoji}>{myPod.emoji}</Text>
@@ -205,7 +237,27 @@ export function SquadHomeScreen({
               </View>
             </TouchableOpacity>
           )}
-        </View>
+          {/* Places card */}
+          {onPlacesPress && (
+            <PlacesCard
+              places={placesData ?? []}
+              onPress={onPlacesPress}
+            />
+          )}
+        </ScrollView>
+        {/* Dot indicator for the horizontal row */}
+        {(myPod || onPlacesPress) && (
+          <View style={s.dotRow}>
+            {[myPod ? 1 : null, 1, onPlacesPress ? 1 : null]
+              .filter(Boolean)
+              .map((_, i) => (
+                <View
+                  key={i}
+                  style={[s.dot, i === phase3DotIdx ? s.dotActive : undefined]}
+                />
+              ))}
+          </View>
+        )}
 
         {/* Radar card: show inactive placeholder when no session, live banner when active */}
         {conquestBanner ?? (
@@ -346,13 +398,12 @@ const s = StyleSheet.create({
     paddingHorizontal: 10, paddingVertical: 3, borderRadius: 100,
   },
   rankText: { fontSize: 11, fontWeight: '800', color: GOLD },
-  manageBtn: {
-    position: 'absolute', right: 20, bottom: 10,
+  alertBtn: {
+    position: 'absolute', right: 16, bottom: 10,
     width: 36, height: 36, borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(255,255,255,0.06)',
     alignItems: 'center', justifyContent: 'center',
   },
-  manageBtnText: { fontSize: 18 },
   noChest: {
     marginHorizontal: 16, marginBottom: 12,
     backgroundColor: '#111', borderWidth: 1,
@@ -410,11 +461,6 @@ const s = StyleSheet.create({
     shadowOpacity: 0.3, shadowRadius: 12,
   },
   fabText: { fontSize: 16, fontWeight: '900', color: '#000' },
-  bellBtn: {
-    width: 36, height: 36,
-    alignItems: 'center', justifyContent: 'center',
-    marginRight: 2,
-  },
   bellIcon: { fontSize: 18 },
   bellBadge: {
     position: 'absolute', top: 0, right: 0,
@@ -423,13 +469,17 @@ const s = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3,
   },
   bellBadgeText: { fontSize: 9, fontWeight: '900', color: '#fff' },
-  // Phase 3: Pod + Brand row
-  phase3Row: { flexDirection: 'row', gap: 10, marginHorizontal: 16, marginTop: 12, marginBottom: 4 },
+  // Phase 3: Pod + Brand + Places horizontal row
+  phase3Row: { marginTop: 12, marginBottom: 2 },
+  phase3RowContent: { paddingHorizontal: 16, gap: 10, flexDirection: 'row' },
   phase3Card: {
-    flex: 1, backgroundColor: '#141414',
+    width: 160, backgroundColor: '#141414',
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)',
     borderRadius: 14, padding: 14, alignItems: 'center', gap: 2,
   },
+  dotRow: { flexDirection: 'row', gap: 5, justifyContent: 'center', marginBottom: 4, marginTop: 6 },
+  dot: { width: 5, height: 5, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.15)' },
+  dotActive: { backgroundColor: LIME, width: 14 },
   phase3CardEmoji: { fontSize: 28, marginBottom: 4 },
   phase3CardIcon: { marginBottom: 4 },
   phase3CardTitle: { fontSize: 13, fontWeight: '900', color: '#fff', textAlign: 'center' },

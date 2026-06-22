@@ -73,12 +73,21 @@ export async function POST(req: NextRequest) {
     alertsDeleted = alerts.count;
   }
 
-  // Reset streak data on the player profile
+  // Reset streak data and clear active intent from player profile
+  const profileForPrefs = await prisma.playerProfile.findUnique({
+    where: { id: user.profileId },
+    select: { preferences: true },
+  });
+  const prefs = (profileForPrefs?.preferences as Record<string, unknown>) ?? {};
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { dayOneIntent, dayOneIntentDate, dayOneIntentExpiresAt, dayOneIntentShown, ...clearedPrefs } = prefs;
+
   await prisma.playerProfile.update({
     where: { id: user.profileId },
     data: {
       streakData: { set: null } as Parameters<typeof prisma.playerProfile.update>[0]['data']['streakData'],
       streakComputedAt: null,
+      preferences: clearedPrefs,
     },
   });
 

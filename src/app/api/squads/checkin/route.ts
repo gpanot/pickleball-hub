@@ -1,8 +1,33 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getMobileUser } from "@/lib/mobile-auth";
 import { prisma } from "@/lib/db";
+import type { PrismaClient } from "@prisma/client";
 import { awardSquadXp, XP_AMOUNTS } from "@/lib/squad-xp";
 import { sendPushNotification } from "@/lib/notifications";
+
+async function markIntentFulfilled(db: PrismaClient, profileId: string) {
+  try {
+    const profile = await db.playerProfile.findUnique({
+      where: { id: profileId },
+      select: { preferences: true },
+    });
+    const prefs = (profile?.preferences as Record<string, unknown>) ?? {};
+    const expiresAt = prefs.dayOneIntentExpiresAt as string | null;
+    if (
+      prefs.dayOneIntent &&
+      expiresAt &&
+      new Date(expiresAt) > new Date() &&
+      prefs.dayOneIntentFulfilled == null
+    ) {
+      await db.playerProfile.update({
+        where: { id: profileId },
+        data: { preferences: { ...prefs, dayOneIntentFulfilled: true } },
+      });
+    }
+  } catch (e) {
+    console.error("[INTENT_FULFILL] checkin:", e);
+  }
+}
 
 function todayHCMC(): Date {
   const now = new Date();
@@ -119,9 +144,10 @@ export async function POST(req: NextRequest) {
     xpAwarded: XP_AMOUNTS.checkin,
   });
 
-  // Fire-and-forget: send push notifications in background
+  // Fire-and-forget: mark active intent as fulfilled + send push notifications
   (async () => {
     try {
+      await markIntentFulfilled(prisma, user.profileId);
       const recipientMembers = await prisma.squadMember.findMany({
         where: { squadId, leftAt: null, profileId: { not: user.profileId } },
         include: {

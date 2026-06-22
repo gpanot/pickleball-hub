@@ -1,8 +1,33 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getMobileUser } from "@/lib/mobile-auth";
 import { prisma } from "@/lib/db";
+import type { PrismaClient } from "@prisma/client";
 import { detectClash } from "@/lib/conquest/clash-detector";
 import { notifySquadMembers, notifyProfile } from "@/lib/conquest/notify";
+
+async function markIntentFulfilled(db: PrismaClient, profileId: string) {
+  try {
+    const profile = await db.playerProfile.findUnique({
+      where: { id: profileId },
+      select: { preferences: true },
+    });
+    const prefs = (profile?.preferences as Record<string, unknown>) ?? {};
+    const expiresAt = prefs.dayOneIntentExpiresAt as string | null;
+    if (
+      prefs.dayOneIntent &&
+      expiresAt &&
+      new Date(expiresAt) > new Date() &&
+      prefs.dayOneIntentFulfilled == null
+    ) {
+      await db.playerProfile.update({
+        where: { id: profileId },
+        data: { preferences: { ...prefs, dayOneIntentFulfilled: true } },
+      });
+    }
+  } catch (e) {
+    console.error("[INTENT_FULFILL] pulse:", e);
+  }
+}
 
 const TWO_HOURS_MS = 5 * 60 * 1000;
 const TWELVE_HOURS_MS = 12 * 60 * 60 * 1000;
@@ -80,6 +105,9 @@ export async function POST(req: NextRequest) {
     create: { playerId: user.profileId, venueId, lastPulseAt: now, cooldownEndsAt },
     update: { lastPulseAt: now, cooldownEndsAt },
   });
+
+  // Fire-and-forget: mark active play intent as fulfilled
+  void markIntentFulfilled(prisma, user.profileId);
 
   const rival = await detectClash(prisma, venueId, squadId, session.id);
 

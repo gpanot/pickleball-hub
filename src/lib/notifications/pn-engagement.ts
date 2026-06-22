@@ -70,6 +70,20 @@ export async function sendEngagementNotifications(): Promise<{
       continue;
     }
 
+    // Suppress if player already has an active, specific intent (not "not_sure")
+    // — they've already committed, no need to prompt them.
+    const activeIntent = (prefs.dayOneIntent as string | null) ?? null
+    const intentExpiresAt = (prefs.dayOneIntentExpiresAt as string | null) ?? null
+    if (
+      activeIntent &&
+      activeIntent !== 'not_sure' &&
+      intentExpiresAt &&
+      new Date(intentExpiresAt) > now
+    ) {
+      skipped++;
+      continue;
+    }
+
     // Already sent within dedup window
     if (profile.notificationsReceived.length > 0) {
       skipped++;

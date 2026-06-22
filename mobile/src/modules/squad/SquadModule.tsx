@@ -30,6 +30,8 @@ import { SquadEditScreen } from './screens/SquadEditScreen';
 import { CityLeaderboardScreen } from './screens/CityLeaderboardScreen';
 import { CheckInSheet } from './screens/CheckInSheet';
 import { DayOneIntentModal } from '../../components/DayOneIntentModal';
+import { LocationPicker } from './components/LocationPicker';
+import { addPreferredPlace } from '../../services/locationPicker';
 // Phase 3: Pods, Tokens & Brands
 import { PodPlaystyleScreen } from './screens/PodPlaystyleScreen';
 import { PodCreateScreen } from './screens/PodCreateScreen';
@@ -132,7 +134,11 @@ export default function SquadModule({
   const [podPlaystyleForInvite, setPodPlaystyleForInvite] = useState(false);
   const [showCheckinSheet, setShowCheckinSheet] = useState(false);
   const [showDayOneIntentModal, setShowDayOneIntentModal] = useState(false);
+  const [showRecurringIntentModal, setShowRecurringIntentModal] = useState(false);
+  const [intentData, setIntentData] = useState<import('./components/IntentCard').IntentData | null>(null);
   const dayOneModalChecked = useRef(false);
+  const [placesData, setPlacesData] = useState<import('../../services/locationPicker').PreferredPlace[] | null>(null);
+  const [showLocationPicker, setShowLocationPicker] = useState(false);
   // Phase 4 Conquest state
   const [conquestCardData, setConquestCardData] = useState<SquadCardData | null>(null);
   const [conquestImpactData, setConquestImpactData] = useState<ConquestImpactBreakdown | null>(null);
@@ -270,6 +276,8 @@ export default function SquadModule({
             try {
               const result = await resetDevSquadd();
               setActiveChest(null);
+              setIntentData(null);
+              setPlacesData([]);
               const [data] = await Promise.all([
                 fetchMySquad(),
                 refreshSession(),
@@ -279,7 +287,7 @@ export default function SquadModule({
               const { chests, radarSessions, pulseCooldowns, alerts } = result.cleared;
               Alert.alert(
                 'Squadd reset',
-                `Cleared ${chests} chest(s), ${radarSessions} session(s), ${pulseCooldowns} cooldown(s), ${alerts} alert(s). Streak reset.`,
+                `Cleared ${chests} chest(s), ${radarSessions} session(s), ${pulseCooldowns} cooldown(s), ${alerts} alert(s). Streak + intent reset.`,
               );
             } catch (e: unknown) {
               const message = e instanceof Error ? e.message : 'Reset failed';
@@ -294,12 +302,15 @@ export default function SquadModule({
             try {
               const result = await resetDevCheckinFlow();
               setActiveChest(null);
+              setIntentData(null);
+              setPlacesData([]);
               setPlayerBrandData(null);
               setWalletData(null);
               setWelcomeChestResult(null);
               setJoinPath(false);
               setJoinedSquadId(null);
               setBrandSelectBackScreen('pod-playstyle');
+              dayOneModalChecked.current = false;
               const [data] = await Promise.all([
                 fetchMySquad(),
                 refreshSession(),
@@ -309,7 +320,7 @@ export default function SquadModule({
               const { chests, radarSessions, pulseCooldowns } = result.cleared;
               Alert.alert(
                 'All reset',
-                `Cleared ${chests} chest(s), ${radarSessions} session(s), ${pulseCooldowns} cooldown(s). Brand + wallet + onboarding reset.`,
+                `Cleared ${chests} chest(s), ${radarSessions} session(s), ${pulseCooldowns} cooldown(s). Brand + wallet + onboarding + intent reset.`,
               );
             } catch (e: unknown) {
               const message = e instanceof Error ? e.message : 'Reset failed';
@@ -342,6 +353,18 @@ export default function SquadModule({
     if (brandRes?.brand) setPlayerBrandData(brandRes.brand);
     if (squadData?.squad) {
       pushRouteLog(`routeToSignedIn: squad "${squadData.squad.name}" → home`);
+      // Backfill pod if the user has a squad but no pod (pre-pod data or interrupted onboarding)
+      if (!squadData.myPod) {
+        pushRouteLog(`routeToSignedIn: no pod found for squad "${squadData.squad.name}" — backfilling`);
+        try {
+          await ensurePodForSquad(squadData.squad.id);
+          // Re-fetch so myPod is populated on the home screen
+          const refreshed = await fetchMySquad();
+          extractPhase2Data(refreshed);
+        } catch (e) {
+          pushRouteLog(`routeToSignedIn: pod backfill failed (non-blocking): ${e instanceof Error ? e.message : String(e)}`);
+        }
+      }
       // Fetch conquest session in parallel with navigation so the On Court card shows immediately
       void refreshSession();
       setScreen('home');
@@ -392,6 +415,17 @@ export default function SquadModule({
     // Populate pod/chest/feed data so the home screen is fully loaded without
     // needing a manual pull-to-refresh.
     extractPhase2Data(squadData);
+    // Backfill pod if the user has a squad but no pod (pre-pod data or interrupted onboarding)
+    if (!squadData.myPod) {
+      pushRouteLog(`routeIfHasSquad: no pod for squad "${squadData.squad.name}" — backfilling`);
+      try {
+        await ensurePodForSquad(squadData.squad.id);
+        const refreshed = await fetchMySquad();
+        extractPhase2Data(refreshed);
+      } catch (e) {
+        pushRouteLog(`routeIfHasSquad: pod backfill failed (non-blocking): ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
     pushRouteLog(`routeIfHasSquad: "${squadData.squad.name}" → home`);
     setScreen('home');
     return true;
@@ -591,11 +625,43 @@ export default function SquadModule({
     })();
   }, [screen, squad, loading, disbandedNotice, tryRouteDisbanded, routeToSignedInScreen]);
 
-  // Day-One Intent Modal: fire once when landing on home for the first time
-  // after onboarding completes. Guard by preferences.dayOneIntentShown.
+  // Intent card: fetch active intent state whenever we land on home.
+  // Also fires the first-time modal if dayOneIntentShown is false.
   const { authedFetch } = useAuthStore();
+
+  const fetchIntentData = useCallback(async () => {
+    try {
+      const res = await authedFetch('/api/play-intent/day-one');
+      if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setIntentData({
+          intent: data.intent ?? null,
+          intentDate: data.intentDate ?? null,
+          expiresAt: data.expiresAt ?? null,
+          isActive: data.isActive ?? false,
+          aggregateCount: data.aggregateCount ?? 0,
+        });
+      }
+    } catch {}
+  }, [authedFetch]);
+
+  const fetchPlacesData = useCallback(async () => {
+    try {
+      const res = await authedFetch('/api/play-intent/places');
+      if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setPlacesData(data.places ?? []);
+      }
+    } catch {}
+  }, [authedFetch]);
+
   useEffect(() => {
-    if (screen !== 'home' || !squad || dayOneModalChecked.current) return;
+    if (screen !== 'home' || !squad) return;
+    // Fetch intent + places state every time we land on home
+    void fetchIntentData();
+    void fetchPlacesData();
+    // First-time modal: only check once per session
+    if (dayOneModalChecked.current) return;
     dayOneModalChecked.current = true;
     void authedFetch('/api/players/profile').then(async (res) => {
       if (!res.ok) return;
@@ -605,7 +671,7 @@ export default function SquadModule({
         setShowDayOneIntentModal(true);
       }
     }).catch(() => {});
-  }, [screen, squad, authedFetch]);
+  }, [screen, squad, authedFetch, fetchIntentData, fetchPlacesData]);
 
   const handleCreateSquad = useCallback(async (payload: Parameters<typeof create>[0]) => {
     const result = await create(payload);
@@ -918,6 +984,10 @@ export default function SquadModule({
               setInviteReturnScreen('home');
               setScreen('invite');
             }}
+            intentData={intentData}
+            onIntentPress={() => setShowRecurringIntentModal(true)}
+            placesData={placesData}
+            onPlacesPress={() => setShowLocationPicker(true)}
           />
           <CheckInSheet
             visible={showCheckinSheet}
@@ -961,12 +1031,59 @@ export default function SquadModule({
       {showDayOneIntentModal && screen === 'home' && (
         <DayOneIntentModal
           mode="first"
-          onDismiss={() => setShowDayOneIntentModal(false)}
+          onDismiss={(result) => {
+            setShowDayOneIntentModal(false);
+            if (result?.intent) {
+              // Optimistically update the intent card, then re-fetch to confirm
+              setIntentData((prev) => ({
+                intent: result.intent ?? null,
+                intentDate: result.intentDate ?? null,
+                expiresAt: prev?.expiresAt ?? null,
+                isActive: result.intent !== null,
+                aggregateCount: prev?.aggregateCount ?? 0,
+              }));
+              void fetchIntentData();
+            }
+          }}
           onRewardReceived={() => {
             void fetchMySquad().then(data => extractPhase2Data(data));
           }}
         />
       )}
+      {/* Recurring Intent Modal — opened by tapping the IntentCard on home */}
+      {showRecurringIntentModal && screen === 'home' && (
+        <DayOneIntentModal
+          mode="recurring"
+          initialWindow={intentData?.intent ?? null}
+          initialDate={intentData?.intentDate ?? null}
+          onDismiss={(result) => {
+            setShowRecurringIntentModal(false);
+            if (result?.intent) {
+              setIntentData((prev) => ({
+                intent: result.intent ?? null,
+                intentDate: result.intentDate ?? null,
+                expiresAt: prev?.expiresAt ?? null,
+                isActive: result.intent !== null,
+                aggregateCount: prev?.aggregateCount ?? 0,
+              }));
+              void fetchIntentData();
+            }
+          }}
+        />
+      )}
+      {/* Location Picker — opens when PlacesCard "+ Add" is tapped */}
+      <LocationPicker
+        visible={showLocationPicker}
+        onClose={() => setShowLocationPicker(false)}
+        onPick={async (place) => {
+          try {
+            const updated = await addPreferredPlace(place.lat, place.lng, place.label);
+            setPlacesData(updated);
+          } catch {
+            void fetchPlacesData(); // fallback refresh
+          }
+        }}
+      />
       {screen === 'manage' && squad && (
         <SquadManageScreen
           squad={squad}
@@ -1007,7 +1124,7 @@ export default function SquadModule({
           squadId={squad.id}
           squadName={squad.name}
           myProfileId={profileId}
-          onOpen={(result) => {
+          onOpen={async (result) => {
             setChestOpenResult(result);
             setScreen('chest-open');
           }}
@@ -1151,6 +1268,7 @@ export default function SquadModule({
           wallet={walletData}
           brandData={playerBrandData}
           onBack={() => setScreen('home')}
+          onManage={() => setScreen('manage')}
           onPodCreate={() => setScreen('pod-playstyle')}
           onPodInvite={() => {
             setCreatedSquad(squad);

@@ -50,7 +50,16 @@ export async function POST(req: NextRequest) {
     console.log(`[reset-flow] cleared chests=${chestsDeleted.count} sessions=${sessionsDeleted.count} cooldowns=${cooldownsDeleted.count}`);
   }
 
-  // Reset brand, wallet, welcome chest, onboardingCompleted, and squad membership
+  // Read preferences so we can clear intent keys before full reset
+  const profileForPrefs = await prisma.playerProfile.findUnique({
+    where: { id: user.profileId },
+    select: { preferences: true },
+  });
+  const prefs = (profileForPrefs?.preferences as Record<string, unknown>) ?? {};
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { dayOneIntent, dayOneIntentDate, dayOneIntentExpiresAt, dayOneIntentShown, ...clearedPrefs } = prefs;
+
+  // Reset brand, wallet, welcome chest, onboardingCompleted, squad membership, and intent
   // so the full unified onboarding funnel can be re-run from scratch.
   await prisma.$transaction([
     prisma.playerBrand.deleteMany({ where: { profileId: user.profileId } }),
@@ -68,6 +77,7 @@ export async function POST(req: NextRequest) {
       data: {
         welcomeChestClaimed: false,
         onboardingCompleted: false,
+        preferences: clearedPrefs,
       },
     }),
   ]);

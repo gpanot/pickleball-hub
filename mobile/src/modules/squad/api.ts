@@ -297,7 +297,10 @@ export async function checkin(payload: CheckinPayload) {
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: 'Unknown error' }));
-    throw new Error(err.error ?? `HTTP ${res.status}`);
+    const e = new Error(err.error ?? `HTTP ${res.status}`) as Error & { retryAfter?: string; nextCheckinAt?: string };
+    if (err.retryAfter) e.retryAfter = err.retryAfter;
+    if (err.nextCheckinAt) e.nextCheckinAt = err.nextCheckinAt;
+    throw e;
   }
   return res.json() as Promise<{ chest: { id: string; expiresAt: string }; xpAwarded: number }>;
 }
