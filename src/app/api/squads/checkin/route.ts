@@ -89,18 +89,19 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // 1h rate limit (spam guard)
+  // 1h spam guard — only counts check-in chests, not intent chests
   const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-  const recentChest = await prisma.squadChest.findFirst({
+  const recentCheckinChest = await prisma.squadChest.findFirst({
     where: {
       earnerId: user.profileId,
       squadId,
+      source: "checkin",
       createdAt: { gte: oneHourAgo },
     },
   });
-  if (recentChest) {
+  if (recentCheckinChest) {
     return NextResponse.json(
-      { error: "rate_limited", retryAfter: new Date(recentChest.createdAt.getTime() + 60 * 60 * 1000).toISOString() },
+      { error: "rate_limited", retryAfter: new Date(recentCheckinChest.createdAt.getTime() + 60 * 60 * 1000).toISOString() },
       { status: 429 }
     );
   }
