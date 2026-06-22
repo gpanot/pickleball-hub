@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getMobileUser } from "@/lib/mobile-auth";
 import { prisma } from "@/lib/db";
+import type { Prisma } from "@prisma/client";
 
 function todayHCMC(): Date {
   const now = new Date();
@@ -87,7 +88,7 @@ export async function POST(req: NextRequest) {
     data: {
       streakData: { set: null } as Parameters<typeof prisma.playerProfile.update>[0]['data']['streakData'],
       streakComputedAt: null,
-      preferences: clearedPrefs,
+      preferences: clearedPrefs as unknown as Prisma.InputJsonValue,
     },
   });
 

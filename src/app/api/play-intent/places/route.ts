@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getMobileUser } from "@/lib/mobile-auth";
 import { prisma } from "@/lib/db";
+import type { Prisma } from "@prisma/client";
 
 export interface PreferredPlace {
   lat: number;
@@ -65,7 +66,7 @@ export async function POST(req: NextRequest) {
 
   await prisma.playerProfile.update({
     where: { id: user.profileId },
-    data: { preferences: { ...prefs, preferredPlaces: updated } },
+    data: { preferences: { ...prefs, preferredPlaces: updated } as unknown as Prisma.InputJsonValue },
   });
 
   return NextResponse.json({ places: updated }, { status: 201 });

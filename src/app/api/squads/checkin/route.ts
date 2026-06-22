@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getMobileUser } from "@/lib/mobile-auth";
 import { prisma } from "@/lib/db";
-import type { PrismaClient } from "@prisma/client";
+import type { PrismaClient, Prisma } from "@prisma/client";
 import { awardSquadXp, XP_AMOUNTS } from "@/lib/squad-xp";
 import { sendPushNotification } from "@/lib/notifications";
 
@@ -21,7 +21,7 @@ async function markIntentFulfilled(db: PrismaClient, profileId: string) {
     ) {
       await db.playerProfile.update({
         where: { id: profileId },
-        data: { preferences: { ...prefs, dayOneIntentFulfilled: true } },
+        data: { preferences: { ...prefs, dayOneIntentFulfilled: true } as unknown as Prisma.InputJsonValue },
       });
     }
   } catch (e) {

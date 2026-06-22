@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getMobileUser } from "@/lib/mobile-auth";
 import { prisma } from "@/lib/db";
+import type { Prisma } from "@prisma/client";
 import type { PreferredPlace } from "../route";
 
 /**
@@ -9,12 +10,13 @@ import type { PreferredPlace } from "../route";
  */
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { index: string } }
+  { params }: { params: Promise<{ index: string }> }
 ) {
   const user = await getMobileUser(req);
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const idx = parseInt(params.index, 10);
+  const { index } = await params;
+  const idx = parseInt(index, 10);
   if (isNaN(idx) || idx < 0) {
     return NextResponse.json({ error: "Invalid index" }, { status: 400 });
   }
@@ -35,7 +37,7 @@ export async function DELETE(
 
   await prisma.playerProfile.update({
     where: { id: user.profileId },
-    data: { preferences: { ...prefs, preferredPlaces: updated } },
+    data: { preferences: { ...prefs, preferredPlaces: updated } as unknown as Prisma.InputJsonValue },
   });
 
   return NextResponse.json({ places: updated });

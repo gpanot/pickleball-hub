@@ -147,7 +147,7 @@ export async function GET(req: NextRequest) {
     try {
       await prisma.playerProfile.update({
         where: { id: user.profileId },
-        data: { preferences: updated },
+        data: { preferences: updated as unknown as import("@prisma/client").Prisma.InputJsonValue },
       })
     } catch {}
     prefs = updated
@@ -256,7 +256,7 @@ export async function POST(req: NextRequest) {
         dayOneIntentShown: true,
         playIntentChestClaimed: true,
         playIntentCount: currentCount + 1,
-      },
+      } as unknown as import("@prisma/client").Prisma.InputJsonValue,
     },
   })
 
@@ -453,7 +453,7 @@ export async function PATCH(req: NextRequest) {
             timestamp: new Date().toISOString(),
           },
         ].slice(-20),
-      },
+      } as unknown as import("@prisma/client").Prisma.InputJsonValue,
     },
   })
 
