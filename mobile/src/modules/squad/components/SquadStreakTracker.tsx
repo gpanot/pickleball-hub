@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, Image } from 'react-native';
+import { Check } from 'lucide-react-native';
 
 const GOLD = '#facc15';
 const LIME = '#a3e635';
@@ -51,7 +52,7 @@ export function SquadStreakTracker({ streakDays, weekCheckIns }: Props) {
                 <Text style={s.dayLabel}>DAY {i + 1}</Text>
                 <View style={[s.node, done && s.nodeDone, isNext && s.nodeNext]}>
                   {done ? (
-                    <Text style={s.nodeCheck}>✓</Text>
+                    <Check size={16} color="#000" strokeWidth={3} />
                   ) : (
                     <View style={[s.nodeInnerDot, isNext && s.nodeInnerDotNext]} />
                   )}
@@ -159,7 +160,6 @@ const s = StyleSheet.create({
     borderColor: GOLD,
     borderStyle: 'dashed',
   },
-  nodeCheck: { fontSize: 15, color: '#000', fontWeight: '900' },
   nodeInnerDot: {
     width: 6,
     height: 6,

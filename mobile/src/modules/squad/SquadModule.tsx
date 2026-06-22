@@ -1006,8 +1006,13 @@ export default function SquadModule({
                 fetchMySquad().then(data => extractPhase2Data(data)),
                 refreshSession(),
               ]);
-              // Retry session refresh after a short delay to catch any server-side lag
-              setTimeout(() => void refreshSession(), 1500);
+              // Retry both refreshes after a short delay to catch any server-side lag
+              // (chest write is async fire-and-forget on the backend so can arrive slightly late)
+              setTimeout(async () => {
+                const data = await fetchMySquad();
+                extractPhase2Data(data);
+                void refreshSession();
+              }, 1500);
             }}
             onCheckinComplete={(venue) => {
               debugLog('SQUADD', `check-in OK venue #${venue.id} ${venue.name}`);

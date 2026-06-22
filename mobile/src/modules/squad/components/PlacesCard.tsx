@@ -15,7 +15,6 @@ const SURFACE = '#141414'
 const BORDER = 'rgba(255,255,255,0.08)'
 const LIME = '#84cc16'
 const TEXT2 = '#71717a'
-const LIME_DIM = 'rgba(132,204,22,0.10)'
 
 // ─── Props ──────────────────────────────────────────────────────────────────
 interface Props {
@@ -39,23 +38,14 @@ export function PlacesCard({ places, onPress }: Props) {
       onPress={onPress}
       activeOpacity={0.8}
     >
-      {/* Icon */}
-      <View style={s.iconWrap}>
-        <MapPin size={18} color={LIME} />
-      </View>
-
-      {/* Text */}
-      <View style={s.textBlock}>
-        <Text style={s.title}>YOUR PLACES</Text>
-        <Text style={s.subtitle} numberOfLines={1}>
-          {subtitle}
-        </Text>
-      </View>
-
-      {/* Add CTA */}
+      <MapPin size={28} color={LIME} style={s.icon} />
+      <Text style={s.title}>YOUR PLACES</Text>
+      <Text style={s.subtitle} numberOfLines={1}>
+        {subtitle}
+      </Text>
       <TouchableOpacity style={s.addBtn} onPress={onPress} hitSlop={8}>
-        <Plus size={14} color={LIME} />
-        <Text style={s.addText}>Add</Text>
+        <Plus size={12} color={LIME} />
+        <Text style={s.addText}>+ Add</Text>
       </TouchableOpacity>
     </TouchableOpacity>
   )
@@ -64,52 +54,42 @@ export function PlacesCard({ places, onPress }: Props) {
 // ─── Styles ─────────────────────────────────────────────────────────────────
 const s = StyleSheet.create({
   card: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
+    width: 160,
     backgroundColor: SURFACE,
     borderWidth: 1,
     borderColor: BORDER,
     borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    // Card width: same visual width as other cards in the horizontal row
-    width: 220,
-  },
-  iconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: LIME_DIM,
+    padding: 14,
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: 2,
   },
-  textBlock: {
-    flex: 1,
-    gap: 3,
-  },
+  icon: { marginBottom: 4 },
   title: {
-    fontSize: 11,
-    fontWeight: '800',
+    fontSize: 13,
+    fontWeight: '900',
     color: LIME,
-    letterSpacing: 0.8,
+    textAlign: 'center',
+    letterSpacing: 0.3,
   },
   subtitle: {
-    fontSize: 12,
+    fontSize: 11,
     color: TEXT2,
+    textAlign: 'center',
+    marginBottom: 8,
   },
   addBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    backgroundColor: LIME_DIM,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    gap: 3,
+    borderWidth: 1.5,
+    borderColor: LIME,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
     borderRadius: 100,
   },
   addText: {
-    fontSize: 12,
-    fontWeight: '700',
+    fontSize: 11,
+    fontWeight: '800',
     color: LIME,
   },
 })
