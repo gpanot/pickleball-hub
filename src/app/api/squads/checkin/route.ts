@@ -105,6 +105,18 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Squad-level chest cap: max 15 active chests across all earners
+  const CHEST_CAP = 15;
+  const activeChestCount = await prisma.squadChest.count({
+    where: { squadId, expiresAt: { gte: new Date() } },
+  });
+  if (activeChestCount >= CHEST_CAP) {
+    return NextResponse.json(
+      { error: "chest_limit_reached", message: "Your squad already has 15 chests waiting — open some first!" },
+      { status: 429 }
+    );
+  }
+
   const now = new Date();
   const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000);
 

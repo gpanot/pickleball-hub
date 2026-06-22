@@ -188,7 +188,7 @@ export interface SquadChest {
   squadId?: string;
   earnerId: string;
   earnerName: string;
-  source: 'checkin' | 'scraper';
+  source: 'checkin' | 'scraper' | 'play_intent';
   venueName: string | null;
   createdAt: string;
   expiresAt: string;

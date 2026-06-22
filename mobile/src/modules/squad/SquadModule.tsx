@@ -112,6 +112,7 @@ export default function SquadModule({
   const [carouselCanExit, setCarouselCanExit] = useState(false);
   const [inviteReturnScreen, setInviteReturnScreen] = useState<SquadScreen>('create');
   const [activeChest, setActiveChest] = useState<SquadChest | null>(null);
+  const [activeChests, setActiveChests] = useState<SquadChest[]>([]);
   const [recentFeed, setRecentFeed] = useState<FeedItem[]>([]);
   const [streak, setStreak] = useState<SquadStreak>({ days: 0, lastPlayedAt: null });
   const [myContribution, setMyContribution] = useState<PlayerContribution>({ sessions: 0, xpEarned: 0, chestsOpened: 0 });
@@ -256,7 +257,12 @@ export default function SquadModule({
   /** Route signed-in users to home / gate / ready (never create). */
   const extractPhase2Data = useCallback((data: any) => {
     if (!data) return;
-    if (data.activeChest !== undefined) setActiveChest(data.activeChest);
+    if (data.activeChests !== undefined) {
+      setActiveChests(data.activeChests ?? []);
+      setActiveChest(data.activeChests?.[0] ?? data.activeChest ?? null);
+    } else if (data.activeChest !== undefined) {
+      setActiveChest(data.activeChest);
+    }
     if (data.recentFeed !== undefined) setRecentFeed(data.recentFeed);
     if (data.streak !== undefined) setStreak(data.streak);
     if (data.myContribution !== undefined) setMyContribution(data.myContribution);
@@ -828,6 +834,7 @@ export default function SquadModule({
             myProfileId={profileId}
             loading={loading}
             activeChest={activeChest}
+            activeChests={activeChests}
             recentFeed={recentFeed}
             streak={streak}
             myContribution={myContribution}

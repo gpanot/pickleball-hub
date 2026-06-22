@@ -33,6 +33,7 @@ interface Props {
   myProfileId?: string | null;
   loading: boolean;
   activeChest: SquadChest | null;
+  activeChests?: SquadChest[];
   recentFeed: FeedItem[];
   streak: SquadStreak;
   myContribution: PlayerContribution;
@@ -77,7 +78,7 @@ interface Props {
 
 export function SquadHomeScreen({
   squad, myRole, myProfileId, loading,
-  activeChest, recentFeed, streak, myContribution, cityRank,
+  activeChest, activeChests = [], recentFeed, streak, myContribution, cityRank,
   onRefresh, onCancelInvite, onResendInvite, onResendCard, onInviteMore,
   onExitSquad, onRemoveMember, onDisbandPress, onLeavePress,
   onChestPress, onChestTap, onChestOpen, onChestNudge,
@@ -281,20 +282,29 @@ export function SquadHomeScreen({
           />
         )}
 
-        {/* Squad Chests row — always visible, shows slots for all squad members */}
+        {/* Squad Chests — newest chest shown; "+N more" badge when queue > 1 */}
         {activeChest ? (
-          <SquadChestCard
-            chest={activeChest}
-            myProfileId={myProfileId}
-            squadMembers={(squad.members ?? []).map(m => ({
-              profileId: m.profileId,
-              displayName: m.profile?.squadNickname ?? m.profile?.displayName ?? null,
-            }))}
-            onPress={() => onChestPress(activeChest)}
-            onTap={() => onChestTap(activeChest)}
-            onOpen={() => onChestOpen(activeChest)}
-            onNudge={() => onChestNudge(activeChest)}
-          />
+          <View>
+            <SquadChestCard
+              chest={activeChest}
+              myProfileId={myProfileId}
+              squadMembers={(squad.members ?? []).map(m => ({
+                profileId: m.profileId,
+                displayName: m.profile?.squadNickname ?? m.profile?.displayName ?? null,
+              }))}
+              onPress={() => onChestPress(activeChest)}
+              onTap={() => onChestTap(activeChest)}
+              onOpen={() => onChestOpen(activeChest)}
+              onNudge={() => onChestNudge(activeChest)}
+            />
+            {activeChests.length > 1 && (
+              <View style={s.chestQueueBadge}>
+                <Text style={s.chestQueueBadgeText}>
+                  +{activeChests.length - 1} more chest{activeChests.length > 2 ? 's' : ''} waiting
+                </Text>
+              </View>
+            )}
+          </View>
         ) : (
           <SquadPlaceholderChest />
         )}
@@ -489,4 +499,14 @@ const s = StyleSheet.create({
     borderRadius: 100, paddingHorizontal: 12, paddingVertical: 4,
   },
   phase3CardCtaText: { fontSize: 11, fontWeight: '800', color: LIME },
+  chestQueueBadge: {
+    marginTop: 6, marginHorizontal: 16,
+    backgroundColor: 'rgba(250,204,21,0.12)',
+    borderWidth: 1, borderColor: 'rgba(250,204,21,0.3)',
+    borderRadius: 8, paddingVertical: 6, paddingHorizontal: 12,
+    alignItems: 'center',
+  },
+  chestQueueBadgeText: {
+    fontSize: 12, fontWeight: '700', color: GOLD, letterSpacing: 0.3,
+  },
 });

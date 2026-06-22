@@ -211,14 +211,16 @@ export async function GET(req: NextRequest) {
     };
   }) as typeof membership.squad.invites;
 
-  // Phase 2: activeChest, myOpening, recentFeed, streak
+  // Phase 2: activeChests (all non-expired, up to 15), recentFeed, streak
+  const CHEST_CAP = 15;
   const now = new Date();
-  const activeChest = await prisma.squadChest.findFirst({
+  const activeChests = await prisma.squadChest.findMany({
     where: {
       squadId: membership.squad.id,
       expiresAt: { gte: now },
     },
     orderBy: { createdAt: "desc" },
+    take: CHEST_CAP,
     include: {
       earner: { select: { id: true, displayName: true, squadNickname: true } },
       openings: {
@@ -231,30 +233,33 @@ export async function GET(req: NextRequest) {
     },
   });
 
-  let activeChestData = null;
-  let myOpeningData = null;
-  if (activeChest) {
-    activeChestData = {
-      id: activeChest.id,
-      earnerId: activeChest.earnerId,
-      earnerName: activeChest.earner.squadNickname
-        ? `@${activeChest.earner.squadNickname}`
-        : activeChest.earner.displayName?.split(" ")[0] ?? "?",
-      source: activeChest.source,
-      venueName: activeChest.venueName,
-      createdAt: activeChest.createdAt.toISOString(),
-      expiresAt: activeChest.expiresAt.toISOString(),
-      openings: activeChest.openings.map((o) => ({
-        profileId: o.profileId,
-        displayName: o.profile.squadNickname
-          ? `@${o.profile.squadNickname}`
-          : o.profile.displayName?.split(" ")[0] ?? "?",
-        status: o.status,
-        unlocksAt: o.unlocksAt?.toISOString() ?? null,
-      })),
-    };
+  const serializeChest = (chest: typeof activeChests[number]) => ({
+    id: chest.id,
+    earnerId: chest.earnerId,
+    earnerName: chest.earner.squadNickname
+      ? `@${chest.earner.squadNickname}`
+      : chest.earner.displayName?.split(" ")[0] ?? "?",
+    source: chest.source,
+    venueName: chest.venueName,
+    createdAt: chest.createdAt.toISOString(),
+    expiresAt: chest.expiresAt.toISOString(),
+    openings: chest.openings.map((o) => ({
+      profileId: o.profileId,
+      displayName: o.profile.squadNickname
+        ? `@${o.profile.squadNickname}`
+        : o.profile.displayName?.split(" ")[0] ?? "?",
+      status: o.status,
+      unlocksAt: o.unlocksAt?.toISOString() ?? null,
+    })),
+  });
 
-    const myOp = activeChest.openings.find((o) => o.profileId === user.profileId);
+  const activeChestsData = activeChests.map(serializeChest);
+  // Legacy single-chest field for backward compat
+  const activeChestData = activeChestsData[0] ?? null;
+
+  let myOpeningData = null;
+  if (activeChests[0]) {
+    const myOp = activeChests[0].openings.find((o) => o.profileId === user.profileId);
     if (myOp) {
       myOpeningData = {
         status: myOp.status,
@@ -386,7 +391,8 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     ...serialized,
     squad: { ...serialized.squad, members: membersWithPod, battlesWon },
-    activeChest: activeChestData,
+    activeChest: activeChestData,   // legacy compat — newest chest or null
+    activeChests: activeChestsData, // full queue (up to 15)
     myOpening: myOpeningData,
     recentFeed,
     streak,

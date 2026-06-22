@@ -271,29 +271,35 @@ export async function POST(req: NextRequest) {
     })
 
     if (membership?.squadId) {
-      const chestExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000)
-      const chest = await prisma.squadChest.create({
-        data: {
-          squadId: membership.squadId,
-          earnerId: user.profileId,
-          source: 'play_intent',
-          expiresAt: chestExpiresAt,
-        },
+      const CHEST_CAP = 15
+      const activeCount = await prisma.squadChest.count({
+        where: { squadId: membership.squadId, expiresAt: { gte: new Date() } },
       })
-      rewardChestId = chest.id
+      if (activeCount < CHEST_CAP) {
+        const chestExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000)
+        const chest = await prisma.squadChest.create({
+          data: {
+            squadId: membership.squadId,
+            earnerId: user.profileId,
+            source: 'play_intent',
+            expiresAt: chestExpiresAt,
+          },
+        })
+        rewardChestId = chest.id
 
-      const activeMembers = await prisma.squadMember.findMany({
-        where: { squadId: membership.squadId, leftAt: null },
-        select: { profileId: true },
-      })
-      await prisma.squadChestOpening.createMany({
-        data: activeMembers.map((m) => ({
-          chestId: chest.id,
-          profileId: m.profileId,
-          status: 'pending',
-        })),
-        skipDuplicates: true,
-      })
+        const activeMembers = await prisma.squadMember.findMany({
+          where: { squadId: membership.squadId, leftAt: null },
+          select: { profileId: true },
+        })
+        await prisma.squadChestOpening.createMany({
+          data: activeMembers.map((m) => ({
+            chestId: chest.id,
+            profileId: m.profileId,
+            status: 'pending',
+          })),
+          skipDuplicates: true,
+        })
+      }
     }
 
     await prisma.playerWallet.upsert({
