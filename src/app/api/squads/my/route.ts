@@ -223,7 +223,7 @@ export async function GET(req: NextRequest) {
         none: { profileId: user.profileId, status: "opened" },
       },
     },
-    orderBy: { createdAt: "desc" },
+    orderBy: { createdAt: "asc" },
     take: CHEST_CAP,
     include: {
       earner: { select: { id: true, displayName: true, squadNickname: true } },

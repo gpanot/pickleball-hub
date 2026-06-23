@@ -833,7 +833,6 @@ export default function SquadModule({
             myRole={myRole}
             myProfileId={profileId}
             loading={loading}
-            activeChest={activeChest}
             activeChests={activeChests}
             recentFeed={recentFeed}
             streak={streak}
@@ -895,12 +894,9 @@ export default function SquadModule({
                 const result = await openChest(chest.id);
                 setChestOpenResult(result);
                 // Optimistically remove the opened chest from the queue so the
-                // next chest slides into the primary slot immediately
+                // next chest slides into view immediately
                 setActiveChests(prev => prev.filter(c => c.id !== chest.id));
-                setActiveChest(prev => {
-                  const remaining = activeChests.filter(c => c.id !== chest.id);
-                  return remaining[0] ?? null;
-                });
+                setActiveChest(null);
                 setScreen('chest-open');
                 const data = await fetchMySquad();
                 extractPhase2Data(data);

@@ -32,8 +32,8 @@ interface Props {
   myRole: string | null;
   myProfileId?: string | null;
   loading: boolean;
-  activeChest: SquadChest | null;
-  activeChests?: SquadChest[];
+  activeChest?: SquadChest | null;
+  activeChests: SquadChest[];
   recentFeed: FeedItem[];
   streak: SquadStreak;
   myContribution: PlayerContribution;
@@ -78,7 +78,7 @@ interface Props {
 
 export function SquadHomeScreen({
   squad, myRole, myProfileId, loading,
-  activeChest, activeChests = [], recentFeed, streak, myContribution, cityRank,
+  activeChests, recentFeed, streak, myContribution, cityRank,
   onRefresh, onCancelInvite, onResendInvite, onResendCard, onInviteMore,
   onExitSquad, onRemoveMember, onDisbandPress, onLeavePress,
   onChestPress, onChestTap, onChestOpen, onChestNudge,
@@ -282,21 +282,22 @@ export function SquadHomeScreen({
           />
         )}
 
-        {/* Squad Chests — show next unopened chest; auto-advances after opening */}
-        {activeChest ? (
+        {/* Squad Chests — one card per active chest, oldest first so players clear in order */}
+        {activeChests.length > 0 ? activeChests.map(chest => (
           <SquadChestCard
-            chest={activeChest}
+            key={chest.id}
+            chest={chest}
             myProfileId={myProfileId}
             squadMembers={(squad.members ?? []).map(m => ({
               profileId: m.profileId,
               displayName: m.profile?.squadNickname ?? m.profile?.displayName ?? null,
             }))}
-            onPress={() => onChestPress(activeChest)}
-            onTap={() => onChestTap(activeChest)}
-            onOpen={() => onChestOpen(activeChest)}
-            onNudge={() => onChestNudge(activeChest)}
+            onPress={() => onChestPress(chest)}
+            onTap={() => onChestTap(chest)}
+            onOpen={() => onChestOpen(chest)}
+            onNudge={() => onChestNudge(chest)}
           />
-        ) : (
+        )) : (
           <SquadPlaceholderChest />
         )}
 
