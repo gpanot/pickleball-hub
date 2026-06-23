@@ -904,7 +904,7 @@ export default function SquadModule({
                 Alert.alert('Error', e.message ?? 'Could not open chest');
               }
             }}
-            onChestNudge={() => {}}
+            onChestNudge={(_chest) => {}}
             onCheckin={() => {
               if (activeSession) {
                 Alert.alert(

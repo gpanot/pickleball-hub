@@ -282,22 +282,17 @@ export function SquadHomeScreen({
           />
         )}
 
-        {/* Squad Chests — one card per active chest, oldest first so players clear in order */}
-        {activeChests.length > 0 ? activeChests.map(chest => (
+        {/* Squad Chests — one section, one slot per chest in the player's queue */}
+        {activeChests.length > 0 ? (
           <SquadChestCard
-            key={chest.id}
-            chest={chest}
+            chests={activeChests}
             myProfileId={myProfileId}
-            squadMembers={(squad.members ?? []).map(m => ({
-              profileId: m.profileId,
-              displayName: m.profile?.squadNickname ?? m.profile?.displayName ?? null,
-            }))}
-            onPress={() => onChestPress(chest)}
-            onTap={() => onChestTap(chest)}
-            onOpen={() => onChestOpen(chest)}
-            onNudge={() => onChestNudge(chest)}
+            onPress={onChestPress}
+            onTap={onChestTap}
+            onOpen={onChestOpen}
+            onNudge={onChestNudge}
           />
-        )) : (
+        ) : (
           <SquadPlaceholderChest />
         )}
 

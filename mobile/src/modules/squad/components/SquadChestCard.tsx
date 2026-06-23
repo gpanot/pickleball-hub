@@ -1,58 +1,58 @@
-import React, { useRef, useEffect, useState, useCallback } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Animated, Easing,
-  Image, ScrollView, Dimensions,
+  Image, ScrollView,
 } from 'react-native';
-import type { SquadChest, SquadChestOpening } from '../types';
+import type { SquadChest } from '../types';
 
-const BANGERS = 'Bangers_400Regular';
 const GOLD = '#facc15';
 const LIME = '#a3e635';
 const CHEST_IMAGE = require('../../../../assets/images/pickleball_chest_clash_of_clan small.png');
 const CARD_WIDTH = 108;
 const CARD_GAP = 10;
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const MAX_SLOTS = 8;
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-interface Props {
-  chest: SquadChest;
+export interface Props {
+  /** All active chests for the squad, oldest first */
+  chests: SquadChest[];
   myProfileId?: string | null;
-  /** Up to 8 squad member names for empty slot labels */
-  squadMembers?: Array<{ profileId: string; displayName: string | null }>;
-  onTap: () => void;
-  onOpen: () => void;
-  onNudge: () => void;
-  onPress: () => void;
+  onTap: (chest: SquadChest) => void;
+  onOpen: (chest: SquadChest) => void;
+  onNudge: (chest: SquadChest) => void;
+  onPress: (chest: SquadChest) => void;
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export function SquadChestCard({
-  chest,
+  chests,
   myProfileId,
-  squadMembers = [],
   onTap,
   onOpen,
   onNudge,
   onPress,
 }: Props) {
-  // Build a full list of up to 8 slots: existing openings first, then empty slots for remaining members
-  const slots = buildSlots(chest.openings, squadMembers);
-  const pendingCount = chest.openings.filter(o => o.status === 'pending' && o.profileId !== myProfileId).length;
-  const myOpening = chest.myOpening ?? chest.openings.find(o => o.profileId === myProfileId);
-  const myStatus = myOpening?.status ?? 'pending';
-  const streakDay = computeStreakDay(chest.createdAt);
+  // One slot per chest for this player, padded with empties up to MAX_SLOTS
+  const mySlots = buildMySlots(chests, myProfileId ?? null, MAX_SLOTS);
+
+  // Nudge: chests where OTHER members are still pending
+  const nudgeable = chests.filter(chest =>
+    chest.openings.some(o => o.profileId !== myProfileId && o.status === 'pending')
+  );
 
   return (
     <View style={s.wrapper}>
       {/* Section header */}
       <View style={s.sectionHeader}>
         <Text style={s.sectionTitle}>SQUAD CHESTS</Text>
-        <Text style={s.streakBadge}>🔥 Day {streakDay} of 3</Text>
+        {chests.length > 0 && (
+          <Text style={s.streakBadge}>🔥 Day {computeStreakDay(chests[0].createdAt)} of 3</Text>
+        )}
       </View>
 
-      {/* Horizontal scroll of chest slots */}
+      {/* Horizontal scroll — one slot per chest */}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -60,22 +60,27 @@ export function SquadChestCard({
         snapToInterval={CARD_WIDTH + CARD_GAP}
         decelerationRate="fast"
       >
-        {slots.map((slot, idx) => (
+        {mySlots.map((slot, idx) => (
           <ChestSlot
-            key={slot.profileId ?? `empty-${idx}`}
+            key={slot.chestId ?? `empty-${idx}`}
             slot={slot}
-            isMe={slot.profileId === myProfileId}
-            onTap={slot.profileId === myProfileId && slot.status === 'pending' ? onTap : undefined}
-            onOpen={slot.profileId === myProfileId && slot.status === 'ready' ? onOpen : undefined}
-            onPress={onPress}
+            onTap={slot.chest && slot.status === 'pending' ? () => onTap(slot.chest!) : undefined}
+            onOpen={slot.chest && slot.status === 'ready' ? () => onOpen(slot.chest!) : undefined}
+            onPress={slot.chest ? () => onPress(slot.chest!) : undefined}
           />
         ))}
       </ScrollView>
 
-      {/* Nudge row */}
-      {pendingCount > 0 && (
-        <TouchableOpacity style={s.nudgeRow} onPress={onNudge} activeOpacity={0.7}>
-          <Text style={s.nudgeText}>👋 Nudge {pendingCount} squadmate{pendingCount > 1 ? 's' : ''} to tap their chest</Text>
+      {/* Nudge row — only when there are other members still pending */}
+      {nudgeable.length > 0 && (
+        <TouchableOpacity
+          style={s.nudgeRow}
+          onPress={() => onNudge(nudgeable[0])}
+          activeOpacity={0.7}
+        >
+          <Text style={s.nudgeText}>
+            👋 Nudge squadmates to tap their chest
+          </Text>
         </TouchableOpacity>
       )}
     </View>
@@ -84,22 +89,21 @@ export function SquadChestCard({
 
 // ─── Single slot card ─────────────────────────────────────────────────────────
 
-interface SlotData {
-  profileId: string | null;
-  displayName: string | null;
+interface MySlot {
+  chestId: string | null;
+  chest: SquadChest | null;
   status: 'empty' | 'pending' | 'unlocking' | 'ready' | 'opened' | 'expired';
   unlocksAt: string | null;
+  source: string | null;
 }
 
 function ChestSlot({
   slot,
-  isMe,
   onTap,
   onOpen,
   onPress,
 }: {
-  slot: SlotData;
-  isMe: boolean;
+  slot: MySlot;
   onTap?: () => void;
   onOpen?: () => void;
   onPress?: () => void;
@@ -107,7 +111,6 @@ function ChestSlot({
   const floatAnim = useRef(new Animated.Value(0)).current;
   const [timeLeft, setTimeLeft] = useState('');
 
-  // Float animation for chests that are active
   useEffect(() => {
     if (slot.status === 'empty') return;
     const loop = Animated.loop(
@@ -120,7 +123,6 @@ function ChestSlot({
     return () => loop.stop();
   }, [floatAnim, slot.status]);
 
-  // Countdown timer for unlocking
   useEffect(() => {
     if (slot.status !== 'unlocking' || !slot.unlocksAt) return;
     const tick = () => {
@@ -136,10 +138,6 @@ function ChestSlot({
     return () => clearInterval(interval);
   }, [slot.status, slot.unlocksAt]);
 
-  const label = slot.displayName
-    ? `@${slot.displayName.replace('@', '')}`
-    : null;
-
   if (slot.status === 'empty') {
     return (
       <View style={[s.card, s.cardEmpty]}>
@@ -149,12 +147,14 @@ function ChestSlot({
     );
   }
 
-  const borderColor = getSlotBorder(slot.status, isMe);
+  const borderColor = getSlotBorder(slot.status);
   const isOpen = slot.status === 'opened';
   const isUnlocking = slot.status === 'unlocking';
   const isReady = slot.status === 'ready';
-
   const handlePress = onOpen ?? onTap ?? onPress;
+
+  // Source label
+  const sourceLabel = slot.source === 'play_intent' ? '🎯' : '📍';
 
   return (
     <TouchableOpacity
@@ -162,7 +162,6 @@ function ChestSlot({
       activeOpacity={0.82}
       onPress={handlePress}
     >
-      {/* Chest image */}
       <Animated.View style={{ transform: [{ translateY: floatAnim }] }}>
         <Image
           source={CHEST_IMAGE}
@@ -171,93 +170,71 @@ function ChestSlot({
         />
       </Animated.View>
 
-      {/* Status button */}
-      {isMe && isReady && (
+      {isReady && (
         <View style={s.openBtn}>
           <Text style={s.openBtnText}>OPEN!</Text>
         </View>
       )}
-      {isMe && isUnlocking && (
+      {isUnlocking && (
         <View style={s.timerBadge}>
           <Text style={s.timerText}>{timeLeft}</Text>
         </View>
       )}
-      {isMe && slot.status === 'pending' && (
+      {slot.status === 'pending' && (
         <View style={s.tapStartBtn}>
           <Text style={s.tapStartText}>TAP TO{'\n'}START</Text>
         </View>
       )}
-      {!isMe && isUnlocking && (
-        <View style={s.timerBadge}>
-          <Text style={s.timerText}>{timeLeft}</Text>
-        </View>
-      )}
 
-      {/* Member label */}
-      {label && (
-        <Text style={[s.memberLabel, isMe && s.memberLabelMe]} numberOfLines={1}>
-          {label}
-        </Text>
-      )}
+      <Text style={s.sourceLabel}>{sourceLabel}</Text>
     </TouchableOpacity>
   );
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function buildSlots(
-  openings: SquadChestOpening[],
-  squadMembers: Array<{ profileId: string; displayName: string | null }>,
-): SlotData[] {
-  const slots: SlotData[] = openings.map(o => ({
-    profileId: o.profileId,
-    displayName: o.displayName,
-    status: o.status as SlotData['status'],
-    unlocksAt: o.unlocksAt,
-  }));
+function buildMySlots(
+  chests: SquadChest[],
+  myProfileId: string | null,
+  maxSlots: number,
+): MySlot[] {
+  const slots: MySlot[] = chests.map(chest => {
+    const myOpening = chest.myOpening
+      ?? chest.openings.find(o => o.profileId === myProfileId);
+    return {
+      chestId: chest.id,
+      chest,
+      status: (myOpening?.status ?? 'pending') as MySlot['status'],
+      unlocksAt: myOpening?.unlocksAt ?? null,
+      source: chest.source,
+    };
+  });
 
-  // Add empty slots for squad members who don't have an opening yet
-  const existingIds = new Set(openings.map(o => o.profileId));
-  for (const m of squadMembers) {
-    if (!existingIds.has(m.profileId) && slots.length < 8) {
-      slots.push({
-        profileId: m.profileId,
-        displayName: m.displayName,
-        status: 'pending',
-        unlocksAt: null,
-      });
-    }
+  // Pad with empty slots
+  while (slots.length < maxSlots) {
+    slots.push({ chestId: null, chest: null, status: 'empty', unlocksAt: null, source: null });
   }
 
-  // Pad up to 8 with empty slots
-  while (slots.length < 8) {
-    slots.push({ profileId: null, displayName: null, status: 'empty', unlocksAt: null });
-  }
-
-  return slots.slice(0, 8);
+  return slots.slice(0, maxSlots);
 }
 
-function getSlotBorder(status: SlotData['status'], isMe: boolean): string | null {
-  if (isMe && status === 'ready') return LIME;
-  if (isMe && status === 'unlocking') return GOLD;
-  if (isMe && status === 'pending') return 'rgba(163,230,53,0.4)';
-  if (status === 'opened') return '#22c55e';
+function getSlotBorder(status: MySlot['status']): string | null {
+  if (status === 'ready') return LIME;
   if (status === 'unlocking') return GOLD;
+  if (status === 'pending') return 'rgba(163,230,53,0.4)';
+  if (status === 'opened') return '#22c55e';
   return null;
 }
 
 function computeStreakDay(createdAt: string): number {
   const diff = Date.now() - new Date(createdAt).getTime();
-  const days = Math.floor(diff / 86400000);
-  return Math.min(days + 1, 3);
+  return Math.min(Math.floor(diff / 86400000) + 1, 3);
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const s = StyleSheet.create({
-  wrapper: {
-    marginBottom: 12,
-  },
+  wrapper: { marginBottom: 12 },
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -266,121 +243,53 @@ const s = StyleSheet.create({
     marginBottom: 10,
   },
   sectionTitle: {
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-    color: '#52525b',
+    fontSize: 11, fontWeight: '800', letterSpacing: 1,
+    textTransform: 'uppercase', color: '#52525b',
   },
-  streakBadge: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: GOLD,
-  },
-  scrollContent: {
-    paddingHorizontal: 16,
-    gap: CARD_GAP,
-    paddingRight: 24,
-  },
+  streakBadge: { fontSize: 12, fontWeight: '800', color: GOLD },
+  scrollContent: { paddingHorizontal: 16, gap: CARD_GAP, paddingRight: 24 },
   card: {
-    width: CARD_WIDTH,
-    backgroundColor: '#111',
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.07)',
-    alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 6,
-    gap: 6,
-    minHeight: 140,
+    width: CARD_WIDTH, backgroundColor: '#111', borderRadius: 14,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)',
+    alignItems: 'center', paddingVertical: 12, paddingHorizontal: 6,
+    gap: 6, minHeight: 140,
   },
   cardEmpty: {
-    borderStyle: 'dashed',
-    borderColor: 'rgba(255,255,255,0.07)',
-    justifyContent: 'center',
+    borderStyle: 'dashed', borderColor: 'rgba(255,255,255,0.07)', justifyContent: 'center',
   },
   emptyBox: {
-    width: 48,
-    height: 48,
-    backgroundColor: '#1a1a1a',
-    borderRadius: 8,
-    marginBottom: 6,
+    width: 48, height: 48, backgroundColor: '#1a1a1a', borderRadius: 8, marginBottom: 6,
   },
   emptyLabel: {
-    fontSize: 9,
-    fontWeight: '700',
-    color: '#3f3f46',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    textAlign: 'center',
+    fontSize: 9, fontWeight: '700', color: '#3f3f46',
+    textTransform: 'uppercase', letterSpacing: 0.5, textAlign: 'center',
   },
-  chestImg: {
-    width: 64,
-    height: 64,
-  },
-  chestImgDim: {
-    opacity: 0.45,
-  },
-  // Buttons
+  chestImg: { width: 64, height: 64 },
+  chestImgDim: { opacity: 0.45 },
   openBtn: {
-    backgroundColor: LIME,
-    borderRadius: 6,
-    paddingVertical: 5,
-    paddingHorizontal: 12,
+    backgroundColor: LIME, borderRadius: 6, paddingVertical: 5, paddingHorizontal: 12,
   },
-  openBtnText: {
-    fontSize: 11,
-    fontWeight: '900',
-    color: '#000',
-  },
+  openBtnText: { fontSize: 11, fontWeight: '900', color: '#000' },
   timerBadge: {
-    backgroundColor: 'rgba(250,204,21,0.12)',
-    borderRadius: 6,
-    paddingVertical: 4,
-    paddingHorizontal: 8,
+    backgroundColor: 'rgba(250,204,21,0.12)', borderRadius: 6,
+    paddingVertical: 4, paddingHorizontal: 8,
   },
   timerText: {
-    fontSize: 11,
-    fontWeight: '900',
-    color: GOLD,
-    fontVariant: ['tabular-nums'],
+    fontSize: 11, fontWeight: '900', color: GOLD, fontVariant: ['tabular-nums'],
   },
   tapStartBtn: {
-    backgroundColor: 'rgba(163,230,53,0.12)',
-    borderRadius: 6,
-    paddingVertical: 5,
-    paddingHorizontal: 8,
+    backgroundColor: 'rgba(163,230,53,0.12)', borderRadius: 6,
+    paddingVertical: 5, paddingHorizontal: 8,
   },
   tapStartText: {
-    fontSize: 9,
-    fontWeight: '900',
-    color: LIME,
-    textAlign: 'center',
-    lineHeight: 13,
+    fontSize: 9, fontWeight: '900', color: LIME, textAlign: 'center', lineHeight: 13,
   },
-  memberLabel: {
-    fontSize: 10,
-    color: '#71717a',
-    fontWeight: '700',
-    textAlign: 'center',
-  },
-  memberLabelMe: {
-    color: '#a1a1aa',
-  },
-  // Nudge row
+  sourceLabel: { fontSize: 12, marginTop: 2 },
   nudgeRow: {
-    marginHorizontal: 16,
-    marginTop: 10,
+    marginHorizontal: 16, marginTop: 10,
     backgroundColor: 'rgba(255,255,255,0.04)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.07)',
-    borderRadius: 10,
-    paddingVertical: 10,
-    alignItems: 'center',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)',
+    borderRadius: 10, paddingVertical: 10, alignItems: 'center',
   },
-  nudgeText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#71717a',
-  },
+  nudgeText: { fontSize: 12, fontWeight: '700', color: '#71717a' },
 });
