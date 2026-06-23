@@ -89,23 +89,6 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // 1h spam guard — only counts check-in chests, not intent chests
-  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-  const recentCheckinChest = await prisma.squadChest.findFirst({
-    where: {
-      earnerId: user.profileId,
-      squadId,
-      source: "checkin",
-      createdAt: { gte: oneHourAgo },
-    },
-  });
-  if (recentCheckinChest) {
-    return NextResponse.json(
-      { error: "rate_limited", retryAfter: new Date(recentCheckinChest.createdAt.getTime() + 60 * 60 * 1000).toISOString() },
-      { status: 429 }
-    );
-  }
-
   // Squad-level chest cap: max 15 active chests across all earners
   const CHEST_CAP = 15;
   const activeChestCount = await prisma.squadChest.count({
