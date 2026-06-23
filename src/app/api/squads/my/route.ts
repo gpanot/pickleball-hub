@@ -218,6 +218,10 @@ export async function GET(req: NextRequest) {
     where: {
       squadId: membership.squad.id,
       expiresAt: { gte: now },
+      // Exclude chests the current user has already opened
+      openings: {
+        none: { profileId: user.profileId, status: "opened" },
+      },
     },
     orderBy: { createdAt: "desc" },
     take: CHEST_CAP,
