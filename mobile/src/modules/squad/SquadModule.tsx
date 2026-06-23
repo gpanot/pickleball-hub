@@ -1088,6 +1088,9 @@ export default function SquadModule({
               void fetchIntentData();
             }
           }}
+          onRewardReceived={() => {
+            void fetchMySquad().then(data => extractPhase2Data(data));
+          }}
         />
       )}
       {/* Location Picker — opens when PlacesCard "+ Add" is tapped */}

@@ -39,7 +39,7 @@ export function SquadChestCard({
 }: Props) {
   // Build a full list of up to 8 slots: existing openings first, then empty slots for remaining members
   const slots = buildSlots(chest.openings, squadMembers);
-  const pendingCount = chest.openings.filter(o => o.status === 'pending').length;
+  const pendingCount = chest.openings.filter(o => o.status === 'pending' && o.profileId !== myProfileId).length;
   const myOpening = chest.myOpening ?? chest.openings.find(o => o.profileId === myProfileId);
   const myStatus = myOpening?.status ?? 'pending';
   const streakDay = computeStreakDay(chest.createdAt);

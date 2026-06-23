@@ -237,11 +237,7 @@ export async function POST(req: NextRequest) {
 
   const expiresAt = computeExpiresAt(intentWindow, resolvedDate ?? null, tz)
 
-  // ── 3. Check reward eligibility ──────────────────────────────────────────
-
-  const alreadyRewarded = myPrefs.playIntentChestClaimed === true
-
-  // ── 4. Persist intent ────────────────────────────────────────────────────
+  // ── 3. Persist intent ───────────────────────────────────────────────────
 
   const currentCount = typeof myPrefs.playIntentCount === 'number' ? myPrefs.playIntentCount : 0
 
@@ -260,77 +256,75 @@ export async function POST(req: NextRequest) {
     },
   })
 
-  // ── 5. One-time reward ───────────────────────────────────────────────────
+  // ── 4. Reward — chest + tokens every time (same mechanic as check-in) ───
 
   let rewardChestId: string | null = null
 
-  if (!alreadyRewarded) {
-    const membership = await prisma.squadMember.findFirst({
-      where: { profileId: user.profileId, leftAt: null },
-      select: { squadId: true },
-    })
+  const membership = await prisma.squadMember.findFirst({
+    where: { profileId: user.profileId, leftAt: null },
+    select: { squadId: true },
+  })
 
-    if (membership?.squadId) {
-      const CHEST_CAP = 15
-      const activeCount = await prisma.squadChest.count({
-        where: { squadId: membership.squadId, expiresAt: { gte: new Date() } },
+  if (membership?.squadId) {
+    const CHEST_CAP = 15
+    const activeCount = await prisma.squadChest.count({
+      where: { squadId: membership.squadId, expiresAt: { gte: new Date() } },
+    })
+    if (activeCount < CHEST_CAP) {
+      const chestExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000)
+      const chest = await prisma.squadChest.create({
+        data: {
+          squadId: membership.squadId,
+          earnerId: user.profileId,
+          source: 'play_intent',
+          expiresAt: chestExpiresAt,
+        },
       })
-      if (activeCount < CHEST_CAP) {
-        const chestExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000)
-        const chest = await prisma.squadChest.create({
-          data: {
-            squadId: membership.squadId,
-            earnerId: user.profileId,
-            source: 'play_intent',
-            expiresAt: chestExpiresAt,
-          },
-        })
-        rewardChestId = chest.id
+      rewardChestId = chest.id
 
-        const activeMembers = await prisma.squadMember.findMany({
-          where: { squadId: membership.squadId, leftAt: null },
-          select: { profileId: true },
-        })
-        await prisma.squadChestOpening.createMany({
-          data: activeMembers.map((m) => ({
-            chestId: chest.id,
-            profileId: m.profileId,
-            status: 'pending',
-          })),
-          skipDuplicates: true,
-        })
-      }
+      const activeMembers = await prisma.squadMember.findMany({
+        where: { squadId: membership.squadId, leftAt: null },
+        select: { profileId: true },
+      })
+      await prisma.squadChestOpening.createMany({
+        data: activeMembers.map((m) => ({
+          chestId: chest.id,
+          profileId: m.profileId,
+          status: 'pending',
+        })),
+        skipDuplicates: true,
+      })
     }
-
-    await prisma.playerWallet.upsert({
-      where: { profileId: user.profileId },
-      create: { profileId: user.profileId, clubTokens: INTENT_REWARD_CLUB_TOKENS, brandTokens: 0 },
-      update: { clubTokens: { increment: INTENT_REWARD_CLUB_TOKENS } },
-    })
-    await prisma.tokenLedger.create({
-      data: {
-        profileId: user.profileId,
-        tokenType: 'club',
-        delta: INTENT_REWARD_CLUB_TOKENS,
-        reason: 'play_intent',
-      },
-    })
-
-    ;(async () => {
-      try {
-        await sendPushNotification(user.profileId, {
-          title: 'Your chest is ready to open 📦',
-          body: `You earned a squad chest + ${INTENT_REWARD_CLUB_TOKENS} tokens for committing to play. Go open it!`,
-          data: {
-            screen: rewardChestId ? 'ChestDetail' : 'SquadHome',
-            ...(rewardChestId ? { chestId: rewardChestId } : {}),
-          },
-        })
-      } catch (e) {
-        console.error('[PLAY_INTENT] PNS error:', e)
-      }
-    })()
   }
+
+  await prisma.playerWallet.upsert({
+    where: { profileId: user.profileId },
+    create: { profileId: user.profileId, clubTokens: INTENT_REWARD_CLUB_TOKENS, brandTokens: 0 },
+    update: { clubTokens: { increment: INTENT_REWARD_CLUB_TOKENS } },
+  })
+  await prisma.tokenLedger.create({
+    data: {
+      profileId: user.profileId,
+      tokenType: 'club',
+      delta: INTENT_REWARD_CLUB_TOKENS,
+      reason: 'play_intent',
+    },
+  })
+
+  ;(async () => {
+    try {
+      await sendPushNotification(user.profileId, {
+        title: 'Your chest is ready to open 📦',
+        body: `You earned a squad chest + ${INTENT_REWARD_CLUB_TOKENS} tokens for committing to play. Go open it!`,
+        data: {
+          screen: rewardChestId ? 'ChestDetail' : 'SquadHome',
+          ...(rewardChestId ? { chestId: rewardChestId } : {}),
+        },
+      })
+    } catch (e) {
+      console.error('[PLAY_INTENT] PNS error:', e)
+    }
+  })()
 
   // ── 6. Aggregate count ───────────────────────────────────────────────────
 
@@ -410,7 +404,7 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({
     aggregateCount,
     match,
-    reward: alreadyRewarded ? null : {
+    reward: {
       clubTokensAwarded: INTENT_REWARD_CLUB_TOKENS,
       chestId: rewardChestId,
     },
