@@ -83,7 +83,7 @@ export async function PATCH(
           lifecycleState: true,
         },
       },
-      player: { select: { id: true, displayName: true, squadNickname: true, preferences: true } },
+      player: { select: { id: true, displayName: true, squadNickname: true, preferences: true, user: { select: { image: true } } } },
     },
   });
   if (!booking) return NextResponse.json({ error: "Booking not found" }, { status: 404 });
@@ -259,7 +259,7 @@ export async function GET(
   const booking = await prisma.clubSessionBooking.findUnique({
     where: { id },
     include: {
-      player: { select: { id: true, displayName: true, squadNickname: true } },
+      player: { select: { id: true, displayName: true, squadNickname: true, preferences: true, user: { select: { image: true } } } },
       clubSession: {
         select: {
           id: true, name: true, startTime: true, appClubId: true, hostId: true,
