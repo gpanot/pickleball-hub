@@ -40,12 +40,13 @@ model Venue {
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
 
-  sessions  Session[]
-  accessCodes AccessCode[]
-  radarSessions    RadarSession[]
-  cardBattles      CardBattle[]
-  venueInfTotals   VenueInfTotal[]
-  pulseCooldowns   VenuePulseCooldown[]
+  sessions      Session[]
+  accessCodes   AccessCode[]
+  radarSessions RadarSession[]
+  cardBattles   CardBattle[]
+  venueInfTotals  VenueInfTotal[]
+  pulseCooldowns  VenuePulseCooldown[]
+  clubSessions  ClubSession[]
 
   @@index([latitude, longitude])
   @@map("venues")
@@ -252,6 +253,13 @@ model PlayerProfile {
   foundedPods      Pod[]         @relation("PodFounder")
   brand            PlayerBrand?
   wallet           PlayerWallet?
+  // Club Sessions relations
+  foundedAppClubs       AppClub[]           @relation("AppClubCreator")
+  appClubManagerRoles   AppClubManager[]    @relation("ManagerProfile")
+  appClubManagersAdded  AppClubManager[]    @relation("ManagerAddedBy")
+  hostedSessions        ClubSession[]       @relation("SessionHost")
+  clubSessionBookings   ClubSessionBooking[]
+  appClubMemberships    AppClubMember[]
 
   @@map("player_profiles")
 }
@@ -886,3 +894,141 @@ model SquadAlert {
   @@index([squadId, createdAt])
   @@map("squad_alerts")
 }
+
+// ── Club Sessions ─────────────────────────────────────────────────────────────
+// Names use AppClub / ClubSession / ClubSessionBooking to avoid collision with:
+//   Club (scraped Reclub entity, clubs table)
+//   Session (scraped Reclub entity, sessions table)
+//   AuthSession (NextAuth model)
+
+/// App-managed pickleball club. One club per creator (creatorId is unique).
+/// Multiple managers are supported via AppClubManager.
+model AppClub {
+  id                    String   @id @default(uuid())
+  name                  String
+  icon                  String?
+  sportId               Int?     @map("sport_id")
+  /// "public" | "private"
+  privacy               String   @default("public")
+  level                 String?
+  /// When true, booking a session auto-enrolls the player as a member with no separate step.
+  autoApproveNewMembers Boolean  @default(true) @map("auto_approve_new_members")
+  /// One club per creator — enforced as @unique. A player can found only one club.
+  creatorId             String   @unique @map("creator_id")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  creator   PlayerProfile    @relation("AppClubCreator", fields: [creatorId], references: [id])
+  managers  AppClubManager[]
+  sessions  ClubSession[]
+  members   AppClubMember[]
+
+  @@index([privacy])
+  @@map("app_clubs")
+}
+
+/// Multi-manager support for AppClub. Creator row is seeded automatically on club creation.
+/// Authorization: any row in this table grants equal rights to edit the club and manage its sessions.
+model AppClubManager {
+  id              String   @id @default(uuid())
+  appClubId       String   @map("app_club_id")
+  playerProfileId String   @map("player_profile_id")
+  /// "creator" | "manager"
+  role            String   @default("manager")
+  addedAt         DateTime @default(now()) @map("added_at")
+  addedById       String   @map("added_by_id")
+
+  appClub   AppClub       @relation(fields: [appClubId], references: [id], onDelete: Cascade)
+  profile   PlayerProfile @relation("ManagerProfile", fields: [playerProfileId], references: [id])
+  addedBy   PlayerProfile @relation("ManagerAddedBy", fields: [addedById], references: [id])
+
+  @@unique([appClubId, playerProfileId])
+  @@index([playerProfileId])
+  @@map("app_club_managers")
+}
+
+/// Binary club membership for players. Joining is a one-tap action with no approval state machine.
+model AppClubMember {
+  id              String   @id @default(uuid())
+  appClubId       String   @map("app_club_id")
+  playerProfileId String   @map("player_profile_id")
+  joinedAt        DateTime @default(now()) @map("joined_at")
+
+  appClub  AppClub       @relation(fields: [appClubId], references: [id], onDelete: Cascade)
+  profile  PlayerProfile @relation(fields: [playerProfileId], references: [id])
+
+  @@unique([appClubId, playerProfileId])
+  @@index([playerProfileId])
+  @@map("app_club_members")
+}
+
+/// App-managed session created by a host under an AppClub.
+/// startTime/endTime are real DateTime fields (unlike scraped Session which uses String).
+model ClubSession {
+  id             String    @id @default(uuid())
+  appClubId      String    @map("app_club_id")
+  hostId         String    @map("host_id")
+  sportId        Int?      @map("sport_id")
+  /// "social" | "round_robin" | "singles"
+  format         String
+  name           String
+  startTime      DateTime  @map("start_time")
+  endTime        DateTime  @map("end_time")
+  durationMin    Int       @map("duration_min")
+  venueId        Int?      @map("venue_id")
+  /// True when venue is not yet determined (venue shown as "To be determined")
+  venuePending   Boolean   @default(false) @map("venue_pending")
+  /// Soft target, not a hard cap. Host may confirm past this number.
+  maxPlayers     Int       @map("max_players")
+  requiresApproval Boolean @default(false) @map("requires_approval")
+  /// "public" | "private"
+  privacy        String    @default("public")
+  feeAmount      Decimal?  @map("fee_amount") @db.Decimal(10, 2)
+  feeCurrency    String?   @map("fee_currency")
+  skillLevelMin  Decimal?  @map("skill_level_min") @db.Decimal(5, 3)
+  skillLevelMax  Decimal?  @map("skill_level_max") @db.Decimal(5, 3)
+  /// "host_and_play" | "host_only"
+  hostRole       String    @default("host_and_play") @map("host_role")
+  notes          String?
+  /// "draft" | "published" | "cancelled"
+  lifecycleState String    @default("draft") @map("lifecycle_state")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  appClub  AppClub              @relation(fields: [appClubId], references: [id])
+  host     PlayerProfile        @relation("SessionHost", fields: [hostId], references: [id])
+  venue    Venue?               @relation(fields: [venueId], references: [id])
+  bookings ClubSessionBooking[]
+
+  @@index([appClubId, startTime])
+  @@index([lifecycleState, startTime])
+  @@index([venueId])
+  @@map("club_sessions")
+}
+
+/// Player booking for a ClubSession. Keyed off PlayerProfile (same identity table as Squadd).
+/// attendanceStatus uses "checked_in" (not "checkin") to stay distinct from SquadChest.source="checkin".
+model ClubSessionBooking {
+  id              String    @id @default(uuid())
+  playerProfileId String    @map("player_profile_id")
+  clubSessionId   String    @map("club_session_id")
+  /// "requested" | "confirmed" | "waiting_list" | "declined"
+  status          String    @default("requested")
+  /// Host-controlled manual payment flag. Only meaningful on confirmed bookings.
+  paidStatus      Boolean   @default(false) @map("paid_status")
+  /// "unmarked" | "checked_in" | "no_show" — host-controlled, day-of, confirmed bookings only.
+  attendanceStatus String   @default("unmarked") @map("attendance_status")
+  requestedAt     DateTime  @default(now()) @map("requested_at")
+  decidedAt       DateTime? @map("decided_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  player      PlayerProfile @relation(fields: [playerProfileId], references: [id])
+  clubSession ClubSession   @relation(fields: [clubSessionId], references: [id], onDelete: Cascade)
+
+  @@unique([playerProfileId, clubSessionId])
+  @@index([clubSessionId, status])
+  @@index([playerProfileId])
+  @@map("club_session_bookings")
+}
+

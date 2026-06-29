@@ -8,10 +8,12 @@ import { SwipeScreen } from './src/screens/SwipeScreen'
 import { ExploreSessionsScreen } from './src/screens/ExploreSessionsScreen'
 import { CircleScreen, type CircleScreenHandle } from './src/screens/CircleScreen'
 import SquadModule from './src/modules/squad/SquadModule'
+import { ClubSessionsModule } from './src/modules/club-sessions/ClubSessionsModule'
 import { ReclubLinkScreen } from './src/screens/ReclubLinkScreen'
 import { OnboardingOrchestrator } from './src/onboarding/OnboardingOrchestrator'
 import { onboardingStorage } from './src/onboarding/onboardingStorage'
 import { useIpGeolocation } from './src/onboarding/useIpGeolocation'
+import type { OrchestratorMode } from './src/onboarding/types'
 import { PeopleYouMayKnowScreen } from './src/screens/PeopleYouMayKnowScreen'
 import { ProfileSheet } from './src/components/ProfileSheet'
 import { GearSetupScreen } from './src/components/gear/GearSetupScreen'
@@ -21,7 +23,7 @@ import type { GearProfile } from './src/components/gear/gearTypes'
 import { SignUpModalProvider } from './src/contexts/SignUpModalContext'
 import { ProfileMenuProvider } from './src/contexts/ProfileMenuContext'
 import { ToastOverlay } from './src/components/Toast'
-import { useAuthStore, resolveApiBase } from './src/stores/authStore'
+import { useAuthStore, resolveApiBase, consumeSignedInFromClubSessions } from './src/stores/authStore'
 import { useSessionStore } from './src/stores/sessionStore'
 import { useUiStore, type PendingNewFollower } from './src/stores/uiStore'
 import { useAvatarCacheStore } from './src/stores/avatarCacheStore'
@@ -168,6 +170,8 @@ try {
       ;(globalThis as any).__conquestPushSessionId = data?.sessionId ?? null
     } else if (isConquestPush(data)) {
       ;(globalThis as any).__conquestPushScreen = 'conquest-alerts'
+    } else if (data?.screen === 'ClubSessions' || (typeof data?.type === 'string' && data.type.startsWith('cs_'))) {
+      ;(globalThis as any).__clubSessionsPushData = { type: data.type, sessionId: data.sessionId ?? null }
     }
   })
 
@@ -194,6 +198,8 @@ try {
         ;(globalThis as any).__conquestPushSessionId = data?.sessionId ?? null
       } else if (isConquestPush(data)) {
         ;(globalThis as any).__conquestPushScreen = 'conquest-alerts'
+      } else if (data?.screen === 'ClubSessions' || (typeof data?.type === 'string' && data.type.startsWith('cs_'))) {
+        ;(globalThis as any).__clubSessionsPushData = { type: data.type, sessionId: data.sessionId ?? null }
       }
     }
   })
@@ -237,6 +243,11 @@ if (!IS_EXPO_GO && Notifications) {
       ;(globalThis as any).__conquestPushSessionId = data?.sessionId ?? null
     } else if (isConquestPush(data)) {
       ;(globalThis as any).__conquestPushScreen = 'conquest-alerts'
+    } else if (
+      data?.screen === 'ClubSessions' ||
+      (typeof data?.type === 'string' && data.type.startsWith('cs_'))
+    ) {
+      ;(globalThis as any).__clubSessionsPushData = { type: data.type, sessionId: data.sessionId ?? null }
     }
   })
 }
@@ -266,6 +277,9 @@ export default function App() {
   }, [])
   const [activeTab, setActiveTab] = useState<TabId>('swipe')
   const [flowScreen, setFlowScreen] = useState<FlowScreen>('main')
+  // Club Sessions screens can signal that the tab bar should be hidden
+  // (create/edit forms, sheets, terminal confirmations per spec §15)
+  const [csTabBarVisible, setCsTabBarVisible] = useState(true)
   const [gearReturnTo, setGearReturnTo] = useState<FlowScreen>('main')
   const [gearSheetOpen, setGearSheetOpen] = useState(false)
   const [squadDeeplinkCode, setSquadDeeplinkCode] = useState<string | null>(null)
@@ -309,7 +323,7 @@ export default function App() {
   const pushTokenRegistered = useRef(false)
   const bootStatusFetched = useRef(false)
   const prevJwtRef = useRef<string | null | undefined>(undefined)
-  const [orchestratorMode, setOrchestratorMode] = useState<'full' | 'squad-only'>('full')
+  const [orchestratorMode, setOrchestratorMode] = useState<OrchestratorMode>('full')
   const [pendingInviteCode, setPendingInviteCode] = useState<string | null>(null)
 
   const setGenderInStore = useAuthStore((s) => s.setGender)
@@ -361,6 +375,13 @@ export default function App() {
       delete (globalThis as any).__squadPushData
     }
 
+    // Club Sessions push: route to sessions tab on cold-start tap
+    const csPushData = (globalThis as any).__clubSessionsPushData
+    if (csPushData) {
+      setActiveTab('club-sessions')
+      delete (globalThis as any).__clubSessionsPushData
+    }
+
     return () => sub.remove()
   }, [])
 
@@ -375,16 +396,13 @@ export default function App() {
     debugLog('App', '================================')
 
     if (__DEV__) {
-      const { jwt, ensureServerAuth, ensureDevApiBase } = useAuthStore.getState()
-      if (!jwt || jwt === 'dev-token') {
-        void ensureServerAuth().then((ok) => {
-          debugLog('App', ok ? 'Dev server auth upgraded to real JWT' : 'Dev server auth unavailable (offline mode)')
-        })
-      } else {
-        void ensureDevApiBase().then(() => {
-          debugLog('App', `Dev API base: ${resolveApiBase()}`)
-        })
-      }
+      // Only resolve the API base URL — do NOT auto-sign-in on cold start.
+      // Signing in is user-initiated (via CSSignInScreen or the Squadd sign-in flow).
+      // Auto-signing in on boot bypasses the sign-in screen and lands the user
+      // inside the full Squadd orchestrator, which is wrong for a fresh-install test.
+      void useAuthStore.getState().ensureDevApiBase().then(() => {
+        debugLog('App', `Dev API base resolved: ${resolveApiBase()}`)
+      })
     }
 
     if (RNUxcam) {
@@ -459,6 +477,22 @@ export default function App() {
   useEffect(() => {
     if (!jwt || bootStatusFetched.current) return
     bootStatusFetched.current = true
+
+    // If the active tab is Club Sessions, skip all Squadd-orchestrator routing entirely.
+    // ClubSessionsModule owns its own identity onboarding — App.tsx must not interfere.
+    // We check activeTab directly (synchronous React state) rather than relying on the
+    // module-level _signedInFromClubSessions flag, which has a race condition: applyDevAuth
+    // sets the jwt (triggering this effect) before setSignedInFromClubSessions(true) is called.
+    if (activeTab === 'club-sessions') {
+      debugLog('App', 'boot-status: active tab is club-sessions — skipping Squadd orchestrator redirect')
+      consumeSignedInFromClubSessions() // consume flag if set, to keep it clean
+      return
+    }
+    // Secondary guard: flag set by CSSignInScreen for non-active-tab sign-ins
+    if (consumeSignedInFromClubSessions()) {
+      debugLog('App', 'boot-status: sign-in from Club Sessions tab — skipping Squadd orchestrator redirect')
+      return
+    }
 
     void useAuthStore.getState().hydrateBootStatus().then(async () => {
       const { hasCompletedOnboarding: completed, hasActiveSquad: activeSquad } =
@@ -543,7 +577,7 @@ export default function App() {
       setOrchestratorMode(persistedStep?.mode ?? 'full')
       setFlowScreen('orchestrator')
     })
-  }, [jwt]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [jwt, activeTab]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Detect sign-out / account deletion: when jwt transitions from a value to null,
   // reset all per-session refs and routing state so the next sign-in starts fresh.
@@ -625,6 +659,12 @@ export default function App() {
           // Conquest push notification — navigate to the squad conquest alerts screen
           ;(globalThis as any).__conquestPushScreen = 'conquest-alerts'
           setActiveTab('squadd')
+        } else if (
+          data?.screen === 'ClubSessions' ||
+          (typeof data?.type === 'string' && data.type.startsWith('cs_'))
+        ) {
+          // Club Sessions push notification — navigate to the sessions tab
+          setActiveTab('club-sessions')
         } else if (data?.screen === 'Circle') {
           setActiveTab('circle')
           if (data?.type === 'pn4' && data.followerUserId) {
@@ -845,7 +885,14 @@ export default function App() {
                   isActive={activeTab === 'swipe'}
                 />
               </View>
-              {flowScreen !== 'explore' && (
+              <View style={{ flex: 1, display: activeTab === 'club-sessions' ? 'flex' : 'none' }}>
+                <ClubSessionsModule
+                  isActive={activeTab === 'club-sessions'}
+                  onTabBarVisibilityChange={setCsTabBarVisible}
+                />
+              </View>
+              {/* Tab bar: hidden on explore overlay, and hidden on CS screens that signal it */}
+              {flowScreen !== 'explore' && (activeTab !== 'club-sessions' || csTabBarVisible) && (
                 <NavBar active={activeTab} onChange={setActiveTab} />
               )}
               <ToastOverlay />
