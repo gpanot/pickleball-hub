@@ -83,7 +83,7 @@ export async function PATCH(
           lifecycleState: true,
         },
       },
-      player: { select: { id: true, displayName: true, squadNickname: true } },
+      player: { select: { id: true, displayName: true, squadNickname: true, imageUrl: true, preferences: true } },
     },
   });
   if (!booking) return NextResponse.json({ error: "Booking not found" }, { status: 404 });

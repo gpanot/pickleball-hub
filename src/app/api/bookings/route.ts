@@ -14,7 +14,7 @@ const BOOKING_SELECT = {
   decidedAt: true,
   createdAt: true,
   updatedAt: true,
-  player: { select: { id: true, displayName: true, squadNickname: true } },
+  player: { select: { id: true, displayName: true, squadNickname: true, imageUrl: true, preferences: true } },
   clubSession: {
     select: {
       id: true,
