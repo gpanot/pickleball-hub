@@ -114,11 +114,10 @@ export async function GET(req: NextRequest) {
     : false;
 
   // "deleted" sessions are always excluded from all listing queries.
-  // For public browse (no appClubId), only show published sessions.
-  // For club-scoped queries by managers, also include draft + cancelled.
+  // Public browse: published only. Club managers also see draft + cancelled.
   const lifecycleFilter = canSeeDrafts
     ? { lifecycleState: { in: ["published", "draft", "cancelled"] } }
-    : { lifecycleState: { in: ["published", "cancelled"] } };
+    : { lifecycleState: "published" };
 
   const timeFilter =
     timeframe === "upcoming"
