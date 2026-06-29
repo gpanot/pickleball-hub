@@ -61,17 +61,53 @@ export async function POST(req: NextRequest) {
 
   const initialStatus = session.requiresApproval ? "requested" : "confirmed";
 
+  // Check for an existing booking (active or previously cancelled/declined).
+  // The table has @@unique([playerProfileId, clubSessionId]), so a player can
+  // only ever have one row per session. If they cancelled (status=declined) we
+  // reset the row; if they have a non-declined booking we reject with 409.
+  const existingBooking = await prisma.clubSessionBooking.findUnique({
+    where: {
+      playerProfileId_clubSessionId: {
+        playerProfileId: user.profileId,
+        clubSessionId,
+      },
+    },
+    select: { id: true, status: true },
+  });
+
+  if (existingBooking && existingBooking.status !== "declined") {
+    return NextResponse.json(
+      { error: "You already have an active booking for this session" },
+      { status: 409 },
+    );
+  }
+
   try {
     const booking = await prisma.$transaction(async (tx) => {
-      const created = await tx.clubSessionBooking.create({
-        data: {
-          playerProfileId: user.profileId,
-          clubSessionId,
-          status: initialStatus,
-          ...(initialStatus === "confirmed" ? { decidedAt: new Date() } : {}),
-        },
-        select: BOOKING_SELECT,
-      });
+      let result;
+
+      if (existingBooking) {
+        // Re-booking after cancel: reset the existing declined row
+        result = await tx.clubSessionBooking.update({
+          where: { id: existingBooking.id },
+          data: {
+            status: initialStatus,
+            decidedAt: initialStatus === "confirmed" ? new Date() : null,
+            requestedAt: new Date(),
+          },
+          select: BOOKING_SELECT,
+        });
+      } else {
+        result = await tx.clubSessionBooking.create({
+          data: {
+            playerProfileId: user.profileId,
+            clubSessionId,
+            status: initialStatus,
+            ...(initialStatus === "confirmed" ? { decidedAt: new Date() } : {}),
+          },
+          select: BOOKING_SELECT,
+        });
+      }
 
       // If the club has autoApproveNewMembers, ensure the player is a member
       if (session.appClub.autoApproveNewMembers) {
@@ -90,15 +126,11 @@ export async function POST(req: NextRequest) {
         });
       }
 
-      return created;
+      return result;
     });
 
     return NextResponse.json({ ok: true, booking }, { status: 201 });
   } catch (err: unknown) {
-    const e = err as { code?: string };
-    if (e?.code === "P2002") {
-      return NextResponse.json({ error: "You already have a booking for this session" }, { status: 409 });
-    }
     console.error("[POST /api/bookings]", err);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }

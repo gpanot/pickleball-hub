@@ -113,9 +113,12 @@ export async function GET(req: NextRequest) {
     ? (appClubId ? await isClubManager(appClubId, user.profileId) : false)
     : false;
 
+  // "deleted" sessions are always excluded from all listing queries.
+  // For public browse (no appClubId), only show published sessions.
+  // For club-scoped queries by managers, also include draft + cancelled.
   const lifecycleFilter = canSeeDrafts
-    ? { lifecycleState: { in: ["published", "draft"] } }
-    : { lifecycleState: "published" };
+    ? { lifecycleState: { in: ["published", "draft", "cancelled"] } }
+    : { lifecycleState: { in: ["published", "cancelled"] } };
 
   const timeFilter =
     timeframe === "upcoming"

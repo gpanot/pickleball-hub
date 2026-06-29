@@ -44,7 +44,10 @@ export async function GET(
   const user = await getMobileUser(req);
 
   const session = await prisma.clubSession.findUnique({ where: { id }, select: SESSION_SELECT });
-  if (!session) return NextResponse.json({ error: "Session not found" }, { status: 404 });
+  // Deleted sessions are treated as non-existent to all callers
+  if (!session || session.lifecycleState === "deleted") {
+    return NextResponse.json({ error: "Session not found" }, { status: 404 });
+  }
 
   if (session.lifecycleState === "draft") {
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -89,7 +92,8 @@ export async function PATCH(
 
   const VALID_FORMATS = ["social", "round_robin", "singles"];
   const VALID_HOST_ROLES = ["host_and_play", "host_only"];
-  const VALID_LIFECYCLE = ["draft", "published", "cancelled"];
+  // "deleted" is destructive (removed from all views); "cancelled" stays visible with a banner
+  const VALID_LIFECYCLE = ["draft", "published", "cancelled", "deleted"];
 
   const updates: Record<string, unknown> = {};
 
@@ -140,9 +144,11 @@ export async function PATCH(
     updates.lifecycleState = lifecycleState;
   }
 
-  // Guard: if PATCH is being used to cancel, fire notifications (same as DELETE)
+  // Guard: fire notifications when transitioning to cancelled OR deleted
   const isBeingCancelled =
-    lifecycleState === "cancelled" && existing.lifecycleState !== "cancelled";
+    (lifecycleState === "cancelled" || lifecycleState === "deleted") &&
+    existing.lifecycleState !== "cancelled" &&
+    existing.lifecycleState !== "deleted";
 
   try {
     const session = await prisma.clubSession.update({
