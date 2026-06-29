@@ -12,6 +12,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getMobileUser } from "@/lib/mobile-auth";
 import { prisma } from "@/lib/db";
+import { Prisma } from "@prisma/client";
 
 export async function PATCH(req: NextRequest) {
   const user = await getMobileUser(req);
@@ -49,7 +50,7 @@ export async function PATCH(req: NextRequest) {
         ? (profile.preferences as Record<string, unknown>)
         : {};
 
-    const merged = { ...existing, ...updates };
+    const merged: Prisma.InputJsonValue = { ...existing, ...updates };
 
     const updated = await prisma.playerProfile.update({
       where: { id: user.profileId },
