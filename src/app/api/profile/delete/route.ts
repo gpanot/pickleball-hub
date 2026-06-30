@@ -17,77 +17,183 @@ export async function DELETE(req: NextRequest) {
   const pid = user.profileId;
   const uid = user.userId;
 
-  await prisma.$transaction(async (tx) => {
-    // Leaf records that reference PlayerProfile directly (no cascade in schema)
-    await tx.venuePulseCooldown.deleteMany({ where: { playerId: pid } });
-    await tx.radarSession.deleteMany({ where: { playerId: pid } });
-    await tx.squadAlert.deleteMany({ where: { recipientProfileId: pid } });
-    await tx.squadChestOpening.deleteMany({ where: { profileId: pid } });
-    await tx.podMember.deleteMany({ where: { profileId: pid } });
+  console.log(`[DELETE /api/profile/delete] START pid=${pid} uid=${uid}`);
 
-    // SquadInvite — user may be the inviter
-    await tx.squadInvite.deleteMany({ where: { inviterId: pid } });
+  const step = (name: string) => console.log(`[DELETE /api/profile/delete] step: ${name}`);
 
-    // SquadChest — user may be the earner
-    await tx.squadChest.deleteMany({ where: { earnerId: pid } });
+  try {
+    await prisma.$transaction(async (tx) => {
+      step("venuePulseCooldown");
+      await tx.venuePulseCooldown.deleteMany({ where: { playerId: pid } });
 
-    // SquadMember — remove from all squads first
-    await tx.squadMember.deleteMany({ where: { profileId: pid } });
+      step("radarSession(player)");
+      await tx.radarSession.deleteMany({ where: { playerId: pid } });
 
-    // Pods must be deleted before Squads (pods_squad_id_fkey, no cascade in schema)
-    // Find squads founded by this user, then delete their pods and the squads
-    const foundedSquads = await tx.squad.findMany({
-      where: { founderId: pid },
-      select: { id: true },
-    });
-    const foundedSquadIds = foundedSquads.map((s) => s.id);
+      step("squadAlert(recipient)");
+      await tx.squadAlert.deleteMany({ where: { recipientProfileId: pid } });
 
-    if (foundedSquadIds.length > 0) {
-      // Delete all Squad-referencing tables that lack onDelete: Cascade
-      await tx.squadAlert.deleteMany({ where: { squadId: { in: foundedSquadIds } } });
-      await tx.squadCardState.deleteMany({ where: { squadId: { in: foundedSquadIds } } });
-      await tx.venueInfTotal.deleteMany({ where: { squadId: { in: foundedSquadIds } } });
-      await tx.cardBattle.deleteMany({
-        where: {
-          OR: [
-            { initiatingSquadId: { in: foundedSquadIds } },
-            { rivalSquadId: { in: foundedSquadIds } },
-          ],
-        },
+      step("squadChestOpening");
+      await tx.squadChestOpening.deleteMany({ where: { profileId: pid } });
+
+      step("podMember(profile)");
+      await tx.podMember.deleteMany({ where: { profileId: pid } });
+
+      step("squadInvite");
+      await tx.squadInvite.deleteMany({ where: { inviterId: pid } });
+
+      step("squadChest");
+      await tx.squadChest.deleteMany({ where: { earnerId: pid } });
+
+      step("squadMember");
+      await tx.squadMember.deleteMany({ where: { profileId: pid } });
+
+      step("foundedSquads — find");
+      const foundedSquads = await tx.squad.findMany({
+        where: { founderId: pid },
+        select: { id: true },
       });
-      await tx.radarSession.deleteMany({ where: { squadId: { in: foundedSquadIds } } });
-      await tx.podMember.deleteMany({ where: { pod: { squadId: { in: foundedSquadIds } } } });
-      await tx.pod.deleteMany({ where: { squadId: { in: foundedSquadIds } } });
-      // SquadMember, SquadCode, SquadInvite, SquadChest, SquadXpLog cascade from Squad
-      await tx.squad.deleteMany({ where: { id: { in: foundedSquadIds } } });
-    }
+      const foundedSquadIds = foundedSquads.map((s) => s.id);
+      console.log(`[DELETE /api/profile/delete] foundedSquads count=${foundedSquadIds.length}`);
 
-    // Pods where this user is founder but squad belongs to someone else
-    await tx.podMember.deleteMany({ where: { pod: { founderId: pid } } });
-    await tx.pod.deleteMany({ where: { founderId: pid } });
+      if (foundedSquadIds.length > 0) {
+        step("squadAlert(squad)");
+        await tx.squadAlert.deleteMany({ where: { squadId: { in: foundedSquadIds } } });
+        step("squadCardState");
+        await tx.squadCardState.deleteMany({ where: { squadId: { in: foundedSquadIds } } });
+        step("venueInfTotal");
+        await tx.venueInfTotal.deleteMany({ where: { squadId: { in: foundedSquadIds } } });
+        step("cardBattle");
+        await tx.cardBattle.deleteMany({
+          where: {
+            OR: [
+              { initiatingSquadId: { in: foundedSquadIds } },
+              { rivalSquadId: { in: foundedSquadIds } },
+            ],
+          },
+        });
+        step("radarSession(squad)");
+        await tx.radarSession.deleteMany({ where: { squadId: { in: foundedSquadIds } } });
+        step("podMember(squad)");
+        await tx.podMember.deleteMany({ where: { pod: { squadId: { in: foundedSquadIds } } } });
+        step("pod(squad)");
+        await tx.pod.deleteMany({ where: { squadId: { in: foundedSquadIds } } });
+        step("squad.deleteMany");
+        await tx.squad.deleteMany({ where: { id: { in: foundedSquadIds } } });
+      }
 
-    // Wallet and brand (no cascade)
-    await tx.playerWallet.deleteMany({ where: { profileId: pid } });
-    await tx.playerBrand.deleteMany({ where: { profileId: pid } });
+      step("podMember(founderPods)");
+      await tx.podMember.deleteMany({ where: { pod: { founderId: pid } } });
+      step("pod(founder)");
+      await tx.pod.deleteMany({ where: { founderId: pid } });
 
-    // Social / activity records
-    await tx.kudos.deleteMany({ where: { fromPlayerId: pid } });
-    await tx.follow.deleteMany({ where: { followerId: pid } });
-    await tx.block.deleteMany({ where: { OR: [{ blockerId: pid }, { blockedId: pid }] } });
-    await tx.report.deleteMany({ where: { OR: [{ reporterId: pid }, { reportedId: pid }] } });
-    await tx.playIntent.deleteMany({ where: { profileId: pid } });
-    await tx.feedItem.deleteMany({ where: { profileId: pid } });
-    await tx.notificationSent.deleteMany({ where: { OR: [{ recipientId: pid }, { senderId: pid }] } });
-    await tx.playerGear.deleteMany({ where: { profileId: pid } });
+      step("playerWallet");
+      await tx.playerWallet.deleteMany({ where: { profileId: pid } });
+      step("playerBrand");
+      await tx.playerBrand.deleteMany({ where: { profileId: pid } });
 
-    // PlayerProfile itself
-    await tx.playerProfile.deleteMany({ where: { id: pid } });
+      step("kudos");
+      await tx.kudos.deleteMany({ where: { fromPlayerId: pid } });
+      step("follow");
+      await tx.follow.deleteMany({ where: { followerId: pid } });
+      step("block");
+      await tx.block.deleteMany({ where: { OR: [{ blockerId: pid }, { blockedId: pid }] } });
+      step("report");
+      await tx.report.deleteMany({ where: { OR: [{ reporterId: pid }, { reportedId: pid }] } });
+      step("playIntent");
+      await tx.playIntent.deleteMany({ where: { profileId: pid } });
+      step("feedItem");
+      await tx.feedItem.deleteMany({ where: { profileId: pid } });
+      step("notificationSent");
+      await tx.notificationSent.deleteMany({ where: { OR: [{ recipientId: pid }, { senderId: pid }] } });
+      step("playerGear");
+      await tx.playerGear.deleteMany({ where: { profileId: pid } });
 
-    // Auth layer
-    await tx.authSession.deleteMany({ where: { userId: uid } });
-    await tx.account.deleteMany({ where: { userId: uid } });
-    await tx.user.deleteMany({ where: { id: uid } });
-  }, { timeout: 15000 });
+      // ── Club Sessions ─────────────────────────────────────────────────────────
+      step("clubSessionBooking(player)");
+      await tx.clubSessionBooking.deleteMany({ where: { playerProfileId: pid } });
 
-  return NextResponse.json({ ok: true, deleted: true });
+      step("hostedSessions — find");
+      const hostedSessions = await tx.clubSession.findMany({
+        where: { hostId: pid },
+        select: { id: true },
+      });
+      const hostedSessionIds = hostedSessions.map((s) => s.id);
+      console.log(`[DELETE /api/profile/delete] hostedSessions count=${hostedSessionIds.length}`);
+
+      if (hostedSessionIds.length > 0) {
+        step("clubSessionBooking(hostedSessions)");
+        await tx.clubSessionBooking.deleteMany({
+          where: { clubSessionId: { in: hostedSessionIds } },
+        });
+        step("clubSession(hosted)");
+        await tx.clubSession.deleteMany({ where: { id: { in: hostedSessionIds } } });
+      }
+
+      step("appClubMember(player)");
+      await tx.appClubMember.deleteMany({ where: { playerProfileId: pid } });
+      step("appClubManager(player)");
+      await tx.appClubManager.deleteMany({
+        where: { OR: [{ playerProfileId: pid }, { addedById: pid }] },
+      });
+
+      step("ownedClubs — find");
+      const ownedClubs = await tx.appClub.findMany({
+        where: { creatorId: pid },
+        select: { id: true },
+      });
+      const ownedClubIds = ownedClubs.map((c) => c.id);
+      console.log(`[DELETE /api/profile/delete] ownedClubs count=${ownedClubIds.length}`);
+
+      if (ownedClubIds.length > 0) {
+        step("clubSession(ownedClubs) — find");
+        const clubSessions = await tx.clubSession.findMany({
+          where: { appClubId: { in: ownedClubIds } },
+          select: { id: true },
+        });
+        const clubSessionIds = clubSessions.map((s) => s.id);
+        if (clubSessionIds.length > 0) {
+          step("clubSessionBooking(ownedClubSessions)");
+          await tx.clubSessionBooking.deleteMany({
+            where: { clubSessionId: { in: clubSessionIds } },
+          });
+          step("clubSession(ownedClubs)");
+          await tx.clubSession.deleteMany({ where: { id: { in: clubSessionIds } } });
+        }
+        step("appClubMember(ownedClubs)");
+        await tx.appClubMember.deleteMany({ where: { appClubId: { in: ownedClubIds } } });
+        step("appClubManager(ownedClubs)");
+        await tx.appClubManager.deleteMany({ where: { appClubId: { in: ownedClubIds } } });
+        step("appClub.deleteMany");
+        await tx.appClub.deleteMany({ where: { id: { in: ownedClubIds } } });
+      }
+      // ── End Club Sessions ─────────────────────────────────────────────────────
+
+      step("playerProfile");
+      await tx.playerProfile.deleteMany({ where: { id: pid } });
+
+      step("authSession");
+      await tx.authSession.deleteMany({ where: { userId: uid } });
+      step("account");
+      await tx.account.deleteMany({ where: { userId: uid } });
+      step("user");
+      await tx.user.deleteMany({ where: { id: uid } });
+
+      step("DONE");
+    }, { timeout: 15000 });
+
+    console.log(`[DELETE /api/profile/delete] SUCCESS pid=${pid}`);
+    return NextResponse.json({ ok: true, deleted: true });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    const code = (err as { code?: string }).code ?? "unknown";
+    const meta = (err as { meta?: unknown }).meta ?? null;
+    console.error(
+      `[DELETE /api/profile/delete] FAILED pid=${pid} code=${code} message=${message}`,
+      meta ? JSON.stringify(meta) : ""
+    );
+    return NextResponse.json(
+      { error: "Delete failed", code, message, meta },
+      { status: 500 }
+    );
+  }
 }
