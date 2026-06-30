@@ -36,6 +36,50 @@ export async function GET(
   return NextResponse.json({ club });
 }
 
+// DELETE /api/app-clubs/[id] — permanently delete a club (creator only)
+// Cascades: sessions → bookings → members → managers → club
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+  const user = await getMobileUser(req);
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  // Only the creator can delete the club
+  const club = await prisma.appClub.findUnique({
+    where: { id },
+    select: { creatorId: true },
+  });
+  if (!club) return NextResponse.json({ error: "Club not found" }, { status: 404 });
+  if (club.creatorId !== user.profileId) {
+    return NextResponse.json({ error: "Only the club creator can delete the club" }, { status: 403 });
+  }
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      // Delete in dependency order (BookSessionBooking → ClubSession → members/managers → Club)
+      const sessions = await tx.clubSession.findMany({
+        where: { appClubId: id },
+        select: { id: true },
+      });
+      const sessionIds = sessions.map((s) => s.id);
+      if (sessionIds.length > 0) {
+        await tx.clubSessionBooking.deleteMany({ where: { clubSessionId: { in: sessionIds } } });
+        await tx.clubSession.deleteMany({ where: { id: { in: sessionIds } } });
+      }
+      await tx.appClubMember.deleteMany({ where: { appClubId: id } });
+      await tx.appClubManager.deleteMany({ where: { appClubId: id } });
+      await tx.appClub.delete({ where: { id } });
+    });
+
+    return NextResponse.json({ ok: true, deleted: true });
+  } catch (err) {
+    console.error("[DELETE /api/app-clubs/[id]]", err);
+    return NextResponse.json({ error: "Failed to delete club" }, { status: 500 });
+  }
+}
+
 // PATCH /api/app-clubs/[id] — edit club fields
 // Auth: AppClubManager check (creator or manager)
 export async function PATCH(
