@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getMobileUser } from "@/lib/mobile-auth";
 import { isClubManager } from "@/lib/club-auth";
 import { prisma } from "@/lib/db";
+import { notifyBookingRequested } from "@/lib/club-session-notifications";
 
 const BOOKING_SELECT = {
   id: true,
@@ -20,8 +21,31 @@ const BOOKING_SELECT = {
       id: true,
       name: true,
       startTime: true,
+      durationMin: true,
       requiresApproval: true,
+      venuePending: true,
       appClub: { select: { id: true, name: true } },
+      venue: { select: { id: true, name: true } },
+      bookings: {
+        where: { status: "confirmed" },
+        take: 4,
+        orderBy: { requestedAt: "asc" },
+        select: {
+          player: {
+            select: {
+              id: true,
+              displayName: true,
+              squadNickname: true,
+              user: { select: { image: true } },
+            },
+          },
+        },
+      },
+      _count: {
+        select: {
+          bookings: { where: { status: "confirmed" } },
+        },
+      },
     },
   },
 } as const;
@@ -51,6 +75,10 @@ export async function POST(req: NextRequest) {
       id: true,
       lifecycleState: true,
       requiresApproval: true,
+      autoConfirmMode: true,
+      maxPlayers: true,
+      hostId: true,
+      name: true,
       appClub: { select: { id: true, autoApproveNewMembers: true } },
     },
   });
@@ -59,7 +87,23 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Session is not open for booking" }, { status: 409 });
   }
 
-  const initialStatus = session.requiresApproval ? "requested" : "confirmed";
+  // Count confirmed bookings to determine capacity (soft gate — only affects player self-bookings)
+  const confirmedCount = await prisma.clubSessionBooking.count({
+    where: { clubSessionId, status: "confirmed" },
+  });
+  const atCapacity = confirmedCount >= session.maxPlayers;
+
+  // 3-way booking mode (B1-G). requiresApproval is kept for backward compat.
+  const mode = (session.autoConfirmMode && session.autoConfirmMode !== "open")
+    ? session.autoConfirmMode
+    : session.requiresApproval ? "requires_approval" : "open";
+
+  const initialStatus: string =
+    mode === "requires_approval"
+      ? "requested"
+      : mode === "auto_confirm_till_full"
+      ? (atCapacity ? "waiting_list" : "confirmed")
+      : "confirmed"; // "open" — always confirmed regardless of capacity
 
   // Check for an existing booking (active or previously cancelled/declined).
   // The table has @@unique([playerProfileId, clubSessionId]), so a player can
@@ -128,6 +172,18 @@ export async function POST(req: NextRequest) {
 
       return result;
     });
+
+    // Notify host when a player requests approval (requires_approval mode)
+    if (initialStatus === "requested" && session.hostId) {
+      const playerName = booking.player?.displayName ?? booking.player?.squadNickname ?? "A player";
+      void notifyBookingRequested({
+        playerProfileId: user.profileId,
+        playerDisplayName: playerName,
+        hostProfileId: session.hostId,
+        sessionName: session.name,
+        sessionId: clubSessionId,
+      });
+    }
 
     return NextResponse.json({ ok: true, booking }, { status: 201 });
   } catch (err: unknown) {

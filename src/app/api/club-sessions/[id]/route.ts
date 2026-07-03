@@ -18,6 +18,7 @@ const SESSION_SELECT = {
   venuePending: true,
   maxPlayers: true,
   requiresApproval: true,
+  autoConfirmMode: true,
   privacy: true,
   feeAmount: true,
   feeCurrency: true,
@@ -31,7 +32,7 @@ const SESSION_SELECT = {
   host: { select: { id: true, displayName: true, squadNickname: true } },
   venue: { select: { id: true, name: true, address: true } },
   appClub: { select: { id: true, name: true, icon: true } },
-  _count: { select: { bookings: true } },
+  _count: { select: { bookings: { where: { status: "confirmed" } } } },
 } as const;
 
 // GET /api/club-sessions/[id] — fetch a single session
@@ -55,7 +56,8 @@ export async function GET(
     if (!authorized) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  return NextResponse.json({ session });
+  const isManager = user ? await isClubManager(session.appClubId, user.profileId) : false;
+  return NextResponse.json({ session, isManager });
 }
 
 // PATCH /api/club-sessions/[id] — edit or publish/cancel a session
@@ -86,9 +88,11 @@ export async function PATCH(
 
   const {
     name, format, startTime, endTime, durationMin, venueId, venuePending,
-    maxPlayers, requiresApproval, privacy, feeAmount, feeCurrency,
+    maxPlayers, requiresApproval, autoConfirmMode, privacy, feeAmount, feeCurrency,
     skillLevelMin, skillLevelMax, hostRole, notes, sportId, lifecycleState,
   } = body as Record<string, unknown>;
+
+  const VALID_AUTO_CONFIRM_MODES = ["open", "auto_confirm_till_full", "requires_approval"];
 
   const VALID_FORMATS = ["social", "round_robin", "singles"];
   const VALID_HOST_ROLES = ["host_and_play", "host_only"];
@@ -128,7 +132,18 @@ export async function PATCH(
     }
     updates.maxPlayers = maxPlayers;
   }
-  if (requiresApproval !== undefined) updates.requiresApproval = requiresApproval === true;
+  if (autoConfirmMode !== undefined) {
+    if (!VALID_AUTO_CONFIRM_MODES.includes(autoConfirmMode as string)) {
+      return NextResponse.json({ error: `autoConfirmMode must be one of: ${VALID_AUTO_CONFIRM_MODES.join(", ")}` }, { status: 400 });
+    }
+    updates.autoConfirmMode = autoConfirmMode;
+    // Keep requiresApproval in sync for backward compat
+    updates.requiresApproval = autoConfirmMode === "requires_approval";
+  } else if (requiresApproval !== undefined) {
+    updates.requiresApproval = requiresApproval === true;
+    // Sync autoConfirmMode if only the legacy boolean is sent
+    updates.autoConfirmMode = requiresApproval === true ? "requires_approval" : "open";
+  }
   if (privacy !== undefined && (privacy === "public" || privacy === "private")) updates.privacy = privacy;
   if (feeAmount !== undefined) updates.feeAmount = typeof feeAmount === "number" ? feeAmount : null;
   if (feeCurrency !== undefined) updates.feeCurrency = typeof feeCurrency === "string" ? feeCurrency : null;

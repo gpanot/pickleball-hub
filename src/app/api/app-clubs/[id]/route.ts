@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getMobileUser } from "@/lib/mobile-auth";
 import { isClubManager } from "@/lib/club-auth";
 import { prisma } from "@/lib/db";
+import { deleteAppClubsCascade } from "@/lib/delete-app-club-cascade";
 
 const CLUB_SELECT = {
   id: true,
@@ -58,19 +59,7 @@ export async function DELETE(
 
   try {
     await prisma.$transaction(async (tx) => {
-      // Delete in dependency order (BookSessionBooking → ClubSession → members/managers → Club)
-      const sessions = await tx.clubSession.findMany({
-        where: { appClubId: id },
-        select: { id: true },
-      });
-      const sessionIds = sessions.map((s) => s.id);
-      if (sessionIds.length > 0) {
-        await tx.clubSessionBooking.deleteMany({ where: { clubSessionId: { in: sessionIds } } });
-        await tx.clubSession.deleteMany({ where: { id: { in: sessionIds } } });
-      }
-      await tx.appClubMember.deleteMany({ where: { appClubId: id } });
-      await tx.appClubManager.deleteMany({ where: { appClubId: id } });
-      await tx.appClub.delete({ where: { id } });
+      await deleteAppClubsCascade(tx, [id]);
     });
 
     return NextResponse.json({ ok: true, deleted: true });

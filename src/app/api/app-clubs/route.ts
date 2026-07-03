@@ -73,10 +73,37 @@ export async function POST(req: NextRequest) {
   }
 }
 
+const CLUB_SELECT = {
+  id: true,
+  name: true,
+  icon: true,
+  sportId: true,
+  privacy: true,
+  level: true,
+  autoApproveNewMembers: true,
+  createdAt: true,
+  creator: { select: { id: true, displayName: true, squadNickname: true } },
+  _count: { select: { members: true, sessions: true } },
+} as const;
+
 // GET /api/app-clubs — list public clubs, with optional search and pagination
-// Auth: none required (public listing)
+// ?mine=true — list clubs where the authenticated caller is a manager (any privacy)
+// Auth: none required for public listing; required for ?mine=true
 export async function GET(req: NextRequest) {
+  const user = await getMobileUser(req);
   const { searchParams } = req.nextUrl;
+
+  // ?mine=true — return clubs the caller manages (requires auth)
+  if (searchParams.get("mine") === "true") {
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const managed = await prisma.appClubManager.findMany({
+      where: { playerProfileId: user.profileId },
+      select: { appClub: { select: CLUB_SELECT } },
+      orderBy: { addedAt: "desc" },
+    });
+    return NextResponse.json({ clubs: managed.map((m) => m.appClub) });
+  }
+
   const search = searchParams.get("search") ?? "";
   const cursor = searchParams.get("cursor") ?? undefined;
   const take = Math.min(Number(searchParams.get("take") ?? "20"), 50);
@@ -86,18 +113,7 @@ export async function GET(req: NextRequest) {
       privacy: "public",
       ...(search ? { name: { contains: search, mode: "insensitive" } } : {}),
     },
-    select: {
-      id: true,
-      name: true,
-      icon: true,
-      sportId: true,
-      privacy: true,
-      level: true,
-      autoApproveNewMembers: true,
-      createdAt: true,
-      creator: { select: { id: true, displayName: true, squadNickname: true } },
-      _count: { select: { members: true, sessions: true } },
-    },
+    select: CLUB_SELECT,
     orderBy: { createdAt: "desc" },
     take,
     ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),

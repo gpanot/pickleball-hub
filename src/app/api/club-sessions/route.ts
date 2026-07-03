@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getMobileUser } from "@/lib/mobile-auth";
 import { isClubManager } from "@/lib/club-auth";
 import { prisma } from "@/lib/db";
+import { haversineKm } from "@/lib/squad-geo";
 
 const VALID_FORMATS = ["social", "round_robin", "singles"] as const;
 const VALID_HOST_ROLES = ["host_and_play", "host_only"] as const;
@@ -21,10 +22,20 @@ export async function POST(req: NextRequest) {
 
   const {
     appClubId, name, format, startTime, endTime, durationMin,
-    venueId, venuePending, maxPlayers, requiresApproval, privacy,
+    venueId, venuePending, maxPlayers, requiresApproval, autoConfirmMode, privacy,
     feeAmount, feeCurrency, skillLevelMin, skillLevelMax,
     hostRole, notes, sportId,
   } = body as Record<string, unknown>;
+
+  const VALID_AUTO_CONFIRM_MODES = ["open", "auto_confirm_till_full", "requires_approval"];
+  // Derive canonical mode: explicit field wins; fall back to requiresApproval bool for backward compat
+  const resolvedAutoConfirmMode = (
+    typeof autoConfirmMode === "string" && VALID_AUTO_CONFIRM_MODES.includes(autoConfirmMode)
+      ? autoConfirmMode
+      : requiresApproval === true
+      ? "requires_approval"
+      : "open"
+  ) as string;
 
   if (!appClubId || typeof appClubId !== "string") {
     return NextResponse.json({ error: "appClubId required" }, { status: 400 });
@@ -70,7 +81,8 @@ export async function POST(req: NextRequest) {
         venueId: typeof venueId === "number" ? venueId : null,
         venuePending: venuePending === true,
         maxPlayers: maxPlayers as number,
-        requiresApproval: requiresApproval === true,
+        requiresApproval: resolvedAutoConfirmMode === "requires_approval",
+        autoConfirmMode: resolvedAutoConfirmMode,
         privacy: privacy === "private" ? "private" : "public",
         feeAmount: typeof feeAmount === "number" ? feeAmount : null,
         feeCurrency: typeof feeCurrency === "string" ? feeCurrency : null,
@@ -85,7 +97,7 @@ export async function POST(req: NextRequest) {
       include: {
         host: { select: { id: true, displayName: true, squadNickname: true } },
         venue: { select: { id: true, name: true, address: true } },
-        _count: { select: { bookings: true } },
+        _count: { select: { bookings: { where: { status: "confirmed" } } } },
       },
     });
     return NextResponse.json({ ok: true, session }, { status: 201 });
@@ -98,6 +110,7 @@ export async function POST(req: NextRequest) {
 // GET /api/club-sessions — list sessions with filters
 // Auth: none required for public sessions; draft sessions only visible to managers
 // Query params: appClubId, timeframe (upcoming|past|all), lifecycleState, take, cursor
+//               lat, lng, radiusKm — filter sessions by distance from caller's location
 export async function GET(req: NextRequest) {
   const user = await getMobileUser(req);
   const { searchParams } = req.nextUrl;
@@ -105,6 +118,11 @@ export async function GET(req: NextRequest) {
   const timeframe = searchParams.get("timeframe") ?? "upcoming"; // upcoming | past | all
   const take = Math.min(Number(searchParams.get("take") ?? "20"), 50);
   const cursor = searchParams.get("cursor") ?? undefined;
+
+  const lat = parseFloat(searchParams.get("lat") ?? "");
+  const lng = parseFloat(searchParams.get("lng") ?? "");
+  const radiusKm = parseFloat(searchParams.get("radiusKm") ?? "");
+  const hasGeoFilter = Number.isFinite(lat) && Number.isFinite(lng) && Number.isFinite(radiusKm) && radiusKm > 0;
 
   const now = new Date();
 
@@ -114,10 +132,11 @@ export async function GET(req: NextRequest) {
     : false;
 
   // "deleted" sessions are always excluded from all listing queries.
-  // Public browse: published only. Club managers also see draft + cancelled.
+  // Public browse shows published + cancelled (players see cancelled sessions with a badge).
+  // Club managers also see drafts on club-scoped queries.
   const lifecycleFilter = canSeeDrafts
     ? { lifecycleState: { in: ["published", "draft", "cancelled"] } }
-    : { lifecycleState: "published" };
+    : { lifecycleState: { in: ["published", "cancelled"] } };
 
   const timeFilter =
     timeframe === "upcoming"
@@ -142,6 +161,7 @@ export async function GET(req: NextRequest) {
       durationMin: true,
       maxPlayers: true,
       requiresApproval: true,
+      autoConfirmMode: true,
       privacy: true,
       feeAmount: true,
       feeCurrency: true,
@@ -152,15 +172,41 @@ export async function GET(req: NextRequest) {
       notes: true,
       createdAt: true,
       host: { select: { id: true, displayName: true, squadNickname: true } },
-      venue: { select: { id: true, name: true, address: true } },
+      venue: { select: { id: true, name: true, address: true, latitude: true, longitude: true } },
       appClub: { select: { id: true, name: true, icon: true } },
-      _count: { select: { bookings: true } },
+      bookings: {
+        where: { status: "confirmed" },
+        take: 8,
+        orderBy: { requestedAt: "asc" },
+        select: {
+          player: {
+            select: {
+              id: true,
+              displayName: true,
+              squadNickname: true,
+              preferences: true,
+              user: { select: { image: true } },
+            },
+          },
+        },
+      },
+      _count: { select: { bookings: { where: { status: "confirmed" } } } },
     },
     orderBy: timeframe === "past" ? { startTime: "desc" } : { startTime: "asc" },
     take,
     ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
   });
 
+  // Apply optional geo filter (sessions with no venue coords are always included)
+  const filteredSessions = hasGeoFilter
+    ? sessions.filter((s) => {
+        const vLat = s.venue?.latitude;
+        const vLng = s.venue?.longitude;
+        if (vLat == null || vLng == null) return true; // venuePending or no coords — keep
+        return haversineKm(lat, lng, vLat, vLng) <= radiusKm;
+      })
+    : sessions;
+
   const nextCursor = sessions.length === take ? sessions[sessions.length - 1].id : null;
-  return NextResponse.json({ sessions, nextCursor });
+  return NextResponse.json({ sessions: filteredSessions, nextCursor });
 }

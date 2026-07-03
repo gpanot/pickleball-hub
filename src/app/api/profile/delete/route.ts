@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getMobileUser } from "@/lib/mobile-auth";
+import { deleteAppClubsCascade } from "@/lib/delete-app-club-cascade";
 
 /**
  * DELETE /api/profile/delete
@@ -109,8 +110,23 @@ export async function DELETE(req: NextRequest) {
       await tx.playerGear.deleteMany({ where: { profileId: pid } });
 
       // ── Club Sessions ─────────────────────────────────────────────────────────
+      // Order: player bookings → owned clubs (full wipe) → hosted sessions elsewhere
+      // → memberships → manager roles (incl. addedBy references).
       step("clubSessionBooking(player)");
       await tx.clubSessionBooking.deleteMany({ where: { playerProfileId: pid } });
+
+      step("ownedClubs — find");
+      const ownedClubs = await tx.appClub.findMany({
+        where: { creatorId: pid },
+        select: { id: true },
+      });
+      const ownedClubIds = ownedClubs.map((c) => c.id);
+      console.log(`[DELETE /api/profile/delete] ownedClubs count=${ownedClubIds.length}`);
+
+      if (ownedClubIds.length > 0) {
+        step("ownedClubs — cascade delete (sessions, bookings, members, club)");
+        await deleteAppClubsCascade(tx, ownedClubIds);
+      }
 
       step("hostedSessions — find");
       const hostedSessions = await tx.clubSession.findMany({
@@ -135,37 +151,6 @@ export async function DELETE(req: NextRequest) {
       await tx.appClubManager.deleteMany({
         where: { OR: [{ playerProfileId: pid }, { addedById: pid }] },
       });
-
-      step("ownedClubs — find");
-      const ownedClubs = await tx.appClub.findMany({
-        where: { creatorId: pid },
-        select: { id: true },
-      });
-      const ownedClubIds = ownedClubs.map((c) => c.id);
-      console.log(`[DELETE /api/profile/delete] ownedClubs count=${ownedClubIds.length}`);
-
-      if (ownedClubIds.length > 0) {
-        step("clubSession(ownedClubs) — find");
-        const clubSessions = await tx.clubSession.findMany({
-          where: { appClubId: { in: ownedClubIds } },
-          select: { id: true },
-        });
-        const clubSessionIds = clubSessions.map((s) => s.id);
-        if (clubSessionIds.length > 0) {
-          step("clubSessionBooking(ownedClubSessions)");
-          await tx.clubSessionBooking.deleteMany({
-            where: { clubSessionId: { in: clubSessionIds } },
-          });
-          step("clubSession(ownedClubs)");
-          await tx.clubSession.deleteMany({ where: { id: { in: clubSessionIds } } });
-        }
-        step("appClubMember(ownedClubs)");
-        await tx.appClubMember.deleteMany({ where: { appClubId: { in: ownedClubIds } } });
-        step("appClubManager(ownedClubs)");
-        await tx.appClubManager.deleteMany({ where: { appClubId: { in: ownedClubIds } } });
-        step("appClub.deleteMany");
-        await tx.appClub.deleteMany({ where: { id: { in: ownedClubIds } } });
-      }
       // ── End Club Sessions ─────────────────────────────────────────────────────
 
       step("playerProfile");

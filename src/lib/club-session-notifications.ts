@@ -9,6 +9,7 @@ import { prisma } from "@/lib/db";
 
 type ClubSessionNotifType =
   | "cs_booking_confirmed"        // rows 1 & 4: → confirmed (host-initiated)
+  | "cs_booking_requested"        // player self-book on requires_approval session → notify host
   | "cs_booking_waiting_list"     // row 2: → waiting_list
   | "cs_booking_declined"         // row 3: → declined
   | "cs_booking_auto_backfill"    // row 5: auto-backfill → confirmed
@@ -25,6 +26,21 @@ async function logAndSend(
   void sendPushNotification(recipientId, payload);
   await prisma.notificationSent.create({
     data: { recipientId, senderId, type },
+  });
+}
+
+/** Player self-books on requires_approval session — notify host */
+export async function notifyBookingRequested(opts: {
+  playerProfileId: string;
+  playerDisplayName: string;
+  hostProfileId: string;
+  sessionName: string;
+  sessionId: string;
+}) {
+  await logAndSend(opts.hostProfileId, opts.playerProfileId, "cs_booking_requested", {
+    title: "New booking request",
+    body: `${opts.playerDisplayName} requested to join ${opts.sessionName}`,
+    data: { type: "cs_booking_requested", sessionId: opts.sessionId },
   });
 }
 

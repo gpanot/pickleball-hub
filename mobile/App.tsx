@@ -4,7 +4,6 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 import Constants from 'expo-constants'
 import { NavBar, type TabId } from './src/components/NavBar'
-import { SwipeScreen } from './src/screens/SwipeScreen'
 import { ExploreSessionsScreen } from './src/screens/ExploreSessionsScreen'
 import { CircleScreen, type CircleScreenHandle } from './src/screens/CircleScreen'
 import SquadModule from './src/modules/squad/SquadModule'
@@ -272,10 +271,10 @@ export default function App() {
   const overlayStyles = useThemedOverlayStyles()
   const [showSplash, setShowSplash] = useState(true)
   useEffect(() => {
-    const t = setTimeout(() => setShowSplash(false), 3500)
+    const t = setTimeout(() => setShowSplash(false), 2300)
     return () => clearTimeout(t)
   }, [])
-  const [activeTab, setActiveTab] = useState<TabId>('swipe')
+  const [activeTab, setActiveTab] = useState<TabId>('club-sessions')
   const [flowScreen, setFlowScreen] = useState<FlowScreen>('main')
   // Club Sessions screens can signal that the tab bar should be hidden
   // (create/edit forms, sheets, terminal confirmations per spec §15)
@@ -724,7 +723,7 @@ export default function App() {
 
   const handleExplorePause = () => {
     setFlowScreen('main')
-    setActiveTab('swipe')
+    setActiveTab('club-sessions')
   }
 
   // When a player used "Explore app first" and later navigates to the Squadd tab,
@@ -876,19 +875,13 @@ export default function App() {
                   }}
                 />
               </View>
-              <View style={{ flex: 1, display: activeTab === 'swipe' ? 'flex' : 'none' }}>
-                <SwipeScreen
-                  onOpenGearSheet={() => setGearSheetOpen(true)}
-                  gearSaved={savedConfirmation}
-                  gearSetupComplete={gearSetupComplete}
-                  onOpenExplore={() => setFlowScreen('explore')}
-                  isActive={activeTab === 'swipe'}
-                />
-              </View>
               <View style={{ flex: 1, display: activeTab === 'club-sessions' ? 'flex' : 'none' }}>
                 <ClubSessionsModule
                   isActive={activeTab === 'club-sessions'}
                   onTabBarVisibilityChange={setCsTabBarVisible}
+                  onOpenGearSheet={() => setGearSheetOpen(true)}
+                  gearSaved={savedConfirmation}
+                  gearSetupComplete={gearSetupComplete}
                 />
               </View>
               {/* Tab bar: hidden on explore overlay, and hidden on CS screens that signal it */}

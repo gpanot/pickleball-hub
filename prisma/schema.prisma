@@ -981,6 +981,9 @@ model ClubSession {
   /// Soft target, not a hard cap. Host may confirm past this number.
   maxPlayers     Int       @map("max_players")
   requiresApproval Boolean @default(false) @map("requires_approval")
+  /// "open" | "auto_confirm_till_full" | "requires_approval"
+  /// Canonical booking mode. requiresApproval is kept for backward compat.
+  autoConfirmMode String  @default("open") @map("auto_confirm_mode")
   /// "public" | "private"
   privacy        String    @default("public")
   feeAmount      Decimal?  @map("fee_amount") @db.Decimal(10, 2)
