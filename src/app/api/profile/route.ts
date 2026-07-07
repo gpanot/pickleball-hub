@@ -15,11 +15,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "profileId required" }, { status: 400 });
     }
 
-    const reclubId =
-      reclubUserId != null ? BigInt(reclubUserId) : undefined;
+    const wantsReclubUpdate = Object.prototype.hasOwnProperty.call(body, "reclubUserId");
+    const reclubId = wantsReclubUpdate
+      ? reclubUserId != null && reclubUserId !== ""
+        ? BigInt(reclubUserId)
+        : null
+      : undefined;
 
-    // If reclubUserId is being set, check for conflicts first
-    if (reclubId !== undefined) {
+    if (wantsReclubUpdate && reclubUserId == null && !user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // If reclubUserId is being linked (non-null), check for conflicts first
+    if (reclubId !== undefined && reclubId !== null) {
       const conflict = await prisma.playerProfile.findFirst({
         where: {
           reclubUserId: reclubId,
@@ -67,7 +75,7 @@ export async function POST(req: NextRequest) {
         displayName: displayName ?? undefined,
         preferences: mergedPreferences ?? undefined,
         ...(genderValue !== undefined ? { gender: genderValue } : {}),
-        ...(reclubId !== undefined ? { reclubUserId: reclubId } : {}),
+        ...(wantsReclubUpdate ? { reclubUserId: reclubId ?? null } : {}),
         // onboardingCompleted is NOT touched here — use POST /api/profile/complete-onboarding
       },
     });
@@ -76,7 +84,7 @@ export async function POST(req: NextRequest) {
       `[POST /api/profile] saved profileId=${resolvedProfileId}`,
       `dupr=${(preferences as Record<string, unknown>)?.dupr ?? "n/a"}`,
       `market=${validMarket ?? "unchanged"}`,
-      `reclubUserId=${reclubId ?? "unchanged"}`
+      `reclubUserId=${wantsReclubUpdate ? (reclubId?.toString() ?? "null") : "unchanged"}`
     );
 
     return NextResponse.json({ ok: true, profileId: profile.id });

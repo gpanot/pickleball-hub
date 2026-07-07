@@ -51,6 +51,8 @@ function LanguageToggle() {
 function UserMenu() {
   const { data: session, status } = useSession();
   const [open, setOpen] = useState(false);
+  const [unlinking, setUnlinking] = useState(false);
+  const [unlinkMessage, setUnlinkMessage] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
 
   // Close on outside click / touch
@@ -93,6 +95,30 @@ function UserMenu() {
   const { name, email, image } = session.user;
   const initials = (name ?? email ?? "?").charAt(0).toUpperCase();
 
+  async function handleUnlinkReclub() {
+    const ok = window.confirm("Unlink your Reclub account from this profile?");
+    if (!ok) return;
+
+    try {
+      setUnlinking(true);
+      setUnlinkMessage(null);
+
+      const res = await fetch("/api/auth/unlink-reclub", {
+        method: "POST",
+      });
+      const data = await res.json().catch(() => ({} as Record<string, unknown>));
+      if (!res.ok) {
+        throw new Error(typeof data.error === "string" ? data.error : "Failed to unlink account");
+      }
+
+      setUnlinkMessage("Reclub account unlinked.");
+    } catch {
+      setUnlinkMessage("Could not unlink Reclub right now.");
+    } finally {
+      setUnlinking(false);
+    }
+  }
+
   return (
     <div ref={ref} className="relative flex items-center">
       <button
@@ -119,11 +145,21 @@ function UserMenu() {
           {/* Sign out */}
           <div className="p-1.5">
             <button
+              onClick={handleUnlinkReclub}
+              disabled={unlinking}
+              className="mb-1 w-full rounded-lg px-3 py-2 text-left text-sm text-foreground hover:bg-primary/10 hover:text-primary transition disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {unlinking ? "Unlinking..." : "Unlink my Reclub"}
+            </button>
+            <button
               onClick={() => signOut({ callbackUrl: window.location.href })}
               className="w-full rounded-lg px-3 py-2 text-left text-sm text-foreground hover:bg-primary/10 hover:text-primary transition"
             >
               Sign out
             </button>
+            {unlinkMessage && (
+              <p className="px-3 pt-2 text-xs text-muted">{unlinkMessage}</p>
+            )}
           </div>
         </div>
       )}
