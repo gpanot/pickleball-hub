@@ -10,13 +10,43 @@ export default async function HeatmapPage() {
   const tomorrowStr = vnCalendarDateString(1);
 
   const t0 = Date.now();
-  console.log("[heatmap] page start");
+  console.log("[heatmap] page start — todayStr=%s tomorrowStr=%s", todayStr, tomorrowStr);
 
-  const [heatmapData, todayData, tomorrowData] = await Promise.all([
-    getHeatmapData().then((d) => { console.log(`[heatmap] getHeatmapData done in ${Date.now() - t0}ms, venues=${d.venues.length}`); return d; }),
-    getSessions({ date: todayStr }).then((d) => { console.log(`[heatmap] getSessions(today) done in ${Date.now() - t0}ms, sessions=${d.sessions.length}`); return d; }),
-    getSessions({ date: tomorrowStr }).then((d) => { console.log(`[heatmap] getSessions(tomorrow) done in ${Date.now() - t0}ms, sessions=${d.sessions.length}`); return d; }),
-  ]);
+  // ── Heatmap data ────────────────────────────────────────────────────────────
+  let heatmapData: Awaited<ReturnType<typeof getHeatmapData>>;
+  try {
+    heatmapData = await getHeatmapData();
+    console.log(`[heatmap] getHeatmapData OK — ${Date.now() - t0}ms, venues=${heatmapData.venues.length}`);
+  } catch (err) {
+    console.error("[heatmap] getHeatmapData FAILED", {
+      message: err instanceof Error ? err.message : String(err),
+      code: (err as { code?: string }).code,
+      meta: (err as { meta?: unknown }).meta,
+      stack: err instanceof Error ? err.stack : undefined,
+    });
+    throw err; // re-throw → caught by error.tsx boundary
+  }
+
+  // ── Session data ─────────────────────────────────────────────────────────────
+  let todayData: Awaited<ReturnType<typeof getSessions>>;
+  let tomorrowData: Awaited<ReturnType<typeof getSessions>>;
+  try {
+    [todayData, tomorrowData] = await Promise.all([
+      getSessions({ date: todayStr }),
+      getSessions({ date: tomorrowStr }),
+    ]);
+    console.log(
+      `[heatmap] getSessions OK — ${Date.now() - t0}ms, today=${todayData.sessions.length} tomorrow=${tomorrowData.sessions.length}`,
+    );
+  } catch (err) {
+    console.error("[heatmap] getSessions FAILED", {
+      message: err instanceof Error ? err.message : String(err),
+      code: (err as { code?: string }).code,
+      meta: (err as { meta?: unknown }).meta,
+      stack: err instanceof Error ? err.stack : undefined,
+    });
+    throw err;
+  }
 
   const allSessions = [
     ...todayData.sessions,
@@ -26,7 +56,7 @@ export default async function HeatmapPage() {
   const hcmMedian =
     todayData.hcmMedianCostPerHour || tomorrowData.hcmMedianCostPerHour;
 
-  console.log(`[heatmap] page total ${Date.now() - t0}ms`);
+  console.log(`[heatmap] page render — total=${Date.now() - t0}ms sessions=${allSessions.length} hcmMedian=${hcmMedian}`);
 
   return (
     <HeatmapClient
