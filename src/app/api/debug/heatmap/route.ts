@@ -109,6 +109,15 @@ export async function GET() {
           ON sessions (scraped_date, venue_id, club_id);
       `),
     ),
+
+    // 8. Add missing google_place_id column to venues (never had a migration)
+    runStep("add-venue-google-place-id", () =>
+      prisma.$executeRawUnsafe(`
+        ALTER TABLE venues ADD COLUMN IF NOT EXISTS google_place_id TEXT;
+        CREATE UNIQUE INDEX IF NOT EXISTS venues_google_place_id_key
+          ON venues (google_place_id) WHERE google_place_id IS NOT NULL;
+      `),
+    ),
   ]);
 
   const allOk = steps.every((s) => s.ok);
