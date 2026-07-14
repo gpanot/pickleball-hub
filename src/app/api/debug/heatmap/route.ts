@@ -100,23 +100,28 @@ export async function GET() {
       prisma.hcmMarketMedianDaily.count(),
     ),
 
-    // 7. Create performance indexes (idempotent — safe to call multiple times)
-    runStep("create-indexes", () =>
-      prisma.$executeRawUnsafe(`
-        CREATE INDEX IF NOT EXISTS session_rosters_is_confirmed_session_id_idx
-          ON session_rosters (is_confirmed, session_id);
-        CREATE INDEX IF NOT EXISTS sessions_scraped_date_venue_id_club_id_idx
-          ON sessions (scraped_date, venue_id, club_id);
-      `),
+    // 7. Create performance indexes — one statement each (Prisma forbids multi-statement)
+    runStep("index-roster-confirmed", () =>
+      prisma.$executeRawUnsafe(
+        `CREATE INDEX IF NOT EXISTS session_rosters_is_confirmed_session_id_idx ON session_rosters (is_confirmed, session_id)`,
+      ),
+    ),
+    runStep("index-sessions-date-venue-club", () =>
+      prisma.$executeRawUnsafe(
+        `CREATE INDEX IF NOT EXISTS sessions_scraped_date_venue_id_club_id_idx ON sessions (scraped_date, venue_id, club_id)`,
+      ),
     ),
 
-    // 8. Add missing google_place_id column to venues (never had a migration)
-    runStep("add-venue-google-place-id", () =>
-      prisma.$executeRawUnsafe(`
-        ALTER TABLE venues ADD COLUMN IF NOT EXISTS google_place_id TEXT;
-        CREATE UNIQUE INDEX IF NOT EXISTS venues_google_place_id_key
-          ON venues (google_place_id) WHERE google_place_id IS NOT NULL;
-      `),
+    // 8. Add missing google_place_id column to venues — one statement each
+    runStep("add-venue-google-place-id-col", () =>
+      prisma.$executeRawUnsafe(
+        `ALTER TABLE venues ADD COLUMN IF NOT EXISTS google_place_id TEXT`,
+      ),
+    ),
+    runStep("add-venue-google-place-id-idx", () =>
+      prisma.$executeRawUnsafe(
+        `CREATE UNIQUE INDEX IF NOT EXISTS venues_google_place_id_key ON venues (google_place_id) WHERE google_place_id IS NOT NULL`,
+      ),
     ),
   ]);
 
