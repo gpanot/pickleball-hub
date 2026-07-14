@@ -32,13 +32,14 @@ model Club {
 }
 
 model Venue {
-  id        Int       @id @default(autoincrement())
-  name      String
-  address   String
-  latitude  Float
-  longitude Float
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
+  id             Int       @id @default(autoincrement())
+  name           String
+  address        String
+  latitude       Float
+  longitude      Float
+  googlePlaceId  String?   @unique @map("google_place_id")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
 
   sessions      Session[]
   accessCodes   AccessCode[]
@@ -87,6 +88,7 @@ model Session {
   @@index([venueId])
   @@index([startTime])
   @@index([scrapedDate, status, startTime])
+  @@index([scrapedDate, venueId, clubId])
   @@map("sessions")
 }
 
@@ -200,6 +202,7 @@ model SessionRoster {
   @@unique([sessionId, userId])
   @@index([sessionId])
   @@index([userId])
+  @@index([isConfirmed, sessionId])
   @@map("session_rosters")
 }
 

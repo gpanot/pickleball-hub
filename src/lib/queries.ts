@@ -90,7 +90,33 @@ export async function getHcmMedianCostPerHourForDate(date: string): Promise<numb
 
 export async function getSessions(filters: SessionFilters = {}) {
   const date = filters.date || vnCalendarDateString(0);
-  const { hcmMedianCostPerHour, rankByClubId } = await getScoringContextForDate(date);
+
+  // Read the pre-stored HCM median and revenue ranks in parallel.
+  // hcm_market_median_daily is written by the scraper; fall back to computing
+  // on-demand only when the row is missing (e.g. first run of the day).
+  const [storedMedian, rankByClubId] = await Promise.all([
+    prisma.hcmMarketMedianDaily.findUnique({ where: { date }, select: { medianCostPerHour: true } }),
+    getClubRevenueRanksForDate(date),
+  ]);
+
+  let hcmMedianCostPerHour: number;
+  if (storedMedian != null) {
+    hcmMedianCostPerHour = storedMedian.medianCostPerHour;
+  } else {
+    // Fallback: compute + store (this path runs at most once per date)
+    const slim = await prisma.session.findMany({
+      where: { scrapedDate: date, club: { market: "hcm" } },
+      select: { feeAmount: true, durationMin: true, clubId: true },
+    });
+    hcmMedianCostPerHour = computeHcmMedianCostPerHour(
+      slim.map((s) => ({ feeAmount: s.feeAmount, durationMinutes: s.durationMin, clubRank: rankByClubId.get(s.clubId) })),
+    );
+    prisma.hcmMarketMedianDaily.upsert({
+      where: { date },
+      create: { date, medianCostPerHour: hcmMedianCostPerHour },
+      update: { medianCostPerHour: hcmMedianCostPerHour },
+    }).catch((e) => console.error("[getSessions] hcm median upsert failed:", e));
+  }
 
   const where: Record<string, unknown> = {
     scrapedDate: date,
@@ -851,126 +877,176 @@ function snapCoord(coord: number): number {
   return Math.round(coord / 0.0009) * 0.0009;
 }
 
-/** Compute the median of a sorted number array. Returns null for empty arrays. */
-function computeMedian(values: number[]): number | null {
-  if (values.length === 0) return null;
-  const sorted = [...values].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 0
-    ? (sorted[mid - 1] + sorted[mid]) / 2
-    : sorted[mid];
-}
+// ---------------------------------------------------------------------------
+// In-memory cache for heatmap data (5-minute TTL)
+// Survives Lambda warm reuse; cold starts recompute once and cache immediately.
+// ---------------------------------------------------------------------------
+let _heatmapCache: { data: HeatmapData; expiresAt: number } | null = null;
+const HEATMAP_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 /**
- * Builds heatmap data: per-location player counts bucketed by DUPR (0.1 steps),
- * looking back 90 days at session roster data.
+ * Builds heatmap data using a single aggregated SQL query instead of loading
+ * every roster row into Node memory.
  *
- * Duplicate venue rows at the same physical location (within ~33 m) are merged
- * using coordinate snapping. No player names are returned.
+ * Two queries replace the old single massive findMany:
+ *  1. Per-(venue, club, dupr_bucket): unique player counts + session counts
+ *  2. Per-(venue, club): percentile_cont for median DUPR (doubles)
+ *
+ * This reduces the result set from O(rosters) to O(venues × clubs × dupr_buckets)
+ * — typically 50–500 rows instead of tens of thousands.
  */
 export async function getHeatmapData(): Promise<HeatmapData> {
+  // Serve from cache if still fresh
+  if (_heatmapCache && Date.now() < _heatmapCache.expiresAt) {
+    console.log("[getHeatmapData] cache HIT");
+    return _heatmapCache.data;
+  }
+
   const t0 = Date.now();
   const cutoffDate = new Date();
   cutoffDate.setDate(cutoffDate.getDate() - 90);
   const cutoffStr = cutoffDate.toISOString().slice(0, 10);
 
-  console.log(`[getHeatmapData] start, cutoff=${cutoffStr}`);
-  const rosters = await prisma.sessionRoster.findMany({
-    where: {
-      session: {
-        scrapedDate: { gte: cutoffStr },
-        venue: { isNot: null },
-        club: { market: "hcm" },
-      },
-      isConfirmed: true,
-    },
-    select: {
-      userId: true,
-      session: {
-        select: {
-          id: true,
-          venueId: true,
-          venue: { select: { id: true, name: true, latitude: true, longitude: true } },
-          club: { select: { id: true, name: true, slug: true } },
-        },
-      },
-      player: {
-        select: { duprSingles: true, duprDoubles: true },
-      },
-    },
-  });
+  console.log(`[getHeatmapData] cache MISS — querying, cutoff=${cutoffStr}`);
 
-  console.log(`[getHeatmapData] DB query done in ${Date.now() - t0}ms, rosters=${rosters.length}`);
+  // ── Query 1: unique players per (venue, club, dupr_bucket) + session count ──
+  // FLOOR(dupr * 10)/10 buckets player into 0.1-width bands.
+  // COUNT(DISTINCT sr.user_id) dedups players seen at the same venue in multiple sessions.
+  type BucketRow = {
+    venue_id: number;
+    venue_name: string;
+    lat: number;
+    lng: number;
+    club_id: number;
+    club_name: string;
+    club_slug: string;
+    dupr_bucket: string | null;   // null for players without DUPR
+    unique_players: bigint;
+    unique_sessions: bigint;
+  };
 
-  // Step 1: Aggregate per venue_id (raw, before coordinate merge)
+  const bucketRows = await prisma.$queryRaw<BucketRow[]>`
+    SELECT
+      v.id                                                            AS venue_id,
+      v.name                                                          AS venue_name,
+      v.latitude                                                      AS lat,
+      v.longitude                                                     AS lng,
+      c.id                                                            AS club_id,
+      c.name                                                          AS club_name,
+      COALESCE(c.slug, '')                                            AS club_slug,
+      CASE
+        WHEN COALESCE(p.dupr_doubles, p.dupr_singles) > 0
+        THEN TO_CHAR(FLOOR(COALESCE(p.dupr_doubles, p.dupr_singles)::numeric * 10) / 10, 'FM9.0')
+        ELSE NULL
+      END                                                             AS dupr_bucket,
+      COUNT(DISTINCT sr.user_id)                                      AS unique_players,
+      COUNT(DISTINCT s.id)                                            AS unique_sessions
+    FROM session_rosters sr
+    JOIN sessions        s  ON s.id        = sr.session_id
+    JOIN venues          v  ON v.id        = s.venue_id
+    JOIN clubs           c  ON c.id        = s.club_id
+    LEFT JOIN players    p  ON p.user_id   = sr.user_id
+    WHERE sr.is_confirmed = true
+      AND s.scraped_date  >= ${cutoffStr}
+      AND s.venue_id      IS NOT NULL
+      AND c.market        = 'hcm'
+    GROUP BY v.id, v.name, v.latitude, v.longitude,
+             c.id, c.name, c.slug,
+             dupr_bucket
+  `;
+
+  console.log(`[getHeatmapData] query1 done in ${Date.now() - t0}ms, rows=${bucketRows.length}`);
+
+  // ── Query 2: median dupr_doubles per (venue, club) for popup display ─────────
+  type MedianRow = {
+    venue_id: number;
+    club_id: number;
+    median_dupr: number | null;
+    rated_players: bigint;
+  };
+
+  const medianRows = await prisma.$queryRaw<MedianRow[]>`
+    SELECT
+      s.venue_id,
+      s.club_id,
+      PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY p.dupr_doubles::float) AS median_dupr,
+      COUNT(DISTINCT sr.user_id)                                           AS rated_players
+    FROM session_rosters sr
+    JOIN sessions     s ON s.id       = sr.session_id
+    JOIN players      p ON p.user_id  = sr.user_id
+    WHERE sr.is_confirmed   = true
+      AND s.scraped_date    >= ${cutoffStr}
+      AND s.venue_id        IS NOT NULL
+      AND p.dupr_doubles    IS NOT NULL
+      AND p.dupr_doubles    > 0
+      AND (SELECT market FROM clubs WHERE id = s.club_id) = 'hcm'
+    GROUP BY s.venue_id, s.club_id
+    HAVING COUNT(DISTINCT sr.user_id) >= 3
+  `;
+
+  console.log(`[getHeatmapData] query2 done in ${Date.now() - t0}ms, medians=${medianRows.length}`);
+
+  // Build median lookup: "venueId:clubId" -> median
+  const medianMap = new Map<string, number>();
+  for (const row of medianRows) {
+    if (row.median_dupr != null) {
+      medianMap.set(`${row.venue_id}:${row.club_id}`, Math.round(row.median_dupr * 10) / 10);
+    }
+  }
+
+  // ── Aggregate in JS (now over O(venues × clubs × buckets) rows, not rosters) ─
   const rawMap = new Map<
     number,
     {
       name: string;
       lat: number;
       lng: number;
-      sessions: Set<number>;
-      buckets: Map<string, Set<string>>; // duprBucket -> Set<userId>
-      // club_id -> { name, slug, sessions, unique players, dupr values for median }
-      clubs: Map<number, { name: string; slug: string; sessions: Set<number>; players: Set<string>; duprValues: number[] }>;
+      clubs: Map<number, { name: string; slug: string; sessions: bigint; players: bigint }>;
+      buckets: Map<string, number>; // dupr_bucket -> unique player count
+      totalSessions: bigint;
     }
   >();
 
-  const allDuprValues: number[] = [];
+  const allDuprBuckets: number[] = [];
+  let totalPlayersWithDupr = 0;
 
-  for (const roster of rosters) {
-    const venue = roster.session.venue;
-    if (!venue) continue;
-
-    const vid = venue.id;
+  for (const row of bucketRows) {
+    const vid = Number(row.venue_id);
     if (!rawMap.has(vid)) {
       rawMap.set(vid, {
-        name: venue.name,
-        lat: venue.latitude,
-        lng: venue.longitude,
-        sessions: new Set(),
-        buckets: new Map(),
+        name: row.venue_name,
+        lat: Number(row.lat),
+        lng: Number(row.lng),
         clubs: new Map(),
+        buckets: new Map(),
+        totalSessions: BigInt(0),
       });
     }
-
     const entry = rawMap.get(vid)!;
-    entry.sessions.add(roster.session.id);
 
-    // Track club-level breakdown
-    const club = roster.session.club;
-    if (club) {
-      if (!entry.clubs.has(club.id)) {
-        entry.clubs.set(club.id, { name: club.name, slug: club.slug ?? "", sessions: new Set(), players: new Set(), duprValues: [] });
-      }
-      const clubEntry = entry.clubs.get(club.id)!;
-      clubEntry.sessions.add(roster.session.id);
-      clubEntry.players.add(roster.userId.toString());
+    // Accumulate per-club stats (sum across DUPR buckets)
+    const cid = Number(row.club_id);
+    if (!entry.clubs.has(cid)) {
+      entry.clubs.set(cid, { name: row.club_name, slug: row.club_slug, sessions: BigInt(0), players: BigInt(0) });
+    }
+    const club = entry.clubs.get(cid)!;
+    club.sessions += row.unique_sessions;
+    club.players += row.unique_players;
+
+    // Accumulate DUPR bucket counts
+    if (row.dupr_bucket != null) {
+      const prev = entry.buckets.get(row.dupr_bucket) ?? 0;
+      entry.buckets.set(row.dupr_bucket, prev + Number(row.unique_players));
+      // Collect for global stats
+      const b = parseFloat(row.dupr_bucket);
+      for (let i = 0; i < Number(row.unique_players); i++) allDuprBuckets.push(b);
+      totalPlayersWithDupr += Number(row.unique_players);
     }
 
-    const rawDupr =
-      roster.player?.duprDoubles != null
-        ? Number(roster.player.duprDoubles)
-        : roster.player?.duprSingles != null
-          ? Number(roster.player.duprSingles)
-          : null;
-
-    if (rawDupr === null || rawDupr <= 0) continue;
-
-    const bucket = (Math.floor(rawDupr * 10) / 10).toFixed(1);
-    if (!entry.buckets.has(bucket)) {
-      entry.buckets.set(bucket, new Set());
-    }
-    entry.buckets.get(bucket)!.add(roster.userId.toString());
-    allDuprValues.push(rawDupr);
-
-    // Also accumulate per-club DUPR values (only rated players with duprDoubles)
-    if (club && roster.player?.duprDoubles != null) {
-      entry.clubs.get(club.id)!.duprValues.push(Number(roster.player.duprDoubles));
-    }
+    entry.totalSessions += row.unique_sessions;
   }
 
-  // Step 2: Merge venue_ids by snapped coordinate
+  // ── Merge venue_ids by snapped coordinate ──────────────────────────────────
   const coordGroups = new Map<
     string,
     {
@@ -978,78 +1054,59 @@ export async function getHeatmapData(): Promise<HeatmapData> {
       lng: number;
       venueIds: number[];
       canonName: string;
-      sessions: Set<number>;
-      buckets: Map<string, Set<string>>;
-      // club_id -> { name, slug, sessions, unique players, dupr values } — merged across all venue_ids at this coord
-      clubs: Map<number, { name: string; slug: string; sessions: Set<number>; players: Set<string>; duprValues: number[] }>;
+      clubs: Map<number, { name: string; slug: string; sessions: bigint; players: bigint }>;
+      buckets: Map<string, number>;
+      totalSessions: bigint;
     }
   >();
 
   for (const [vid, raw] of rawMap) {
     const key = `${snapCoord(raw.lat).toFixed(4)},${snapCoord(raw.lng).toFixed(4)}`;
-
     if (!coordGroups.has(key)) {
       coordGroups.set(key, {
         lat: raw.lat,
         lng: raw.lng,
         venueIds: [],
         canonName: raw.name,
-        sessions: new Set(),
-        buckets: new Map(),
         clubs: new Map(),
+        buckets: new Map(),
+        totalSessions: BigInt(0),
       });
     }
-
     const group = coordGroups.get(key)!;
     group.venueIds.push(vid);
+    group.totalSessions += raw.totalSessions;
 
-    for (const sid of raw.sessions) group.sessions.add(sid);
-
-    for (const [bucket, players] of raw.buckets) {
-      if (!group.buckets.has(bucket)) {
-        group.buckets.set(bucket, new Set());
-      }
-      for (const uid of players) group.buckets.get(bucket)!.add(uid);
+    for (const [bucket, count] of raw.buckets) {
+      group.buckets.set(bucket, (group.buckets.get(bucket) ?? 0) + count);
     }
-
-    // Merge club breakdowns across duplicate venue_ids at this coord
-    for (const [clubId, clubData] of raw.clubs) {
-      if (!group.clubs.has(clubId)) {
-        group.clubs.set(clubId, { name: clubData.name, slug: clubData.slug, sessions: new Set(), players: new Set(), duprValues: [] });
+    for (const [cid, clubData] of raw.clubs) {
+      if (!group.clubs.has(cid)) {
+        group.clubs.set(cid, { ...clubData, sessions: BigInt(0), players: BigInt(0) });
       }
-      const gc = group.clubs.get(clubId)!;
-      for (const sid of clubData.sessions) gc.sessions.add(sid);
-      for (const uid of clubData.players) gc.players.add(uid);
-      for (const v of clubData.duprValues) gc.duprValues.push(v);
+      const gc = group.clubs.get(cid)!;
+      gc.sessions += clubData.sessions;
+      gc.players += clubData.players;
     }
   }
 
-  // Step 3: Build response
+  // ── Build response ─────────────────────────────────────────────────────────
   const venues: HeatmapVenue[] = [];
   for (const [key, group] of coordGroups) {
     const playersByDupr: Record<string, number> = {};
-    for (const [bucket, players] of group.buckets) {
-      playersByDupr[bucket] = players.size;
+    for (const [bucket, count] of group.buckets) {
+      playersByDupr[bucket] = count;
     }
 
-    // Build club list from actual club entities, sorted by player count desc
-    const clubs: HeatmapVenueClub[] = [...group.clubs.values()]
-      .map((c) => {
-        const rawMedian = c.duprValues.length >= 3
-          ? computeMedian(c.duprValues)
-          : null;
-        const medianDupr = rawMedian !== null
-          ? Math.round(rawMedian * 10) / 10
-          : null;
-        return {
-          venueName: c.name,
-          venueId: group.venueIds[0] ? String(group.venueIds[0]) : "",
-          slug: c.slug,
-          players: c.players.size,
-          sessions: c.sessions.size,
-          medianDupr,
-        };
-      })
+    const clubs: HeatmapVenueClub[] = [...group.clubs.entries()]
+      .map(([cid, c]) => ({
+        venueName: c.name,
+        venueId: group.venueIds[0] ? String(group.venueIds[0]) : "",
+        slug: c.slug,
+        players: Number(c.players),
+        sessions: Number(c.sessions),
+        medianDupr: medianMap.get(`${group.venueIds[0]}:${cid}`) ?? null,
+      }))
       .filter((c) => c.players > 0 || c.sessions > 0)
       .sort((a, b) => b.players - a.players);
 
@@ -1060,7 +1117,7 @@ export async function getHeatmapData(): Promise<HeatmapData> {
       lat: group.lat,
       lng: group.lng,
       playersByDupr,
-      totalSessions90d: group.sessions.size,
+      totalSessions90d: Number(group.totalSessions),
       clubs,
     });
   }
@@ -1071,40 +1128,38 @@ export async function getHeatmapData(): Promise<HeatmapData> {
     return bTotal - aTotal;
   });
 
-  const uniquePlayersWithDupr = new Set(
-    rosters
-      .filter((r) => r.player?.duprDoubles != null || r.player?.duprSingles != null)
-      .map((r) => r.userId.toString()),
-  );
-
+  // ── Global DUPR range + median ─────────────────────────────────────────────
   let duprMin = 2.0;
   let duprMax = 6.0;
   let medianDupr = 4.0;
-  if (allDuprValues.length > 0) {
-    let rawMin = allDuprValues[0];
-    let rawMax = allDuprValues[0];
-    for (const v of allDuprValues) {
+  if (allDuprBuckets.length > 0) {
+    let rawMin = allDuprBuckets[0];
+    let rawMax = allDuprBuckets[0];
+    for (const v of allDuprBuckets) {
       if (v < rawMin) rawMin = v;
       if (v > rawMax) rawMax = v;
     }
     duprMin = Math.floor(rawMin * 10) / 10;
     duprMax = Math.ceil(rawMax * 10) / 10;
-    const sorted = [...allDuprValues].sort((a, b) => a - b);
+    const sorted = [...allDuprBuckets].sort((a, b) => a - b);
     const mid = Math.floor(sorted.length / 2);
-    medianDupr =
-      sorted.length % 2 === 0
-        ? (sorted[mid - 1] + sorted[mid]) / 2
-        : sorted[mid];
+    medianDupr = sorted.length % 2 === 0
+      ? (sorted[mid - 1] + sorted[mid]) / 2
+      : sorted[mid];
     medianDupr = Math.round(medianDupr * 10) / 10;
   }
 
-  console.log(`[getHeatmapData] done in ${Date.now() - t0}ms, venues=${venues.length}, players=${uniquePlayersWithDupr.size}`);
-  return {
+  console.log(`[getHeatmapData] done in ${Date.now() - t0}ms, venues=${venues.length}, players=${totalPlayersWithDupr}`);
+
+  const result: HeatmapData = {
     venues,
     duprRange: { min: duprMin, max: duprMax },
     medianDupr,
-    totalPlayersWithDupr: uniquePlayersWithDupr.size,
+    totalPlayersWithDupr,
   };
+
+  _heatmapCache = { data: result, expiresAt: Date.now() + HEATMAP_CACHE_TTL_MS };
+  return result;
 }
 
 // ---------------------------------------------------------------------------
