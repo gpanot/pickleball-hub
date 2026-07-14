@@ -1081,8 +1081,14 @@ export async function getHeatmapData(): Promise<HeatmapData> {
   let duprMax = 6.0;
   let medianDupr = 4.0;
   if (allDuprValues.length > 0) {
-    duprMin = Math.floor(Math.min(...allDuprValues) * 10) / 10;
-    duprMax = Math.ceil(Math.max(...allDuprValues) * 10) / 10;
+    let rawMin = allDuprValues[0];
+    let rawMax = allDuprValues[0];
+    for (const v of allDuprValues) {
+      if (v < rawMin) rawMin = v;
+      if (v > rawMax) rawMax = v;
+    }
+    duprMin = Math.floor(rawMin * 10) / 10;
+    duprMax = Math.ceil(rawMax * 10) / 10;
     const sorted = [...allDuprValues].sort((a, b) => a - b);
     const mid = Math.floor(sorted.length / 2);
     medianDupr =
