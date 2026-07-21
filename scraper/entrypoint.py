@@ -191,12 +191,17 @@ def run_push_notifications() -> None:
     trigger_push_notifications_cron()
 
 
-# UTC hours (minute :00) when a full scrape runs — matches 6am, 12pm, 3pm, 9pm VN
+# UTC hours when a full scrape runs — matches 6am, 12pm, 3pm, 9pm VN
+# Railway cron fires at minute :00 but cold container startup takes 5–30 s,
+# so the minute check uses a ±5-minute window instead of strict == 0.
+# The :30 PNS slots that fall in these same hours are excluded because they
+# arrive with minute >= 28, which is outside the [0, 5) window.
 _FULL_SCRAPE_UTC_HOURS = frozenset({23, 5, 8, 14})
+_SCRAPE_MINUTE_WINDOW = 5  # accept minutes 0–4 (covers cold-start drift)
 
 
 def is_full_scrape_slot(utc_now: datetime) -> bool:
-    return utc_now.minute == 0 and utc_now.hour in _FULL_SCRAPE_UTC_HOURS
+    return utc_now.hour in _FULL_SCRAPE_UTC_HOURS and utc_now.minute < _SCRAPE_MINUTE_WINDOW
 
 
 def trigger_vercel_revalidation(tag: str | None = None) -> None:
