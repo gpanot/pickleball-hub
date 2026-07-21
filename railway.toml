@@ -1,12 +1,6 @@
 [build]
 builder = "nixpacks"
 
-[build.nixpacksPlan.phases.setup]
-nixPkgs = ["nodejs_20", "dbmate"]
-
-[build.nixpacksPlan.phases.install]
-cmds = ["npm ci"]
-
 [deploy]
 startCommand = "dbmate up && npx next start"
 healthcheckPath = "/api/health"
