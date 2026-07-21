@@ -996,16 +996,18 @@ export type ChestOpeningStatus = 'pending' | 'tapped' | 'unlocking' | 'ready' | 
 
 ## 7. MIGRATION FILES
 
-Key migrations related to the documented systems:
+Key schema additions related to the documented systems (all consolidated into the baseline migration):
 
-| Migration | File | What it adds |
-|-----------|------|-------------|
-| Phase 1 squads | `prisma/migrations/20260611021303_add_squads_phase1/migration.sql` | `squads`, `squad_members`, `squad_codes`, `squad_invites` tables |
-| Phase 2 chests | `prisma/migrations/20260613_add_squads_phase2/migration.sql` | `squad_chests`, `squad_chest_openings`, `squad_xp_log`; adds `city`, `streak_days`, `streak_last_updated` to squads |
-| Squad geo | `prisma/migrations/20260612093010_add_squad_geo/migration.sql` | `latitude`, `longitude` on squads |
-| Squad nickname | `prisma/migrations/20260611_add_squad_nickname/migration.sql` | `squad_nickname`, `squad_nickname_set_at` on `player_profiles` |
-| Kudos | `prisma/migrations/add_kudos/migration.sql` | `kudos` table (social reactions) |
-| Waitlist | `prisma/migrations/20260604120000_add_squad_waitlist/migration.sql` | `squad_waitlist` table |
+| Feature | Tables added |
+|---------|-------------|
+| Phase 1 squads | `squads`, `squad_members`, `squad_codes`, `squad_invites` |
+| Phase 2 chests | `squad_chests`, `squad_chest_openings`, `squad_xp_log`; adds `city`, `streak_days`, `streak_last_updated` to squads |
+| Squad geo | `latitude`, `longitude` on `squads` |
+| Squad nickname | `squad_nickname`, `squad_nickname_set_at` on `player_profiles` |
+| Kudos | `kudos` table |
+| Waitlist | `squad_waitlist` table |
+
+> Individual migration files have been replaced by the dbmate baseline at `db/migrations/20260706000001_baseline.sql`.
 
 ---
 

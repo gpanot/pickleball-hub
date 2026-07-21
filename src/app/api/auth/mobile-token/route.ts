@@ -122,6 +122,7 @@ export async function GET(req: NextRequest) {
     userId: user.id,
     profileId: profile.id,
     displayName: user.name,
+    email: user.email ?? null,
     imageUrl: user.image,
     reclubUserId: profile.reclubUserId
       ? profile.reclubUserId.toString()
@@ -247,6 +248,7 @@ async function buildAuthResponse(params: {
     userId: user.id,
     profileId: profile.id,
     displayName: user.name,
+    email: user.email ?? null,
     imageUrl: user.image,
     reclubUserId: profile.reclubUserId ? profile.reclubUserId.toString() : null,
     hasCompletedOnboarding: profile.onboardingCompleted,

@@ -1,7 +1,7 @@
 /**
  * One-off: recompute and upsert `hcm_market_median_daily` for every distinct `sessions.scraped_date`.
  *
- * Requires the table to exist: `cd pickleball-hub && npx prisma migrate deploy`
+ * Requires the table to exist: `cd pickleball-hub && npm run db:migrate`
  *
  * Run: `cd pickleball-hub && npx tsx scripts/backfill-hcm-market-median.ts`
  */

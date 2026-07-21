@@ -42,10 +42,8 @@ npm install
 cp .env.example .env
 # Edit .env with your PostgreSQL connection string
 
-# Push schema to database
-npx prisma db push
-
-# Generate Prisma client
+# Apply migrations (dbmate) and generate Prisma client
+npm run db:migrate
 npx prisma generate
 
 # Seed database from CSV (loads hcm_pickleball_today.csv)

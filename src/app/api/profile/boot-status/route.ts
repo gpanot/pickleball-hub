@@ -27,6 +27,8 @@ export async function GET(req: NextRequest) {
       onboardingCompleted: true,
       welcomeChestClaimed: true,
       preferences: true,
+      reclubUserId: true,
+      user: { select: { email: true } },
     },
   });
 
@@ -66,5 +68,7 @@ export async function GET(req: NextRequest) {
     welcomeChestClaimed: profile.welcomeChestClaimed,
     market,
     autoHealed: wasAutoHealed,
+    reclubUserId: profile.reclubUserId ? profile.reclubUserId.toString() : null,
+    email: profile.user?.email ?? null,
   });
 }

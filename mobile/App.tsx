@@ -9,10 +9,14 @@ import { CircleScreen, type CircleScreenHandle } from './src/screens/CircleScree
 import SquadModule from './src/modules/squad/SquadModule'
 import { ClubSessionsModule } from './src/modules/club-sessions/ClubSessionsModule'
 import { ReclubLinkScreen } from './src/screens/ReclubLinkScreen'
+import { GuestReclubScreen } from './src/screens/GuestReclubScreen'
+import { GuestFollowPlayersScreen } from './src/screens/GuestFollowPlayersScreen'
 import { OnboardingOrchestrator } from './src/onboarding/OnboardingOrchestrator'
 import { onboardingStorage } from './src/onboarding/onboardingStorage'
 import { useIpGeolocation } from './src/onboarding/useIpGeolocation'
-import type { OrchestratorMode } from './src/onboarding/types'
+import { CsOnboardingOrchestrator } from './src/cs-onboarding/CsOnboardingOrchestrator'
+import { csOnboardingStorage } from './src/cs-onboarding/csOnboardingStorage'
+import type { CsOrchestratorMode } from './src/cs-onboarding/types'
 import { PeopleYouMayKnowScreen } from './src/screens/PeopleYouMayKnowScreen'
 import { ProfileSheet } from './src/components/ProfileSheet'
 import { GearSetupScreen } from './src/components/gear/GearSetupScreen'
@@ -56,6 +60,7 @@ const BATTLE_RESULT_PUSH_TYPES = new Set([
 
 // FCM type that opens the INF reveal screen directly
 const SESSION_REVEAL_PUSH_TYPE = 'conquest_session_reveal'
+const PNS_DEBUG_STORAGE_KEY = 'pns_debug_logs'
 
 // All other conquest FCM types that route to the alerts screen
 const CONQUEST_ALERT_PUSH_TYPES = new Set([
@@ -90,6 +95,15 @@ function isConquestPush(data: any): boolean {
     data?.screen === 'ConquestAlerts' ||
     data?.screen === 'ConquestLeaderboard'
   )
+}
+
+async function appendPnsDebugLog(line: string): Promise<void> {
+  try {
+    const existing = await AsyncStorage.getItem(PNS_DEBUG_STORAGE_KEY)
+    const stored: string[] = existing ? JSON.parse(existing) : []
+    stored.push(line)
+    await AsyncStorage.setItem(PNS_DEBUG_STORAGE_KEY, JSON.stringify(stored.slice(-100)))
+  } catch {}
 }
 
 let Notifications: any = null
@@ -134,6 +148,9 @@ try {
 
   messaging().onMessage(async (remoteMessage: any) => {
     console.log('[FCM_DEBUG] foreground message received:', JSON.stringify(remoteMessage, null, 2))
+    const ts = new Date().toISOString().substring(11, 23)
+    const line = `[${ts}] 🟢 FOREGROUND: title="${remoteMessage.notification?.title}" data=${JSON.stringify(remoteMessage.data)}`
+    void appendPnsDebugLog(line)
     const notificationsEnabled = useUiStore.getState().notificationsEnabled
     if (!notificationsEnabled) {
       console.log('[FCM_DEBUG] notifications disabled by user — skipping display')
@@ -152,6 +169,9 @@ try {
 
   messaging().onNotificationOpenedApp((remoteMessage: any) => {
     console.log('[FCM_DEBUG] notification opened app:', JSON.stringify(remoteMessage, null, 2))
+    const ts = new Date().toISOString().substring(11, 23)
+    const line = `[${ts}] 🔵 TAPPED: title="${remoteMessage.notification?.title}" data=${JSON.stringify(remoteMessage.data)}`
+    void appendPnsDebugLog(line)
     const data = remoteMessage?.data
     if (data?.type === 'squad_invite' || data?.screen === 'SquadInviteReceive') {
       globalThis.__squadPushData = { squadId: data.squadId, inviteId: data.inviteId }
@@ -180,6 +200,9 @@ try {
   ]).then((remoteMessage: any) => {
     if (remoteMessage) {
       console.log('[FCM_DEBUG] app opened from quit state:', JSON.stringify(remoteMessage, null, 2))
+      const ts = new Date().toISOString().substring(11, 23)
+      const line = `[${ts}] 🟣 QUIT STATE: title="${remoteMessage.notification?.title}" data=${JSON.stringify(remoteMessage.data)}`
+      void appendPnsDebugLog(line)
       const data = remoteMessage?.data
       if (data?.type === 'squad_invite' || data?.screen === 'SquadInviteReceive') {
         globalThis.__squadPushData = { squadId: data.squadId, inviteId: data.inviteId }
@@ -207,12 +230,7 @@ try {
     console.log('[FCM_DEBUG] background message received:', JSON.stringify(remoteMessage, null, 2))
     const ts = new Date().toISOString().substring(11, 23)
     const log = `[${ts}] 🔴 BACKGROUND: title="${remoteMessage.notification?.title}" data=${JSON.stringify(remoteMessage.data)}`
-    try {
-      const existing = await AsyncStorage.getItem('pns_debug_logs')
-      const stored: string[] = existing ? JSON.parse(existing) : []
-      stored.push(log)
-      await AsyncStorage.setItem('pns_debug_logs', JSON.stringify(stored.slice(-100)))
-    } catch {}
+    await appendPnsDebugLog(log)
   })
 } catch (err: any) {
   console.warn('[FCM_DEBUG] could not attach FCM debug listeners:', err?.message)
@@ -263,7 +281,7 @@ import { PostHogProvider, PostHogMaskView } from 'posthog-react-native'
 import { posthog as posthogClient } from './src/lib/posthog'
 console.log('[BOOT] All top-level imports done')
 
-type FlowScreen = 'main' | 'reclub-link' | 'orchestrator' | 'people' | 'profile' | 'gear' | 'explore' | 'pushDebug'
+type FlowScreen = 'main' | 'reclub-link' | 'orchestrator' | 'cs-orchestrator' | 'people' | 'profile' | 'gear' | 'explore' | 'pushDebug' | 'guest-reclub' | 'guest-follow'
 
 
 export default function App() {
@@ -275,6 +293,7 @@ export default function App() {
     return () => clearTimeout(t)
   }, [])
   const [activeTab, setActiveTab] = useState<TabId>('club-sessions')
+  const [postOnboardingTab, setPostOnboardingTab] = useState<TabId>('club-sessions')
   const [flowScreen, setFlowScreen] = useState<FlowScreen>('main')
   // Club Sessions screens can signal that the tab bar should be hidden
   // (create/edit forms, sheets, terminal confirmations per spec §15)
@@ -315,6 +334,7 @@ export default function App() {
   const jwt = useAuthStore((s) => s.jwt)
   const authStore = useAuthStore()
   const profileId = useAuthStore((s) => s.profileId)
+  const guestReclubUserId = useUiStore((s) => s.guestReclubUserId)
   const storedGender = useAuthStore((s) => s.gender)
   const hasCompletedOnboarding = useAuthStore((s) => s.hasCompletedOnboarding)
   const hasActiveSquad = useAuthStore((s) => s.hasActiveSquad)
@@ -322,7 +342,8 @@ export default function App() {
   const pushTokenRegistered = useRef(false)
   const bootStatusFetched = useRef(false)
   const prevJwtRef = useRef<string | null | undefined>(undefined)
-  const [orchestratorMode, setOrchestratorMode] = useState<OrchestratorMode>('full')
+  const [orchestratorMode, setOrchestratorMode] = useState<'full'>('full')
+  const [csOrchestratorMode, setCsOrchestratorMode] = useState<CsOrchestratorMode>('full-identity')
   const [pendingInviteCode, setPendingInviteCode] = useState<string | null>(null)
 
   const setGenderInStore = useAuthStore((s) => s.setGender)
@@ -477,19 +498,18 @@ export default function App() {
     if (!jwt || bootStatusFetched.current) return
     bootStatusFetched.current = true
 
-    // If the active tab is Club Sessions, skip all Squadd-orchestrator routing entirely.
-    // ClubSessionsModule owns its own identity onboarding — App.tsx must not interfere.
-    // We check activeTab directly (synchronous React state) rather than relying on the
-    // module-level _signedInFromClubSessions flag, which has a race condition: applyDevAuth
-    // sets the jwt (triggering this effect) before setSignedInFromClubSessions(true) is called.
-    if (activeTab === 'club-sessions') {
-      debugLog('App', 'boot-status: active tab is club-sessions — skipping Squadd orchestrator redirect')
-      consumeSignedInFromClubSessions() // consume flag if set, to keep it clean
+    // Squadd orchestrator must NEVER fire for Circle or Sessions users.
+    // It only applies when the user is explicitly entering the Squadd tab.
+    // (1) Active tab is club-sessions or circle → CS products own their own funnel.
+    // (2) Sign-in originated from CSSignInScreen → same.
+    if (activeTab === 'club-sessions' || activeTab === 'circle') {
+      debugLog('App', `boot-status: active tab is ${activeTab} — skipping Squadd orchestrator redirect`)
+      consumeSignedInFromClubSessions()
       return
     }
     // Secondary guard: flag set by CSSignInScreen for non-active-tab sign-ins
     if (consumeSignedInFromClubSessions()) {
-      debugLog('App', 'boot-status: sign-in from Club Sessions tab — skipping Squadd orchestrator redirect')
+      debugLog('App', 'boot-status: sign-in from Club Sessions — skipping Squadd orchestrator redirect')
       return
     }
 
@@ -520,60 +540,31 @@ export default function App() {
         persistedStep != null && POST_SQUAD_STEPS.has(persistedStep.step)
 
       // Plan routing table (from boot-status):
-      // completed=true  + squad=true  → Main app (MY SQUADD), UNLESS local step is post-squad
-      // completed=true  + squad=false → Legacy squad-setup only (orchestrator squad-only mode)
-      // completed=false + squad=true  → Auto-healed server-side; client sees completed=true
-      // completed=false + squad=false → Full orchestrator (new user or mid-funnel resume)
+      // completed=true  → Main app (Sessions tab), UNLESS local step is post-squad
+      // completed=false → Squadd Orchestrator (full mode, identity + gang + clubhouse + rewards)
 
-      if (completed && activeSquad) {
+      if (completed) {
         if (persistedStepIsPostSquad) {
           // Player was killed mid-funnel after squad creation. The server auto-healed but
           // the reward steps haven't been shown yet — resume the orchestrator at the
           // persisted step so they get brand-select / welcome-chest / token-split.
           debugLog('App', `boot-status: auto-heal suppressed — resuming orchestrator at persisted step "${persistedStep!.step}"`)
-          const resumeMode = persistedStep!.mode ?? 'full'
-          setOrchestratorMode(resumeMode)
+          setOrchestratorMode('full')
           setFlowScreen('orchestrator')
           return
         }
-        // Normal case — fully done (or auto-healed with no local state = genuine legacy).
+        // Fully done — route to main app.
         debugLog('App', 'boot-status: fully done → main')
         setFlowScreen('main')
         return
       }
 
-      if (completed && !activeSquad) {
-        // Legacy: profile onboarding completed (old flag) but never joined a squad.
-        // Show orchestrator in squad-only mode — skip identity steps.
-        debugLog('App', 'boot-status: legacy squad-setup mode (onboardingCompleted=true, no squad)')
-        setOrchestratorMode('squad-only')
-        setFlowScreen('orchestrator')
-        return
-      }
-
-      // onboardingCompleted=false + hasActiveSquad=true — the server tried to auto-heal
-      // but the flag hasn't propagated yet, or auto-heal was skipped. Same guard applies:
-      // if a post-squad step is persisted, resume the orchestrator; otherwise fall through.
-      if (activeSquad) {
-        if (persistedStepIsPostSquad) {
-          debugLog('App', `boot-status: unexpected false+squad but post-squad step persisted — resuming orchestrator at "${persistedStep!.step}"`)
-          const resumeMode = persistedStep!.mode ?? 'full'
-          setOrchestratorMode(resumeMode)
-          setFlowScreen('orchestrator')
-          return
-        }
-        // No local state and squad already exists — genuine legacy account. Route to main.
-        debugLog('App', 'boot-status: unexpected false+squad, no persisted step — routing to main as legacy fallback')
-        setFlowScreen('main')
-        return
-      }
-
-      // completed=false, squad=false → full orchestrator (new user / mid-funnel resume).
+      // completed=false — onboarding incomplete (new user or mid-funnel resume).
       // This includes explore-paused players returning on cold reboot.
       // Clear the explore-pause flag so tab-switch re-routing doesn't fire again
       // once they've re-entered the orchestrator.
       void onboardingStorage.setExplorePaused(false)
-      setOrchestratorMode(persistedStep?.mode ?? 'full')
+      setOrchestratorMode('full')
       setFlowScreen('orchestrator')
     })
   }, [jwt, activeTab]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -589,6 +580,7 @@ export default function App() {
       pushTokenRegistered.current = false
       setFlowScreen('main')
       setOrchestratorMode('full')
+      setCsOrchestratorMode('full-identity')
     }
     prevJwtRef.current = jwt
   }, [jwt])
@@ -688,37 +680,121 @@ export default function App() {
     )
   }, [])
 
-  const handleSignedIn = (needsOnboarding: boolean) => {
-    if (needsOnboarding) {
-      // Re-fetch boot-status after sign-in to determine orchestrator mode
-      bootStatusFetched.current = false
-      // hydrateBootStatus will be triggered by the jwt effect above on next render
-      // For now route to orchestrator immediately; boot-status will correct if needed
-      setOrchestratorMode('full')
-      setFlowScreen('orchestrator')
-    } else {
-      setFlowScreen('main')
-    }
+  const handleSignedIn = (_needsOnboarding: boolean) => {
+    bootStatusFetched.current = false
+    // Circle / guest sign-ins always go through the CS orchestrator.
+    // Guest flow runs post-guest mode (nickname/avatar/dupr only — Reclub + follows
+    // were already done as a guest; ghost-follows are replayed after CS completion).
+    const isGuestFlow = flowScreen === 'guest-follow' || flowScreen === 'guest-reclub'
+    // Never land on the Squadd tab after CS onboarding — default to circle.
+    const nonSquaddTab: TabId = activeTab === 'squadd' ? 'circle' : activeTab
+    setPostOnboardingTab(isGuestFlow ? 'circle' : nonSquaddTab)
+    setCsOrchestratorMode(isGuestFlow ? 'post-guest' : 'full-identity')
+    setFlowScreen('cs-orchestrator')
   }
 
   const startLinkReclub = () => {
     setFlowScreen('reclub-link')
   }
 
+  const startGuestReclubFlow = () => {
+    setFlowScreen('guest-reclub')
+  }
+
+  const handleGuestReclubComplete = (reclubUserId: string) => {
+    useUiStore.getState().setGuestReclubUserId(reclubUserId)
+    setFlowScreen('guest-follow')
+  }
+
+  const handleGuestFollowComplete = () => {
+    setFlowScreen('main')
+    setActiveTab('circle')
+    // Open Players sub-tab so the user immediately sees the circle they've browsed
+    setTimeout(() => circleScreenRef.current?.openPlayersTab(), 100)
+  }
+
   /**
    * Called from ReclubLinkScreen when the user has no squad after linking.
-   * Seeds the orchestrator at clubhouse-choice in squad-only mode.
+   * Seeds the orchestrator at clubhouse-choice in full mode so the CLUBHOUSE phase is available.
    */
   const handleFindClubhouse = async () => {
-    await onboardingStorage.setStep('clubhouse-choice', 'squad-only')
-    setOrchestratorMode('squad-only')
+    await onboardingStorage.setStep('clubhouse-choice', 'full')
+    setOrchestratorMode('full')
     setFlowScreen('orchestrator')
   }
 
   const handleOrchestratorComplete = () => {
+    const { guestPendingFollows, guestReclubUserId } = useUiStore.getState()
     useSessionStore.getState().fetchSessions(null, null)
+
+    if (guestPendingFollows.length > 0) {
+      // Navigate immediately so the user doesn't wait on API calls
+      setFlowScreen('main')
+      setActiveTab('circle')
+      setTimeout(() => circleScreenRef.current?.openPlayersTab(), 100)
+
+      // Replay Reclub link + ghost-follows in background (fire-and-forget)
+      void (async () => {
+        const { authedFetch, profileId } = useAuthStore.getState()
+        if (guestReclubUserId) {
+          await authedFetch('/api/profile', {
+            method: 'POST',
+            body: JSON.stringify({ profileId, reclubUserId: guestReclubUserId }),
+          }).catch(() => {})
+        }
+        await Promise.allSettled(
+          guestPendingFollows.map((userId) =>
+            authedFetch('/api/follows', { method: 'POST', body: JSON.stringify({ followeeId: userId }) })
+          )
+        )
+        useUiStore.getState().clearGuestFollows()
+      })()
+      return
+    }
+
     setFlowScreen('main')
-    setActiveTab('squadd')
+    setActiveTab(postOnboardingTab)
+  }
+
+  // Called when CsOnboardingOrchestrator finishes (Circle / Sessions paths).
+  // Replays ghost-follows for guest sign-ins, then navigates to Circle or Sessions.
+  // Never routes to Squadd.
+  const handleCsOrchestratorComplete = () => {
+    void csOnboardingStorage.setDone()
+    void csOnboardingStorage.clearStep()
+    const { guestPendingFollows, guestReclubUserId } = useUiStore.getState()
+
+    if (guestPendingFollows.length > 0) {
+      setFlowScreen('main')
+      setActiveTab('circle')
+      setTimeout(() => circleScreenRef.current?.openPlayersTab(), 100)
+
+      void (async () => {
+        const { authedFetch, profileId } = useAuthStore.getState()
+        if (guestReclubUserId) {
+          await authedFetch('/api/profile', {
+            method: 'POST',
+            body: JSON.stringify({ profileId, reclubUserId: guestReclubUserId }),
+          }).catch(() => {})
+        }
+        await Promise.allSettled(
+          guestPendingFollows.map((userId) =>
+            authedFetch('/api/follows', { method: 'POST', body: JSON.stringify({ followeeId: userId }) })
+          )
+        )
+        useUiStore.getState().clearGuestFollows()
+      })()
+      return
+    }
+
+    setFlowScreen('main')
+    // postOnboardingTab was set to 'circle' or 'club-sessions' by handleSignedIn.
+    // Guard: if it somehow ended up as 'squadd' (e.g. edge-case tab state), default to 'circle'.
+    const csTab: TabId =
+      postOnboardingTab === 'circle' || postOnboardingTab === 'club-sessions'
+        ? postOnboardingTab
+        : 'circle'
+    setActiveTab(csTab)
   }
 
   const handleExplorePause = () => {
@@ -742,9 +818,7 @@ export default function App() {
       // Clear the flag before re-entering so this effect doesn't re-fire on the
       // next tab switch after the player completes onboarding.
       await onboardingStorage.setExplorePaused(false)
-      // Mode is stored alongside the persisted step; fall back to 'full'.
-      const persisted = await onboardingStorage.getStep()
-      setOrchestratorMode(persisted?.mode ?? 'full')
+      setOrchestratorMode('full')
       setFlowScreen('orchestrator')
     })()
   }, [activeTab, flowScreen])
@@ -769,14 +843,49 @@ export default function App() {
   }
   console.log('[BOOT] GATE: past splash, flowScreen:', flowScreen)
 
-  if (flowScreen === 'reclub-link') {
+  if (flowScreen === 'guest-reclub') {
     return (
       <GestureHandlerRootView style={{ flex: 1 }}>
         <SafeAreaProvider>
           <ThemedAppChrome>
-            <ReclubLinkScreen
-              onClose={() => setFlowScreen('main')}
-              onFindClubhouse={handleFindClubhouse}
+            <SignUpModalProvider onSignedIn={handleSignedIn}>
+              <GuestReclubScreen
+                onComplete={handleGuestReclubComplete}
+                onClose={() => setFlowScreen('main')}
+              />
+            </SignUpModalProvider>
+          </ThemedAppChrome>
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
+    )
+  }
+
+  if (flowScreen === 'guest-follow') {
+    return (
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <SafeAreaProvider>
+          <ThemedAppChrome>
+            <SignUpModalProvider onSignedIn={handleSignedIn}>
+              <GuestFollowPlayersScreen
+                reclubUserId={guestReclubUserId}
+                onComplete={handleGuestFollowComplete}
+                onBack={() => setFlowScreen('guest-reclub')}
+              />
+            </SignUpModalProvider>
+          </ThemedAppChrome>
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
+    )
+  }
+
+  if (flowScreen === 'cs-orchestrator') {
+    return (
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <SafeAreaProvider>
+          <ThemedAppChrome>
+            <CsOnboardingOrchestrator
+              mode={csOrchestratorMode}
+              onComplete={handleCsOrchestratorComplete}
             />
           </ThemedAppChrome>
         </SafeAreaProvider>
@@ -861,6 +970,8 @@ export default function App() {
                   }}
                   gearSaved={savedConfirmation}
                   gearSetupComplete={gearSetupComplete}
+                  onStartGuestReclub={startGuestReclubFlow}
+                  onLinkReclub={startLinkReclub}
                 />
               </View>
               <View style={{ flex: 1, display: activeTab === 'squadd' ? 'flex' : 'none' }}>
@@ -884,9 +995,11 @@ export default function App() {
                   gearSetupComplete={gearSetupComplete}
                 />
               </View>
-              {/* Tab bar: hidden on explore overlay, and hidden on CS screens that signal it */}
+              {/* Floating tab bar — absolute overlay so screens render full-height beneath it */}
               {flowScreen !== 'explore' && (activeTab !== 'club-sessions' || csTabBarVisible) && (
-                <NavBar active={activeTab} onChange={setActiveTab} />
+                <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0 }} pointerEvents="box-none">
+                  <NavBar active={activeTab} onChange={setActiveTab} />
+                </View>
               )}
               <ToastOverlay />
             </View>
@@ -907,6 +1020,14 @@ export default function App() {
                   onOpenPushDebug={() => setFlowScreen('pushDebug')}
                 />
               </PostHogMaskView>
+            )}
+            {flowScreen === 'reclub-link' && (
+              <View style={StyleSheet.absoluteFillObject}>
+                <ReclubLinkScreen
+                  onClose={() => setFlowScreen('main')}
+                  onFindClubhouse={handleFindClubhouse}
+                />
+              </View>
             )}
           </ProfileMenuProvider>
         </SignUpModalProvider>

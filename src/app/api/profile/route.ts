@@ -26,26 +26,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // If reclubUserId is being linked (non-null), check for conflicts first
-    if (reclubId !== undefined && reclubId !== null) {
-      const conflict = await prisma.playerProfile.findFirst({
-        where: {
-          reclubUserId: reclubId,
-          NOT: { id: resolvedProfileId },
-        },
-        select: { id: true },
-      });
-      if (conflict) {
-        console.warn(
-          `[POST /api/profile] duplicate_reclub: reclubId=${reclubId} already on profile=${conflict.id}, requester=${resolvedProfileId}`
-        );
-        return NextResponse.json(
-          { error: "duplicate_reclub" },
-          { status: 409 }
-        );
-      }
-    }
-
     const validMarket = market === 'kl' ? 'kl' : market === 'hcm' ? 'hcm' : market === 'us' ? 'us' : undefined;
 
     // Merge gender and market into preferences JSON if provided
