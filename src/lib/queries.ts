@@ -624,6 +624,7 @@ export async function getOrganizerAnalytics(clubId: number) {
 
 export async function getMarketPlayersPerDay(days: number) {
   const topClubs = await prisma.club.findMany({
+    where: { market: "hcm" },
     orderBy: { numMembers: "desc" },
     take: 100,
     select: { id: true },
