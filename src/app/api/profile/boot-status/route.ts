@@ -28,6 +28,7 @@ export async function GET(req: NextRequest) {
       welcomeChestClaimed: true,
       preferences: true,
       reclubUserId: true,
+      squadNickname: true,
       user: { select: { email: true } },
     },
   });
@@ -70,5 +71,6 @@ export async function GET(req: NextRequest) {
     autoHealed: wasAutoHealed,
     reclubUserId: profile.reclubUserId ? profile.reclubUserId.toString() : null,
     email: profile.user?.email ?? null,
+    squadNickname: profile.squadNickname ?? null,
   });
 }
