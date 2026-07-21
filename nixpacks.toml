@@ -1,7 +1,0 @@
-[phases.setup]
-# Extend the auto-detected packages (nodejs, npm, openssl) with curl so we
-# can download the dbmate binary and bake it into the image.
-aptPkgs = ["...", "curl"]
-cmds = [
-  "curl -fsSL -o /usr/local/bin/dbmate https://github.com/amacneil/dbmate/releases/download/v2.33.0/dbmate-linux-amd64 && chmod +x /usr/local/bin/dbmate"
-]
