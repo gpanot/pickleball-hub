@@ -2,17 +2,12 @@
 builder = "nixpacks"
 
 [build.nixpacksPlan.phases.setup]
-nixPkgs = ["nodejs_20"]
+nixPkgs = ["nodejs_20", "dbmate"]
 
 [build.nixpacksPlan.phases.install]
-cmds = [
-  "curl -fsSL -o /usr/local/bin/dbmate https://github.com/amacneil/dbmate/releases/download/v2.33.0/dbmate-linux-amd64 && chmod +x /usr/local/bin/dbmate",
-  "npm ci"
-]
+cmds = ["npm ci"]
 
 [deploy]
-# Run migrations before starting Next.js — runs inside Railway network so postgres.railway.internal is reachable
-# dbmate pinned to v2.33.0 — update intentionally, never use "latest"
 startCommand = "dbmate up && npx next start"
 healthcheckPath = "/api/health"
 healthcheckTimeout = 60
