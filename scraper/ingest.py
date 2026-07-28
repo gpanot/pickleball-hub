@@ -815,22 +815,33 @@ def ingest_day(day, club_map):
 
         # Roster + DUPR: scrape rosters for today AND tomorrow so friend data
         # is available in advance (Going tab, Discover Friends filter).
+        # ROSTER_SKIP_TOMORROW=1 skips the tomorrow pass inside ingest.py so
+        # it only runs from entrypoint.py's dedicated 9pm _run_tomorrow_roster_refresh,
+        # cutting roster work for the 6am/12pm/3pm slots roughly in half.
         day_key = day.strftime("%Y-%m-%d")
         today_key = NOW.strftime("%Y-%m-%d")
         tomorrow_key = (NOW + timedelta(days=1)).strftime("%Y-%m-%d")
-        print(f"\n  Roster check — day={day_key}, today={today_key}, tomorrow={tomorrow_key}, sessions={len(pickleball_meets)} [v2]")
+        _skip_tomorrow = os.environ.get("ROSTER_SKIP_TOMORROW", "0") == "1"
+        print(
+            f"\n  Roster check — day={day_key}, today={today_key}, "
+            f"tomorrow={tomorrow_key}, sessions={len(pickleball_meets)} "
+            f"skip_tomorrow={_skip_tomorrow} [v3]"
+        )
         if day_key in (today_key, tomorrow_key) and pickleball_meets:
-            print(f"\n  Scraping rosters for {day_key}...")
-            try:
-                run_roster_pass_for_day(
-                    DATABASE_URL,
-                    day_key,
-                    list(pickleball_meets.keys()),
-                )
-            except Exception as e:
-                import traceback
-                print(f"  [ingest] Roster pass error (non-fatal): {type(e).__name__}: {e}")
-                print(traceback.format_exc())
+            if day_key == tomorrow_key and _skip_tomorrow:
+                print(f"  Skipping tomorrow roster pass (ROSTER_SKIP_TOMORROW=1)")
+            else:
+                print(f"\n  Scraping rosters for {day_key}...")
+                try:
+                    run_roster_pass_for_day(
+                        DATABASE_URL,
+                        day_key,
+                        list(pickleball_meets.keys()),
+                    )
+                except Exception as e:
+                    import traceback
+                    print(f"  [ingest] Roster pass error (non-fatal): {type(e).__name__}: {e}")
+                    print(traceback.format_exc())
         else:
             print(f"  Skipping roster pass for {day_key} (not today/tomorrow)")
 

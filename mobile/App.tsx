@@ -11,8 +11,6 @@ import { ClubSessionsModule } from './src/modules/club-sessions/ClubSessionsModu
 import { ReclubLinkScreen } from './src/screens/ReclubLinkScreen'
 import { GuestReclubScreen } from './src/screens/GuestReclubScreen'
 import { GuestFollowPlayersScreen } from './src/screens/GuestFollowPlayersScreen'
-import { OnboardingOrchestrator } from './src/onboarding/OnboardingOrchestrator'
-import { onboardingStorage } from './src/onboarding/onboardingStorage'
 import { useIpGeolocation } from './src/onboarding/useIpGeolocation'
 import { CsOnboardingOrchestrator } from './src/cs-onboarding/CsOnboardingOrchestrator'
 import { csOnboardingStorage } from './src/cs-onboarding/csOnboardingStorage'
@@ -281,7 +279,7 @@ import { PostHogProvider, PostHogMaskView } from 'posthog-react-native'
 import { posthog as posthogClient } from './src/lib/posthog'
 console.log('[BOOT] All top-level imports done')
 
-type FlowScreen = 'main' | 'reclub-link' | 'orchestrator' | 'cs-orchestrator' | 'people' | 'profile' | 'gear' | 'explore' | 'pushDebug' | 'guest-reclub' | 'guest-follow'
+type FlowScreen = 'main' | 'reclub-link' | 'cs-orchestrator' | 'people' | 'profile' | 'gear' | 'explore' | 'pushDebug' | 'guest-reclub' | 'guest-follow'
 
 
 export default function App() {
@@ -293,7 +291,6 @@ export default function App() {
     return () => clearTimeout(t)
   }, [])
   const [activeTab, setActiveTab] = useState<TabId>('club-sessions')
-  const [postOnboardingTab, setPostOnboardingTab] = useState<TabId>('club-sessions')
   const [flowScreen, setFlowScreen] = useState<FlowScreen>('main')
   // Club Sessions screens can signal that the tab bar should be hidden
   // (create/edit forms, sheets, terminal confirmations per spec §15)
@@ -336,15 +333,10 @@ export default function App() {
   const profileId = useAuthStore((s) => s.profileId)
   const guestReclubUserId = useUiStore((s) => s.guestReclubUserId)
   const storedGender = useAuthStore((s) => s.gender)
-  const hasCompletedOnboarding = useAuthStore((s) => s.hasCompletedOnboarding)
-  const hasActiveSquad = useAuthStore((s) => s.hasActiveSquad)
-  const bootStatusHydrated = useAuthStore((s) => s.bootStatusHydrated)
   const pushTokenRegistered = useRef(false)
   const bootStatusFetched = useRef(false)
   const prevJwtRef = useRef<string | null | undefined>(undefined)
-  const [orchestratorMode, setOrchestratorMode] = useState<'full'>('full')
   const [csOrchestratorMode, setCsOrchestratorMode] = useState<CsOrchestratorMode>('full-identity')
-  const [pendingInviteCode, setPendingInviteCode] = useState<string | null>(null)
 
   const setGenderInStore = useAuthStore((s) => s.setGender)
 
@@ -370,7 +362,7 @@ export default function App() {
       if (match) {
         const code = match[1].toUpperCase()
         // Discriminate by ?type param:
-        //   type=gang       → Gang invite (friend-to-friend) — skip gang-setup in orchestrator
+        //   type=gang       → Gang invite (friend-to-friend)
         //   type=clubhouse  → Clubhouse admin invite — routes to join-preview
         //   (no type)       → Legacy default — treat as clubhouse invite for backward compat
         const typeMatch = url.match(/[?&]type=([a-z]+)/)
@@ -417,9 +409,6 @@ export default function App() {
 
     if (__DEV__) {
       // Only resolve the API base URL — do NOT auto-sign-in on cold start.
-      // Signing in is user-initiated (via CSSignInScreen or the Squadd sign-in flow).
-      // Auto-signing in on boot bypasses the sign-in screen and lands the user
-      // inside the full Squadd orchestrator, which is wrong for a fresh-install test.
       void useAuthStore.getState().ensureDevApiBase().then(() => {
         debugLog('App', `Dev API base resolved: ${resolveApiBase()}`)
       })
@@ -489,83 +478,15 @@ export default function App() {
   }, [jwt])
 
   // Boot-status hydration — single call after JWT is available.
-  // Determines hasCompletedOnboarding + hasActiveSquad from server truth.
-  // Routes to orchestrator if onboarding is incomplete.
-  //
-  // NOTE: All routing decisions read from useAuthStore.getState() (not React state)
-  // to avoid stale-closure issues — the effect only closes over `jwt`.
+  // Hydrates hasCompletedOnboarding + hasActiveSquad from server truth.
+  // The Squadd onboarding orchestrator is fully isolated and never called from here.
   useEffect(() => {
     if (!jwt || bootStatusFetched.current) return
     bootStatusFetched.current = true
-
-    // Squadd orchestrator must NEVER fire for Circle or Sessions users.
-    // It only applies when the user is explicitly entering the Squadd tab.
-    // (1) Active tab is club-sessions or circle → CS products own their own funnel.
-    // (2) Sign-in originated from CSSignInScreen → same.
-    if (activeTab === 'club-sessions' || activeTab === 'circle') {
-      debugLog('App', `boot-status: active tab is ${activeTab} — skipping Squadd orchestrator redirect`)
-      consumeSignedInFromClubSessions()
-      return
-    }
-    // Secondary guard: flag set by CSSignInScreen for non-active-tab sign-ins
-    if (consumeSignedInFromClubSessions()) {
-      debugLog('App', 'boot-status: sign-in from Club Sessions — skipping Squadd orchestrator redirect')
-      return
-    }
-
-    void useAuthStore.getState().hydrateBootStatus().then(async () => {
-      const { hasCompletedOnboarding: completed, hasActiveSquad: activeSquad } =
-        useAuthStore.getState()
-
-      debugLog('App', `boot-status: onboardingCompleted=${completed} hasActiveSquad=${activeSquad}`)
-
-      // Read the locally-persisted onboarding step before making any routing decision.
-      // This is the key guard: a persisted step means the player was mid-funnel on THIS
-      // device and should resume via the orchestrator — even if the server auto-healed.
-      const persistedStep = await onboardingStorage.getStep()
-      debugLog('App', `boot-status: persistedStep=${JSON.stringify(persistedStep)}`)
-
-      // Steps from which the player should resume the orchestrator rather than be
-      // auto-healed to main. Anything at or after create-squad means a squad may exist
-      // server-side but the reward flow (brand-select / welcome-chest / token-split) has
-      // not been completed yet.
-      const POST_SQUAD_STEPS = new Set([
-        'create-squad',
-        'join-preview',
-        'brand-select',
-        'welcome-chest',
-        'token-split',
-      ])
-      const persistedStepIsPostSquad =
-        persistedStep != null && POST_SQUAD_STEPS.has(persistedStep.step)
-
-      // Plan routing table (from boot-status):
-      // completed=true  → Main app (Sessions tab), UNLESS local step is post-squad
-      // completed=false → Squadd Orchestrator (full mode, identity + gang + clubhouse + rewards)
-
-      if (completed) {
-        if (persistedStepIsPostSquad) {
-          // Player was killed mid-funnel after squad creation. The server auto-healed but
-          // the reward steps haven't been shown yet — resume the orchestrator at the
-          // persisted step so they get brand-select / welcome-chest / token-split.
-          debugLog('App', `boot-status: auto-heal suppressed — resuming orchestrator at persisted step "${persistedStep!.step}"`)
-          setOrchestratorMode('full')
-          setFlowScreen('orchestrator')
-          return
-        }
-        // Fully done — route to main app.
-        debugLog('App', 'boot-status: fully done → main')
-        setFlowScreen('main')
-        return
-      }
-
-      // completed=false — onboarding incomplete (new user or mid-funnel resume).
-      // This includes explore-paused players returning on cold reboot.
-      // Clear the explore-pause flag so tab-switch re-routing doesn't fire again
-      // once they've re-entered the orchestrator.
-      void onboardingStorage.setExplorePaused(false)
-      setOrchestratorMode('full')
-      setFlowScreen('orchestrator')
+    consumeSignedInFromClubSessions()
+    void useAuthStore.getState().hydrateBootStatus().then(() => {
+      debugLog('App', 'boot-status: hydrated → main')
+      setFlowScreen('main')
     })
   }, [jwt, activeTab]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -579,8 +500,11 @@ export default function App() {
       bootStatusFetched.current = false
       pushTokenRegistered.current = false
       setFlowScreen('main')
-      setOrchestratorMode('full')
       setCsOrchestratorMode('full-identity')
+      // Clear Circle screen local state and guest Reclub state so the
+      // screen looks brand-new when the next user signs in.
+      circleScreenRef.current?.reset()
+      useUiStore.getState().clearGuestFollows()
     }
     prevJwtRef.current = jwt
   }, [jwt])
@@ -682,15 +606,30 @@ export default function App() {
 
   const handleSignedIn = (_needsOnboarding: boolean) => {
     bootStatusFetched.current = false
-    // Circle / guest sign-ins always go through the CS orchestrator.
-    // Guest flow runs post-guest mode (nickname/avatar/dupr only — Reclub + follows
-    // were already done as a guest; ghost-follows are replayed after CS completion).
     const isGuestFlow = flowScreen === 'guest-follow' || flowScreen === 'guest-reclub'
-    // Never land on the Squadd tab after CS onboarding — default to circle.
-    const nonSquaddTab: TabId = activeTab === 'squadd' ? 'circle' : activeTab
-    setPostOnboardingTab(isGuestFlow ? 'circle' : nonSquaddTab)
-    setCsOrchestratorMode(isGuestFlow ? 'post-guest' : 'full-identity')
-    setFlowScreen('cs-orchestrator')
+    if (isGuestFlow) {
+      // Guest flow: user browsed as guest (Reclub+follows already done).
+      setSignedInFromClubSessions(true)
+      // Run the CS orchestrator in post-guest mode (nickname/avatar/dupr only).
+      setCsOrchestratorMode('post-guest')
+      setFlowScreen('cs-orchestrator')
+    } else {
+      // All other sign-ins: hand off to ClubSessionsModule which owns the
+      // full-identity onboarding and the smart "already done" check.
+      setActiveTab('club-sessions')
+    }
+  }
+
+  /**
+   * Called after a successful Google/Apple sign-in from Circle's SignInPrompt.
+   * Hands off to the Sessions tab (ClubSessionsModule) which already has the
+   * correct smart check: existing users land on home, new users go through
+   * onboarding. Once done the user can switch back to Circle.
+   */
+  const handleCircleSignedIn = () => {
+    bootStatusFetched.current = false
+    setSignedInFromClubSessions(true)
+    setActiveTab('club-sessions')
   }
 
   const startLinkReclub = () => {
@@ -711,49 +650,6 @@ export default function App() {
     setActiveTab('circle')
     // Open Players sub-tab so the user immediately sees the circle they've browsed
     setTimeout(() => circleScreenRef.current?.openPlayersTab(), 100)
-  }
-
-  /**
-   * Called from ReclubLinkScreen when the user has no squad after linking.
-   * Seeds the orchestrator at clubhouse-choice in full mode so the CLUBHOUSE phase is available.
-   */
-  const handleFindClubhouse = async () => {
-    await onboardingStorage.setStep('clubhouse-choice', 'full')
-    setOrchestratorMode('full')
-    setFlowScreen('orchestrator')
-  }
-
-  const handleOrchestratorComplete = () => {
-    const { guestPendingFollows, guestReclubUserId } = useUiStore.getState()
-    useSessionStore.getState().fetchSessions(null, null)
-
-    if (guestPendingFollows.length > 0) {
-      // Navigate immediately so the user doesn't wait on API calls
-      setFlowScreen('main')
-      setActiveTab('circle')
-      setTimeout(() => circleScreenRef.current?.openPlayersTab(), 100)
-
-      // Replay Reclub link + ghost-follows in background (fire-and-forget)
-      void (async () => {
-        const { authedFetch, profileId } = useAuthStore.getState()
-        if (guestReclubUserId) {
-          await authedFetch('/api/profile', {
-            method: 'POST',
-            body: JSON.stringify({ profileId, reclubUserId: guestReclubUserId }),
-          }).catch(() => {})
-        }
-        await Promise.allSettled(
-          guestPendingFollows.map((userId) =>
-            authedFetch('/api/follows', { method: 'POST', body: JSON.stringify({ followeeId: userId }) })
-          )
-        )
-        useUiStore.getState().clearGuestFollows()
-      })()
-      return
-    }
-
-    setFlowScreen('main')
-    setActiveTab(postOnboardingTab)
   }
 
   // Called when CsOnboardingOrchestrator finishes (Circle / Sessions paths).
@@ -788,40 +684,8 @@ export default function App() {
     }
 
     setFlowScreen('main')
-    // postOnboardingTab was set to 'circle' or 'club-sessions' by handleSignedIn.
-    // Guard: if it somehow ended up as 'squadd' (e.g. edge-case tab state), default to 'circle'.
-    const csTab: TabId =
-      postOnboardingTab === 'circle' || postOnboardingTab === 'club-sessions'
-        ? postOnboardingTab
-        : 'circle'
-    setActiveTab(csTab)
+    setActiveTab('circle')
   }
-
-  const handleExplorePause = () => {
-    setFlowScreen('main')
-    setActiveTab('club-sessions')
-  }
-
-  // When a player used "Explore app first" and later navigates to the Squadd tab,
-  // resume the orchestrator at their persisted step instead of showing the old
-  // SquadModule carousel/ready screen.
-  useEffect(() => {
-    if (flowScreen !== 'main') return
-    if (activeTab !== 'squadd') return
-    const { hasCompletedOnboarding } = useAuthStore.getState()
-    if (hasCompletedOnboarding) return
-
-    void (async () => {
-      const paused = await onboardingStorage.isExplorePaused()
-      if (!paused) return
-      debugLog('App', 'squadd tab active while explore-paused + onboarding incomplete — resuming orchestrator')
-      // Clear the flag before re-entering so this effect doesn't re-fire on the
-      // next tab switch after the player completes onboarding.
-      await onboardingStorage.setExplorePaused(false)
-      setOrchestratorMode('full')
-      setFlowScreen('orchestrator')
-    })()
-  }, [activeTab, flowScreen])
 
   const handlePeopleComplete = () => {
     useSessionStore.getState().fetchSessions(null, null)
@@ -893,25 +757,6 @@ export default function App() {
     )
   }
 
-  if (flowScreen === 'orchestrator') {
-    return (
-      <PostHogProvider client={posthogClient} autocapture>
-        <GestureHandlerRootView style={{ flex: 1 }}>
-          <SafeAreaProvider>
-            <ThemedAppChrome>
-              <OnboardingOrchestrator
-                mode={orchestratorMode}
-                onComplete={handleOrchestratorComplete}
-                onExplorePause={handleExplorePause}
-                pendingInviteCode={pendingInviteCode ?? squadDeeplinkCode}
-                pendingGangInviteCode={gangInviteCode}
-              />
-            </ThemedAppChrome>
-          </SafeAreaProvider>
-        </GestureHandlerRootView>
-      </PostHogProvider>
-    )
-  }
 
   if (flowScreen === 'people') {
     return (
@@ -972,6 +817,7 @@ export default function App() {
                   gearSetupComplete={gearSetupComplete}
                   onStartGuestReclub={startGuestReclubFlow}
                   onLinkReclub={startLinkReclub}
+                  onSignIn={() => { void handleCircleSignedIn() }}
                 />
               </View>
               <View style={{ flex: 1, display: activeTab === 'squadd' ? 'flex' : 'none' }}>
@@ -1025,7 +871,6 @@ export default function App() {
               <View style={StyleSheet.absoluteFillObject}>
                 <ReclubLinkScreen
                   onClose={() => setFlowScreen('main')}
-                  onFindClubhouse={handleFindClubhouse}
                 />
               </View>
             )}

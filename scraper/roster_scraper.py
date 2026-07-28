@@ -11,8 +11,10 @@ roll back the main ingest transaction.
 
 from __future__ import annotations
 
+import concurrent.futures
 import json
 import os
+import random
 import time
 import urllib.error
 import urllib.parse
@@ -286,6 +288,7 @@ def record_dupr_history(cur, player_id: int, new_dupr: float | None) -> None:
             """
             INSERT INTO player_dupr_history (player_id, dupr_doubles, recorded_at)
             VALUES (%s, %s, NOW())
+            ON CONFLICT (player_id, DATE(recorded_at)) DO NOTHING
             """,
             (player_id, new_dupr),
         )
@@ -596,6 +599,13 @@ def run_roster_pass_for_day(
     """
     After main ingest commit: resolve session ids and scrape each roster.
     Failures are logged only.
+
+    Parallelism:
+      ROSTER_WORKERS (default 1) — number of concurrent session workers.
+        Set to 5 on Railway for ~4–5× speedup. Each worker opens its own
+        DB connection so there are no shared transactions.
+      ROSTER_SLEEP_SECONDS (default 1) — per-session sleep in serial mode.
+        Unused in parallel mode; workers use a short random jitter instead.
     """
     if not reference_codes:
         print(f"[roster] run_roster_pass_for_day({scraped_date_str}): no reference_codes, skipping")
@@ -634,7 +644,6 @@ def run_roster_pass_for_day(
             [scraped_date_str, *reference_codes],
         )
         for sid, ref, max_players, joined in cur.fetchall():
-            # Phase 1: skip sessions that are too small to yield useful roster data
             if max_players < ROSTER_MIN_MAX_PLAYERS or joined < ROSTER_MIN_JOINED:
                 skipped_phase1 += 1
                 continue
@@ -643,35 +652,73 @@ def run_roster_pass_for_day(
         cur.close()
         conn.close()
 
+    workers = int(os.environ.get("ROSTER_WORKERS", "1"))
+    delay = float(os.environ.get("ROSTER_SLEEP_SECONDS", "1"))
+
     print(
         f"[roster] run_roster_pass_for_day({scraped_date_str}): "
         f"{len(reference_codes)} refs → {len(pairs)} eligible "
-        f"(skipped {skipped_phase1} by Phase-1 filter: max_players<{ROSTER_MIN_MAX_PLAYERS} OR joined<{ROSTER_MIN_JOINED})"
+        f"(skipped {skipped_phase1} by Phase-1 filter: "
+        f"max_players<{ROSTER_MIN_MAX_PLAYERS} OR joined<{ROSTER_MIN_JOINED})"
         + (f", capped to {cap}" if cap is not None else "")
+        + f" | workers={workers} sleep={delay}s"
     )
 
     if cap is not None:
         pairs = pairs[:cap]
 
-    delay = float(os.environ.get("ROSTER_SLEEP_SECONDS", "1"))
+    pass_start = time.time()
     success = 0
     failed = 0
 
-    for session_id, ref in pairs:
-        try:
-            result = scrape_session_roster(url, session_id, ref, scraped_date_str)
-            if result is not None:
-                success += 1
-            else:
+    if workers <= 1:
+        # ── Serial path (original behaviour, ROSTER_WORKERS=1) ─────────────
+        for session_id, ref in pairs:
+            try:
+                result = scrape_session_roster(url, session_id, ref, scraped_date_str)
+                if result is not None:
+                    success += 1
+                else:
+                    failed += 1
+            except Exception as e:
                 failed += 1
-        except Exception as e:
-            failed += 1
-            print(f"[roster] ERROR: scrape failed for {ref} (session_id={session_id}): {type(e).__name__}: {e}")
-        time.sleep(delay)
+                print(
+                    f"[roster] ERROR: scrape failed for {ref} "
+                    f"(session_id={session_id}): {type(e).__name__}: {e}"
+                )
+            time.sleep(delay)
+    else:
+        # ── Parallel path (ROSTER_WORKERS > 1) ─────────────────────────────
+        # Each scrape_session_roster() call opens its own DB connection, so
+        # workers never share a transaction. A short random jitter per worker
+        # staggers API requests naturally without a global sleep.
+        def _scrape_one(args: tuple[int, str]) -> Optional[dict]:
+            sid, ref = args
+            time.sleep(random.uniform(0.05, 0.25))
+            return scrape_session_roster(url, sid, ref, scraped_date_str)
 
+        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as ex:
+            futs = {ex.submit(_scrape_one, pair): pair for pair in pairs}
+            for f in concurrent.futures.as_completed(futs):
+                sid, ref = futs[f]
+                try:
+                    result = f.result()
+                    if result is not None:
+                        success += 1
+                    else:
+                        failed += 1
+                except Exception as e:
+                    failed += 1
+                    print(
+                        f"[roster] ERROR: scrape failed for {ref} "
+                        f"(session_id={sid}): {type(e).__name__}: {e}"
+                    )
+
+    elapsed = time.time() - pass_start
     print(
         f"[roster] run_roster_pass_for_day({scraped_date_str}) done — "
-        f"{success} ok, {failed} failed out of {len(pairs)} sessions"
+        f"{success} ok, {failed} failed out of {len(pairs)} sessions "
+        f"in {elapsed:.0f}s ({elapsed / 60:.1f} min)"
     )
 
 

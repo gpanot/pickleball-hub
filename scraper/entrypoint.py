@@ -36,6 +36,36 @@ from roster_scraper import run_roster_pass_for_day
 VN_TZ = timezone(timedelta(hours=7))
 SCRAPER_SECRET = os.environ.get("SCRAPER_SECRET", "")
 
+
+def _apply_schema_migrations(db_url: str) -> None:
+    """
+    Idempotent schema patches applied at container startup before every scrape.
+
+    Current migrations:
+      - player_dupr_history_player_day_uq: prevents duplicate DUPR history rows
+        when parallel roster workers process the same player in different sessions
+        on the same calendar day. The INSERT in record_dupr_history uses
+        ON CONFLICT (player_id, DATE(recorded_at)) DO NOTHING which requires
+        this index to exist first.
+    """
+    url = db_url.split("?")[0] if "?" in db_url else db_url
+    if not url:
+        return
+    try:
+        conn = psycopg2.connect(url)
+        cur = conn.cursor()
+        cur.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS player_dupr_history_player_day_uq
+            ON player_dupr_history (player_id, DATE(recorded_at));
+        """)
+        conn.commit()
+        cur.close()
+        conn.close()
+        print("  [migration] player_dupr_history_player_day_uq — ok", flush=True)
+    except Exception as e:
+        print(f"  [migration] WARNING (non-fatal): {e}", flush=True)
+
+
 # Promotion module is only imported when the required env vars are present
 # so missing API keys on the scraper-only deploys don't crash the container.
 def _try_run_promotion(force: bool = False, post_type: str | None = None):
@@ -412,6 +442,9 @@ def main():
         server = HTTPServer(("0.0.0.0", port), Handler)
         server.serve_forever()
     else:
+        db_url = os.environ.get("DATABASE_URL", "")
+        if db_url:
+            _apply_schema_migrations(db_url)
         utc_now = datetime.now(timezone.utc)
         if is_full_scrape_slot(utc_now):
             result = run_scrape()
