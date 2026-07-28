@@ -60,6 +60,13 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    // When unlinking Reclub (reclubUserId → null), also wipe persisted feed items
+    // so the feed stays empty after a restart (persisted items are the source of truth
+    // for the historical merge in GET /api/feed).
+    if (wantsReclubUpdate && reclubId === null) {
+      await prisma.feedItem.deleteMany({ where: { profileId: resolvedProfileId } });
+    }
+
     console.log(
       `[POST /api/profile] saved profileId=${resolvedProfileId}`,
       `dupr=${(preferences as Record<string, unknown>)?.dupr ?? "n/a"}`,
