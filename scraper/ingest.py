@@ -289,7 +289,7 @@ def resolve_fee(meet):
     else:
         raw = int(raw)
 
-    fee_threshold = _active_market.get("fee_threshold", 10000)
+    fee_threshold = getattr(_tl, "active_market", MARKETS["hcm"]).get("fee_threshold", 10000)
     name = (meet.get("name") or "")
     notes = meet.get("notes") or ""
     title_price = extract_price_from_title(name)
