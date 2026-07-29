@@ -652,8 +652,10 @@ def run_roster_pass_for_day(
         cur.close()
         conn.close()
 
-    workers = int(os.environ.get("ROSTER_WORKERS", "1"))
-    delay = float(os.environ.get("ROSTER_SLEEP_SECONDS", "1"))
+    # Default 5 workers; override via ROSTER_WORKERS env var if needed.
+    # ROSTER_SLEEP_SECONDS kept for future tuning but unused in parallel mode
+    # (workers use a small random jitter instead of a global sleep).
+    workers = int(os.environ.get("ROSTER_WORKERS", "5"))
 
     print(
         f"[roster] run_roster_pass_for_day({scraped_date_str}): "
@@ -661,7 +663,7 @@ def run_roster_pass_for_day(
         f"(skipped {skipped_phase1} by Phase-1 filter: "
         f"max_players<{ROSTER_MIN_MAX_PLAYERS} OR joined<{ROSTER_MIN_JOINED})"
         + (f", capped to {cap}" if cap is not None else "")
-        + f" | workers={workers} sleep={delay}s"
+        + f" | workers={workers}"
     )
 
     if cap is not None:
@@ -671,11 +673,19 @@ def run_roster_pass_for_day(
     success = 0
     failed = 0
 
-    if workers <= 1:
-        # ── Serial path (original behaviour, ROSTER_WORKERS=1) ─────────────
-        for session_id, ref in pairs:
+    # Parallel path — each scrape_session_roster() opens its own DB connection
+    # so workers never share a transaction. Random jitter staggers API requests.
+    def _scrape_one(args: tuple[int, str]) -> Optional[dict]:
+        sid, ref = args
+        time.sleep(random.uniform(0.05, 0.25))
+        return scrape_session_roster(url, sid, ref, scraped_date_str)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as ex:
+        futs = {ex.submit(_scrape_one, pair): pair for pair in pairs}
+        for f in concurrent.futures.as_completed(futs):
+            sid, ref = futs[f]
             try:
-                result = scrape_session_roster(url, session_id, ref, scraped_date_str)
+                result = f.result()
                 if result is not None:
                     success += 1
                 else:
@@ -684,35 +694,8 @@ def run_roster_pass_for_day(
                 failed += 1
                 print(
                     f"[roster] ERROR: scrape failed for {ref} "
-                    f"(session_id={session_id}): {type(e).__name__}: {e}"
+                    f"(session_id={sid}): {type(e).__name__}: {e}"
                 )
-            time.sleep(delay)
-    else:
-        # ── Parallel path (ROSTER_WORKERS > 1) ─────────────────────────────
-        # Each scrape_session_roster() call opens its own DB connection, so
-        # workers never share a transaction. A short random jitter per worker
-        # staggers API requests naturally without a global sleep.
-        def _scrape_one(args: tuple[int, str]) -> Optional[dict]:
-            sid, ref = args
-            time.sleep(random.uniform(0.05, 0.25))
-            return scrape_session_roster(url, sid, ref, scraped_date_str)
-
-        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as ex:
-            futs = {ex.submit(_scrape_one, pair): pair for pair in pairs}
-            for f in concurrent.futures.as_completed(futs):
-                sid, ref = futs[f]
-                try:
-                    result = f.result()
-                    if result is not None:
-                        success += 1
-                    else:
-                        failed += 1
-                except Exception as e:
-                    failed += 1
-                    print(
-                        f"[roster] ERROR: scrape failed for {ref} "
-                        f"(session_id={sid}): {type(e).__name__}: {e}"
-                    )
 
     elapsed = time.time() - pass_start
     print(

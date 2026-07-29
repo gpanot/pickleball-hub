@@ -19,6 +19,7 @@ import urllib.request
 import time
 import math
 import concurrent.futures
+import threading
 from datetime import datetime, timezone, timedelta
 
 try:
@@ -45,6 +46,7 @@ HEADERS = {
 #   VN = 10000 (smallest real session ~30,000 VND), KL = 1 (MYR amounts are
 #   always small integers like 6–50, so trust them as-is).
 MARKETS = {
+    # ── Vietnam ────────────────────────────────────────────────────────
     "hcm": {
         "community_id": 1,
         "tz": timezone(timedelta(hours=7)),
@@ -52,6 +54,42 @@ MARKETS = {
         "fee_threshold": 10000,
         "label": "Ho Chi Minh City",
     },
+    "hanoi": {
+        "community_id": 2,
+        "tz": timezone(timedelta(hours=7)),
+        "currency": "VND",
+        "fee_threshold": 10000,
+        "label": "Hanoi",
+    },
+    "danang": {
+        "community_id": 291,
+        "tz": timezone(timedelta(hours=7)),
+        "currency": "VND",
+        "fee_threshold": 10000,
+        "label": "Da Nang",
+    },
+    "nhatrang": {
+        "community_id": 303,
+        "tz": timezone(timedelta(hours=7)),
+        "currency": "VND",
+        "fee_threshold": 10000,
+        "label": "Nha Trang",
+    },
+    "dalat": {
+        "community_id": 321,
+        "tz": timezone(timedelta(hours=7)),
+        "currency": "VND",
+        "fee_threshold": 10000,
+        "label": "Da Lat",
+    },
+    "cantho": {
+        "community_id": 342,
+        "tz": timezone(timedelta(hours=7)),
+        "currency": "VND",
+        "fee_threshold": 10000,
+        "label": "Can Tho",
+    },
+    # ── Malaysia ───────────────────────────────────────────────────────
     "kl": {
         "community_id": 248,
         "tz": timezone(timedelta(hours=8)),
@@ -59,25 +97,52 @@ MARKETS = {
         "fee_threshold": 1,      # MYR fees are already small integers — trust them
         "label": "Kuala Lumpur",
     },
+    "penang": {
+        "community_id": 350,
+        "tz": timezone(timedelta(hours=8)),
+        "currency": "MYR",
+        "fee_threshold": 1,
+        "label": "Penang",
+    },
+    # ── Philippines ────────────────────────────────────────────────────
+    "manila": {
+        "community_id": 300,
+        "tz": timezone(timedelta(hours=8)),
+        "currency": "PHP",
+        "fee_threshold": 1,
+        "label": "Manila",
+    },
 }
 
-# Active market — set by run_market() before each pass; read by helpers below.
-_active_market: dict = MARKETS["hcm"]
+# Thread-local storage so parallel market runs don't share mutable globals.
+# Each market's thread sets its own _tl.active_market, today_str, start_ts, end_ts
+# at the start of run_market() / set_target_day(), isolating them from other threads.
+_tl = threading.local()
 
 def _market_tz() -> timezone:
-    return _active_market["tz"]
+    return getattr(_tl, "active_market", MARKETS["hcm"])["tz"]
 
 def _market_community_id() -> int:
-    return _active_market["community_id"]
+    return getattr(_tl, "active_market", MARKETS["hcm"])["community_id"]
 
 def _market_key() -> str:
+    m = getattr(_tl, "active_market", MARKETS["hcm"])
     for k, v in MARKETS.items():
-        if v is _active_market:
+        if v is m:
             return k
     return "hcm"
 
-# Backward-compat alias used by lots of helpers
-COMMUNITY_ID: int = 1   # will be overridden per pass via _active_market
+def _tl_today_str() -> str:
+    return getattr(_tl, "today_str", "")
+
+def _tl_start_ts() -> int:
+    return getattr(_tl, "start_ts", 0)
+
+def _tl_end_ts() -> int:
+    return getattr(_tl, "end_ts", 0)
+
+# Module-level fallback (single-threaded compat, overridden per-thread)
+COMMUNITY_ID: int = 1
 
 VN_TZ = timezone(timedelta(hours=7))
 NOW = datetime.now(VN_TZ)
@@ -125,22 +190,17 @@ if _explicit_dates:
 else:
     TARGET_DAYS = [NOW, NOW + timedelta(days=1)]
 
-# Legacy globals kept for the per-day loop (set before each pass)
-TODAY_STR = None
-START_OF_DAY = None
-END_OF_DAY = None
-START_TS = None
-END_TS = None
+# Per-thread date state (set before each pass via set_target_day)
+# Accessed through _tl_today_str(), _tl_start_ts(), _tl_end_ts() accessors
 
 
 def set_target_day(day):
-    """Configure the global date variables for a scrape pass."""
-    global TODAY_STR, START_OF_DAY, END_OF_DAY, START_TS, END_TS
-    TODAY_STR = day.strftime("%Y-%m-%d")
-    START_OF_DAY = day.replace(hour=0, minute=0, second=0, microsecond=0)
-    END_OF_DAY = day.replace(hour=23, minute=59, second=59, microsecond=0)
-    START_TS = int(START_OF_DAY.timestamp())
-    END_TS = int(END_OF_DAY.timestamp())
+    """Configure per-thread date variables for a scrape pass."""
+    start = day.replace(hour=0, minute=0, second=0, microsecond=0)
+    end   = day.replace(hour=23, minute=59, second=59, microsecond=0)
+    _tl.today_str = day.strftime("%Y-%m-%d")
+    _tl.start_ts  = int(start.timestamp())
+    _tl.end_ts    = int(end.timestamp())
 
 PICKLEBALL_SPORT_ID = 36
 SPORT_IDS_TO_SCAN = [1, 4, 5, 10, 11, 20, 24, 30, 33, 36, 37, 40, 42, 55, 62]
@@ -390,6 +450,7 @@ def get_all_club_ids():
             try:
                 with open(jp, "r") as f:
                     json_clubs = json.load(f)
+                active_comm = _market_community_id()
                 if isinstance(json_clubs, dict):
                     for cid_str, c in json_clubs.items():
                         cid = int(cid_str) if isinstance(cid_str, str) else c.get("id")
@@ -398,7 +459,7 @@ def get_all_club_ids():
                                 "id": cid,
                                 "name": c.get("name", ""),
                                 "slug": c.get("slug", ""),
-                                "communityId": c.get("communityId", COMMUNITY_ID),
+                                "communityId": c.get("communityId", active_comm),
                                 "sportId": c.get("sportId"),
                                 "numMembers": c.get("numMembers", 0),
                             }
@@ -411,7 +472,7 @@ def get_all_club_ids():
                                 "id": cid,
                                 "name": c.get("name", ""),
                                 "slug": c.get("slug", ""),
-                                "communityId": c.get("communityId", COMMUNITY_ID),
+                                "communityId": c.get("communityId", active_comm),
                                 "sportId": c.get("sportId"),
                                 "numMembers": c.get("numMembers", 0),
                             }
@@ -425,11 +486,17 @@ def get_all_club_ids():
     return club_map
 
 
-def fetch_club_activities(club_id):
+def fetch_club_activities(club_id, start_ts: int, end_ts: int, community_id: int):
+    """Fetch meets for one club for the current scrape window.
+
+    start_ts, end_ts, community_id are passed explicitly so this function is
+    safe to call from ThreadPoolExecutor workers (thread-local state is not
+    inherited by inner worker threads).
+    """
     data = api_get(f"/groups/{club_id}/activities", {
         "types": "MEETS",
-        "min_start_datetime": str(START_TS),
-        "max_start_datetime": str(END_TS),
+        "min_start_datetime": str(start_ts),
+        "max_start_datetime": str(end_ts),
         "limit": "100",
         "sort_dir": "1",
     })
@@ -438,7 +505,7 @@ def fetch_club_activities(club_id):
     meets = data if isinstance(data, list) else data.get("meets", data.get("activities", []))
     if not isinstance(meets, list):
         return []
-    return [m for m in meets if isinstance(m, dict) and m.get("communityId") == _market_community_id()]
+    return [m for m in meets if isinstance(m, dict) and m.get("communityId") == community_id]
 
 
 def fetch_all_events(club_map):
@@ -447,10 +514,16 @@ def fetch_all_events(club_map):
     total = len(club_ids)
     done = 0
 
-    def process_club(club_id):
-        return club_id, fetch_club_activities(club_id)
+    # Capture from thread-local now (before entering the inner pool),
+    # so worker threads can use these without needing thread-local access.
+    _start_ts = _tl_start_ts()
+    _end_ts = _tl_end_ts()
+    _community_id = _market_community_id()
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+    def process_club(club_id):
+        return club_id, fetch_club_activities(club_id, _start_ts, _end_ts, _community_id)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=25) as executor:
         futures = {executor.submit(process_club, cid): cid for cid in club_ids}
         for future in concurrent.futures.as_completed(futures):
             done += 1
@@ -715,7 +788,7 @@ def upsert_sessions_and_snapshots(cur, meets, club_id_map, venue_coord_map):
             "perks": perks,
             "desc": description,
             "url": f"https://reclub.co/m/{ref_code}",
-            "date": TODAY_STR,
+            "date": _tl_today_str(),
         })
 
         session_row = cur.fetchone()
@@ -762,9 +835,9 @@ def compute_club_daily_stats(cur):
             avg_fill_rate = EXCLUDED.avg_fill_rate,
             avg_fee = EXCLUDED.avg_fee,
             revenue_estimate = EXCLUDED.revenue_estimate
-    """, (TODAY_STR,))
+    """, (_tl_today_str(),))
 
-    print(f"    Computed club daily stats for {TODAY_STR}")
+    print(f"    Computed club daily stats for {_tl_today_str()}")
 
 
 # ─── Main ─────────────────────────────────────────────────────────────
@@ -774,7 +847,7 @@ def ingest_day(day, club_map):
     set_target_day(day)
 
     print(f"\n{'─' * 65}")
-    print(f"  Ingesting: {day.strftime('%A, %B %d, %Y')} ({_active_market['label']})")
+    print(f"  Ingesting: {day.strftime('%A, %B %d, %Y')} ({getattr(_tl, 'active_market', MARKETS['hcm'])['label']})")
     print(f"{'─' * 65}")
 
     print(f"\n  Fetching events from {len(club_map)} clubs...")
@@ -811,25 +884,26 @@ def ingest_day(day, club_map):
         compute_club_daily_stats(cur)
 
         conn.commit()
-        print(f"\n  SUCCESS: Ingested {len(pickleball_meets)} sessions for {TODAY_STR}")
+        print(f"\n  SUCCESS: Ingested {len(pickleball_meets)} sessions for {_tl_today_str()}")
 
         # Roster + DUPR: scrape rosters for today AND tomorrow so friend data
         # is available in advance (Going tab, Discover Friends filter).
-        # ROSTER_SKIP_TOMORROW=1 skips the tomorrow pass inside ingest.py so
-        # it only runs from entrypoint.py's dedicated 9pm _run_tomorrow_roster_refresh,
-        # cutting roster work for the 6am/12pm/3pm slots roughly in half.
+        # Tomorrow roster is only scraped at 9pm VN — entrypoint.py's
+        # _run_tomorrow_roster_refresh does the definitive pass then.
+        # For the 6am and 12pm slots we skip it to halve roster work.
         day_key = day.strftime("%Y-%m-%d")
         today_key = NOW.strftime("%Y-%m-%d")
         tomorrow_key = (NOW + timedelta(days=1)).strftime("%Y-%m-%d")
-        _skip_tomorrow = os.environ.get("ROSTER_SKIP_TOMORROW", "0") == "1"
+        _vn_hour = datetime.now(VN_TZ).hour
+        _skip_tomorrow = (_vn_hour != 21)
         print(
             f"\n  Roster check — day={day_key}, today={today_key}, "
             f"tomorrow={tomorrow_key}, sessions={len(pickleball_meets)} "
-            f"skip_tomorrow={_skip_tomorrow} [v3]"
+            f"vn_hour={_vn_hour} skip_tomorrow={_skip_tomorrow}"
         )
         if day_key in (today_key, tomorrow_key) and pickleball_meets:
             if day_key == tomorrow_key and _skip_tomorrow:
-                print(f"  Skipping tomorrow roster pass (ROSTER_SKIP_TOMORROW=1)")
+                print(f"  Skipping tomorrow roster pass (non-9pm run, hour={_vn_hour} VN)")
             else:
                 print(f"\n  Scraping rosters for {day_key}...")
                 try:
@@ -857,13 +931,16 @@ def ingest_day(day, club_map):
 
 
 def run_market(market_key: str) -> int:
-    """Run a complete ingest for one market (all TARGET_DAYS). Returns total sessions."""
-    global _active_market, COMMUNITY_ID
-    _active_market = MARKETS[market_key]
-    COMMUNITY_ID = _active_market["community_id"]   # keep backward-compat alias in sync
+    """Run a complete ingest for one market (all TARGET_DAYS). Returns total sessions.
+
+    Thread-safe: sets market context in thread-local storage (_tl.active_market)
+    so parallel calls for different markets don't share mutable globals.
+    """
+    mkt = MARKETS[market_key]
+    _tl.active_market = mkt   # thread-local — isolated per parallel market thread
 
     # Re-compute TARGET_DAYS in the market's timezone so scraped_date is correct
-    mkt_tz = _market_tz()
+    mkt_tz = mkt["tz"]
     now_mkt = datetime.now(mkt_tz)
     if _explicit_dates:
         days = [datetime.strptime(d, "%Y-%m-%d").replace(tzinfo=mkt_tz) for d in _explicit_dates]
@@ -872,7 +949,7 @@ def run_market(market_key: str) -> int:
 
     day_labels = ", ".join(d.strftime("%Y-%m-%d") for d in days)
     print("=" * 65)
-    print(f"  MARKET: {_active_market['label']} ({market_key})")
+    print(f"  MARKET: {mkt['label']} ({market_key})")
     print(f"  Days: {day_labels}")
     print("=" * 65)
 
@@ -912,7 +989,7 @@ def run_market(market_key: str) -> int:
         total += ingest_day(day, club_map)
 
     print(f"\n{'─' * 65}")
-    print(f"  {_active_market['label']} done — {total} total sessions")
+    print(f"  {mkt['label']} done — {total} total sessions")
     print(f"{'─' * 65}")
     return total
 
@@ -928,9 +1005,14 @@ def main():
     print(f"  Markets: {', '.join(ACTIVE_MARKETS)}")
     print("=" * 65)
 
-    grand_total = 0
-    for mk in ACTIVE_MARKETS:
-        grand_total += run_market(mk)
+    if len(ACTIVE_MARKETS) == 1:
+        grand_total = run_market(ACTIVE_MARKETS[0])
+    else:
+        # Run markets in parallel — each gets its own thread with isolated
+        # thread-local state (_tl.active_market, today_str, start_ts, end_ts).
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(ACTIVE_MARKETS)) as ex:
+            results = list(ex.map(run_market, ACTIVE_MARKETS))
+        grand_total = sum(results)
 
     print(f"\n{'=' * 65}")
     print(f"  DONE — {grand_total} total sessions across {len(ACTIVE_MARKETS)} market(s)")
