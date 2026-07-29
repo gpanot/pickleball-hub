@@ -276,13 +276,13 @@ def run_scrape() -> dict:
         print(f"\n=== Pickleball Hub Scrape — {now.strftime('%A %Y-%m-%d %H:%M')} VN ===", flush=True)
 
         scan_rc = None
-        if dow in (1, 3):
-            print("\n=== STEP 1/3: Refreshing club info (Mon/Wed) ===", flush=True)
+        if dow == 1:
+            print("\n=== STEP 1/3: Refreshing club info (Monday weekly) ===", flush=True)
             scan_rc = run_cmd([sys.executable, "scan_clubs.py", "--workers", "15"])
             if scan_rc != 0:
                 print(f"  scan_clubs exited {scan_rc}, continuing with ingest...", flush=True)
         else:
-            print("\n=== STEP 1/3: Skipping club refresh (only runs Mon & Wed) ===", flush=True)
+            print("\n=== STEP 1/3: Skipping club refresh (runs Mondays only) ===", flush=True)
 
         print("\n=== STEP 2/3: Ingest today + tomorrow events ===", flush=True)
         ingest_rc = run_cmd([sys.executable, "ingest.py"])
