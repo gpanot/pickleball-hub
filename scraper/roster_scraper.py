@@ -365,7 +365,21 @@ def scrape_session_roster(
     user_ids = [p["userId"] for p in real_participants]
 
     url = _strip_db_url(database_url)
-    conn = psycopg2.connect(url)
+
+    # Retry once on connection-level errors (InterfaceError / OperationalError)
+    # which happen when the SSL connection times out mid-run. Opening a fresh
+    # connection and replaying from scratch is safe — all writes are idempotent.
+    for _attempt in range(2):
+        try:
+            conn = psycopg2.connect(url)
+            break
+        except (psycopg2.InterfaceError, psycopg2.OperationalError) as e:
+            if _attempt == 0:
+                print(f"[roster] DB connect error for {reference_code}, retrying: {e}")
+                time.sleep(1)
+            else:
+                print(f"[roster] DB connect failed for {reference_code}: {e}")
+                return None
     cur = conn.cursor()
 
     # Phase 2: use TTL cache — players updated within PROFILE_CACHE_TTL_HOURS
@@ -582,13 +596,38 @@ def scrape_session_roster(
             "with_dupr": players_with_dupr,
             "returning_player_pct": returning_pct,
         }
+    except psycopg2.extensions.TransactionRollbackError as e:
+        # Deadlock: safe to retry once after a brief random back-off.
+        conn.rollback()
+        print(f"[roster] DB error for {reference_code}: {e} — retrying in 1–3s")
+        cur.close()
+        conn.close()
+        time.sleep(random.uniform(1, 3))
+        return scrape_session_roster(database_url, session_id, reference_code, scraped_date_str)
+    except (psycopg2.InterfaceError, psycopg2.OperationalError) as e:
+        # Connection dropped mid-operation — retry once with a fresh connection.
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        print(f"[roster] DB connection error for {reference_code}: {e} — retrying")
+        try:
+            cur.close()
+            conn.close()
+        except Exception:
+            pass
+        time.sleep(random.uniform(1, 2))
+        return scrape_session_roster(database_url, session_id, reference_code, scraped_date_str)
     except Exception as e:
         conn.rollback()
         print(f"[roster] DB error for {reference_code}: {e}")
         return None
     finally:
-        cur.close()
-        conn.close()
+        try:
+            cur.close()
+            conn.close()
+        except Exception:
+            pass
 
 
 def run_roster_pass_for_day(
