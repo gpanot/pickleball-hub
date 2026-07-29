@@ -4,11 +4,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const LINKS = [
-  { href: "/admin/content",   label: "Content"   },
-  { href: "/admin/squadd",    label: "Squadd"    },
   { href: "/admin/analytics", label: "Analytics" },
-  { href: "/admin/costs",     label: "Costs"     },
-  { href: "/admin/settings",  label: "Settings"  },
+  { href: "/admin/reports",   label: "Reports"   },
 ];
 
 const EXPERIMENTAL_LINKS = [
