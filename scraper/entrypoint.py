@@ -221,12 +221,12 @@ def run_push_notifications() -> None:
     trigger_push_notifications_cron()
 
 
-# UTC hours when a full scrape runs — matches 6am, 12pm, 3pm, 9pm VN
+# UTC hours when a full scrape runs — matches 6am, 12pm, 9pm VN (3 slots)
 # Railway cron fires at minute :00 but cold container startup takes 5–30 s,
 # so the minute check uses a ±5-minute window instead of strict == 0.
 # The :30 PNS slots that fall in these same hours are excluded because they
 # arrive with minute >= 28, which is outside the [0, 5) window.
-_FULL_SCRAPE_UTC_HOURS = frozenset({23, 5, 8, 14})
+_FULL_SCRAPE_UTC_HOURS = frozenset({23, 5, 14})
 _SCRAPE_MINUTE_WINDOW = 5  # accept minutes 0–4 (covers cold-start drift)
 
 
