@@ -74,7 +74,10 @@ export type AnalyticsData = {
   globalClubs: number;
   globalPlayers: number;
   globalPlayersWithDupr: number;
+  /** Markets that returned data from the DB (subset of allMarkets) */
   markets: string[];
+  /** All configured markets, including those not yet scraped */
+  allMarkets: typeof MARKET_META;
   overview: MarketOverview[];
   playerStats: MarketPlayerStats[];
   quality: MarketQuality[];
@@ -316,11 +319,12 @@ export default async function AdminAnalyticsPage() {
   const markets = overview.map((o) => o.market);
 
   const data: AnalyticsData = {
-    fetchedAt:           new Date().toISOString(),
-    globalClubs:         Number(g.total_clubs),
-    globalPlayers:       Number(g.total_players),
+    fetchedAt:             new Date().toISOString(),
+    globalClubs:           Number(g.total_clubs),
+    globalPlayers:         Number(g.total_players),
     globalPlayersWithDupr: Number(g.with_dupr),
     markets,
+    allMarkets:            MARKET_META,
     overview,
     playerStats,
     quality,

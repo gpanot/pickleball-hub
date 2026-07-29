@@ -36,6 +36,21 @@ function fmtFee(fee: number | null, currency: string) {
   return `${fee.toFixed(0)} ${currency}`;
 }
 
+// ─── InfoTip tooltip ──────────────────────────────────────────────────────────
+
+function InfoTip({ text }: { text: string }) {
+  return (
+    <span className="relative group inline-flex items-center ml-1.5 cursor-help">
+      <span className="text-[10px] text-gray-600 hover:text-gray-400 border border-gray-700 hover:border-gray-500 rounded-full w-[14px] h-[14px] inline-flex items-center justify-center transition-colors leading-none select-none">
+        ?
+      </span>
+      <span className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-52 px-2.5 py-2 bg-gray-800 border border-gray-700 rounded-lg text-[11px] text-gray-300 text-center opacity-0 group-hover:opacity-100 transition-opacity z-50 shadow-xl whitespace-normal">
+        {text}
+      </span>
+    </span>
+  );
+}
+
 const COUNTRY_COLORS: Record<string, string> = {
   Vietnam:     "#10b981", // emerald
   Malaysia:    "#3b82f6", // blue
@@ -61,15 +76,20 @@ function StatCard({
   value,
   sub,
   accent = false,
+  tooltip,
 }: {
   label: string;
   value: React.ReactNode;
   sub?: string;
   accent?: boolean;
+  tooltip?: string;
 }) {
   return (
     <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
-      <p className="text-[11px] text-gray-500 uppercase tracking-wider mb-1">{label}</p>
+      <div className="flex items-center mb-1">
+        <p className="text-[11px] text-gray-500 uppercase tracking-wider">{label}</p>
+        {tooltip && <InfoTip text={tooltip} />}
+      </div>
       <p className={`text-2xl font-semibold ${accent ? "text-emerald-400" : "text-white"}`}>
         {value}
       </p>
@@ -108,23 +128,27 @@ function GlobalHeader({
       <StatCard
         label="Total clubs"
         value={n(data.globalClubs)}
-        sub={`across ${data.markets.length} cities`}
+        sub={`across ${Object.keys(data.allMarkets).length} configured cities`}
+        tooltip="Total number of clubs registered in the Reclub database across all scraped cities."
       />
       <StatCard
         label="Known players"
         value={n(data.globalPlayers)}
         sub={`${n(data.globalPlayersWithDupr)} have DUPR (${pct(duprPct)})`}
+        tooltip="Total unique players ever discovered in session rosters. DUPR = Doubles rating from the DUPR ranking system."
       />
       <StatCard
         label="Sessions today"
         value={n(totalToday)}
         accent
         sub="across all markets"
+        tooltip="Number of sessions scraped for today's date, summed across all active markets."
       />
       <StatCard
         label="Active players"
         value={n(totalActive30d)}
         sub="in rosters, last 30 days"
+        tooltip="Distinct players who appeared in at least one session roster in the last 30 days."
       />
     </div>
   );
@@ -133,22 +157,20 @@ function GlobalHeader({
 // ─── Market tabs ──────────────────────────────────────────────────────────────
 
 function MarketTabs({
-  markets,
   active,
   meta,
   onChange,
   overview,
 }: {
-  markets: string[];
   active: string;
   meta: typeof MARKET_META;
   onChange: (m: string) => void;
   overview: AnalyticsData["overview"];
 }) {
-  // Group by country
+  // Group all configured markets by country (preserving declaration order)
   const countries: Record<string, string[]> = {};
-  for (const mk of markets) {
-    const country = meta[mk]?.country ?? "Other";
+  for (const [mk, info] of Object.entries(meta)) {
+    const country = info.country ?? "Other";
     if (!countries[country]) countries[country] = [];
     countries[country].push(mk);
   }
@@ -156,12 +178,13 @@ function MarketTabs({
   return (
     <div className="flex flex-wrap gap-1 mb-6 border-b border-gray-800 pb-3">
       {Object.entries(countries).map(([country, mks]) => (
-        <div key={country} className="flex items-center gap-1">
+        <div key={country} className="flex items-center gap-1 flex-wrap">
           <span className="text-[10px] text-gray-600 font-semibold uppercase tracking-widest mr-1">
             {meta[mks[0]]?.flag}
           </span>
           {mks.map((mk) => {
             const ov = overview.find((o) => o.market === mk);
+            const hasData = ov != null;
             const isActive = mk === active;
             return (
               <button
@@ -170,21 +193,25 @@ function MarketTabs({
                 className={`px-3 py-1.5 text-sm rounded-lg transition-all ${
                   isActive
                     ? "bg-emerald-900/50 text-emerald-300 border border-emerald-700 font-medium"
-                    : "text-gray-400 hover:text-gray-200 hover:bg-gray-800"
+                    : hasData
+                    ? "text-gray-400 hover:text-gray-200 hover:bg-gray-800"
+                    : "text-gray-600 hover:text-gray-400 hover:bg-gray-800/50"
                 }`}
               >
                 {meta[mk]?.label ?? mk}
-                {ov && ov.sessionsToday > 0 && (
+                {ov && ov.sessionsToday > 0 ? (
                   <span className={`ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full ${
                     isActive ? "bg-emerald-800 text-emerald-200" : "bg-gray-700 text-gray-400"
                   }`}>
                     {ov.sessionsToday}
                   </span>
-                )}
+                ) : !hasData ? (
+                  <span className="ml-1.5 text-[10px] text-gray-700">soon</span>
+                ) : null}
               </button>
             );
           })}
-          <span className="text-gray-700 mx-1">·</span>
+          <span className="text-gray-700 mx-2">·</span>
         </div>
       ))}
     </div>
@@ -243,22 +270,26 @@ function MarketView({
           label="Clubs"
           value={n(ov.clubs)}
           sub="known venues"
+          tooltip="Total clubs in this city that have at least one scraped session."
         />
         <StatCard
           label="Sessions today"
           value={n(ov.sessionsToday)}
           accent={ov.sessionsToday > 0}
           sub={`${n(ov.sessions7d)} this week`}
+          tooltip="Sessions scraped for today across this city. The badge shows this week's total."
         />
         <StatCard
           label="Active players"
           value={ps ? n(ps.totalPlayers) : "—"}
           sub="seen in rosters, 30d"
+          tooltip="Distinct players who joined at least one session in the last 30 days. This is the pool used for 'My Feed' and friend suggestions."
         />
         <StatCard
           label="DUPR coverage"
           value={ps ? pct(duprPct) : "—"}
           sub={ps ? `${n(ps.playersWithDupr)} rated players` : undefined}
+          tooltip="Share of active players (30d) who have a DUPR doubles rating. Higher coverage = better skill-based matchmaking."
         />
       </div>
 
@@ -268,16 +299,19 @@ function MarketView({
           label="Avg fill rate"
           value={q?.avgFillPct != null ? pct(q.avgFillPct) : "—"}
           sub="of capacity, last 7d"
+          tooltip="Average % of max capacity filled across all sessions with ≥16 spots, last 7 days. Low values may indicate off-peak scrape times or large venues."
         />
         <StatCard
           label="Avg session fee"
-          value={fmtFee(q?.avgFee ?? null, q?.currency ?? mkt.currency)}
+          value={fmtFee(q?.avgFee ?? null, mkt.currency)}
           sub="last 7 days"
+          tooltip="Average fee per player per session, last 7 days (sessions with ≥16 spots). Used to understand pricing per city."
         />
         <StatCard
           label="Avg DUPR (doubles)"
           value={ps?.avgDupr != null ? ps.avgDupr.toFixed(2) : "—"}
           sub={`${n(ov.activePlayers30d)} active, last 30d`}
+          tooltip="Mean DUPR doubles rating of active players with a rating. DUPR scale: ~2.0 (beginner) to 6.0+ (professional)."
         />
       </div>
 
@@ -463,38 +497,47 @@ function ComparisonTable({
             </tr>
           </thead>
           <tbody>
-            {data.overview.map((ov) => {
-              const ps = data.playerStats.find((p) => p.market === ov.market);
-              const q  = data.quality.find((q) => q.market === ov.market);
-              const mkt = meta[ov.market];
+            {Object.keys(meta).map((marketKey) => {
+              const ov  = data.overview.find((o) => o.market === marketKey);
+              const ps  = data.playerStats.find((p) => p.market === marketKey);
+              const q   = data.quality.find((q) => q.market === marketKey);
+              const mkt = meta[marketKey];
+              const hasData    = ov != null;
               const duprPctVal = ps && ps.totalPlayers > 0
                 ? (ps.playersWithDupr / ps.totalPlayers) * 100
                 : null;
-              const countryColor = COUNTRY_COLORS[mkt?.country ?? ""] ?? "#6b7280";
 
               return (
                 <tr
-                  key={ov.market}
-                  className="border-b border-gray-800/50 last:border-0 hover:bg-gray-800/30 cursor-pointer transition"
-                  onClick={() => onSelect(ov.market)}
+                  key={marketKey}
+                  className={`border-b border-gray-800/50 last:border-0 transition cursor-pointer ${
+                    hasData ? "hover:bg-gray-800/30" : "opacity-40"
+                  }`}
+                  onClick={() => onSelect(marketKey)}
                 >
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
                       <span>{mkt?.flag}</span>
                       <div>
-                        <p className="font-medium text-gray-200">{mkt?.label ?? ov.market}</p>
+                        <p className={`font-medium ${hasData ? "text-gray-200" : "text-gray-500"}`}>
+                          {mkt?.label ?? marketKey}
+                        </p>
                         <p className="text-[11px] text-gray-600">{mkt?.country}</p>
                       </div>
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-gray-300 tabular-nums">{n(ov.clubs)}</td>
+                  <td className="px-4 py-3 text-gray-300 tabular-nums">{ov ? n(ov.clubs) : "—"}</td>
                   <td className="px-4 py-3">
-                    <span className={`font-medium tabular-nums ${ov.sessionsToday > 0 ? "text-emerald-400" : "text-gray-600"}`}>
-                      {n(ov.sessionsToday)}
-                    </span>
+                    {ov ? (
+                      <span className={`font-medium tabular-nums ${ov.sessionsToday > 0 ? "text-emerald-400" : "text-gray-600"}`}>
+                        {n(ov.sessionsToday)}
+                      </span>
+                    ) : (
+                      <span className="text-gray-700 text-xs">not yet scraped</span>
+                    )}
                   </td>
-                  <td className="px-4 py-3 text-gray-300 tabular-nums">{n(ov.sessions7d)}</td>
-                  <td className="px-4 py-3 text-gray-300 tabular-nums">{n(ov.sessions30d)}</td>
+                  <td className="px-4 py-3 text-gray-300 tabular-nums">{ov ? n(ov.sessions7d) : "—"}</td>
+                  <td className="px-4 py-3 text-gray-300 tabular-nums">{ov ? n(ov.sessions30d) : "—"}</td>
                   <td className="px-4 py-3 text-gray-300 tabular-nums">{ps ? n(ps.totalPlayers) : "—"}</td>
                   <td className="px-4 py-3">
                     {duprPctVal != null ? (
@@ -547,6 +590,8 @@ export function AnalyticsDashboard({
     hour: "2-digit",
     minute: "2-digit",
   });
+  const totalConfigured = Object.keys(meta).length;
+  const totalWithData   = data.markets.length;
 
   return (
     <div className="max-w-6xl mx-auto px-6 py-8">
@@ -559,16 +604,15 @@ export function AnalyticsDashboard({
           </p>
         </div>
         <span className="text-xs text-gray-600 bg-gray-900 border border-gray-800 px-2.5 py-1 rounded-lg">
-          {data.markets.length} markets
+          {totalWithData} / {totalConfigured} markets active
         </span>
       </div>
 
       {/* Global KPIs */}
       <GlobalHeader data={data} />
 
-      {/* Market tabs */}
+      {/* Market tabs — shows ALL configured markets */}
       <MarketTabs
-        markets={data.markets}
         active={activeMarket}
         meta={meta}
         onChange={setActiveMarket}
