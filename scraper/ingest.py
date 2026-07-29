@@ -871,7 +871,17 @@ def ingest_day(day, club_map):
         print("  No pickleball events found for this day — skipping.")
         return 0
 
-    conn = psycopg2.connect(DATABASE_URL)
+    for _attempt in range(3):
+        try:
+            conn = psycopg2.connect(DATABASE_URL)
+            break
+        except (psycopg2.InterfaceError, psycopg2.OperationalError) as e:
+            if _attempt < 2:
+                print(f"  [ingest] DB connect error (attempt {_attempt+1}), retrying: {e}", flush=True)
+                time.sleep(2 ** _attempt)
+            else:
+                print(f"  [ingest] DB connect failed after 3 attempts: {e}", flush=True)
+                raise
     cur = conn.cursor()
 
     try:
@@ -922,12 +932,18 @@ def ingest_day(day, club_map):
         return len(pickleball_meets)
 
     except Exception as e:
-        conn.rollback()
+        try:
+            conn.rollback()
+        except Exception:
+            pass
         print(f"\n  ERROR: {e}")
         raise
     finally:
-        cur.close()
-        conn.close()
+        try:
+            cur.close()
+            conn.close()
+        except Exception:
+            pass
 
 
 def run_market(market_key: str) -> int:
