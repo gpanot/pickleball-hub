@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react'
-import { View, Pressable, Platform, AppState, StyleSheet, Linking, Text as RNText } from 'react-native'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
+import { View, Pressable, Platform, AppState, StyleSheet, Linking, Text as RNText, Animated } from 'react-native'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 import Constants from 'expo-constants'
@@ -8,6 +8,8 @@ import { ExploreSessionsScreen } from './src/screens/ExploreSessionsScreen'
 import { CircleScreen, type CircleScreenHandle } from './src/screens/CircleScreen'
 import SquadModule from './src/modules/squad/SquadModule'
 import { ClubSessionsModule } from './src/modules/club-sessions/ClubSessionsModule'
+import { LogbookScreen } from './src/modules/logbook/screens/LogbookScreen'
+import { useLogbookStore } from './src/modules/logbook/logbookStore'
 import { ReclubLinkScreen } from './src/screens/ReclubLinkScreen'
 import { GuestReclubScreen } from './src/screens/GuestReclubScreen'
 import { GuestFollowPlayersScreen } from './src/screens/GuestFollowPlayersScreen'
@@ -16,7 +18,7 @@ import { CsOnboardingOrchestrator } from './src/cs-onboarding/CsOnboardingOrches
 import { csOnboardingStorage } from './src/cs-onboarding/csOnboardingStorage'
 import type { CsOrchestratorMode } from './src/cs-onboarding/types'
 import { PeopleYouMayKnowScreen } from './src/screens/PeopleYouMayKnowScreen'
-import { ProfileSheet } from './src/components/ProfileSheet'
+import { ProfileScreen } from './src/modules/club-sessions/screens/ProfileScreen'
 import { GearSetupScreen } from './src/components/gear/GearSetupScreen'
 import { useGearProfile } from './src/hooks/useGearProfile'
 import { playerGenderFromStored } from './src/components/gear/gearConstants'
@@ -34,7 +36,8 @@ import { PushDebugScreen } from './src/screens/PushDebugScreen'
 import { SplashScreen } from './src/screens/SplashScreen'
 import { debugLog } from './src/lib/debug'
 import { useFonts } from 'expo-font'
-import { DMSans_400Regular, DMSans_700Bold } from '@expo-google-fonts/dm-sans'
+import { DMSans_400Regular, DMSans_700Bold, DMSans_900Black } from '@expo-google-fonts/dm-sans'
+import { Lobster_400Regular } from '@expo-google-fonts/lobster'
 import { ThemedAppChrome, useThemedOverlayStyles } from './src/components/ThemedAppChrome'
 
 console.log('[BOOT] ======= App.tsx module loading =======')
@@ -277,24 +280,33 @@ try {
 }
 import { PostHogProvider, PostHogMaskView } from 'posthog-react-native'
 import { posthog as posthogClient } from './src/lib/posthog'
+import { initI18n } from './src/i18n'
 console.log('[BOOT] All top-level imports done')
+
+// Initialise i18n as early as possible — fire-and-forget at module level.
+// The app renders a splash while this resolves (typically < 50ms from AsyncStorage).
+initI18n().catch((e) => console.warn('[i18n] init error:', e))
 
 type FlowScreen = 'main' | 'reclub-link' | 'cs-orchestrator' | 'people' | 'profile' | 'gear' | 'explore' | 'pushDebug' | 'guest-reclub' | 'guest-follow'
 
+
+const BOOT_BG = '#0a0a0a'
 
 export default function App() {
   console.log('[BOOT] App() component rendering')
   const overlayStyles = useThemedOverlayStyles()
   const [showSplash, setShowSplash] = useState(true)
-  useEffect(() => {
-    const t = setTimeout(() => setShowSplash(false), 2300)
-    return () => clearTimeout(t)
+  const dismissSplash = useCallback(() => {
+    console.log('[BOOT] SplashScreen onFinish called')
+    setShowSplash(false)
   }, [])
   const [activeTab, setActiveTab] = useState<TabId>('club-sessions')
   const [flowScreen, setFlowScreen] = useState<FlowScreen>('main')
   // Club Sessions screens can signal that the tab bar should be hidden
   // (create/edit forms, sheets, terminal confirmations per spec §15)
   const [csTabBarVisible, setCsTabBarVisible] = useState(true)
+  const [logbookModalOpen, setLogbookModalOpen] = useState(false)
+  const [circleActivityOpen, setCircleActivityOpen] = useState(false)
   const [gearReturnTo, setGearReturnTo] = useState<FlowScreen>('main')
   const [gearSheetOpen, setGearSheetOpen] = useState(false)
   const [squadDeeplinkCode, setSquadDeeplinkCode] = useState<string | null>(null)
@@ -303,30 +315,37 @@ export default function App() {
   const circleScreenRef = useRef<CircleScreenHandle>(null)
   const [squadDeeplinkInviteId, setSquadDeeplinkInviteId] = useState<string | null>(null)
   const [squadDeeplinkSquadId, setSquadDeeplinkSquadId] = useState<string | null>(null)
+  /** PlayerProfile UUID from /u/{profileId} deep link — resolved after auth is ready. */
+  const [pendingDeeplinkProfileId, setPendingDeeplinkProfileId] = useState<string | null>(null)
 
-  console.log('[BOOT] Loading fonts...')
+  // Scroll-driven nav bar hide/show (use a generous fixed height — avoids calling
+  // useSafeAreaInsets before SafeAreaProvider is mounted)
+  const NAV_SLIDE_DISTANCE = 100
+  const navBarAnim = useRef(new Animated.Value(0)).current
+  const navBarVisible = useRef(true)
+  const handleNavScroll = useCallback((scrollingDown: boolean) => {
+    if (scrollingDown && navBarVisible.current) {
+      navBarVisible.current = false
+      Animated.spring(navBarAnim, { toValue: NAV_SLIDE_DISTANCE, useNativeDriver: true, speed: 20, bounciness: 0 }).start()
+    } else if (!scrollingDown && !navBarVisible.current) {
+      navBarVisible.current = true
+      Animated.spring(navBarAnim, { toValue: 0, useNativeDriver: true, speed: 20, bounciness: 4 }).start()
+    }
+  }, [navBarAnim])
+
+  // Fonts load in parallel — do not block the first paint on them (that caused
+  // a solid black frame between the native splash and the JS splash).
   const [fontsLoaded, fontError] = useFonts({
     Bangers_400Regular: require('./assets/fonts/Bangers_400Regular.ttf'),
+    Lobster_400Regular,
     DMSans_400Regular,
     DMSans_700Bold,
+    DMSans_900Black,
   })
-  console.log('[BOOT] fontsLoaded:', fontsLoaded, 'fontError:', fontError)
-
-  const [fontTimeout, setFontTimeout] = useState(false)
   useEffect(() => {
-    console.log('[BOOT] Font timeout timer started (5s)')
-    const timer = setTimeout(() => {
-      console.log('[BOOT] Font timeout reached — proceeding without fonts')
-      setFontTimeout(true)
-    }, 5000)
-    return () => clearTimeout(timer)
-  }, [])
-
-  useEffect(() => {
-    if (fontError) {
-      console.warn('[BOOT] Font loading error:', fontError)
-    }
-  }, [fontError])
+    if (fontError) console.warn('[BOOT] Font loading error:', fontError)
+    else if (fontsLoaded) console.log('[BOOT] fonts ready')
+  }, [fontsLoaded, fontError])
 
   const jwt = useAuthStore((s) => s.jwt)
   const authStore = useAuthStore()
@@ -353,10 +372,27 @@ export default function App() {
     if (ok) setGearSheetOpen(false)
   }
 
-  // Deep link + push routing for squads and gangs
+  // Deep link + push routing for squads, gangs, and Circle profiles
   useEffect(() => {
     function parseSquadDeeplink(url: string | null) {
       if (!url) return
+
+      // /u/{profileId} — Circle profile deep link
+      const profileMatch = url.match(/\/u\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i)
+      if (profileMatch) {
+        const targetProfileId = profileMatch[1]
+        const { jwt } = useAuthStore.getState()
+        setActiveTab('circle')
+        if (jwt) {
+          // Auth ready — open profile sheet directly
+          setTimeout(() => circleScreenRef.current?.openProfileByProfileId(targetProfileId), 200)
+        } else {
+          // Store for after sign-in
+          setPendingDeeplinkProfileId(targetProfileId)
+        }
+        return
+      }
+
       // Match /join/CODE with optional ?type=gang|clubhouse
       const match = url.match(/\/join\/([A-Za-z0-9]+)/)
       if (match) {
@@ -373,6 +409,12 @@ export default function App() {
           setSquadDeeplinkCode(code)
         }
         setActiveTab('squadd')
+        return
+      }
+
+      // Bare /join — generic download landing (guest QR); open circle tab
+      if (/\/join\/?$/.test(url.split('?')[0])) {
+        setActiveTab('circle')
       }
     }
 
@@ -486,9 +528,29 @@ export default function App() {
     consumeSignedInFromClubSessions()
     void useAuthStore.getState().hydrateBootStatus().then(() => {
       debugLog('App', 'boot-status: hydrated → main')
-      setFlowScreen('main')
+      // Hydrate logbook sport preference from the boot-status payload
+      void useLogbookStore.getState().hydrate(
+        useAuthStore.getState().logbookSportId ?? 'pickleball'
+      )
+      // Only navigate to main if we are not already in a deliberate flow
+      // (e.g. cs-orchestrator set by handleSignedIn — must not be overridden)
+      setFlowScreen((current) => {
+        if (current === 'cs-orchestrator' || current === 'guest-reclub' || current === 'guest-follow') {
+          return current
+        }
+        return 'main'
+      })
     })
   }, [jwt, activeTab]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Resolve a pending /u/{profileId} deep link once the user is authenticated.
+  useEffect(() => {
+    if (!jwt || !pendingDeeplinkProfileId) return
+    const targetProfileId = pendingDeeplinkProfileId
+    setPendingDeeplinkProfileId(null)
+    setActiveTab('circle')
+    setTimeout(() => circleScreenRef.current?.openProfileByProfileId(targetProfileId), 300)
+  }, [jwt, pendingDeeplinkProfileId])
 
   // Detect sign-out / account deletion: when jwt transitions from a value to null,
   // reset all per-session refs and routing state so the next sign-in starts fresh.
@@ -504,7 +566,7 @@ export default function App() {
       // Clear Circle screen local state and guest Reclub state so the
       // screen looks brand-new when the next user signs in.
       circleScreenRef.current?.reset()
-      useUiStore.getState().clearGuestFollows()
+      useUiStore.getState().clearGuestState()
     }
     prevJwtRef.current = jwt
   }, [jwt])
@@ -607,10 +669,11 @@ export default function App() {
   const handleSignedIn = (_needsOnboarding: boolean) => {
     bootStatusFetched.current = false
     const isGuestFlow = flowScreen === 'guest-follow' || flowScreen === 'guest-reclub'
-    if (isGuestFlow) {
+    const hasLinkedReclub = !!useUiStore.getState().guestReclubUserId
+    if (isGuestFlow || hasLinkedReclub) {
       // Guest flow: user browsed as guest (Reclub+follows already done).
+      // Skip the Reclub step — go straight to nickname → avatar → dupr only.
       setSignedInFromClubSessions(true)
-      // Run the CS orchestrator in post-guest mode (nickname/avatar/dupr only).
       setCsOrchestratorMode('post-guest')
       setFlowScreen('cs-orchestrator')
     } else {
@@ -660,10 +723,12 @@ export default function App() {
     void csOnboardingStorage.clearStep()
     const { guestPendingFollows, guestReclubUserId } = useUiStore.getState()
 
-    if (guestPendingFollows.length > 0) {
+    if (guestPendingFollows.length > 0 || guestReclubUserId) {
       setFlowScreen('main')
       setActiveTab('circle')
-      setTimeout(() => circleScreenRef.current?.openPlayersTab(), 100)
+      if (guestPendingFollows.length > 0) {
+        setTimeout(() => circleScreenRef.current?.openPlayersTab(), 100)
+      }
 
       void (async () => {
         const { authedFetch, profileId } = useAuthStore.getState()
@@ -672,13 +737,20 @@ export default function App() {
             method: 'POST',
             body: JSON.stringify({ profileId, reclubUserId: guestReclubUserId }),
           }).catch(() => {})
+          // Hydrate the auth store so reclubUserId is available to CircleScreen
+          await useAuthStore.getState().hydrateBootStatus().catch(() => {})
         }
-        await Promise.allSettled(
-          guestPendingFollows.map((userId) =>
-            authedFetch('/api/follows', { method: 'POST', body: JSON.stringify({ followeeId: userId }) })
+        if (guestPendingFollows.length > 0) {
+          await Promise.allSettled(
+            guestPendingFollows.map((userId) =>
+              authedFetch('/api/follows', { method: 'POST', body: JSON.stringify({ followeeId: userId }) })
+            )
           )
-        )
-        useUiStore.getState().clearGuestFollows()
+        }
+        useUiStore.getState().clearGuestState()
+        // Trigger a fresh reload of feed + friends + suggestions now that
+        // the auth store has the real reclubUserId
+        useUiStore.getState().triggerLinkReclub()
       })()
       return
     }
@@ -693,23 +765,14 @@ export default function App() {
     setActiveTab('circle')
   }
 
-  if (!fontsLoaded && !fontError && !fontTimeout) {
-    console.log('[BOOT] GATE: waiting for fonts')
-    return <View style={{ flex: 1, backgroundColor: '#000' }} />
-  }
+  console.log('[BOOT] GATE: rendering app, showSplash:', showSplash, 'flowScreen:', flowScreen)
 
-  if (showSplash) {
-    console.log('[BOOT] GATE: showing SplashScreen')
-    return <SplashScreen onFinish={() => {
-      console.log('[BOOT] SplashScreen onFinish called')
-      setShowSplash(false)
-    }} />
-  }
-  console.log('[BOOT] GATE: past splash, flowScreen:', flowScreen)
+  // Splash stays as an opaque overlay while the real tree mounts underneath.
+  const splashOverlay = showSplash ? <SplashScreen onFinish={dismissSplash} /> : null
 
   if (flowScreen === 'guest-reclub') {
     return (
-      <GestureHandlerRootView style={{ flex: 1 }}>
+      <GestureHandlerRootView style={{ flex: 1, backgroundColor: BOOT_BG }}>
         <SafeAreaProvider>
           <ThemedAppChrome>
             <SignUpModalProvider onSignedIn={handleSignedIn}>
@@ -720,13 +783,14 @@ export default function App() {
             </SignUpModalProvider>
           </ThemedAppChrome>
         </SafeAreaProvider>
+        {splashOverlay}
       </GestureHandlerRootView>
     )
   }
 
   if (flowScreen === 'guest-follow') {
     return (
-      <GestureHandlerRootView style={{ flex: 1 }}>
+      <GestureHandlerRootView style={{ flex: 1, backgroundColor: BOOT_BG }}>
         <SafeAreaProvider>
           <ThemedAppChrome>
             <SignUpModalProvider onSignedIn={handleSignedIn}>
@@ -738,21 +802,27 @@ export default function App() {
             </SignUpModalProvider>
           </ThemedAppChrome>
         </SafeAreaProvider>
+        {splashOverlay}
       </GestureHandlerRootView>
     )
   }
 
   if (flowScreen === 'cs-orchestrator') {
     return (
-      <GestureHandlerRootView style={{ flex: 1 }}>
+      <GestureHandlerRootView style={{ flex: 1, backgroundColor: BOOT_BG }}>
         <SafeAreaProvider>
           <ThemedAppChrome>
             <CsOnboardingOrchestrator
               mode={csOrchestratorMode}
               onComplete={handleCsOrchestratorComplete}
+              onDismiss={() => {
+                setFlowScreen('main')
+                setActiveTab('circle')
+              }}
             />
           </ThemedAppChrome>
         </SafeAreaProvider>
+        {splashOverlay}
       </GestureHandlerRootView>
     )
   }
@@ -760,24 +830,26 @@ export default function App() {
 
   if (flowScreen === 'people') {
     return (
-      <GestureHandlerRootView style={{ flex: 1 }}>
+      <GestureHandlerRootView style={{ flex: 1, backgroundColor: BOOT_BG }}>
         <SafeAreaProvider>
           <ThemedAppChrome>
           <PeopleYouMayKnowScreen onComplete={handlePeopleComplete} />
           </ThemedAppChrome>
         </SafeAreaProvider>
+        {splashOverlay}
       </GestureHandlerRootView>
     )
   }
 
   if (flowScreen === 'pushDebug') {
     return (
-      <GestureHandlerRootView style={{ flex: 1 }}>
+      <GestureHandlerRootView style={{ flex: 1, backgroundColor: BOOT_BG }}>
         <SafeAreaProvider>
           <ThemedAppChrome>
           <PushDebugScreen onClose={() => setFlowScreen('profile')} />
           </ThemedAppChrome>
         </SafeAreaProvider>
+        {splashOverlay}
       </GestureHandlerRootView>
     )
   }
@@ -797,7 +869,7 @@ export default function App() {
       }}
       autocapture
     >
-    <GestureHandlerRootView style={{ flex: 1 }}>
+    <GestureHandlerRootView style={{ flex: 1, backgroundColor: BOOT_BG }}>
       <SafeAreaProvider>
         <ThemedAppChrome>
         <SignUpModalProvider onSignedIn={handleSignedIn}>
@@ -818,6 +890,8 @@ export default function App() {
                   onStartGuestReclub={startGuestReclubFlow}
                   onLinkReclub={startLinkReclub}
                   onSignIn={() => { void handleCircleSignedIn() }}
+                  onActivityChange={setCircleActivityOpen}
+                  onNavScroll={handleNavScroll}
                 />
               </View>
               <View style={{ flex: 1, display: activeTab === 'squadd' ? 'flex' : 'none' }}>
@@ -839,38 +913,71 @@ export default function App() {
                   onOpenGearSheet={() => setGearSheetOpen(true)}
                   gearSaved={savedConfirmation}
                   gearSetupComplete={gearSetupComplete}
+                  onLinkReclub={startLinkReclub}
                 />
               </View>
-              {/* Floating tab bar — absolute overlay so screens render full-height beneath it */}
-              {flowScreen !== 'explore' && (activeTab !== 'club-sessions' || csTabBarVisible) && (
-                <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0 }} pointerEvents="box-none">
-                  <NavBar active={activeTab} onChange={setActiveTab} />
-                </View>
+              <View style={{ flex: 1, display: activeTab === 'logbook' ? 'flex' : 'none' }}>
+                <LogbookScreen
+                  isActive={activeTab === 'logbook'}
+                  onModalOpenChange={setLogbookModalOpen}
+                />
+              </View>
+              {/* Floating tab bar — hidden during reclub-link (fullscreen overlay), explore, circle activity, and logbook modals */}
+              {flowScreen !== 'explore' && flowScreen !== 'reclub-link' && !circleActivityOpen && !logbookModalOpen && (activeTab !== 'club-sessions' || csTabBarVisible) && (
+                <Animated.View
+                  style={{ position: 'absolute', bottom: 0, left: 0, right: 0, transform: [{ translateY: navBarAnim }] }}
+                  pointerEvents="box-none"
+                >
+                  <NavBar active={activeTab} onChange={(tab) => {
+                    // Reset nav bar when switching tabs
+                    if (tab !== activeTab) {
+                      navBarVisible.current = true
+                      navBarAnim.setValue(0)
+                    }
+                    setActiveTab(tab)
+                  }} />
+                </Animated.View>
               )}
               <ToastOverlay />
             </View>
             {flowScreen === 'explore' && (
               <View style={StyleSheet.absoluteFillObject}>
-                <ExploreSessionsScreen onClose={() => setFlowScreen('main')} />
+                <ExploreSessionsScreen onClose={() => {
+                  navBarVisible.current = true
+                  navBarAnim.setValue(0)
+                  setFlowScreen('main')
+                }} />
               </View>
             )}
             {flowScreen === 'profile' && (
               <PostHogMaskView style={StyleSheet.absoluteFillObject}>
-                <ProfileSheet
+                <ProfileScreen
                   onClose={() => setFlowScreen('main')}
                   onLinkReclub={startLinkReclub}
-                  onOpenGear={() => {
+                  onOpenGearSheet={() => {
                     setGearReturnTo('profile')
                     setFlowScreen('gear')
                   }}
                   onOpenPushDebug={() => setFlowScreen('pushDebug')}
+                  onOpenClubSessions={() => {
+                    setActiveTab('club-sessions')
+                    setFlowScreen('main')
+                  }}
                 />
               </PostHogMaskView>
             )}
             {flowScreen === 'reclub-link' && (
               <View style={StyleSheet.absoluteFillObject}>
                 <ReclubLinkScreen
-                  onClose={() => setFlowScreen('main')}
+                  onClose={() => {
+                    navBarVisible.current = true
+                    navBarAnim.setValue(0)
+                    setFlowScreen('main')
+                    // Only trigger a Circle refresh if a Reclub account was actually linked
+                    if (useAuthStore.getState().reclubUserId) {
+                      useUiStore.getState().triggerLinkReclub()
+                    }
+                  }}
                 />
               </View>
             )}
@@ -906,6 +1013,7 @@ export default function App() {
         )}
         </ThemedAppChrome>
       </SafeAreaProvider>
+      {splashOverlay}
     </GestureHandlerRootView>
     </PostHogProvider>
   )

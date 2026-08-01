@@ -109,6 +109,11 @@ export async function DELETE(req: NextRequest) {
       step("playerGear");
       await tx.playerGear.deleteMany({ where: { profileId: pid } });
 
+      // ── Logbook ───────────────────────────────────────────────────────────────
+      step("logbookEntry");
+      await tx.logbookEntry.deleteMany({ where: { profileId: pid } });
+      // ── End Logbook ───────────────────────────────────────────────────────────
+
       // ── Club Sessions ─────────────────────────────────────────────────────────
       // Order: player bookings → owned clubs (full wipe) → hosted sessions elsewhere
       // → memberships → manager roles (incl. addedBy references).

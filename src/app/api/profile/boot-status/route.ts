@@ -62,12 +62,15 @@ export async function GET(req: NextRequest) {
 
   const prefs = (profile.preferences as Record<string, unknown>) ?? {};
   const market = prefs.market ?? null;
+  const logbookSportId =
+    prefs.logbookSportId === "padel" ? "padel" : "pickleball";
 
   return NextResponse.json({
     onboardingCompleted,
     hasActiveSquad,
     welcomeChestClaimed: profile.welcomeChestClaimed,
     market,
+    logbookSportId,
     autoHealed: wasAutoHealed,
     reclubUserId: profile.reclubUserId ? profile.reclubUserId.toString() : null,
     email: profile.user?.email ?? null,

@@ -227,6 +227,8 @@ model PlayerProfile {
   squadNickname         String?   @unique @map("squad_nickname")
   squadNicknameSetAt    DateTime? @map("squad_nickname_set_at")
   reportFlaggedAt       DateTime? @map("report_flagged_at")
+  circleStatsCache      Json?     @map("circle_stats_cache")
+  circleStatsCachedAt   DateTime? @map("circle_stats_cached_at")
   suspended             Boolean   @default(false)
   banned                Boolean   @default(false)
   createdAt             DateTime  @default(now()) @map("created_at")
@@ -263,8 +265,40 @@ model PlayerProfile {
   hostedSessions        ClubSession[]       @relation("SessionHost")
   clubSessionBookings   ClubSessionBooking[]
   appClubMemberships    AppClubMember[]
+  // Logbook
+  logbookEntries        LogbookEntry[]
 
   @@map("player_profiles")
+}
+
+/// Training / social session log entry for a player.
+model LogbookEntry {
+  id              String   @id @default(cuid())
+  profileId       String   @map("profile_id")
+  /// "pickleball" | "padel"
+  sportId         String   @map("sport_id")
+  /// YYYY-MM-DD
+  date            String
+  hours           Float
+  /// "training" | "social" | "class"
+  sessionType     String   @map("session_type")
+  /// "single" | "double" (format — field name kept for Hero parity)
+  location        String
+  /// Skill IDs practiced / strong
+  trainingFocus   Json     @map("training_focus")
+  /// Skill IDs that felt hard
+  difficulty      Json
+  /// 1..5 mood
+  feeling         Int
+  notes           String?
+  exerciseDetails Json?    @map("exercise_details")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  profile PlayerProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@index([profileId, date])
+  @@map("logbook_entries")
 }
 
 model PlayerGear {
@@ -996,6 +1030,14 @@ model ClubSession {
   /// "host_and_play" | "host_only"
   hostRole       String    @default("host_and_play") @map("host_role")
   notes          String?
+  /// Auto-grow capacity: when true, max_players auto-promotes in tiers until it reaches capacity_ceiling.
+  autoGrowEnabled   Boolean @default(false) @map("auto_grow_enabled")
+  /// Starting capacity when auto-grow is on; null when auto-grow is off.
+  baseCapacity      Int?    @map("base_capacity")
+  /// Host-set upper bound for auto-grow; null when auto-grow is off.
+  capacityCeiling   Int?    @map("capacity_ceiling")
+  /// Number of spots added per tier promotion. Ignored when auto-grow is off.
+  capacityTierStep  Int     @default(4) @map("capacity_tier_step")
   /// "draft" | "published" | "cancelled"
   lifecycleState String    @default("draft") @map("lifecycle_state")
   createdAt      DateTime  @default(now()) @map("created_at")
