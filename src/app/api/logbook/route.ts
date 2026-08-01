@@ -105,7 +105,7 @@ export async function POST(req: NextRequest) {
       { status: 400 }
     );
   }
-  if (notes !== undefined && typeof notes !== "string") {
+  if (notes !== undefined && notes !== null && typeof notes !== "string") {
     return NextResponse.json({ error: "notes must be a string" }, { status: 400 });
   }
   if (typeof notes === "string" && notes.length > 2000) {
