@@ -396,10 +396,11 @@ export async function PATCH(
       });
 
       if (futureNonDetached.length > 0) {
-        // Build per-occurrence update — exclude startTime/endTime (each occurrence has its own)
+        // Build per-occurrence update — exclude startTime/endTime (each occurrence has its own slot).
+        // lifecycleState IS intentionally included so published→draft (and vice-versa) propagates.
         const occurrenceUpdates: Record<string, unknown> = {};
         for (const [k, v] of Object.entries(updates)) {
-          if (k !== "startTime" && k !== "endTime" && k !== "lifecycleState") {
+          if (k !== "startTime" && k !== "endTime") {
             occurrenceUpdates[k] = v;
           }
         }
