@@ -49,6 +49,14 @@ export async function GET(
 
   let candidates;
 
+  const profileSelect = {
+    id: true,
+    displayName: true,
+    squadNickname: true,
+    userId: true,
+    user: { select: { image: true } },
+  } as const;
+
   if (q.length >= 2) {
     // Search mode
     candidates = await prisma.playerProfile.findMany({
@@ -60,7 +68,7 @@ export async function GET(
           { displayName: { contains: q, mode: "insensitive" } },
         ],
       },
-      select: { id: true, displayName: true, squadNickname: true },
+      select: profileSelect,
       take: 20,
       orderBy: { lastSeen: "desc" },
     });
@@ -69,9 +77,7 @@ export async function GET(
     const members = await prisma.appClubMember.findMany({
       where: { appClubId: id, playerProfileId: { notIn: excludedIds } },
       select: {
-        profile: {
-          select: { id: true, displayName: true, squadNickname: true },
-        },
+        profile: { select: profileSelect },
       },
       take: 50,
       orderBy: { joinedAt: "desc" },
@@ -89,6 +95,8 @@ export async function GET(
       profileId: p.id,
       displayName: p.displayName,
       squadNickname: p.squadNickname,
+      userId: p.userId,
+      imageUrl: p.user?.image ?? null,
     })),
   });
 }

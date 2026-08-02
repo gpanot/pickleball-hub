@@ -11,6 +11,8 @@ const MANAGER_PROFILE_SELECT = {
   id: true,
   displayName: true,
   squadNickname: true,
+  userId: true,
+  user: { select: { image: true } },
 } as const;
 
 const MANAGER_ROW_SELECT = {
