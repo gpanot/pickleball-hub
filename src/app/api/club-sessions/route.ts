@@ -26,6 +26,7 @@ export async function POST(req: NextRequest) {
     feeAmount, feeCurrency, skillLevelMin, skillLevelMax,
     hostRole, notes, sportId,
     autoGrowEnabled, baseCapacity, capacityCeiling, capacityTierStep,
+    publishAfterMin, cancellationCutoffMin,
   } = body as Record<string, unknown>;
 
   const VALID_AUTO_CONFIRM_MODES = ["open", "auto_confirm_till_full", "requires_approval"];
@@ -96,6 +97,8 @@ export async function POST(req: NextRequest) {
     baseCapacity: autoGrowEnabled === true && typeof baseCapacity === "number" && baseCapacity > 0 ? baseCapacity : null,
     capacityCeiling: autoGrowEnabled === true && typeof capacityCeiling === "number" && capacityCeiling > 0 ? capacityCeiling : null,
     capacityTierStep: typeof capacityTierStep === "number" && capacityTierStep > 0 ? capacityTierStep : 4,
+    publishAfterMin: typeof publishAfterMin === "number" && publishAfterMin > 0 ? publishAfterMin : null,
+    cancellationCutoffMin: typeof cancellationCutoffMin === "number" && cancellationCutoffMin > 0 ? cancellationCutoffMin : null,
   };
 
   console.log("[POST /api/club-sessions] dbPayload:", JSON.stringify(dbPayload));
@@ -190,6 +193,8 @@ export async function GET(req: NextRequest) {
       baseCapacity: true,
       capacityCeiling: true,
       capacityTierStep: true,
+      publishAfterMin: true,
+      cancellationCutoffMin: true,
       createdAt: true,
       host: { select: { id: true, displayName: true, squadNickname: true } },
       venue: { select: { id: true, name: true, address: true, latitude: true, longitude: true } },

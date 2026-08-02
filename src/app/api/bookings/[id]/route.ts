@@ -85,6 +85,8 @@ export async function PATCH(
           appClubId: true,
           hostId: true,
           lifecycleState: true,
+          startTime: true,
+          cancellationCutoffMin: true,
         },
       },
       player: { select: { id: true, displayName: true, squadNickname: true, preferences: true, user: { select: { image: true } } } },
@@ -123,6 +125,18 @@ export async function PATCH(
     }
     if (booking.status === "declined") {
       return NextResponse.json({ error: "Booking is already cancelled" }, { status: 409 });
+    }
+
+    // Enforce cancellation cutoff: if set, player cannot cancel once the window has passed
+    if (clubSession.cancellationCutoffMin != null) {
+      const cutoffMs = clubSession.cancellationCutoffMin * 60 * 1000;
+      const sessionStart = new Date(clubSession.startTime);
+      if (Date.now() > sessionStart.getTime() - cutoffMs) {
+        return NextResponse.json(
+          { error: "Cancellation window has closed" },
+          { status: 409 },
+        );
+      }
     }
 
     const wasConfirmed = booking.status === "confirmed";

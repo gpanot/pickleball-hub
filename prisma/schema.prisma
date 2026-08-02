@@ -1044,6 +1044,12 @@ model ClubSession {
   capacityCeiling   Int?    @map("capacity_ceiling")
   /// Number of spots added per tier promotion. Ignored when auto-grow is off.
   capacityTierStep  Int     @default(4) @map("capacity_tier_step")
+  /// Minutes before startTime when the session becomes visible in the app.
+  /// null = visible immediately on publish ("Now"). Intent only — auto-publish requires a cron job.
+  publishAfterMin       Int?  @map("publish_after_min")
+  /// Minutes before startTime after which players can no longer cancel their booking.
+  /// null = no cutoff. Enforced server-side on the self-cancel path.
+  cancellationCutoffMin Int?  @map("cancellation_cutoff_min")
   /// "draft" | "published" | "cancelled"
   lifecycleState String    @default("draft") @map("lifecycle_state")
   createdAt      DateTime  @default(now()) @map("created_at")

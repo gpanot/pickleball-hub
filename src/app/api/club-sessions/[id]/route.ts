@@ -139,6 +139,8 @@ const SESSION_SELECT = {
   baseCapacity: true,
   capacityCeiling: true,
   capacityTierStep: true,
+  publishAfterMin: true,
+  cancellationCutoffMin: true,
   createdAt: true,
   updatedAt: true,
   host: { select: { id: true, displayName: true, squadNickname: true } },
@@ -203,6 +205,7 @@ export async function PATCH(
     maxPlayers, requiresApproval, autoConfirmMode, privacy, feeAmount, feeCurrency,
     skillLevelMin, skillLevelMax, hostRole, notes, sportId, lifecycleState,
     autoGrowEnabled, baseCapacity, capacityCeiling, capacityTierStep,
+    publishAfterMin, cancellationCutoffMin,
   } = body as Record<string, unknown>;
 
   const VALID_AUTO_CONFIRM_MODES = ["open", "auto_confirm_till_full", "requires_approval"];
@@ -283,6 +286,13 @@ export async function PATCH(
   }
   if (capacityTierStep !== undefined && typeof capacityTierStep === "number" && capacityTierStep > 0) {
     updates.capacityTierStep = capacityTierStep;
+  }
+
+  if (publishAfterMin !== undefined) {
+    updates.publishAfterMin = typeof publishAfterMin === "number" && publishAfterMin > 0 ? publishAfterMin : null;
+  }
+  if (cancellationCutoffMin !== undefined) {
+    updates.cancellationCutoffMin = typeof cancellationCutoffMin === "number" && cancellationCutoffMin > 0 ? cancellationCutoffMin : null;
   }
 
   if (lifecycleState !== undefined) {
