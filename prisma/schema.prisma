@@ -1106,6 +1106,7 @@ model ClubSession {
   venue    Venue?               @relation(fields: [venueId], references: [id])
   series   SessionSeries?       @relation(fields: [seriesId], references: [id])
   bookings ClubSessionBooking[]
+  costs    ClubSessionCost[]
 
   @@index([appClubId, startTime])
   @@index([lifecycleState, startTime])
@@ -1138,5 +1139,26 @@ model ClubSessionBooking {
   @@index([clubSessionId, status])
   @@index([playerProfileId])
   @@map("club_session_bookings")
+}
+
+/// Cost entries for a ClubSession. One row per category per session (upsert by @@unique).
+model ClubSessionCost {
+  id        String   @id @default(cuid())
+  sessionId String   @map("session_id")
+  /// "court_rental" | "balls" | "coach_fee" | "other"
+  category  String
+  /// Major units, 2 decimal places — matches ClubSession.feeAmount type exactly.
+  amount    Decimal  @db.Decimal(10, 2)
+  /// Matches ClubSession.feeCurrency — "VND" | "MYR" | "PHP" | "USD" | "EUR"
+  currency  String
+  notes     String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  session   ClubSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, category])
+  @@index([sessionId])
+  @@map("club_session_costs")
 }
 

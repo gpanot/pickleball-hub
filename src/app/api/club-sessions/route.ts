@@ -252,13 +252,21 @@ export async function GET(req: NextRequest) {
     ? { lifecycleState: { in: ["published", "draft", "cancelled"] } }
     : { lifecycleState: { in: ["published", "cancelled"] } };
 
+  // "upcoming" = session has not yet ended: endTime > now
+  // endTime = startTime + durationMin (default 60 min).
+  // Using a raw filter via startTime gte (now - maxDuration) + post-filter is complex,
+  // so we shift the cutoff back by a generous 4 hours so that any session that could
+  // still be running is included, then let the client drop truly-ended ones.
+  // For "past" we keep startTime < now (server-side) and let the client add ended-today.
+  const ONGOING_GRACE_MS = 4 * 60 * 60 * 1000; // 4 h — covers any realistic session length
+  const upcomingCutoff = new Date(now.getTime() - ONGOING_GRACE_MS);
   const timeFilter =
     seriesIdFilter
       ? {} // Series Overview shows past + future
       : timeframe === "upcoming"
-      ? { startTime: { gte: now } }
+      ? { startTime: { gte: upcomingCutoff } }
       : timeframe === "past"
-      ? { startTime: { lt: now } }
+      ? { startTime: { lt: upcomingCutoff } }
       : {};
 
   const sessions = await prisma.clubSession.findMany({
