@@ -8,6 +8,7 @@ import { ExploreSessionsScreen } from './src/screens/ExploreSessionsScreen'
 import { CircleScreen, type CircleScreenHandle } from './src/screens/CircleScreen'
 import SquadModule from './src/modules/squad/SquadModule'
 import { ClubSessionsModule } from './src/modules/club-sessions/ClubSessionsModule'
+import { MyBusinessModule } from './src/modules/club-sessions/MyBusinessModule'
 import { LogbookScreen } from './src/modules/logbook/screens/LogbookScreen'
 import { useLogbookStore } from './src/modules/logbook/logbookStore'
 import { ReclubLinkScreen } from './src/screens/ReclubLinkScreen'
@@ -302,9 +303,10 @@ export default function App() {
   }, [])
   const [activeTab, setActiveTab] = useState<TabId>('club-sessions')
   const [flowScreen, setFlowScreen] = useState<FlowScreen>('main')
-  // Club Sessions screens can signal that the tab bar should be hidden
+  // Club Sessions / My Business screens can signal that the tab bar should be hidden
   // (create/edit forms, sheets, terminal confirmations per spec §15)
   const [csTabBarVisible, setCsTabBarVisible] = useState(true)
+  const [myBizTabBarVisible, setMyBizTabBarVisible] = useState(true)
   const [logbookModalOpen, setLogbookModalOpen] = useState(false)
   const [circleActivityOpen, setCircleActivityOpen] = useState(false)
   const [gearReturnTo, setGearReturnTo] = useState<FlowScreen>('main')
@@ -916,6 +918,13 @@ export default function App() {
                   onLinkReclub={startLinkReclub}
                 />
               </View>
+              <View style={{ flex: 1, display: activeTab === 'my-business' ? 'flex' : 'none' }}>
+                <MyBusinessModule
+                  isActive={activeTab === 'my-business'}
+                  onTabBarVisibilityChange={setMyBizTabBarVisible}
+                  onLinkReclub={startLinkReclub}
+                />
+              </View>
               <View style={{ flex: 1, display: activeTab === 'logbook' ? 'flex' : 'none' }}>
                 <LogbookScreen
                   isActive={activeTab === 'logbook'}
@@ -923,7 +932,7 @@ export default function App() {
                 />
               </View>
               {/* Floating tab bar — hidden during reclub-link (fullscreen overlay), explore, circle activity, and logbook modals */}
-              {flowScreen !== 'explore' && flowScreen !== 'reclub-link' && !circleActivityOpen && !logbookModalOpen && (activeTab !== 'club-sessions' || csTabBarVisible) && (
+              {flowScreen !== 'explore' && flowScreen !== 'reclub-link' && !circleActivityOpen && !logbookModalOpen && (activeTab !== 'club-sessions' || csTabBarVisible) && (activeTab !== 'my-business' || myBizTabBarVisible) && (
                 <Animated.View
                   style={{ position: 'absolute', bottom: 0, left: 0, right: 0, transform: [{ translateY: navBarAnim }] }}
                   pointerEvents="box-none"

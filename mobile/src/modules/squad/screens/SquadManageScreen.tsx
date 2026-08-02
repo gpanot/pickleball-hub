@@ -605,7 +605,7 @@ const s = StyleSheet.create({
   },
   leaveText: { fontSize: 15, fontWeight: '800', color: RED },
 
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.75)', justifyContent: 'flex-end' },
+  overlay: { flex: 1, backgroundColor: '#0a0a0a', justifyContent: 'flex-end' },
   overlayTap: { flex: 1 },
   sheet: {
     backgroundColor: '#161616', borderTopLeftRadius: 24, borderTopRightRadius: 24,

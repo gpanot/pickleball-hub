@@ -938,6 +938,12 @@ model SquadAlert {
 //   Session (scraped Reclub entity, sessions table)
 //   AuthSession (NextAuth model)
 
+enum ClubRole {
+  OWNER
+  ADMIN
+  HOST_MANAGER
+}
+
 /// App-managed pickleball club. One club per creator (creatorId is unique).
 /// Multiple managers are supported via AppClubManager.
 model AppClub {
@@ -965,15 +971,15 @@ model AppClub {
 }
 
 /// Multi-manager support for AppClub. Creator row is seeded automatically on club creation.
-/// Authorization: any row in this table grants equal rights to edit the club and manage its sessions.
+/// Authorization: role-based — OWNER has full control, ADMIN can edit club + manage Host Managers,
+/// HOST_MANAGER can only run sessions. Use can() from lib/club-permissions.ts for all auth checks.
 model AppClubManager {
-  id              String   @id @default(uuid())
-  appClubId       String   @map("app_club_id")
-  playerProfileId String   @map("player_profile_id")
-  /// "creator" | "manager"
-  role            String   @default("manager")
-  addedAt         DateTime @default(now()) @map("added_at")
-  addedById       String   @map("added_by_id")
+  id              String    @id @default(uuid())
+  appClubId       String    @map("app_club_id")
+  playerProfileId String    @map("player_profile_id")
+  role            ClubRole  @default(HOST_MANAGER)
+  addedAt         DateTime  @default(now()) @map("added_at")
+  addedById       String    @map("added_by_id")
 
   appClub   AppClub       @relation(fields: [appClubId], references: [id], onDelete: Cascade)
   profile   PlayerProfile @relation("ManagerProfile", fields: [playerProfileId], references: [id])

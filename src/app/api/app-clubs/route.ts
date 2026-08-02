@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getMobileUser } from "@/lib/mobile-auth";
 import { prisma } from "@/lib/db";
+import { ClubRole } from "@prisma/client";
 
 const VALID_PRIVACY = ["public", "private"] as const;
 
@@ -49,7 +50,7 @@ export async function POST(req: NextRequest) {
           managers: {
             create: {
               playerProfileId: user.profileId,
-              role: "creator",
+              role: ClubRole.OWNER,
               addedById: user.profileId,
             },
           },

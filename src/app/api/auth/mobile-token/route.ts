@@ -36,26 +36,33 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  const accountEmail = isReviewer ? REVIEWER_EMAIL : resolveDevAccountEmail();
+  const requestedEmail = isReviewer ? REVIEWER_EMAIL : resolveDevAccountEmail();
   const isImpersonatedDev =
-    !isReviewer && accountEmail !== DEV_EMAIL && process.env.NODE_ENV === "development";
-  const accountName = isReviewer ? "Reclub Player" : isImpersonatedDev ? null : "Dev Player";
+    !isReviewer && requestedEmail !== DEV_EMAIL && process.env.NODE_ENV === "development";
+
+  // When DEV_IMPERSONATE_EMAIL is set but the user hasn't been synced to the local
+  // DB yet, fall back to dev@thehub.local so the mobile app always gets a real JWT
+  // (avoids 404 → offline dev-token → 401 loop in Expo Go).
+  let accountEmail = requestedEmail;
+  let isFallbackDev = false;
+  if (isImpersonatedDev) {
+    const exists = await prisma.user.findUnique({ where: { email: requestedEmail }, select: { id: true } });
+    if (!exists) {
+      console.warn(`[dev-token] ${requestedEmail} not found locally — falling back to ${DEV_EMAIL}. Run sync-dev-account-from-prod.ts to fix.`);
+      accountEmail = DEV_EMAIL;
+      isFallbackDev = true;
+    }
+  }
+
+  const accountName = isReviewer ? "Reclub Player" : (isImpersonatedDev && !isFallbackDev) ? null : "Dev Player";
   const accountImage = isReviewer
     ? "https://i.pravatar.cc/80?img=12"
-    : isImpersonatedDev
+    : (isImpersonatedDev && !isFallbackDev)
       ? null
       : "https://i.pravatar.cc/80?img=33";
 
   let user = await prisma.user.findUnique({ where: { email: accountEmail } });
   if (!user) {
-    if (isImpersonatedDev) {
-      return NextResponse.json(
-        {
-          error: `Dev impersonation user not found: ${accountEmail}. Run: npx tsx scripts/sync-dev-account-from-prod.ts`,
-        },
-        { status: 404 }
-      );
-    }
     user = await prisma.user.create({
       data: {
         email: accountEmail,
@@ -69,12 +76,6 @@ export async function GET(req: NextRequest) {
     where: { userId: user.id },
   });
   if (!profile) {
-    if (isImpersonatedDev) {
-      return NextResponse.json(
-        { error: `No profile for ${accountEmail}. Run sync-dev-account-from-prod.ts` },
-        { status: 404 }
-      );
-    }
     profile = await prisma.playerProfile.create({
       data: {
         userId: user.id,

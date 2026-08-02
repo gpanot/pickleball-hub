@@ -526,7 +526,7 @@ const s = StyleSheet.create({
 
   // Fullscreen image overlay
   fsOverlay: {
-    flex: 1, backgroundColor: 'rgba(0,0,0,0.95)',
+    flex: 1, backgroundColor: '#000000',
     justifyContent: 'center', alignItems: 'center',
   },
   fsImage: { width: '100%', height: '80%' },
@@ -619,7 +619,7 @@ const s = StyleSheet.create({
 // ── KPI modal styles ──────────────────────────────────────────────────────────
 const m = StyleSheet.create({
   overlay: {
-    flex: 1, backgroundColor: 'rgba(0,0,0,0.75)', justifyContent: 'flex-end',
+    flex: 1, backgroundColor: '#0a0a0a', justifyContent: 'flex-end',
   },
   sheet: {
     backgroundColor: '#111', borderTopLeftRadius: 24, borderTopRightRadius: 24,

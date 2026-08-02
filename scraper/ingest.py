@@ -105,12 +105,15 @@ MARKETS = {
         "label": "Penang",
     },
     # ── Philippines ────────────────────────────────────────────────────
+    # community_id may be a list for multi-city markets (all PH communities).
+    # 300 = Metro Manila, 301 = Cebu, 302 = Davao, 323 = Misamis Oriental,
+    # 324 = Iligan City
     "manila": {
-        "community_id": 300,
+        "community_id": [300, 301, 302, 323, 324],
         "tz": timezone(timedelta(hours=8)),
         "currency": "PHP",
         "fee_threshold": 1,
-        "label": "Manila",
+        "label": "Philippines",
     },
 }
 
@@ -123,7 +126,14 @@ def _market_tz() -> timezone:
     return getattr(_tl, "active_market", MARKETS["hcm"])["tz"]
 
 def _market_community_id() -> int:
-    return getattr(_tl, "active_market", MARKETS["hcm"])["community_id"]
+    """Return the primary (first) community ID for the active market."""
+    cid = getattr(_tl, "active_market", MARKETS["hcm"])["community_id"]
+    return cid[0] if isinstance(cid, list) else cid
+
+def _market_community_ids() -> list:
+    """Return all community IDs for the active market (always a list)."""
+    cid = getattr(_tl, "active_market", MARKETS["hcm"])["community_id"]
+    return cid if isinstance(cid, list) else [cid]
 
 def _market_key() -> str:
     m = getattr(_tl, "active_market", MARKETS["hcm"])
@@ -397,29 +407,33 @@ def api_get(path, params=None):
 def get_all_club_ids():
     club_map = {}
 
-    active_comm_id = _market_community_id()
-    print("  [a] Community features...")
-    data = api_get(f"/communities/{active_comm_id}/features")
-    if data:
-        for c in data.get("topClubs", []):
-            club_map[c["id"]] = {
-                "id": c["id"],
-                "name": c.get("name", ""),
-                "slug": c.get("slug", ""),
-                "communityId": c.get("communityId", active_comm_id),
-                "sportId": c.get("sportId"),
-                "numMembers": c.get("numMembers", 0),
-            }
+    active_comm_ids = _market_community_ids()
+    print(f"  [a] Community features for {len(active_comm_ids)} community ID(s)...")
+    for active_comm_id in active_comm_ids:
+        data = api_get(f"/communities/{active_comm_id}/features")
+        if data:
+            for c in data.get("topClubs", []):
+                cid = c["id"]
+                if cid not in club_map:
+                    club_map[cid] = {
+                        "id": cid,
+                        "name": c.get("name", ""),
+                        "slug": c.get("slug", ""),
+                        "communityId": c.get("communityId", active_comm_id),
+                        "sportId": c.get("sportId"),
+                        "numMembers": c.get("numMembers", 0),
+                    }
     print(f"      {len(club_map)} clubs")
 
+    active_comm_ids_set = set(active_comm_ids)
     print("  [b] Sport features (global, filtered to community)...")
     for sid in SPORT_IDS_TO_SCAN:
         sdata = api_get(f"/sports/{sid}/features")
         if sdata:
             for c in sdata.get("topClubs", []):
                 cid = c.get("id")
-                # Only include clubs from the active market's community
-                if cid and cid not in club_map and c.get("communityId") == active_comm_id:
+                # Only include clubs from the active market's communities
+                if cid and cid not in club_map and c.get("communityId") in active_comm_ids_set:
                     club_map[cid] = {
                         "id": cid,
                         "name": c.get("name", ""),
@@ -434,6 +448,7 @@ def get_all_club_ids():
     # Convention: {market}_pickleball_clubs.json  (e.g. kl_pickleball_clubs.json)
     mk = _market_key()
     json_paths = [
+        os.path.join(os.path.dirname(__file__), f"{mk}_pickleball_clubs.json"),       # same dir (Docker)
         os.path.join(os.path.dirname(__file__), "..", "..", f"{mk}_pickleball_clubs.json"),
         os.path.join(os.path.dirname(__file__), "..", f"{mk}_pickleball_clubs.json"),
     ]
@@ -486,13 +501,16 @@ def get_all_club_ids():
     return club_map
 
 
-def fetch_club_activities(club_id, start_ts: int, end_ts: int, community_id: int):
+def fetch_club_activities(club_id, start_ts: int, end_ts: int, community_ids):
     """Fetch meets for one club for the current scrape window.
 
-    start_ts, end_ts, community_id are passed explicitly so this function is
+    start_ts, end_ts, community_ids are passed explicitly so this function is
     safe to call from ThreadPoolExecutor workers (thread-local state is not
     inherited by inner worker threads).
+
+    community_ids may be an int or a list of ints.
     """
+    valid_ids = set(community_ids) if isinstance(community_ids, list) else {community_ids}
     data = api_get(f"/groups/{club_id}/activities", {
         "types": "MEETS",
         "min_start_datetime": str(start_ts),
@@ -505,7 +523,7 @@ def fetch_club_activities(club_id, start_ts: int, end_ts: int, community_id: int
     meets = data if isinstance(data, list) else data.get("meets", data.get("activities", []))
     if not isinstance(meets, list):
         return []
-    return [m for m in meets if isinstance(m, dict) and m.get("communityId") == community_id]
+    return [m for m in meets if isinstance(m, dict) and m.get("communityId") in valid_ids]
 
 
 def fetch_all_events(club_map):
@@ -518,10 +536,10 @@ def fetch_all_events(club_map):
     # so worker threads can use these without needing thread-local access.
     _start_ts = _tl_start_ts()
     _end_ts = _tl_end_ts()
-    _community_id = _market_community_id()
+    _community_ids = _market_community_ids()
 
     def process_club(club_id):
-        return club_id, fetch_club_activities(club_id, _start_ts, _end_ts, _community_id)
+        return club_id, fetch_club_activities(club_id, _start_ts, _end_ts, _community_ids)
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=25) as executor:
         futures = {executor.submit(process_club, cid): cid for cid in club_ids}

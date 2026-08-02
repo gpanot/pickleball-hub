@@ -21,7 +21,7 @@ export const MARKET_META: Record<
   cantho:   { label: "Can Tho",      country: "Vietnam",     flag: "🇻🇳", currency: "VND" },
   kl:       { label: "Kuala Lumpur", country: "Malaysia",    flag: "🇲🇾", currency: "MYR" },
   penang:   { label: "Penang",       country: "Malaysia",    flag: "🇲🇾", currency: "MYR" },
-  manila:   { label: "Manila",       country: "Philippines", flag: "🇵🇭", currency: "PHP" },
+  manila:   { label: "Philippines", country: "Philippines", flag: "🇵🇭", currency: "PHP" },
 };
 
 // ─── Type definitions ─────────────────────────────────────────────────────────

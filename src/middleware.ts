@@ -49,12 +49,23 @@ function basicAuthCheck(request: NextRequest): NextResponse | null {
   });
 }
 
-export async function middleware(request: NextRequest) {
-  // Site-wide Basic Auth gate (runs before any other checks)
-  const authResponse = basicAuthCheck(request);
-  if (authResponse) return authResponse;
+/** Paths that must be publicly accessible even when SITE_USER/SITE_PASSWORD are set
+ *  (QR scan web fallback, universal-link verification, public APIs).
+ */
+const PUBLIC_PATH_PREFIXES = ["/u/", "/.well-known/", "/api/players/"];
+const PUBLIC_PATHS_EXACT = ["/join", "/download"];
 
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  // Allow public QR / deep-link paths through before Basic Auth
+  const isPublic =
+    PUBLIC_PATHS_EXACT.includes(pathname) ||
+    PUBLIC_PATH_PREFIXES.some((p) => pathname.startsWith(p));
+
+  // Site-wide Basic Auth gate (runs before any other checks)
+  const authResponse = isPublic ? null : basicAuthCheck(request);
+  if (authResponse) return authResponse;
 
   if (!pathname.startsWith("/admin/")) return NextResponse.next();
   if (pathname === "/admin/login" || pathname.startsWith("/admin/login/"))

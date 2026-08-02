@@ -10,6 +10,17 @@ import {
   vietnamTimeStr,
 } from "@/lib/notifications/session-time";
 import { reclubAvatarUrl } from "@/lib/utils";
+import {
+  STREAK_MILESTONES,
+  getWeekKey,
+  getDuprThresholdCrossed,
+  getSessionMilestoneReached,
+  getBatchLifetimeSessionCounts,
+  getBatchPlayerPrefs,
+  setMilestoneFlag,
+  duprMilestoneKey,
+  sessionMilestoneKey,
+} from "@/lib/feed-milestones";
 
 function toPlayerPayload(p: {
   userId: bigint;
@@ -258,20 +269,144 @@ export async function GET(req: NextRequest) {
   }
 
   // ── Played_today items ───────────────────────────────────────────────────────
+  // Batch lifetime session counts for all unique players in today's rosters
+  // so we can detect session count milestones in a single extra query.
+  const todayPlayerIds = [...new Set(todayCompletedRosters.map((r) => r.userId))];
+  const lifetimeCountMap = await getBatchLifetimeSessionCounts(todayPlayerIds);
+
+  // Fetch prefs for players who are AT a session milestone count.
+  const sessionMilestoneCandidates = todayPlayerIds.filter((id) => {
+    const count = lifetimeCountMap.get(id.toString()) ?? 0;
+    return getSessionMilestoneReached(count) !== null;
+  });
+  const sessionMilestonePrefsMap = await getBatchPlayerPrefs(sessionMilestoneCandidates);
+
+  // Batch-fetch the most-recent prior session date per player for comeback detection.
+  // Uses distinct so we get exactly one row per player (most recent, desc order).
+  const todayDateObj = new Date(`${todayStr}T00:00:00+07:00`);
+  const lastSessionByPlayer = new Map<string, string>(); // userId → scrapedDate
+  if (todayPlayerIds.length > 0) {
+    const mostRecentPrior = await prisma.sessionRoster.findMany({
+      where: {
+        userId: { in: todayPlayerIds },
+        session: { scrapedDate: { lt: todayStr } },
+      },
+      select: {
+        userId: true,
+        session: { select: { scrapedDate: true } },
+      },
+      orderBy: { session: { scrapedDate: "desc" } },
+      distinct: ["userId"],
+    });
+    for (const r of mostRecentPrior) {
+      lastSessionByPlayer.set(r.userId.toString(), r.session.scrapedDate);
+    }
+  }
+
+  // Track which followee user IDs have a played_today — used to gate streak emission.
+  const todayPlayedFolloweeIds = new Set<bigint>();
+
   const seenTodayKeys = new Set<string>();
   for (const r of todayCompletedRosters) {
     const key = `${r.userId}_${r.sessionId}`;
     if (seenTodayKeys.has(key)) continue;
     seenTodayKeys.add(key);
+
+    todayPlayedFolloweeIds.add(r.userId);
+
+    const lifetimeCount = lifetimeCountMap.get(r.userId.toString()) ?? 0;
+    const sessionMilestone = getSessionMilestoneReached(lifetimeCount);
+
+    // Priority 1 — session count milestone
+    let milestoneKind: string | undefined;
+    let sessionMilestoneN: number | undefined;
+    if (sessionMilestone !== null) {
+      const prefs = sessionMilestonePrefsMap.get(r.userId.toString()) ?? {};
+      const flagKey = sessionMilestoneKey(sessionMilestone);
+      if (!prefs[flagKey]) {
+        milestoneKind = "session_count";
+        sessionMilestoneN = sessionMilestone;
+        void setMilestoneFlag(r.userId, flagKey);
+      }
+    }
+
+    // Priority 3/4 — comeback / first_venue (only if no higher-priority milestone)
+    let itemType: string = "played_today";
+    let daysSince: number | undefined;
+    let clubName: string | undefined;
+
+    if (!milestoneKind) {
+      const uid = r.userId.toString();
+      const lastDateStr = lastSessionByPlayer.get(uid); // most recent prior session
+
+      if (lastDateStr) {
+        const lastDate = new Date(`${lastDateStr}T00:00:00+07:00`);
+        const diffMs = todayDateObj.getTime() - lastDate.getTime();
+        const diffDays = Math.floor(diffMs / (24 * 60 * 60 * 1000));
+
+        if (diffDays >= 14) {
+          itemType = "comeback";
+          daysSince = diffDays;
+          clubName = r.session.club.name;
+        }
+        // first_venue check deferred to after the loop (needs a DB count per player+club pair).
+        // We set a sentinel so the post-loop batch can pick it up.
+      }
+      // If no prior session at all → plain played_today (new player; no venue context yet)
+    }
+
+    // Use the same played_today ID regardless of derived type so PN6-persisted
+    // items are updated via upsert rather than creating a duplicate.
     items.push({
       id: `played_today_${r.userId}_${r.sessionId}_${user.profileId}`,
-      type: "played_today",
+      type: itemType,
       player: toPlayerPayload(r.player),
       isFollowing: true,
       timestamp: sessionEndTimestamp(r.session.scrapedDate, r.session.endTime),
       venueName: r.session.club.name,
       sessionId: r.session.id,
+      ...(milestoneKind ? { milestoneKind, sessionMilestone: sessionMilestoneN } : {}),
+      ...(daysSince !== undefined ? { daysSince } : {}),
+      ...(clubName !== undefined ? { clubName } : {}),
     });
+  }
+
+  // ── first_venue post-loop check ───────────────────────────────────────────
+  // For plain played_today items (no milestone, no comeback), check whether
+  // the player has ever played at today's club before. If not → first_venue.
+  // Only applies when the player has at least one prior session (lifetimeCount > 1).
+  const firstVenueCandidates = items.filter(
+    (i) =>
+      i.type === "played_today" &&
+      !i.milestoneKind &&
+      i.sessionId != null &&
+      i.venueName
+  );
+
+  if (firstVenueCandidates.length > 0) {
+    await Promise.all(
+      firstVenueCandidates.map(async (item) => {
+        const playerUserId = BigInt(item.player.userId);
+        const lifetimeCount = lifetimeCountMap.get(item.player.userId) ?? 0;
+        // Only promote if player has played before (skip truly new players)
+        if (lifetimeCount <= 1) return;
+        const clubNameNorm = item.venueName.trim().toLowerCase();
+        const priorAtClub = await prisma.sessionRoster.findFirst({
+          where: {
+            userId: playerUserId,
+            session: {
+              scrapedDate: { lt: todayStr },
+              club: { name: { equals: clubNameNorm, mode: "insensitive" } },
+            },
+          },
+          select: { sessionId: true },
+        });
+        if (!priorAtClub) {
+          item.type = "first_venue";
+          item.clubName = item.venueName;
+        }
+      })
+    );
   }
 
   // ── Played items (past sessions grouped by player+club) ──────────────────────
@@ -420,34 +555,25 @@ export async function GET(req: NextRequest) {
 
   // ── Streaks, DUPR history, and follow events — run in parallel ───────────────
   // These three are completely independent: no shared mutable state, different tables.
-  const MILESTONE_WEEKS = [4, 8, 12, 26, 52];
-
-  function getWeekKey(date: Date): string {
-    const d = new Date(date);
-    d.setHours(0, 0, 0, 0);
-    d.setDate(d.getDate() + 4 - (d.getDay() || 7));
-    const yearStart = new Date(d.getFullYear(), 0, 1);
-    const weekNum = Math.ceil(
-      ((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7
-    );
-    return `${d.getFullYear()}-${weekNum}`;
-  }
 
   const now = new Date();
 
-  // Hard cap: skip streak computation if user follows too many people — too slow
-  const streakFollowees = followeeIds.slice(0, 10);
-  const shouldComputeStreaks = followeeIds.length <= 30;
+  // Only compute streaks for followees who also played today (per spec).
+  // Capped at 10 to keep the query fast regardless of follow count.
+  const streakFollowees = followeeIds
+    .filter((id) => todayPlayedFolloweeIds.has(id))
+    .slice(0, 10);
+  const shouldComputeStreaks = streakFollowees.length > 0;
 
   async function computeStreaks() {
-    if (!shouldComputeStreaks || streakFollowees.length === 0) return [];
+    if (!shouldComputeStreaks) return [];
     const streakCutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
     const streakCutoffStr = streakCutoff.toISOString().slice(0, 10);
 
     const allStreakRosters = await prisma.sessionRoster.findMany({
       where: {
         userId: { in: streakFollowees },
-        session: { scrapedDate: { gte: streakCutoffStr, lt: todayStr } },
+        session: { scrapedDate: { gte: streakCutoffStr, lte: todayStr } },
       },
       select: {
         userId: true,
@@ -491,7 +617,7 @@ export async function GET(req: NextRequest) {
       }
 
       const isCurrentWeekPlayed = weeksWithSessions.has(getWeekKey(now));
-      if (isCurrentWeekPlayed && MILESTONE_WEEKS.includes(streak)) {
+      if (isCurrentWeekPlayed && (STREAK_MILESTONES as readonly number[]).includes(streak)) {
         milestoneFolloweeIds.push(followeeId);
         milestoneData.set(followeeId, { streak, weeklyPlayed, sessions });
       }
@@ -509,18 +635,17 @@ export async function GET(req: NextRequest) {
     for (const followeeId of milestoneFolloweeIds) {
       const player = playerMap.get(followeeId);
       const data = milestoneData.get(followeeId)!;
-      if (player) {
-        const latestSession = data.sessions[0];
-        result.push({
-          id: `streak_${followeeId}_${data.streak}`,
-          type: "streak_milestone",
-          player: toPlayerPayload(player),
-          isFollowing: true,
-          timestamp: `${latestSession?.session.scrapedDate}T${latestSession?.session.startTime}:00+07:00`,
-          streakCount: data.streak,
-          weeklyPlayed: data.weeklyPlayed.reverse(),
-        });
-      }
+      if (!player) continue;
+      const latestSession = data.sessions[0];
+      result.push({
+        id: `streak_${followeeId}_${data.streak}`,
+        type: "streak_milestone",
+        player: toPlayerPayload(player),
+        isFollowing: true,
+        timestamp: `${latestSession?.session.scrapedDate}T${latestSession?.session.startTime}:00+07:00`,
+        streakCount: data.streak,
+        weeklyPlayed: data.weeklyPlayed.reverse(),
+      });
     }
     return result;
   }
@@ -545,7 +670,17 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const result: any[] = [];
+    // Collect players who cross a threshold so we can batch-fetch their prefs.
+    type DuprCandidate = {
+      followeeId: bigint;
+      history: typeof allDuprHistory;
+      newVal: number;
+      oldVal: number;
+      threshold: number;
+    };
+    const duprMilestoneCandidates: DuprCandidate[] = [];
+    const duprStandardItems: any[] = [];
+
     for (const [followeeId, history] of duprByPlayer) {
       if (history.length < 2) continue;
       const latest = history[0];
@@ -554,16 +689,59 @@ export async function GET(req: NextRequest) {
       const newVal = Number(latest.duprDoubles);
       const oldVal = Number(previous.duprDoubles);
       if (newVal <= oldVal) continue;
+
+      const threshold = getDuprThresholdCrossed(oldVal, newVal);
+      if (threshold !== null) {
+        duprMilestoneCandidates.push({ followeeId, history, newVal, oldVal, threshold });
+      } else {
+        // Standard DUPR update — copy now updated per spec
+        const latest2 = history[0];
+        duprStandardItems.push({
+          id: `dupr_update_${followeeId}_${latest2.id}`,
+          type: "dupr_update",
+          player: toPlayerPayload(latest2.player),
+          isFollowing: true,
+          timestamp: latest2.recordedAt.toISOString(),
+          duprOld: oldVal,
+          duprNew: newVal,
+        });
+      }
+    }
+
+    // Batch-fetch prefs for milestone candidates.
+    const milestonePrefs = await getBatchPlayerPrefs(
+      duprMilestoneCandidates.map((c) => c.followeeId)
+    );
+
+    const result: any[] = [...duprStandardItems];
+
+    for (const c of duprMilestoneCandidates) {
+      const latest = c.history[0];
+      const flagKey = duprMilestoneKey(c.threshold);
+      const prefs = milestonePrefs.get(c.followeeId.toString()) ?? {};
+
+      let milestoneKind: string | undefined;
+      let milestoneDupr: number | undefined;
+
+      if (!prefs[flagKey]) {
+        milestoneKind = "dupr_threshold";
+        milestoneDupr = c.threshold;
+        // Set flag so each threshold fires at most once per player.
+        void setMilestoneFlag(c.followeeId, flagKey);
+      }
+      // Always emit the card (milestone or standard copy); milestone fields are optional.
       result.push({
-        id: `dupr_update_${followeeId}_${latest.id}`,
+        id: `dupr_update_${c.followeeId}_${latest.id}`,
         type: "dupr_update",
         player: toPlayerPayload(latest.player),
         isFollowing: true,
         timestamp: latest.recordedAt.toISOString(),
-        duprOld: oldVal,
-        duprNew: newVal,
+        duprOld: c.oldVal,
+        duprNew: c.newVal,
+        ...(milestoneKind ? { milestoneKind, milestoneDupr } : {}),
       });
     }
+
     return result;
   }
 
@@ -582,6 +760,21 @@ export async function GET(req: NextRequest) {
   kudosResult = kudosResultInner;
 
   items.push(...streakItems, ...duprItems);
+
+  // Priority enforcement: session_count milestone > streak_milestone for the same player+day.
+  // If a played_today item has milestoneKind="session_count", drop any streak_milestone
+  // for that same followee so only the highest-priority card appears.
+  const sessionCountFolloweeIds = new Set(
+    items
+      .filter((i) => i.type === "played_today" && i.milestoneKind === "session_count")
+      .map((i) => i.player.userId)
+  );
+  const itemsAfterPriority = items.filter(
+    (i) =>
+      !(i.type === "streak_milestone" && sessionCountFolloweeIds.has(i.player.userId))
+  );
+  items.length = 0;
+  items.push(...itemsAfterPriority);
 
   for (const f of recentFollowing) {
     items.push({
@@ -611,7 +804,7 @@ export async function GET(req: NextRequest) {
   );
 
   // Max 2 items per player (follow events + played_today + you_are_playing are exempt)
-  const EXEMPT_TYPES = new Set(["just_followed", "new_follower", "played_today", "you_are_playing", "played_self", "gear_setup"]);
+  const EXEMPT_TYPES = new Set(["just_followed", "new_follower", "played_today", "comeback", "first_venue", "first_host", "you_are_playing", "played_self", "gear_setup"]);
   const playerCount = new Map<string, number>();
   const filtered = items.filter((item) => {
     if (EXEMPT_TYPES.has(item.type)) return true;

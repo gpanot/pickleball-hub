@@ -3,6 +3,7 @@ import { getMobileUser } from "@/lib/mobile-auth";
 import { isClubManager } from "@/lib/club-auth";
 import { prisma } from "@/lib/db";
 import { notifyBookingRequested } from "@/lib/club-session-notifications";
+import { maybePromoteCapacity } from "@/lib/club-session-capacity";
 
 const BOOKING_SELECT = {
   id: true,
@@ -168,6 +169,11 @@ export async function POST(req: NextRequest) {
           },
           update: {},
         });
+      }
+
+      // Auto-grow: promote capacity tier if 80% fill ratio reached
+      if (initialStatus === "confirmed") {
+        await maybePromoteCapacity(tx, clubSessionId);
       }
 
       return result;

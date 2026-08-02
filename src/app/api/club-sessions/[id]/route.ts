@@ -3,6 +3,114 @@ import { getMobileUser } from "@/lib/mobile-auth";
 import { isClubManager } from "@/lib/club-auth";
 import { prisma } from "@/lib/db";
 import { notifySessionCancelled } from "@/lib/club-session-notifications";
+import { sendPushNotification } from "@/lib/notifications";
+import { reclubAvatarUrl } from "@/lib/utils";
+
+/**
+ * Fire-and-forget: upsert first_host feed items for each follower of the host
+ * and send a push notification to each. Runs only on the first publish.
+ */
+async function triggerFirstHost(opts: {
+  sessionId: string;
+  hostProfileId: string;
+  venueName: string;
+}): Promise<void> {
+  const { sessionId, hostProfileId, venueName } = opts;
+
+  // Get host PlayerProfile (prefs + reclubUserId)
+  const hostProfile = await prisma.playerProfile.findUnique({
+    where: { id: hostProfileId },
+    select: { id: true, reclubUserId: true, preferences: true },
+  });
+  if (!hostProfile?.reclubUserId) return;
+
+  const prefs = (hostProfile.preferences ?? {}) as Record<string, unknown>;
+  if (prefs["milestone_first_host"]) return; // Already triggered for this host
+
+  // Confirm this is the first published session for this host
+  const publishedCount = await prisma.clubSession.count({
+    where: { hostId: hostProfileId, lifecycleState: "published" },
+  });
+  if (publishedCount !== 1) return;
+
+  // Set flag immediately to prevent re-fire on concurrent requests
+  await prisma.playerProfile.update({
+    where: { id: hostProfileId },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    data: { preferences: { ...prefs, milestone_first_host: true } as any },
+  });
+
+  // Get host's Reclub player record (for feed item player payload)
+  const hostPlayer = await prisma.player.findUnique({
+    where: { userId: hostProfile.reclubUserId },
+    select: { userId: true, displayName: true, imageUrl: true, duprDoubles: true },
+  });
+  const hostName = hostPlayer?.displayName ?? "Someone in your circle";
+  const hostImageUrl = hostPlayer?.imageUrl ?? reclubAvatarUrl(hostProfile.reclubUserId);
+  const timestamp = new Date().toISOString();
+
+  // Find all followers of the host
+  const follows = await prisma.follow.findMany({
+    where: { followeeId: hostProfile.reclubUserId },
+    select: { follower: { select: { id: true, pushToken: true, pushTokenIos: true } } },
+  });
+
+  for (const { follower } of follows) {
+    const feedItemId = `first_host_${sessionId}_${follower.id}`;
+
+    await prisma.feedItem.upsert({
+      where: { id: feedItemId },
+      create: {
+        id: feedItemId,
+        profileId: follower.id,
+        type: "first_host",
+        playerUserId: hostProfile.reclubUserId.toString(),
+        payload: {
+          id: feedItemId,
+          type: "first_host",
+          player: {
+            userId: hostProfile.reclubUserId.toString(),
+            displayName: hostPlayer?.displayName ?? null,
+            imageUrl: hostImageUrl,
+            duprDoubles: hostPlayer?.duprDoubles ? Number(hostPlayer.duprDoubles) : null,
+          },
+          venueName,
+          sessionId,
+          timestamp,
+          isFollowing: true,
+          kudos: { fistbump: 0, flame: 0, star: 0, myReactions: [] },
+        },
+        timestamp: new Date(timestamp),
+      },
+      update: {},
+    });
+
+    // Push notification — one per follower per session
+    if (!follower.pushToken && !follower.pushTokenIos) continue;
+
+    const dedupType = `first_host:${sessionId}:${follower.id}`;
+    const alreadySent = await prisma.notificationSent.findFirst({
+      where: { recipientId: follower.id, type: dedupType },
+      select: { id: true },
+    });
+    if (alreadySent) continue;
+
+    const result = await sendPushNotification(follower.id, {
+      title: `${hostName} just hosted their first session 🏆`,
+      body: "Be the first to show your support!",
+      data: {
+        type: "first_host",
+        screen: "ClubSessions",
+        sessionId,
+      },
+    });
+    if (result.success) {
+      await prisma.notificationSent.create({
+        data: { recipientId: follower.id, type: dedupType },
+      });
+    }
+  }
+}
 
 const SESSION_SELECT = {
   id: true,
@@ -27,6 +135,10 @@ const SESSION_SELECT = {
   hostRole: true,
   notes: true,
   lifecycleState: true,
+  autoGrowEnabled: true,
+  baseCapacity: true,
+  capacityCeiling: true,
+  capacityTierStep: true,
   createdAt: true,
   updatedAt: true,
   host: { select: { id: true, displayName: true, squadNickname: true } },
@@ -90,6 +202,7 @@ export async function PATCH(
     name, format, startTime, endTime, durationMin, venueId, venuePending,
     maxPlayers, requiresApproval, autoConfirmMode, privacy, feeAmount, feeCurrency,
     skillLevelMin, skillLevelMax, hostRole, notes, sportId, lifecycleState,
+    autoGrowEnabled, baseCapacity, capacityCeiling, capacityTierStep,
   } = body as Record<string, unknown>;
 
   const VALID_AUTO_CONFIRM_MODES = ["open", "auto_confirm_till_full", "requires_approval"];
@@ -152,6 +265,26 @@ export async function PATCH(
   if (hostRole !== undefined && VALID_HOST_ROLES.includes(hostRole as string)) updates.hostRole = hostRole;
   if (notes !== undefined) updates.notes = typeof notes === "string" ? notes : null;
   if (sportId !== undefined) updates.sportId = typeof sportId === "number" ? sportId : null;
+
+  // Auto-grow fields
+  if (autoGrowEnabled !== undefined) {
+    updates.autoGrowEnabled = autoGrowEnabled === true;
+    if (!autoGrowEnabled) {
+      // Clearing auto-grow: also null out the grow-specific fields
+      updates.baseCapacity = null;
+      updates.capacityCeiling = null;
+    }
+  }
+  if (baseCapacity !== undefined) {
+    updates.baseCapacity = typeof baseCapacity === "number" && baseCapacity > 0 ? baseCapacity : null;
+  }
+  if (capacityCeiling !== undefined) {
+    updates.capacityCeiling = typeof capacityCeiling === "number" && capacityCeiling > 0 ? capacityCeiling : null;
+  }
+  if (capacityTierStep !== undefined && typeof capacityTierStep === "number" && capacityTierStep > 0) {
+    updates.capacityTierStep = capacityTierStep;
+  }
+
   if (lifecycleState !== undefined) {
     if (!VALID_LIFECYCLE.includes(lifecycleState as string)) {
       return NextResponse.json({ error: `lifecycleState must be one of: ${VALID_LIFECYCLE.join(", ")}` }, { status: 400 });
@@ -164,6 +297,11 @@ export async function PATCH(
     (lifecycleState === "cancelled" || lifecycleState === "deleted") &&
     existing.lifecycleState !== "cancelled" &&
     existing.lifecycleState !== "deleted";
+
+  // Guard: first_host trigger on draft → published transition
+  const isBeingPublished =
+    lifecycleState === "published" &&
+    existing.lifecycleState !== "published";
 
   try {
     const session = await prisma.clubSession.update({
@@ -178,6 +316,14 @@ export async function PATCH(
           ? session.name
           : "",
         hostProfileId: user.profileId,
+      });
+    }
+    if (isBeingPublished) {
+      const venueName = session.venue?.name ?? session.appClub?.name ?? "their venue";
+      void triggerFirstHost({
+        sessionId: id,
+        hostProfileId: session.host.id,
+        venueName,
       });
     }
     return NextResponse.json({ ok: true, session });

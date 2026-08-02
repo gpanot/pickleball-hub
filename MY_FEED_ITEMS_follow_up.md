@@ -1,6 +1,6 @@
 # My Feed Items — Implementation Guide
 
-Last updated: **Sunday June 7, 2026**
+Last updated: **Friday July 31, 2026**
 
 This document describes every feed item type shown in **Circle → My Feed**, how each one is built, and how it is saved in the database. Use it as the source of truth when debugging missing items or duplicate timestamps.
 
@@ -23,6 +23,10 @@ GET /api/feed
 Push cron / API hooks (PN6, PN7, PN8)
   → upsert feed_items directly at event time
   → survive even when live query no longer returns the item
+
+GET /api/recap/weekly
+  → client-only card prepended by CircleScreen on first feed open per week
+  → not stored in feed_items; uses PlayerProfile.preferences for seen-flag
 ```
 
 **Primary API:** `GET /api/feed` — `pickleball-hub/src/app/api/feed/route.ts`  
@@ -44,7 +48,7 @@ Push cron / API hooks (PN6, PN7, PN8)
 
 ---
 
-## Feed item types (10)
+## Feed item types (13 + 1 client-only)
 
 | # | Type | Who sees it | Primary source | Persisted? |
 |---|------|-------------|----------------|------------|
@@ -58,6 +62,10 @@ Push cron / API hooks (PN6, PN7, PN8)
 | 8 | `streak_milestone` | Followers | Live query (computed) | On feed load |
 | 9 | `dupr_update` | Followers | Live query (`PlayerDuprHistory`) | On feed load |
 | 10 | `gear_setup` | Followers | PN8 on gear save | PN8 only |
+| 11 | `comeback` *(Phase B)* | Followers | Live query (`played_today` path) | On feed load |
+| 12 | `first_venue` *(Phase B)* | Followers | Live query (`played_today` path) | On feed load |
+| 13 | `first_host` *(Phase B)* | Followers | Club Session PATCH hook | On session publish |
+| — | `weekly_recap` *(Phase C, client-only)* | Self | `GET /api/recap/weekly` | Never persisted in `feed_items` |
 
 ---
 
@@ -264,9 +272,11 @@ Items that fall out of the live query window (e.g. follow older than 5 days, ses
 
 **UI:** “{name} hit a 🔥 {N}-week streak · playing every week” + mini streak card.
 
-**Trigger:** Followee hit milestone week count ∈ {4, 8, 12, 26, 52} with current week played.
+**UI (Phase A):** Gold milestone card — "{name} has played {N} weeks in a row" + W1–W6 week dots + labeled "Cheer them on" CTA.
 
-**Live query:** Computed from up to 90 days of roster history (max 10 followees if following ≤ 30 people).
+**Trigger:** Followee hit milestone week count ∈ {3, 5, 10} **and** has a `played_today` for the current window, **and** `preferences.milestone_streak_N` is unset.
+
+**Live query:** Computed from up to 90 days of roster history per followee. Only fires for followees who played today.
 
 **ID:** `streak_{followeeUserId}_{streakCount}`
 
@@ -274,9 +284,13 @@ Items that fall out of the live query window (e.g. follow older than 5 days, ses
 
 **Saved:** On feed load persist step only.
 
-**Push:** None.
+**Push (Phase A):** PN6 fires "{name} just reached a {N}-week streak 🔥" per follower at session end. Flag `milestone_streak_N` set on player prefs to prevent re-emit.
+
+**Priority:** Lower than `session_count` — if same player has both in same session window, streak row is suppressed.
 
 **Cap:** Max **2 items per player**.
+
+**Legacy rows (4, 8, 12, 26, 52):** Remain in `feed_items` from before Phase A; no new rows emitted.
 
 ---
 
@@ -320,6 +334,114 @@ Items that fall out of the live query window (e.g. follow older than 5 days, ses
 
 ---
 
+### 11. `comeback` *(Phase B)*
+
+**UI:** Blue-lime milestone card — "{name} is back on the court after {N} days!" + CTA "Welcome them back".
+
+**Trigger (priority 3):** Followee has a `played_today` and no higher-priority milestone (session count or streak), **and** their most recent prior session was ≥ 14 days ago.
+
+**Payload fields:** `daysSince` (whole days, floor), `venueName`, `clubName`.
+
+**ID:** Same as `played_today` — `played_today_{playerUserId}_{sessionId}_{followerProfileId}`.
+
+**Timestamp:** Session end time.
+
+**Saved:** Upserted via feed route (same upsert as `played_today`; type field changed to `comeback`).
+
+**Push:** None (no extra push for this type; PN6 still fires as normal `played_today`).
+
+**Cap:** **Exempt**.
+
+---
+
+### 12. `first_venue` *(Phase B)*
+
+**UI:** Teal milestone card — "{name} played at {club} for the first time!" + CTA "Check it out".
+
+**Trigger (priority 4):** Followee has a `played_today`, no higher-priority milestone, no comeback condition, **and** has zero prior sessions at this club (case-insensitive, trimmed club name).
+
+**Payload fields:** `venueName`, `clubName`.
+
+**ID:** Same as `played_today` — `played_today_{playerUserId}_{sessionId}_{followerProfileId}`.
+
+**Saved:** Same upsert flow; type changed to `first_venue`.
+
+**Push:** None.
+
+**Edge case:** Players with ≤ 1 lifetime session are excluded (no prior-session baseline for comparison).
+
+**Cap:** **Exempt**.
+
+---
+
+### 13. `first_host` *(Phase B)*
+
+**UI:** Gold milestone card — "{name} just hosted their first session! 🎉" + deep-link CTA to session detail.
+
+**Trigger:** `PATCH /api/club-sessions/[id]` transitions status to `published`, host has `preferences.milestone_first_host` unset, and this is their first published session (count = 1).
+
+**Writer:** `PATCH /api/club-sessions/[id]` — fires `triggerFirstHost()` helper.
+
+**ID:** `first_host_{sessionId}_{followerProfileId}`
+
+**Timestamp:** Time of session publish.
+
+**Saved:** Upserted per follower in `feed_items`. Idempotent (second publish is silent because flag is already set).
+
+**Push:** "🎉 {name} just hosted their first session" → navigates to Sessions tab session detail. One push per follower.
+
+**Dedup flag:** `milestone_first_host` set on host's `PlayerProfile.preferences`.
+
+**Cap:** **Exempt**.
+
+---
+
+### — `weekly_recap` (client-only, Phase C)
+
+**UI:** Lime-accented card — "YOUR CIRCLE THIS WEEK" · four stat tiles (sessions, co-players, kudos, clubs) · top club · optional most-improved followee · lime "Share my week" button.
+
+**Source:** `GET /api/recap/weekly` — fetched by CircleScreen on initial feed load (once per app session, gated by server-side seen flag).
+
+**Window:** Previous Mon–Sun in Asia/Ho_Chi_Minh (UTC+7).
+
+**Stats returned:** `sessionsPlayed`, `uniqueCoPlayers`, `kudosReceived`, `clubsVisited`, `topClub`, `mostImproved`.
+
+**Seen dedup:** `PlayerProfile.preferences.lastRecapSeenWeek = currentISOWeekKey` set on first `show: true` response. Subsequent calls return `{ show: false }`.
+
+**Not persisted in `feed_items`** — card lives only in CircleScreen's `weeklyRecap` state. Dismissed immediately (local state cleared) when the user taps "×".
+
+**Share text:** `"I played {N} session(s) with {N} friends this week on SQUADD 🏓 squadd.app"` via `Share.share()`.
+
+---
+
+## Milestone system (Phase A–B)
+
+### Dedup flags in `PlayerProfile.preferences`
+
+| Flag key | Set when | Prevents |
+|---|---|---|
+| `milestone_streak_N` (N = 3/5/10) | Player reaches N-week streak; first emit only | Re-emitting same streak milestone on subsequent sessions |
+| `milestone_sessions_N` (N = 10/50/100/200) | Player reaches N lifetime sessions | Re-emitting same session count milestone |
+| `milestone_dupr_X_Y` (X_Y = 3_0/3_5/4_0/4_5) | Player crosses DUPR threshold X.Y | Re-emitting same DUPR threshold cross |
+| `milestone_first_host` | Host's first session published | Re-triggering first_host feed/push on subsequent publishes |
+| `lastRecapSeenWeek` | Weekly recap shown | Showing recap card more than once per week |
+
+### Priority within `played_today` path (per player per session)
+
+```
+1. session_count milestone   → milestoneKind: "session_count" on played_today card
+2. streak_milestone          → separate streak card (played_today card suppressed)
+3. comeback                  → played_today card becomes comeback type
+4. first_venue               → played_today card becomes first_venue type
+5. plain played_today        → no milestone annotations
+```
+
+### Shared helper
+
+`pickleball-hub/src/lib/feed-milestones.ts` — threshold constants, preference key builders, threshold detectors, batch preference fetch/set, lifetime session count, streak computation.
+
+---
+
 ## Post-processing (feed API)
 
 Applied to **live items** before persist and response:
@@ -338,10 +460,11 @@ Applied to **live items** before persist and response:
 |----|-------------------|------|-------|
 | PN1 | No | — | Opens Shortlist |
 | PN4 | No (client prepend) | `new_follower` | Tap → local prepend |
-| PN5 | No | — | Weekly recap |
-| PN6 | **Yes** | `played_today` (+ `played_self` for player) | One item **per follower per session** |
+| PN5 | No | — | Weekly recap push (separate from `/api/recap/weekly` card) |
+| PN6 | **Yes** | `played_today` / milestone variants | One item per follower per session; also fires streak/session-count milestone pushes (Phase A) |
 | PN7 | **Yes** | `you_are_playing` | Self only |
 | PN8 | **Yes** | `gear_setup` | One item **per follower** |
+| first_host hook | **Yes** | `first_host` | One item per follower on first session publish (Phase B) |
 
 `notifications_sent` is for push dedup/throttle only — **not** read by `/api/feed`.
 
@@ -397,11 +520,14 @@ ORDER BY sent_at DESC;
 | Area | Path |
 |------|------|
 | Feed API (live + merge + persist) | `pickleball-hub/src/app/api/feed/route.ts` |
-| PN6 — played_today / played_self | `pickleball-hub/src/lib/notifications/pn6-session-finished.ts` |
+| PN6 — played_today / played_self / milestone pushes (Phase A) | `pickleball-hub/src/lib/notifications/pn6-session-finished.ts` |
 | PN7 — you_are_playing | `pickleball-hub/src/lib/notifications/pn7-you-are-playing.ts` |
 | PN8 — gear_setup | `pickleball-hub/src/lib/notifications/pn8-gear-setup.ts` |
 | Push cron orchestrator | `pickleball-hub/src/lib/notifications/push-cron.ts` |
 | Session time helpers | `pickleball-hub/src/lib/notifications/session-time.ts` |
+| Milestone helper (Phase A+) | `pickleball-hub/src/lib/feed-milestones.ts` |
+| Club Session PATCH — first_host hook (Phase B) | `pickleball-hub/src/app/api/club-sessions/[id]/route.ts` |
+| Weekly recap API (Phase C) | `pickleball-hub/src/app/api/recap/weekly/route.ts` |
 | Prisma schema | `pickleball-hub/prisma/schema.prisma` (`FeedItem`) |
 | Mobile types | `pickleball-hub/mobile/src/data.ts` |
 | Feed row UI | `pickleball-hub/mobile/src/components/FeedItemRow.tsx` |
@@ -411,6 +537,29 @@ ORDER BY sent_at DESC;
 ---
 
 ## Changelog
+
+**Friday July 31, 2026**
+
+*Phase A — Milestone emit fixes (existing types)*
+- `streak_milestone` thresholds changed from {4,8,12,26,52} to {3,5,10}; now gated to `played_today` window only; dedup via `preferences.milestone_streak_N`.
+- `played_today` annotated with `milestoneKind: "session_count"` + `sessionMilestone: N` when player hits lifetime session count ∈ {10,50,100,200} (once per player); dedup via `preferences.milestone_sessions_N`.
+- `dupr_update` annotated with `milestoneKind: "dupr_threshold"` + `milestoneDupr: X` when DUPR crosses 3.0/3.5/4.0/4.5; dedup via `preferences.milestone_dupr_X_Y`.
+- PN6 extended to fire streak and session-count milestone pushes at session-end time, before next feed open.
+- `src/lib/feed-milestones.ts` created as shared milestone helper.
+- Mobile: `MilestoneKind` type added, `FeedItem` extended with optional milestone fields; `FeedItemRow.tsx` updated with gold/blue milestone card chrome, labeled CTAs, week dots.
+
+*Phase B — New feed types*
+- `comeback` type added: emitted when a followed player returns after ≥14 days away (priority 3 in `played_today` path). `daysSince` and `clubName` included in payload.
+- `first_venue` type added: emitted on a player's first session at a given club (priority 4). Excludes players with ≤1 lifetime session.
+- `first_host` type added: emitted per follower when a host's first Club Session is published. Deep-link to session detail. Dedup via `preferences.milestone_first_host`.
+- `PATCH /api/club-sessions/[id]` extended with `triggerFirstHost()` hook on `published` transition.
+- Mobile: all three types added to `FeedItemType`; `FeedItemRow.tsx` updated with blue/lime/gold card variants.
+
+*Phase C — Weekly recap*
+- `GET /api/recap/weekly` added (authenticated). Returns previous Mon–Sun (HCMC UTC+7) stats: sessions, co-players, kudos, clubs, top club, most improved followee.
+- Seen flag: `preferences.lastRecapSeenWeek` set on first `show: true` response; subsequent calls same week return `{ show: false }`.
+- CircleScreen: fetches recap on initial feed load (once per app session). Renders lime-accented card above feed with "Share my week" → `Share.share()`.
+- Card not persisted in `feed_items`; lives only in local React state.
 
 **Sunday June 7, 2026**
 - Document created.

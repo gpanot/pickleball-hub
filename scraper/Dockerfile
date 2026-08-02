@@ -7,5 +7,6 @@ COPY roster_scraper.py /app/roster_scraper.py
 COPY squad_chests.py /app/squad_chests.py
 COPY dupr_refresh.py /app/dupr_refresh.py
 COPY promotion/ /app/promotion/
+COPY *_pickleball_clubs.json /app/
 WORKDIR /app
 CMD ["python", "entrypoint.py"]

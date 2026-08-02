@@ -25,6 +25,7 @@ import {
   notifyAutoBackfill,
   notifyPlayerCancelledToHost,
 } from "@/lib/club-session-notifications";
+import { maybePromoteCapacity } from "@/lib/club-session-capacity";
 
 const VALID_STATUSES = ["requested", "confirmed", "waiting_list", "declined"] as const;
 type BookingStatus = typeof VALID_STATUSES[number];
@@ -49,6 +50,9 @@ async function autoBackfill(
     where: { id: oldest.id },
     data: { status: "confirmed", decidedAt: new Date() },
   });
+
+  // Auto-grow: a waitlist player just became confirmed — check tier promotion
+  await maybePromoteCapacity(tx, clubSessionId);
 
   // Notify asynchronously after transaction (can't await inside tx since it
   // sends a network request, but we schedule it to run after commit)
@@ -185,6 +189,10 @@ export async function PATCH(
       // Auto-backfill when a confirmed booking is moved off confirmed by the host
       if (wasConfirmed && newStatus !== "confirmed") {
         await autoBackfill(tx, clubSession.id, sessionName, hostProfileId);
+      }
+      // Auto-grow: host just confirmed a player — check tier promotion
+      if (newStatus === "confirmed") {
+        await maybePromoteCapacity(tx, clubSession.id);
       }
       return b;
     });

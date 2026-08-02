@@ -663,7 +663,7 @@ export function CheckInSheet({
 
 const s = StyleSheet.create({
   overlay: {
-    flex: 1, backgroundColor: 'rgba(0,0,0,0.8)',
+    flex: 1, backgroundColor: '#0a0a0a',
     justifyContent: 'flex-end',
   },
   sheet: {

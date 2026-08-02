@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getMobileUser } from "@/lib/mobile-auth";
-import { isClubManager } from "@/lib/club-auth";
+import { can } from "@/lib/club-permissions";
 import { prisma } from "@/lib/db";
 import { deleteAppClubsCascade } from "@/lib/delete-app-club-cascade";
 
@@ -18,6 +18,7 @@ const CLUB_SELECT = {
   managers: {
     select: {
       id: true,
+      playerProfileId: true,
       role: true,
       addedAt: true,
       profile: { select: { id: true, displayName: true, squadNickname: true } },
@@ -37,7 +38,7 @@ export async function GET(
   return NextResponse.json({ club });
 }
 
-// DELETE /api/app-clubs/[id] — permanently delete a club (creator only)
+// DELETE /api/app-clubs/[id] — permanently delete a club (Owner only)
 // Cascades: sessions → bookings → members → managers → club
 export async function DELETE(
   req: NextRequest,
@@ -47,14 +48,12 @@ export async function DELETE(
   const user = await getMobileUser(req);
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  // Only the creator can delete the club
-  const club = await prisma.appClub.findUnique({
-    where: { id },
-    select: { creatorId: true },
-  });
-  if (!club) return NextResponse.json({ error: "Club not found" }, { status: 404 });
-  if (club.creatorId !== user.profileId) {
-    return NextResponse.json({ error: "Only the club creator can delete the club" }, { status: 403 });
+  const clubExists = await prisma.appClub.findUnique({ where: { id }, select: { id: true } });
+  if (!clubExists) return NextResponse.json({ error: "Club not found" }, { status: 404 });
+
+  const authorized = await can(user.profileId, id, "DELETE_CLUB");
+  if (!authorized) {
+    return NextResponse.json({ error: "Only the club Owner can delete the club" }, { status: 403 });
   }
 
   try {
@@ -69,8 +68,8 @@ export async function DELETE(
   }
 }
 
-// PATCH /api/app-clubs/[id] — edit club fields
-// Auth: AppClubManager check (creator or manager)
+// PATCH /api/app-clubs/[id] — edit club identity fields
+// Auth: Owner or Admin (EDIT_CLUB permission)
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -79,8 +78,10 @@ export async function PATCH(
   const user = await getMobileUser(req);
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const authorized = await isClubManager(id, user.profileId);
-  if (!authorized) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const authorized = await can(user.profileId, id, "EDIT_CLUB");
+  if (!authorized) {
+    return NextResponse.json({ error: "Only Owners and Admins can edit club settings" }, { status: 403 });
+  }
 
   let body: Record<string, unknown>;
   try {

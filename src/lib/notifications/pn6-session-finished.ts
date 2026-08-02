@@ -9,6 +9,15 @@ import {
   vietnamTimeStr,
   vietnamTodayStr,
 } from "@/lib/notifications/session-time";
+import {
+  STREAK_MILESTONES,
+  getLifetimeSessionCount,
+  computePlayerStreak,
+  getSessionMilestoneReached,
+  sessionMilestoneKey,
+  streakMilestoneKey,
+  setMilestoneFlag,
+} from "@/lib/feed-milestones";
 
 const PN6_TYPE = "pn6";
 const PN6_THROTTLE_MAX = 2;
@@ -103,7 +112,7 @@ export async function sendSessionFinishedKudosNotifications(): Promise<{
 
     const playerProfile = await prisma.playerProfile.findUnique({
       where: { reclubUserId: playerId },
-      select: { id: true },
+      select: { id: true, preferences: true },
     });
 
     if (playerProfile) {
@@ -138,6 +147,39 @@ export async function sendSessionFinishedKudosNotifications(): Promise<{
       feedItemsCreated++;
     }
 
+    // ── Milestone detection for this player ─────────────────────────────────
+    // Compute lifetime session count and streak. Use prefs flags for player-level
+    // dedup (NotificationSent requires a recipientId so can't be used here).
+    let activeMilestone: { type: "session_count" | "streak"; n: number; weeklyPlayed?: boolean[] } | null = null;
+
+    try {
+      const prefs = (playerProfile?.preferences ?? {}) as Record<string, unknown>;
+
+      const lifetimeCount = await getLifetimeSessionCount(playerId);
+      const sessionMilestone = getSessionMilestoneReached(lifetimeCount);
+      if (sessionMilestone !== null) {
+        const flagKey = sessionMilestoneKey(sessionMilestone);
+        if (!prefs[flagKey]) {
+          activeMilestone = { type: "session_count", n: sessionMilestone };
+          void setMilestoneFlag(playerId, flagKey);
+        }
+      }
+
+      if (!activeMilestone) {
+        // Only check streak if session count milestone didn't take priority.
+        const { streak, weeklyPlayed } = await computePlayerStreak(playerId, todayStr);
+        if ((STREAK_MILESTONES as readonly number[]).includes(streak)) {
+          const flagKey = streakMilestoneKey(streak);
+          if (!prefs[flagKey]) {
+            activeMilestone = { type: "streak", n: streak, weeklyPlayed };
+            void setMilestoneFlag(playerId, flagKey);
+          }
+        }
+      }
+    } catch (err) {
+      console.error(`[PN6] milestone detection failed for player ${playerId}:`, err);
+    }
+
     const followers = await prisma.follow.findMany({
       where: { followeeId: playerId },
       select: {
@@ -149,12 +191,35 @@ export async function sendSessionFinishedKudosNotifications(): Promise<{
 
     if (followers.length > 0) {
       console.log(
-        `[PN6] player=${playerName} (${playerId}) session=${session.id} followers=${followers.length}`,
+        `[PN6] player=${playerName} (${playerId}) session=${session.id} followers=${followers.length} milestone=${activeMilestone?.type ?? "none"}`,
       );
     }
 
     for (const { follower } of followers) {
       const todayItemId = `played_today_${playerId}_${session.id}_${follower.id}`;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const todayPayload: any = {
+        id: todayItemId,
+        type: "played_today",
+        player: {
+          userId: playerId.toString(),
+          displayName: player.displayName,
+          imageUrl: playerImageUrl,
+          duprDoubles: player.duprDoubles ? Number(player.duprDoubles) : null,
+        },
+        venueName,
+        sessionId: session.id,
+        timestamp: sessionTimestamp,
+        isFollowing: true,
+        kudos: { fistbump: 0, flame: 0, star: 0, myReactions: [] },
+      };
+
+      // Annotate feed item with milestone kind so it renders the gold card.
+      if (activeMilestone?.type === "session_count") {
+        todayPayload.milestoneKind = "session_count";
+        todayPayload.sessionMilestone = activeMilestone.n;
+      }
+
       await prisma.feedItem.upsert({
         where: { id: todayItemId },
         create: {
@@ -162,21 +227,7 @@ export async function sendSessionFinishedKudosNotifications(): Promise<{
           profileId: follower.id,
           type: "played_today",
           playerUserId: playerId.toString(),
-          payload: {
-            id: todayItemId,
-            type: "played_today",
-            player: {
-              userId: playerId.toString(),
-              displayName: player.displayName,
-              imageUrl: playerImageUrl,
-              duprDoubles: player.duprDoubles ? Number(player.duprDoubles) : null,
-            },
-            venueName,
-            sessionId: session.id,
-            timestamp: sessionTimestamp,
-            isFollowing: true,
-            kudos: { fistbump: 0, flame: 0, star: 0, myReactions: [] },
-          },
+          payload: todayPayload,
           timestamp: new Date(sessionTimestamp),
         },
         update: {},
@@ -188,6 +239,50 @@ export async function sendSessionFinishedKudosNotifications(): Promise<{
         continue;
       }
 
+      // Milestone push (highest priority) replaces the standard PN6 push for this session.
+      if (activeMilestone) {
+        let title: string;
+        let body: string;
+        if (activeMilestone.type === "session_count") {
+          const suffix = activeMilestone.n === 1 ? "st" : activeMilestone.n === 2 ? "nd" : activeMilestone.n === 3 ? "rd" : "th";
+          title = `${playerName} just completed their ${activeMilestone.n}${suffix} session 🎉`;
+          body = `Celebrate this milestone with them!`;
+        } else {
+          title = `${playerName} just reached a ${activeMilestone.n}-week streak 🔥`;
+          body = `They've been playing every week. Cheer them on!`;
+        }
+
+        const milestoneDedup = `pn6_milestone:${session.id}:${playerId}:${follower.id}`;
+        const alreadySentToFollower = await prisma.notificationSent.findFirst({
+          where: { recipientId: follower.id, type: milestoneDedup },
+          select: { id: true },
+        });
+        if (!alreadySentToFollower) {
+          const mResult = await sendPushNotification(follower.id, {
+            title,
+            body,
+            data: {
+              type: PN6_TYPE,
+              screen: "Circle",
+              followeeUserId: playerId.toString(),
+              sessionId: session.id.toString(),
+            },
+          });
+          if (mResult.success) {
+            await prisma.notificationSent.create({
+              data: { recipientId: follower.id, type: milestoneDedup },
+            });
+            sent++;
+          } else {
+            skipped++;
+          }
+        } else {
+          skipped++;
+        }
+        continue; // Skip standard PN6 push for this follower.
+      }
+
+      // Standard PN6 push.
       const alreadySentForSession = await prisma.notificationSent.findFirst({
         where: {
           recipientId: follower.id,
