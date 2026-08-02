@@ -25,6 +25,7 @@ export async function POST(req: NextRequest) {
     venueId, venuePending, maxPlayers, requiresApproval, autoConfirmMode, privacy,
     feeAmount, feeCurrency, skillLevelMin, skillLevelMax,
     hostRole, notes, sportId,
+    autoGrowEnabled, baseCapacity, capacityCeiling, capacityTierStep,
   } = body as Record<string, unknown>;
 
   const VALID_AUTO_CONFIRM_MODES = ["open", "auto_confirm_till_full", "requires_approval"];
@@ -67,33 +68,41 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "maxPlayers must be a positive integer" }, { status: 400 });
   }
 
+  const dbPayload = {
+    appClubId,
+    hostId: user.profileId,
+    sportId: typeof sportId === "number" ? sportId : null,
+    format: format as string,
+    name: (name as string).trim(),
+    startTime: start,
+    endTime: end,
+    durationMin: dur,
+    venueId: typeof venueId === "number" ? venueId : null,
+    venuePending: venuePending === true,
+    maxPlayers: maxPlayers as number,
+    requiresApproval: resolvedAutoConfirmMode === "requires_approval",
+    autoConfirmMode: resolvedAutoConfirmMode,
+    privacy: privacy === "private" ? "private" : "public",
+    feeAmount: typeof feeAmount === "number" ? feeAmount : null,
+    feeCurrency: typeof feeCurrency === "string" ? feeCurrency : null,
+    skillLevelMin: typeof skillLevelMin === "number" ? skillLevelMin : null,
+    skillLevelMax: typeof skillLevelMax === "number" ? skillLevelMax : null,
+    hostRole: VALID_HOST_ROLES.includes(hostRole as typeof VALID_HOST_ROLES[number])
+      ? (hostRole as string)
+      : "host_and_play",
+    notes: typeof notes === "string" ? notes : null,
+    lifecycleState: "draft",
+    autoGrowEnabled: autoGrowEnabled === true,
+    baseCapacity: autoGrowEnabled === true && typeof baseCapacity === "number" && baseCapacity > 0 ? baseCapacity : null,
+    capacityCeiling: autoGrowEnabled === true && typeof capacityCeiling === "number" && capacityCeiling > 0 ? capacityCeiling : null,
+    capacityTierStep: typeof capacityTierStep === "number" && capacityTierStep > 0 ? capacityTierStep : 4,
+  };
+
+  console.log("[POST /api/club-sessions] dbPayload:", JSON.stringify(dbPayload));
+
   try {
     const session = await prisma.clubSession.create({
-      data: {
-        appClubId,
-        hostId: user.profileId,
-        sportId: typeof sportId === "number" ? sportId : null,
-        format: format as string,
-        name: (name as string).trim(),
-        startTime: start,
-        endTime: end,
-        durationMin: dur,
-        venueId: typeof venueId === "number" ? venueId : null,
-        venuePending: venuePending === true,
-        maxPlayers: maxPlayers as number,
-        requiresApproval: resolvedAutoConfirmMode === "requires_approval",
-        autoConfirmMode: resolvedAutoConfirmMode,
-        privacy: privacy === "private" ? "private" : "public",
-        feeAmount: typeof feeAmount === "number" ? feeAmount : null,
-        feeCurrency: typeof feeCurrency === "string" ? feeCurrency : null,
-        skillLevelMin: typeof skillLevelMin === "number" ? skillLevelMin : null,
-        skillLevelMax: typeof skillLevelMax === "number" ? skillLevelMax : null,
-        hostRole: VALID_HOST_ROLES.includes(hostRole as typeof VALID_HOST_ROLES[number])
-          ? (hostRole as string)
-          : "host_and_play",
-        notes: typeof notes === "string" ? notes : null,
-        lifecycleState: "draft",
-      },
+      data: dbPayload,
       include: {
         host: { select: { id: true, displayName: true, squadNickname: true } },
         venue: { select: { id: true, name: true, address: true } },
@@ -102,8 +111,15 @@ export async function POST(req: NextRequest) {
     });
     return NextResponse.json({ ok: true, session }, { status: 201 });
   } catch (err) {
-    console.error("[POST /api/club-sessions]", err);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    const e = err as Error & { code?: string; meta?: unknown };
+    console.error("[POST /api/club-sessions] Prisma error:", {
+      message: e.message,
+      code: e.code,
+      meta: e.meta,
+      stack: e.stack,
+    });
+    const detail = e.code ? `DB error ${e.code}: ${e.message}` : e.message ?? "Internal server error";
+    return NextResponse.json({ error: detail }, { status: 500 });
   }
 }
 
@@ -170,6 +186,10 @@ export async function GET(req: NextRequest) {
       lifecycleState: true,
       venuePending: true,
       notes: true,
+      autoGrowEnabled: true,
+      baseCapacity: true,
+      capacityCeiling: true,
+      capacityTierStep: true,
       createdAt: true,
       host: { select: { id: true, displayName: true, squadNickname: true } },
       venue: { select: { id: true, name: true, address: true, latitude: true, longitude: true } },
