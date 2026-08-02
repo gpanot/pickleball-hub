@@ -3,12 +3,18 @@ import { getMobileUser } from "@/lib/mobile-auth";
 import { isClubManager } from "@/lib/club-auth";
 import { prisma } from "@/lib/db";
 import { haversineKm } from "@/lib/squad-geo";
+import { materializeSeries } from "@/lib/club-sessions/materialize-series";
 
 const VALID_FORMATS = ["social", "round_robin", "singles"] as const;
 const VALID_HOST_ROLES = ["host_and_play", "host_only"] as const;
 
 // POST /api/club-sessions — create a session under an AppClub
 // Auth: AppClubManager check on the target appClubId
+//
+// Optional repeat field for weekly recurring series:
+//   repeat?: { pattern: "weekly"; weekday: 0–6; timezone: string }
+// When present, creates a SessionSeries and materializes 8 occurrences.
+// Returns the first occurrence's session row.
 export async function POST(req: NextRequest) {
   const user = await getMobileUser(req);
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -27,6 +33,7 @@ export async function POST(req: NextRequest) {
     hostRole, notes, sportId,
     autoGrowEnabled, baseCapacity, capacityCeiling, capacityTierStep,
     publishAfterMin, cancellationCutoffMin,
+    repeat,
   } = body as Record<string, unknown>;
 
   const VALID_AUTO_CONFIRM_MODES = ["open", "auto_confirm_till_full", "requires_approval"];
@@ -69,7 +76,28 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "maxPlayers must be a positive integer" }, { status: 400 });
   }
 
-  const dbPayload = {
+  // Validate repeat field if present
+  const repeatObj = repeat && typeof repeat === "object" ? (repeat as Record<string, unknown>) : null;
+  const isWeeklyRepeat =
+    repeatObj !== null &&
+    repeatObj.pattern === "weekly" &&
+    typeof repeatObj.weekday === "number" &&
+    repeatObj.weekday >= 0 &&
+    repeatObj.weekday <= 6 &&
+    typeof repeatObj.timezone === "string";
+
+  if (repeatObj && !isWeeklyRepeat) {
+    return NextResponse.json(
+      { error: "repeat must be { pattern: 'weekly', weekday: 0-6, timezone: string }" },
+      { status: 400 },
+    );
+  }
+
+  const resolvedHostRole = VALID_HOST_ROLES.includes(hostRole as typeof VALID_HOST_ROLES[number])
+    ? (hostRole as string)
+    : "host_and_play";
+
+  const baseSessionPayload = {
     appClubId,
     hostId: user.profileId,
     sportId: typeof sportId === "number" ? sportId : null,
@@ -88,11 +116,8 @@ export async function POST(req: NextRequest) {
     feeCurrency: typeof feeCurrency === "string" ? feeCurrency : null,
     skillLevelMin: typeof skillLevelMin === "number" ? skillLevelMin : null,
     skillLevelMax: typeof skillLevelMax === "number" ? skillLevelMax : null,
-    hostRole: VALID_HOST_ROLES.includes(hostRole as typeof VALID_HOST_ROLES[number])
-      ? (hostRole as string)
-      : "host_and_play",
+    hostRole: resolvedHostRole,
     notes: typeof notes === "string" ? notes : null,
-    lifecycleState: "draft",
     autoGrowEnabled: autoGrowEnabled === true,
     baseCapacity: autoGrowEnabled === true && typeof baseCapacity === "number" && baseCapacity > 0 ? baseCapacity : null,
     capacityCeiling: autoGrowEnabled === true && typeof capacityCeiling === "number" && capacityCeiling > 0 ? capacityCeiling : null,
@@ -100,6 +125,72 @@ export async function POST(req: NextRequest) {
     publishAfterMin: typeof publishAfterMin === "number" && publishAfterMin > 0 ? publishAfterMin : null,
     cancellationCutoffMin: typeof cancellationCutoffMin === "number" && cancellationCutoffMin > 0 ? cancellationCutoffMin : null,
   };
+
+  // ── Weekly recurring series path ────────────────────────────────────────────
+  if (isWeeklyRepeat && repeatObj) {
+    const repeatWeekday = repeatObj.weekday as number;
+    const repeatTimezone = repeatObj.timezone as string;
+    // Derive "HH:MM" from the provided startTime in the given timezone
+    const startTimeLocal = start.toLocaleTimeString("en-GB", {
+      timeZone: repeatTimezone,
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
+
+    try {
+      const series = await prisma.sessionSeries.create({
+        data: {
+          clubId: appClubId,
+          createdByUserId: user.profileId,
+          weekday: repeatWeekday,
+          startTimeLocal,
+          durationMin: dur,
+          timezone: repeatTimezone,
+          sportId: typeof sportId === "number" ? sportId : null,
+          format: format as string,
+          hostRole: resolvedHostRole,
+          name: (name as string).trim(),
+          venueId: typeof venueId === "number" ? venueId : null,
+          venuePending: venuePending === true,
+          maxPlayers: maxPlayers as number,
+          requiresApproval: resolvedAutoConfirmMode === "requires_approval",
+          autoConfirmMode: resolvedAutoConfirmMode,
+          privacy: privacy === "private" ? "private" : "public",
+          feeAmount: typeof feeAmount === "number" ? feeAmount : null,
+          feeCurrency: typeof feeCurrency === "string" ? feeCurrency : null,
+          skillLevelMin: typeof skillLevelMin === "number" ? skillLevelMin : null,
+          skillLevelMax: typeof skillLevelMax === "number" ? skillLevelMax : null,
+          notes: typeof notes === "string" ? notes : null,
+          lifecycleState: "active",
+        },
+      });
+
+      await materializeSeries(series.id, 8);
+
+      // Return the first occurrence (earliest startTime)
+      const firstOccurrence = await prisma.clubSession.findFirst({
+        where: { seriesId: series.id, lifecycleState: "published" },
+        orderBy: { startTime: "asc" },
+        include: {
+          host: { select: { id: true, displayName: true, squadNickname: true } },
+          venue: { select: { id: true, name: true, address: true } },
+          _count: { select: { bookings: { where: { status: "confirmed" } } } },
+        },
+      });
+
+      return NextResponse.json({ ok: true, session: firstOccurrence, seriesId: series.id }, { status: 201 });
+    } catch (err) {
+      const e = err as Error & { code?: string; meta?: unknown };
+      console.error("[POST /api/club-sessions] series creation error:", {
+        message: e.message, code: e.code, meta: e.meta,
+      });
+      return NextResponse.json({ error: e.message ?? "Internal server error" }, { status: 500 });
+    }
+  }
+
+  // ── One-off session path (existing behavior) ────────────────────────────────
+  const dbPayload = { ...baseSessionPayload, lifecycleState: "draft" };
 
   console.log("[POST /api/club-sessions] dbPayload:", JSON.stringify(dbPayload));
 
@@ -128,12 +219,13 @@ export async function POST(req: NextRequest) {
 
 // GET /api/club-sessions — list sessions with filters
 // Auth: none required for public sessions; draft sessions only visible to managers
-// Query params: appClubId, timeframe (upcoming|past|all), lifecycleState, take, cursor
+// Query params: appClubId, seriesId, timeframe (upcoming|past|all), lifecycleState, take, cursor
 //               lat, lng, radiusKm — filter sessions by distance from caller's location
 export async function GET(req: NextRequest) {
   const user = await getMobileUser(req);
   const { searchParams } = req.nextUrl;
   const appClubId = searchParams.get("appClubId") ?? undefined;
+  const seriesIdFilter = searchParams.get("seriesId") ?? undefined;
   const timeframe = searchParams.get("timeframe") ?? "upcoming"; // upcoming | past | all
   const take = Math.min(Number(searchParams.get("take") ?? "20"), 50);
   const cursor = searchParams.get("cursor") ?? undefined;
@@ -153,12 +245,17 @@ export async function GET(req: NextRequest) {
   // "deleted" sessions are always excluded from all listing queries.
   // Public browse shows published + cancelled (players see cancelled sessions with a badge).
   // Club managers also see drafts on club-scoped queries.
-  const lifecycleFilter = canSeeDrafts
+  // Series overview needs all lifecycleStates — bypass when seriesId is specified.
+  const lifecycleFilter = seriesIdFilter
+    ? {} // Series Overview shows all states for that series
+    : canSeeDrafts
     ? { lifecycleState: { in: ["published", "draft", "cancelled"] } }
     : { lifecycleState: { in: ["published", "cancelled"] } };
 
   const timeFilter =
-    timeframe === "upcoming"
+    seriesIdFilter
+      ? {} // Series Overview shows past + future
+      : timeframe === "upcoming"
       ? { startTime: { gte: now } }
       : timeframe === "past"
       ? { startTime: { lt: now } }
@@ -166,7 +263,7 @@ export async function GET(req: NextRequest) {
 
   const sessions = await prisma.clubSession.findMany({
     where: {
-      ...(appClubId ? { appClubId } : { privacy: "public" }),
+      ...(seriesIdFilter ? { seriesId: seriesIdFilter } : appClubId ? { appClubId } : { privacy: "public" }),
       ...lifecycleFilter,
       ...timeFilter,
     },
@@ -195,6 +292,8 @@ export async function GET(req: NextRequest) {
       capacityTierStep: true,
       publishAfterMin: true,
       cancellationCutoffMin: true,
+      seriesId: true,
+      detachedFromSeries: true,
       createdAt: true,
       host: { select: { id: true, displayName: true, squadNickname: true } },
       venue: { select: { id: true, name: true, address: true, latitude: true, longitude: true } },

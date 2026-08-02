@@ -26,3 +26,14 @@ curl -sf -X GET "${BASE}/api/cron/chest-expire?secret=${SECRET}" \
 curl -sf -X GET "${BASE}/api/cron/battle-reveal-notifications?secret=${SECRET}" \
   -H "x-cron-secret: ${SECRET}" \
   -o /tmp/battle_reveal.json && echo "[cron] battle-reveal: $(cat /tmp/battle_reveal.json)" || echo "[cron] battle-reveal FAILED"
+
+# 5. Materialize series occurrences (nightly at 02:00 UTC)
+HOUR=$(date -u +%H)
+MINUTE=$(date -u +%M)
+if [ "$HOUR" = "02" ] && [ "$MINUTE" -lt "02" ]; then
+  curl -sf -X GET "${BASE}/api/cron/materialize-series?secret=${SECRET}" \
+    -H "x-cron-secret: ${SECRET}" \
+    -o /tmp/materialize_series.json \
+    && echo "[cron] materialize-series: $(cat /tmp/materialize_series.json)" \
+    || echo "[cron] materialize-series FAILED"
+fi

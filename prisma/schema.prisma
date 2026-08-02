@@ -965,6 +965,7 @@ model AppClub {
   managers  AppClubManager[]
   sessions  ClubSession[]
   members   AppClubMember[]
+  series    SessionSeries[]
 
   @@index([privacy])
   @@map("app_clubs")
@@ -1003,6 +1004,47 @@ model AppClubMember {
   @@unique([appClubId, playerProfileId])
   @@index([playerProfileId])
   @@map("app_club_members")
+}
+
+/// Template for a weekly recurring series. Each occurrence is a standalone ClubSession.
+/// lifecycleState: "active" | "cancelled"
+model SessionSeries {
+  id               String   @id @default(cuid())
+  clubId           String   @map("club_id")
+  createdByUserId  String   @map("created_by_user_id")
+  /// 0=Sun … 6=Sat — the weekday occurrences repeat on
+  weekday          Int
+  /// Local time of occurrence start, e.g. "19:00"
+  startTimeLocal   String   @map("start_time_local")
+  durationMin      Int      @map("duration_min")
+  /// IANA timezone, e.g. "Asia/Ho_Chi_Minh"
+  timezone         String
+  sportId          Int?     @map("sport_id")
+  format           String
+  hostRole         String   @map("host_role")
+  name             String
+  venueId          Int?     @map("venue_id")
+  venuePending     Boolean  @default(false) @map("venue_pending")
+  maxPlayers       Int      @map("max_players")
+  requiresApproval Boolean  @map("requires_approval")
+  autoConfirmMode  String   @map("auto_confirm_mode")
+  privacy          String
+  feeAmount        Decimal? @map("fee_amount") @db.Decimal(10, 2)
+  feeCurrency      String?  @map("fee_currency")
+  skillLevelMin    Decimal? @map("skill_level_min") @db.Decimal(5, 3)
+  skillLevelMax    Decimal? @map("skill_level_max") @db.Decimal(5, 3)
+  notes            String?
+  /// "active" | "cancelled" — separate from ClubSession.lifecycleState
+  lifecycleState   String   @default("active") @map("lifecycle_state")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  club     AppClub       @relation(fields: [clubId], references: [id])
+  sessions ClubSession[]
+
+  @@index([clubId])
+  @@index([lifecycleState])
+  @@map("session_series")
 }
 
 /// App-managed session created by a host under an AppClub.
@@ -1052,17 +1094,23 @@ model ClubSession {
   cancellationCutoffMin Int?  @map("cancellation_cutoff_min")
   /// "draft" | "published" | "cancelled"
   lifecycleState String    @default("draft") @map("lifecycle_state")
+  /// FK to SessionSeries — null for standalone (non-recurring) sessions.
+  seriesId           String?  @map("series_id")
+  /// True when this occurrence was individually edited or cancelled; series-wide ops skip it.
+  detachedFromSeries Boolean  @default(false) @map("detached_from_series")
   createdAt      DateTime  @default(now()) @map("created_at")
   updatedAt      DateTime  @updatedAt @map("updated_at")
 
   appClub  AppClub              @relation(fields: [appClubId], references: [id])
   host     PlayerProfile        @relation("SessionHost", fields: [hostId], references: [id])
   venue    Venue?               @relation(fields: [venueId], references: [id])
+  series   SessionSeries?       @relation(fields: [seriesId], references: [id])
   bookings ClubSessionBooking[]
 
   @@index([appClubId, startTime])
   @@index([lifecycleState, startTime])
   @@index([venueId])
+  @@index([seriesId])
   @@map("club_sessions")
 }
 

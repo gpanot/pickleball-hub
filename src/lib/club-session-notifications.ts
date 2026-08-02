@@ -15,6 +15,7 @@ type ClubSessionNotifType =
   | "cs_booking_declined"         // row 3: → declined
   | "cs_booking_auto_backfill"    // row 5: auto-backfill → confirmed
   | "cs_session_cancelled"        // row 6: host cancels session
+  | "cs_session_updated"          // material field change — notifies confirmed + waiting_list
   | "cs_player_cancelled"         // row 7: confirmed player cancels → notify host
   | "cs_manager_added"            // manager added to club
   | "cs_manager_removed"          // manager removed from club
@@ -138,6 +139,34 @@ export async function notifySessionCancelled(opts: {
       const { title, body } = pushCopy[lang].sessionCancelled(opts.sessionName);
       return logAndSend(b.playerProfileId, opts.hostProfileId, "cs_session_cancelled", {
         title, body, data: { type: "cs_session_cancelled", sessionId: opts.sessionId },
+      });
+    }),
+  );
+}
+
+/** Material field change (venue, time, fee, level) — notify confirmed + waiting_list players */
+export async function notifySessionUpdated(opts: {
+  sessionId: string;
+  sessionName: string;
+  hostProfileId: string;
+}) {
+  const bookings = await prisma.clubSessionBooking.findMany({
+    where: {
+      clubSessionId: opts.sessionId,
+      status: { in: ["confirmed", "waiting_list"] },
+    },
+    select: {
+      playerProfileId: true,
+      player: { select: { preferences: true } },
+    },
+  });
+
+  await Promise.all(
+    bookings.map((b) => {
+      const lang = getLangFromPrefs(b.player.preferences);
+      const { title, body } = pushCopy[lang].sessionUpdated(opts.sessionName);
+      return logAndSend(b.playerProfileId, opts.hostProfileId, "cs_session_updated", {
+        title, body, data: { type: "cs_session_updated", sessionId: opts.sessionId },
       });
     }),
   );

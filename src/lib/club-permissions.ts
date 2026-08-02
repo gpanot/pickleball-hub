@@ -21,7 +21,7 @@
  *  MANAGE_ADMINS           |   ✓   |   ✗   |      ✗
  *  DELETE_CLUB             |   ✓   |   ✗   |      ✗
  *  TRANSFER_OWNERSHIP      |   ✓   |   ✗   |      ✗
- *  CANCEL_SERIES           |   ✓   |   ✗   |      ✗   (stub — no series model yet)
+ *  CANCEL_SERIES           |   ✓   |   ✗   |      ✗
  */
 
 import { ClubRole } from "@prisma/client";

@@ -2,9 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { getMobileUser } from "@/lib/mobile-auth";
 import { isClubManager } from "@/lib/club-auth";
 import { prisma } from "@/lib/db";
-import { notifySessionCancelled } from "@/lib/club-session-notifications";
+import { notifySessionCancelled, notifySessionUpdated } from "@/lib/club-session-notifications";
 import { sendPushNotification } from "@/lib/notifications";
 import { reclubAvatarUrl } from "@/lib/utils";
+
+/** Material fields — edits to these trigger notifySessionUpdated for all bookings. */
+const MATERIAL_FIELDS = new Set([
+  "venueId", "venuePending", "startTime", "endTime", "durationMin",
+  "feeAmount", "feeCurrency", "skillLevelMin", "skillLevelMax",
+]);
 
 /**
  * Fire-and-forget: upsert first_host feed items for each follower of the host
@@ -135,6 +141,8 @@ const SESSION_SELECT = {
   hostRole: true,
   notes: true,
   lifecycleState: true,
+  seriesId: true,
+  detachedFromSeries: true,
   autoGrowEnabled: true,
   baseCapacity: true,
   capacityCeiling: true,
@@ -176,6 +184,11 @@ export async function GET(
 
 // PATCH /api/club-sessions/[id] — edit or publish/cancel a session
 // Auth: AppClubManager check on session's parent appClubId
+//
+// Optional scope field:
+//   scope?: "THIS_OCCURRENCE" | "ENTIRE_SERIES"
+// THIS_OCCURRENCE (default): updates this session + sets detachedFromSeries = true.
+// ENTIRE_SERIES: updates this session + series template + all future non-detached occurrences.
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -186,7 +199,7 @@ export async function PATCH(
 
   const existing = await prisma.clubSession.findUnique({
     where: { id },
-    select: { appClubId: true, lifecycleState: true },
+    select: { appClubId: true, lifecycleState: true, seriesId: true, detachedFromSeries: true, name: true },
   });
   if (!existing) return NextResponse.json({ error: "Session not found" }, { status: 404 });
 
@@ -206,7 +219,15 @@ export async function PATCH(
     skillLevelMin, skillLevelMax, hostRole, notes, sportId, lifecycleState,
     autoGrowEnabled, baseCapacity, capacityCeiling, capacityTierStep,
     publishAfterMin, cancellationCutoffMin,
+    scope,
   } = body as Record<string, unknown>;
+
+  if (scope !== undefined && scope !== "THIS_OCCURRENCE" && scope !== "ENTIRE_SERIES") {
+    return NextResponse.json(
+      { error: "scope must be 'THIS_OCCURRENCE' or 'ENTIRE_SERIES'" },
+      { status: 400 },
+    );
+  }
 
   const VALID_AUTO_CONFIRM_MODES = ["open", "auto_confirm_till_full", "requires_approval"];
 
@@ -313,21 +334,137 @@ export async function PATCH(
     lifecycleState === "published" &&
     existing.lifecycleState !== "published";
 
+  // Detect whether any material field is being changed
+  const materialFieldsChanged = Object.keys(updates).some((k) => MATERIAL_FIELDS.has(k));
+
   try {
+    // ── ENTIRE_SERIES scope ────────────────────────────────────────────────────
+    if (scope === "ENTIRE_SERIES" && existing.seriesId) {
+      const now = new Date();
+
+      // Build series-template update (only the fields SessionSeries carries)
+      const SERIES_FIELDS = new Set([
+        "venueId", "venuePending", "durationMin", "feeAmount", "feeCurrency",
+        "skillLevelMin", "skillLevelMax", "name", "format", "hostRole", "notes",
+        "maxPlayers", "requiresApproval", "autoConfirmMode", "privacy", "sportId",
+      ]);
+      const seriesUpdates: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(updates)) {
+        if (SERIES_FIELDS.has(k)) seriesUpdates[k] = v;
+      }
+      // startTimeLocal is derived from startTime if provided
+      if (updates.startTime instanceof Date) {
+        const series = await prisma.sessionSeries.findUnique({
+          where: { id: existing.seriesId },
+          select: { timezone: true },
+        });
+        if (series) {
+          seriesUpdates.startTimeLocal = (updates.startTime as Date).toLocaleTimeString("en-GB", {
+            timeZone: series.timezone,
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false,
+          });
+        }
+      }
+
+      // 1. Update this session
+      const session = await prisma.clubSession.update({
+        where: { id },
+        data: updates,
+        select: SESSION_SELECT,
+      });
+
+      // 2. Update series template
+      if (Object.keys(seriesUpdates).length > 0) {
+        await prisma.sessionSeries.update({
+          where: { id: existing.seriesId },
+          data: seriesUpdates,
+        });
+      }
+
+      // 3. Update future non-detached occurrences (exclude current session — already updated)
+      const futureNonDetached = await prisma.clubSession.findMany({
+        where: {
+          seriesId: existing.seriesId,
+          detachedFromSeries: false,
+          lifecycleState: { in: ["published", "draft"] },
+          startTime: { gt: now },
+          id: { not: id },
+        },
+        select: { id: true, name: true },
+      });
+
+      if (futureNonDetached.length > 0) {
+        // Build per-occurrence update — exclude startTime/endTime (each occurrence has its own)
+        const occurrenceUpdates: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(updates)) {
+          if (k !== "startTime" && k !== "endTime" && k !== "lifecycleState") {
+            occurrenceUpdates[k] = v;
+          }
+        }
+        if (Object.keys(occurrenceUpdates).length > 0) {
+          await prisma.clubSession.updateMany({
+            where: {
+              id: { in: futureNonDetached.map((s) => s.id) },
+            },
+            data: occurrenceUpdates,
+          });
+        }
+
+        // Notify each affected occurrence if material fields changed
+        if (materialFieldsChanged) {
+          for (const occ of [{ id, name: session.name }, ...futureNonDetached]) {
+            void notifySessionUpdated({
+              sessionId: occ.id,
+              sessionName: occ.name,
+              hostProfileId: user.profileId,
+            });
+          }
+        }
+      } else if (materialFieldsChanged) {
+        void notifySessionUpdated({
+          sessionId: id,
+          sessionName: session.name,
+          hostProfileId: user.profileId,
+        });
+      }
+
+      if (isBeingPublished) {
+        const venueName = session.venue?.name ?? session.appClub?.name ?? "their venue";
+        void triggerFirstHost({ sessionId: id, hostProfileId: session.host.id, venueName });
+      }
+
+      return NextResponse.json({ ok: true, session, scope: "ENTIRE_SERIES" });
+    }
+
+    // ── THIS_OCCURRENCE (default) ─────────────────────────────────────────────
+    // When this occurrence belongs to a series and isn't already detached,
+    // mark it as detached so future series-wide ops skip it.
+    if (existing.seriesId && !existing.detachedFromSeries && scope !== undefined) {
+      updates.detachedFromSeries = true;
+    }
+
     const session = await prisma.clubSession.update({
       where: { id },
       data: updates,
       select: SESSION_SELECT,
     });
+
     if (isBeingCancelled) {
       void notifySessionCancelled({
         sessionId: id,
-        sessionName: existing.lifecycleState !== "cancelled"
-          ? session.name
-          : "",
+        sessionName: existing.lifecycleState !== "cancelled" ? session.name : "",
+        hostProfileId: user.profileId,
+      });
+    } else if (materialFieldsChanged) {
+      void notifySessionUpdated({
+        sessionId: id,
+        sessionName: session.name,
         hostProfileId: user.profileId,
       });
     }
+
     if (isBeingPublished) {
       const venueName = session.venue?.name ?? session.appClub?.name ?? "their venue";
       void triggerFirstHost({
