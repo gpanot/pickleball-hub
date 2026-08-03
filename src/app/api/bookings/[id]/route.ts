@@ -232,6 +232,7 @@ export async function PATCH(
 
   // paidStatus / paidAmount update (host-only, confirmed bookings only)
   if (paidStatus !== undefined || paidAmount !== undefined) {
+    console.log(`[PATCH /api/bookings/${id}] paidStatus=${JSON.stringify(paidStatus)} paidAmount=${JSON.stringify(paidAmount)} booking.status=${booking.status}`)
     if (booking.status !== "confirmed") {
       return NextResponse.json(
         { error: "paidStatus can only be toggled on confirmed bookings" },
@@ -244,7 +245,9 @@ export async function PATCH(
       // null clears the override; a number sets it
       data.paidAmount = paidAmount === null ? null : Number(paidAmount)
     }
+    console.log(`[PATCH /api/bookings/${id}] writing data=${JSON.stringify(data)}`)
     const updated = await prisma.clubSessionBooking.update({ where: { id }, data })
+    console.log(`[PATCH /api/bookings/${id}] saved paidAmount=${JSON.stringify((updated as Record<string, unknown>).paidAmount)}`)
     return NextResponse.json({ ok: true, booking: updated });
   }
 
