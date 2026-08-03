@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getMobileUser } from "@/lib/mobile-auth";
 import { isClubManager } from "@/lib/club-auth";
 import { prisma } from "@/lib/db";
-import { notifyBookingRequested } from "@/lib/club-session-notifications";
+import { notifyBookingRequested, notifyPlayerJoined } from "@/lib/club-session-notifications";
 import { maybePromoteCapacity } from "@/lib/club-session-capacity";
 
 const BOOKING_SELECT = {
@@ -179,15 +179,32 @@ export async function POST(req: NextRequest) {
       return result;
     });
 
+    const playerName = booking.player?.displayName ?? booking.player?.squadNickname ?? "A player";
+
     // Notify host when a player requests approval (requires_approval mode)
     if (initialStatus === "requested" && session.hostId) {
-      const playerName = booking.player?.displayName ?? booking.player?.squadNickname ?? "A player";
       void notifyBookingRequested({
         playerProfileId: user.profileId,
         playerDisplayName: playerName,
         hostProfileId: session.hostId,
         sessionName: session.name,
         sessionId: clubSessionId,
+      });
+    }
+
+    // Notify host + all managers when a player is immediately confirmed
+    if (initialStatus === "confirmed" && session.hostId) {
+      // confirmedCount after this booking = previous count + 1
+      const newConfirmedCount = confirmedCount + 1;
+      void notifyPlayerJoined({
+        playerProfileId: user.profileId,
+        playerDisplayName: playerName,
+        hostProfileId: session.hostId,
+        appClubId: session.appClub.id,
+        sessionName: session.name,
+        sessionId: clubSessionId,
+        confirmedCount: newConfirmedCount,
+        maxPlayers: session.maxPlayers,
       });
     }
 

@@ -11,7 +11,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 
-const BANGERS_FONT = 'Bangers_400Regular';
+const BANGERS_FONT = 'BarlowCondensed_800ExtraBold';
 const DM_SANS_BOLD = 'DMSans_700Bold';
 const CHEST_IMAGE = require('../../../../assets/images/pickleball_chest_clash_of_clan.png');
 

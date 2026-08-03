@@ -1125,6 +1125,8 @@ model ClubSessionBooking {
   status          String    @default("requested")
   /// Host-controlled manual payment flag. Only meaningful on confirmed bookings.
   paidStatus      Boolean   @default(false) @map("paid_status")
+  /// Optional custom amount paid by this player (discount / override). Null = session default fee.
+  paidAmount      Decimal?  @map("paid_amount") @db.Decimal(12, 2)
   /// "unmarked" | "checked_in" | "no_show" — host-controlled, day-of, confirmed bookings only.
   attendanceStatus String   @default("unmarked") @map("attendance_status")
   requestedAt     DateTime  @default(now()) @map("requested_at")

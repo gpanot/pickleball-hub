@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import type { Squad } from '../types';
 
-const BANGERS = 'Bangers_400Regular';
+const BANGERS = 'BarlowCondensed_800ExtraBold';
 const GOLD = '#facc15';
 const GOLD_DARK = '#ca8a04';
 const LIME = '#a3e635';

@@ -5,7 +5,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { ConquestImpactBreakdown } from '../types';
 
-const BANGERS = 'Bangers_400Regular';
+const BANGERS = 'BarlowCondensed_800ExtraBold';
 const LIME = '#a3e635';
 const LIME_DARK = '#65a30d';
 const GOLD = '#facc15';

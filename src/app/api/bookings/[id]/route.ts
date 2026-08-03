@@ -110,7 +110,7 @@ export async function PATCH(
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { status, paidStatus, attendanceStatus } = body as Record<string, unknown>;
+  const { status, paidStatus, paidAmount, attendanceStatus } = body as Record<string, unknown>;
 
   // ── Player self-cancel ────────────────────────────────────────────────────
   // A manager who also booked a spot in their own session must cancel via
@@ -230,18 +230,21 @@ export async function PATCH(
     return NextResponse.json({ ok: true, booking: updated });
   }
 
-  // paidStatus toggle (host-only, confirmed bookings only)
-  if (paidStatus !== undefined) {
+  // paidStatus / paidAmount update (host-only, confirmed bookings only)
+  if (paidStatus !== undefined || paidAmount !== undefined) {
     if (booking.status !== "confirmed") {
       return NextResponse.json(
         { error: "paidStatus can only be toggled on confirmed bookings" },
         { status: 409 },
       );
     }
-    const updated = await prisma.clubSessionBooking.update({
-      where: { id },
-      data: { paidStatus: paidStatus === true },
-    });
+    const data: Record<string, unknown> = {}
+    if (paidStatus !== undefined) data.paidStatus = paidStatus === true
+    if (paidAmount !== undefined) {
+      // null clears the override; a number sets it
+      data.paidAmount = paidAmount === null ? null : Number(paidAmount)
+    }
+    const updated = await prisma.clubSessionBooking.update({ where: { id }, data })
     return NextResponse.json({ ok: true, booking: updated });
   }
 

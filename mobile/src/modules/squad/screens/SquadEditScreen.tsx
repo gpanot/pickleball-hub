@@ -8,7 +8,7 @@ import type { Squad } from '../types';
 import { SquadBackButton } from '../components/SquadBackButton';
 import * as api from '../api';
 
-const BANGERS = 'Bangers_400Regular';
+const BANGERS = 'BarlowCondensed_800ExtraBold';
 const GOLD = '#facc15';
 const LIME = '#a3e635';
 

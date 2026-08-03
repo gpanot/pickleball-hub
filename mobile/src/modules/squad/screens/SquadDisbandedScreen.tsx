@@ -7,7 +7,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { SquadDisbandedShieldIcon } from '../components/SquadDisbandedShieldIcon';
 import type { SquadDisbandedNotice } from '../types';
 
-const BANGERS = 'Bangers_400Regular';
+const BANGERS = 'BarlowCondensed_800ExtraBold';
 const RED = '#ef4444';
 const GOLD = '#facc15';
 const LIME = '#a3e635';

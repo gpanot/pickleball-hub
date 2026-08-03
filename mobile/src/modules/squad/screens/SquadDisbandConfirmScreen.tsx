@@ -6,7 +6,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SquadBackButton } from '../components/SquadBackButton';
 
-const BANGERS = 'Bangers_400Regular';
+const BANGERS = 'BarlowCondensed_800ExtraBold';
 
 interface Props {
   squadName: string;

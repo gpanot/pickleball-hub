@@ -18,7 +18,7 @@ import type { StoredIntent } from '../../../components/DayOneIntentModal'
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 
-const BANGERS = 'Bangers_400Regular'
+const BANGERS = 'BarlowCondensed_800ExtraBold'
 const BG = '#0f1a0f'
 const SURFACE = '#141414'
 const SURFACE2 = '#1a1a1a'

@@ -9,7 +9,7 @@ import * as conquestApi from '../conquestApi';
 import { timeAgoLabel } from '../hooks/useConquest';
 import type { ConquestAlert } from '../types';
 
-const BANGERS = 'Bangers_400Regular';
+const BANGERS = 'BarlowCondensed_800ExtraBold';
 const LIME = '#a3e635';
 const GOLD = '#facc15';
 const RED = '#ef4444';

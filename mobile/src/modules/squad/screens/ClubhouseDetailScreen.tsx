@@ -5,7 +5,7 @@ import Svg, { Polygon, Text as SvgText } from 'react-native-svg';
 import { SquadBackButton } from '../components/SquadBackButton';
 import type { Squad, PodSummary, PlayerWalletData, PlayerBrandData } from '../types';
 
-const BANGERS = 'Bangers_400Regular';
+const BANGERS = 'BarlowCondensed_800ExtraBold';
 const LIME = '#a3e635';
 const BLUE = '#60a5fa';
 const PURPLE = '#a78bfa';

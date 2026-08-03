@@ -20,7 +20,7 @@ import { PlacesCard } from '../components/PlacesCard';
 import type { PreferredPlace } from '../../../services/locationPicker';
 import type { Squad, SquadChest, FeedItem, SquadStreak, PlayerContribution, PodSummary, PlayerBrandData, PlayerWalletData } from '../types';
 
-const BANGERS = 'Bangers_400Regular';
+const BANGERS = 'BarlowCondensed_800ExtraBold';
 const GOLD = '#facc15';
 const LIME = '#a3e635';
 const RED = '#ef4444';

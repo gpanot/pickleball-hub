@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '../../../stores/authStore';
 import { SquadScreenHeader } from '../components/SquadScreenHeader';
 
-const BANGERS = 'Bangers_400Regular';
+const BANGERS = 'BarlowCondensed_800ExtraBold';
 const GOLD = '#facc15';
 const GOLD_DARK = '#ca8a04';
 

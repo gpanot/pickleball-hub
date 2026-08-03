@@ -340,6 +340,9 @@ export async function PATCH(
   try {
     // ── ENTIRE_SERIES scope ────────────────────────────────────────────────────
     if (scope === "ENTIRE_SERIES" && existing.seriesId) {
+      console.log(`[PATCH /club-sessions/${id}] scope=ENTIRE_SERIES seriesId=${existing.seriesId}`);
+      console.log(`[PATCH] updates keys: ${Object.keys(updates).join(", ")}`);
+      console.log(`[PATCH] lifecycleState in updates: ${updates.lifecycleState ?? "(not set)"}`);
       const now = new Date();
 
       // Build series-template update (only the fields SessionSeries carries)
@@ -395,6 +398,8 @@ export async function PATCH(
         select: { id: true, name: true },
       });
 
+      console.log(`[PATCH] future non-detached occurrences found: ${futureNonDetached.length}`, futureNonDetached.map(s => s.id));
+
       if (futureNonDetached.length > 0) {
         // Build per-occurrence update — exclude startTime/endTime (each occurrence has its own slot).
         // lifecycleState IS intentionally included so published→draft (and vice-versa) propagates.
@@ -404,13 +409,16 @@ export async function PATCH(
             occurrenceUpdates[k] = v;
           }
         }
+        console.log(`[PATCH] occurrenceUpdates keys: ${Object.keys(occurrenceUpdates).join(", ")}`);
+        console.log(`[PATCH] occurrenceUpdates.lifecycleState: ${occurrenceUpdates.lifecycleState ?? "(not set)"}`);
         if (Object.keys(occurrenceUpdates).length > 0) {
-          await prisma.clubSession.updateMany({
+          const updateResult = await prisma.clubSession.updateMany({
             where: {
               id: { in: futureNonDetached.map((s) => s.id) },
             },
             data: occurrenceUpdates,
           });
+          console.log(`[PATCH] updateMany count: ${updateResult.count}`);
         }
 
         // Notify each affected occurrence if material fields changed

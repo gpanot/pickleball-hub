@@ -6,7 +6,7 @@ import {
 import type { ConquestSession, ClashRival } from '../types';
 import { formatCountdown } from '../hooks/useConquest';
 
-const BANGERS = 'Bangers_400Regular';
+const BANGERS = 'BarlowCondensed_800ExtraBold';
 const LIME = '#a3e635';
 const GOLD = '#facc15';
 const RED = '#ef4444';

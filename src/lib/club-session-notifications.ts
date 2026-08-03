@@ -16,6 +16,7 @@ type ClubSessionNotifType =
   | "cs_booking_auto_backfill"    // row 5: auto-backfill → confirmed
   | "cs_session_cancelled"        // row 6: host cancels session
   | "cs_session_updated"          // material field change — notifies confirmed + waiting_list
+  | "cs_player_joined"            // player confirmed (open / auto_confirm_till_full) → notify host & managers
   | "cs_player_cancelled"         // row 7: confirmed player cancels → notify host
   | "cs_manager_added"            // manager added to club
   | "cs_manager_removed"          // manager removed from club
@@ -167,6 +168,48 @@ export async function notifySessionUpdated(opts: {
       const { title, body } = pushCopy[lang].sessionUpdated(opts.sessionName);
       return logAndSend(b.playerProfileId, opts.hostProfileId, "cs_session_updated", {
         title, body, data: { type: "cs_session_updated", sessionId: opts.sessionId },
+      });
+    }),
+  );
+}
+
+/**
+ * A player books and is immediately confirmed (open or auto_confirm_till_full mode).
+ * Notifies the session host + all club managers (OWNER / ADMIN / HOST_MANAGER).
+ * The confirmed count passed in already includes the new booking.
+ */
+export async function notifyPlayerJoined(opts: {
+  playerProfileId: string;
+  playerDisplayName: string;
+  hostProfileId: string;
+  appClubId: string;
+  sessionName: string;
+  sessionId: string;
+  confirmedCount: number;
+  maxPlayers: number;
+}) {
+  // Collect all manager profile IDs (owner + admins + host managers)
+  const managers = await prisma.appClubManager.findMany({
+    where: { appClubId: opts.appClubId },
+    select: { playerProfileId: true },
+  });
+
+  // Build a deduplicated list: host + all managers
+  const recipientIds = Array.from(
+    new Set([opts.hostProfileId, ...managers.map((m) => m.playerProfileId)])
+  ).filter((id) => id !== opts.playerProfileId); // don't notify the player booking themselves
+
+  await Promise.all(
+    recipientIds.map(async (recipientId) => {
+      const lang = await recipientLang(recipientId);
+      const { title, body } = pushCopy[lang].playerJoined(
+        opts.playerDisplayName,
+        opts.sessionName,
+        opts.confirmedCount,
+        opts.maxPlayers,
+      );
+      return logAndSend(recipientId, opts.playerProfileId, "cs_player_joined", {
+        title, body, data: { type: "cs_player_joined", sessionId: opts.sessionId },
       });
     }),
   );

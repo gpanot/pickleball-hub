@@ -39,6 +39,7 @@ import { debugLog } from './src/lib/debug'
 import { useFonts } from 'expo-font'
 import { DMSans_400Regular, DMSans_700Bold, DMSans_900Black } from '@expo-google-fonts/dm-sans'
 import { Lobster_400Regular } from '@expo-google-fonts/lobster'
+import { BarlowCondensed_800ExtraBold } from '@expo-google-fonts/barlow-condensed'
 import { ThemedAppChrome, useThemedOverlayStyles } from './src/components/ThemedAppChrome'
 
 console.log('[BOOT] ======= App.tsx module loading =======')
@@ -338,7 +339,7 @@ export default function App() {
   // Fonts load in parallel — do not block the first paint on them (that caused
   // a solid black frame between the native splash and the JS splash).
   const [fontsLoaded, fontError] = useFonts({
-    Bangers_400Regular: require('./assets/fonts/Bangers_400Regular.ttf'),
+    BarlowCondensed_800ExtraBold,
     Lobster_400Regular,
     DMSans_400Regular,
     DMSans_700Bold,

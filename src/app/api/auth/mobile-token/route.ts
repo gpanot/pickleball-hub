@@ -7,6 +7,8 @@ const GOOGLE_TOKEN_INFO = "https://oauth2.googleapis.com/tokeninfo";
 const APPLE_KEYS_URL = "https://appleid.apple.com/auth/keys";
 const APPLE_ISSUER = "https://appleid.apple.com";
 const DEV_EMAIL = "dev@thehub.local";
+const DEV_HOST_EMAIL = "dev-host@thehub.local";
+const DEV_PLAYER_EMAIL = "dev-player@thehub.local";
 const REVIEWER_EMAIL = "reviewer@thehub.local";
 
 /** Local dev: sign in as a real prod-synced account (see scripts/sync-dev-account-from-prod.ts). */
@@ -29,63 +31,68 @@ function resolveDevAccountEmail(): string {
  * lands directly on the main app with Ho Chi Minh City as the default location.
  */
 export async function GET(req: NextRequest) {
-  const isDev = req.nextUrl.searchParams.get("dev");
+  const devParam = req.nextUrl.searchParams.get("dev");
   const isReviewer = req.nextUrl.searchParams.get("reviewer");
 
-  if (!isDev && !isReviewer) {
+  if (!devParam && !isReviewer) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  const requestedEmail = isReviewer ? REVIEWER_EMAIL : resolveDevAccountEmail();
-  const isImpersonatedDev =
-    !isReviewer && requestedEmail !== DEV_EMAIL && process.env.NODE_ENV === "development";
+  // dev=host → test host account, dev=player → test player account, dev=1 → legacy dev account
+  let accountEmail: string;
+  let accountName: string;
+  let accountImage: string;
+  let forceOnboardingComplete = false;
 
-  // When DEV_IMPERSONATE_EMAIL is set but the user hasn't been synced to the local
-  // DB yet, fall back to dev@thehub.local so the mobile app always gets a real JWT
-  // (avoids 404 → offline dev-token → 401 loop in Expo Go).
-  let accountEmail = requestedEmail;
-  let isFallbackDev = false;
-  if (isImpersonatedDev) {
-    const exists = await prisma.user.findUnique({ where: { email: requestedEmail }, select: { id: true } });
-    if (!exists) {
-      console.warn(`[dev-token] ${requestedEmail} not found locally — falling back to ${DEV_EMAIL}. Run sync-dev-account-from-prod.ts to fix.`);
-      accountEmail = DEV_EMAIL;
-      isFallbackDev = true;
+  if (isReviewer) {
+    accountEmail = REVIEWER_EMAIL;
+    accountName = "Reclub Player";
+    accountImage = "https://i.pravatar.cc/80?img=12";
+    forceOnboardingComplete = true;
+  } else if (devParam === "host") {
+    accountEmail = DEV_HOST_EMAIL;
+    accountName = "Test Host";
+    accountImage = "https://i.pravatar.cc/80?img=7";
+    forceOnboardingComplete = true;
+  } else if (devParam === "player") {
+    accountEmail = DEV_PLAYER_EMAIL;
+    accountName = "Test Player";
+    accountImage = "https://i.pravatar.cc/80?img=15";
+    forceOnboardingComplete = true;
+  } else {
+    // dev=1 — legacy path, respects DEV_IMPERSONATE_EMAIL
+    const requestedEmail = resolveDevAccountEmail();
+    const isImpersonatedDev = requestedEmail !== DEV_EMAIL && process.env.NODE_ENV === "development";
+    accountEmail = requestedEmail;
+    accountName = "Dev Player";
+    accountImage = "https://i.pravatar.cc/80?img=33";
+
+    if (isImpersonatedDev) {
+      const exists = await prisma.user.findUnique({ where: { email: requestedEmail }, select: { id: true } });
+      if (!exists) {
+        console.warn(`[dev-token] ${requestedEmail} not found locally — falling back to ${DEV_EMAIL}. Run sync-dev-account-from-prod.ts to fix.`);
+        accountEmail = DEV_EMAIL;
+      }
     }
   }
-
-  const accountName = isReviewer ? "Reclub Player" : (isImpersonatedDev && !isFallbackDev) ? null : "Dev Player";
-  const accountImage = isReviewer
-    ? "https://i.pravatar.cc/80?img=12"
-    : (isImpersonatedDev && !isFallbackDev)
-      ? null
-      : "https://i.pravatar.cc/80?img=33";
 
   let user = await prisma.user.findUnique({ where: { email: accountEmail } });
   if (!user) {
     user = await prisma.user.create({
-      data: {
-        email: accountEmail,
-        name: accountName ?? "Dev Player",
-        image: accountImage ?? "https://i.pravatar.cc/80?img=33",
-      },
+      data: { email: accountEmail, name: accountName, image: accountImage },
     });
   }
 
-  let profile = await prisma.playerProfile.findUnique({
-    where: { userId: user.id },
-  });
+  let profile = await prisma.playerProfile.findUnique({ where: { userId: user.id } });
   if (!profile) {
     profile = await prisma.playerProfile.create({
       data: {
         userId: user.id,
-        displayName: accountName ?? "Dev Player",
-        // Reviewer account: mark onboarding complete so they land on the main app
-        ...(isReviewer ? { onboardingCompleted: true } : {}),
+        displayName: accountName,
+        ...(forceOnboardingComplete ? { onboardingCompleted: true } : {}),
       },
     });
-  } else if (isReviewer && !profile.onboardingCompleted) {
-    // Ensure reviewer always has onboarding complete
+  } else if (forceOnboardingComplete && !profile.onboardingCompleted) {
     profile = await prisma.playerProfile.update({
       where: { id: profile.id },
       data: { onboardingCompleted: true },
@@ -111,7 +118,7 @@ export async function GET(req: NextRequest) {
   }
   const duprRating = reclubDuprDev ?? prefsDuprDev;
 
-  const tag = isReviewer ? "reviewer" : "dev";
+  const tag = isReviewer ? "reviewer" : (devParam ?? "dev");
   console.log(
     `[DUPR_DEBUG] mobile-token (${tag}): profileId=${profile.id} preferences.dupr=${prefsDuprDev} reclubDupr=${reclubDuprDev} final=${duprRating}`
   );
@@ -125,9 +132,7 @@ export async function GET(req: NextRequest) {
     displayName: user.name,
     email: user.email ?? null,
     imageUrl: user.image,
-    reclubUserId: profile.reclubUserId
-      ? profile.reclubUserId.toString()
-      : null,
+    reclubUserId: profile.reclubUserId ? profile.reclubUserId.toString() : null,
     hasCompletedOnboarding: profile.onboardingCompleted,
     duprRating,
     gender: profile.gender ?? null,

@@ -8,7 +8,7 @@ import { getLeaderboard } from '../api';
 import { SquadBackButton } from '../components/SquadBackButton';
 import type { LeaderboardData, LeaderboardSquad } from '../types';
 
-const BANGERS = 'Bangers_400Regular';
+const BANGERS = 'BarlowCondensed_800ExtraBold';
 const GOLD = '#facc15';
 const LIME = '#a3e635';
 

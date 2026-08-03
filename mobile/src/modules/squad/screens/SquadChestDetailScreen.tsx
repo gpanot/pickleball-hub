@@ -19,7 +19,7 @@ function formatCooldown(ms: number): string {
   return m > 0 ? `${m}m ${s.toString().padStart(2, '0')}s` : `${s}s`;
 }
 
-const BANGERS = 'Bangers_400Regular';
+const BANGERS = 'BarlowCondensed_800ExtraBold';
 const GOLD = '#facc15';
 const LIME = '#a3e635';
 const LIME_DARK = '#65a30d';

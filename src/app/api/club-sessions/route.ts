@@ -305,7 +305,8 @@ export async function GET(req: NextRequest) {
       createdAt: true,
       host: { select: { id: true, displayName: true, squadNickname: true } },
       venue: { select: { id: true, name: true, address: true, latitude: true, longitude: true } },
-      appClub: { select: { id: true, name: true, icon: true } },
+      sportId: true,
+      appClub: { select: { id: true, name: true, icon: true, sportId: true } },
       bookings: {
         where: { status: "confirmed" },
         take: 8,

@@ -9,7 +9,7 @@ import { SquadBackButton } from '../components/SquadBackButton';
 import type { ConquestSession, SquadCardData, ClashRival } from '../types';
 import { formatCountdown } from '../hooks/useConquest';
 
-const BANGERS = 'Bangers_400Regular';
+const BANGERS = 'BarlowCondensed_800ExtraBold';
 const LIME = '#a3e635';
 const GOLD = '#facc15';
 const GOLD_DARK = '#ca8a04';

@@ -10,7 +10,7 @@ import * as Location from 'expo-location';
 import type { CreateSquadPayload } from '../types';
 import { SquadScreenHeader } from '../components/SquadScreenHeader';
 
-const BANGERS = 'Bangers_400Regular';
+const BANGERS = 'BarlowCondensed_800ExtraBold';
 const LIME = '#a3e635';
 const LIME_DARK = '#65a30d';
 const GOLD = '#f59e0b';

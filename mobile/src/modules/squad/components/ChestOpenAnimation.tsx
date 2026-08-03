@@ -5,7 +5,7 @@ import { ClubTokenIcon, BrandTokenIcon } from './TokenIcons';
 /** Easing that decelerates like a slot machine reel — fast at start, slow at end. */
 const SLOT_EASING = Easing.out(Easing.cubic);
 
-const BANGERS = 'Bangers_400Regular';
+const BANGERS = 'BarlowCondensed_800ExtraBold';
 const LIME = '#a3e635';
 const GOLD = '#facc15';
 const BLUE = '#60a5fa';

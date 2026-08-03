@@ -23,7 +23,7 @@ const LIME = '#a3e635';
 const LIME_DARK = '#65a30d';
 const BLUE = '#60a5fa';
 const PURPLE = '#a78bfa';
-const BANGERS = 'Bangers_400Regular';
+const BANGERS = 'BarlowCondensed_800ExtraBold';
 const CHEST_IMAGE = require('../../../../assets/images/pickleball_chest_clash_of_clan.png');
 
 function SuccessStage({
