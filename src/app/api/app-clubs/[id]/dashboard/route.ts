@@ -63,7 +63,7 @@ export async function GET(
       venue: { select: { name: true } },
       bookings: {
         where: { status: "confirmed" },
-        select: { id: true, paidStatus: true },
+        select: { id: true, paidStatus: true, paidAmount: true },
       },
       costs: {
         select: { category: true, amount: true, currency: true },
@@ -85,10 +85,21 @@ export async function GET(
   const sessionRows = sessions.map((s) => {
     const fee = s.feeAmount ?? new Decimal(0);
     const confirmedCount = s.bookings.length;
-    const paidCount = s.bookings.filter((b) => b.paidStatus).length;
 
-    const gross = fee.mul(confirmedCount);
-    const collected = fee.mul(paidCount);
+    // Effective amount per booking: paidAmount override takes precedence over session fee
+    const effectiveAmount = (b: { paidAmount: Decimal | null }) =>
+      b.paidAmount !== null ? b.paidAmount : fee;
+
+    const gross = s.bookings.reduce(
+      (sum, b) => sum.add(effectiveAmount(b)),
+      new Decimal(0),
+    );
+    const paidBookings = s.bookings.filter((b) => b.paidStatus);
+    const paidCount = paidBookings.length;
+    const collected = paidBookings.reduce(
+      (sum, b) => sum.add(effectiveAmount(b)),
+      new Decimal(0),
+    );
     const sessionCost = s.costs.reduce(
       (sum, c) => sum.add(c.amount),
       new Decimal(0),

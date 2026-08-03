@@ -6,12 +6,13 @@
  *
  * Auth: any manager of the club that owns this session (isAnyManager).
  *
- * Formulas:
+ * Formulas (paidAmount override respected per booking):
+ *   effectiveAmount(b) = b.paidAmount ?? feeAmount
  *   confirmedCount  = count(bookings where status = "confirmed")
- *   grossRevenue    = confirmedCount × feeAmount  (0 if feeAmount null/0)
+ *   grossRevenue    = sum(effectiveAmount) for all confirmed bookings
  *   paidCount       = count(confirmed bookings where paidStatus = true)
- *   collected       = paidCount × feeAmount
- *   unpaid          = grossRevenue − collected
+ *   collected       = sum(effectiveAmount) for paid confirmed bookings
+ *   unpaid          = sum(effectiveAmount) for unpaid confirmed bookings
  *   totalCost       = sum(ClubSessionCost.amount)
  *   net             = collected − totalCost
  *   collectionRate  = grossRevenue > 0 ? (collected / grossRevenue × 100) : 0
@@ -47,6 +48,7 @@ export async function GET(
       select: {
         id: true,
         paidStatus: true,
+        paidAmount: true,
         player: { select: { displayName: true, squadNickname: true } },
       },
     }),
@@ -61,11 +63,21 @@ export async function GET(
   const fee = session.feeAmount ?? new Decimal(0);
   const confirmedCount = confirmedBookings.length;
 
-  const grossRevenue = fee.mul(confirmedCount);
+  // Effective amount per booking: paidAmount override takes precedence over session fee
+  const effectiveAmount = (b: { paidAmount: Decimal | null }) =>
+    b.paidAmount !== null ? b.paidAmount : fee;
+
+  const grossRevenue = confirmedBookings.reduce(
+    (sum, b) => sum.add(effectiveAmount(b)),
+    new Decimal(0),
+  );
 
   const paidBookings = confirmedBookings.filter((b) => b.paidStatus);
   const paidCount = paidBookings.length;
-  const collected = fee.mul(paidCount);
+  const collected = paidBookings.reduce(
+    (sum, b) => sum.add(effectiveAmount(b)),
+    new Decimal(0),
+  );
 
   const unpaid = grossRevenue.sub(collected);
 
@@ -74,7 +86,7 @@ export async function GET(
     .map((b) => ({
       bookingId: b.id,
       playerNickname: b.player.squadNickname ?? b.player.displayName ?? "Player",
-      amount: fee.toFixed(2),
+      amount: effectiveAmount(b).toFixed(2),
     }));
 
   const totalCost = costs.reduce(
