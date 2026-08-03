@@ -11,6 +11,7 @@ const BOOKING_SELECT = {
   clubSessionId: true,
   status: true,
   paidStatus: true,
+  paidAmount: true,
   attendanceStatus: true,
   requestedAt: true,
   decidedAt: true,
