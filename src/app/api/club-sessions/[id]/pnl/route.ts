@@ -54,7 +54,7 @@ export async function GET(
     }),
     prisma.clubSessionCost.findMany({
       where: { sessionId },
-      select: { category: true, amount: true, currency: true },
+      select: { category: true, amount: true, currency: true, notes: true },
     }),
   ]);
 
@@ -114,6 +114,7 @@ export async function GET(
       category: c.category,
       amount: c.amount.toFixed(2),
       currency: c.currency,
+      notes: c.notes ?? undefined,
     })),
     totalCost: totalCost.toFixed(2),
     net: net.toFixed(2),

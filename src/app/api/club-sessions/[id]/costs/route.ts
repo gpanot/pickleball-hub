@@ -44,6 +44,7 @@ export async function GET(
   const costs = await prisma.clubSessionCost.findMany({
     where: { sessionId },
     orderBy: { category: "asc" },
+    select: { category: true, amount: true, currency: true, notes: true },
   });
 
   return NextResponse.json({ costs });
@@ -103,6 +104,7 @@ export async function POST(
   const costs = await prisma.clubSessionCost.findMany({
     where: { sessionId },
     orderBy: { category: "asc" },
+    select: { category: true, amount: true, currency: true, notes: true },
   });
 
   return NextResponse.json({ costs });
