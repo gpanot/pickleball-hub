@@ -11,6 +11,9 @@
  *   amount > 0  → upsert by (sessionId, category)
  *   amount === 0 → delete existing row for that category (no-op if none exists)
  *
+ * Category can be any non-empty slug string (max 64 chars). The client is
+ * responsible for generating stable slug keys for user-defined rows.
+ *
  * Returns: { costs: ClubSessionCost[] }
  */
 import { NextRequest, NextResponse } from "next/server";
@@ -19,8 +22,10 @@ import { isAnyManager } from "@/lib/club-permissions";
 import { getSessionClubId } from "@/lib/club-auth";
 import { prisma } from "@/lib/db";
 
-const VALID_CATEGORIES = ["court_rental", "balls", "coach_fee", "other"] as const;
-type Category = typeof VALID_CATEGORIES[number];
+/** Validate a category slug: non-empty, max 64 chars, only word chars + hyphens. */
+function isValidCategory(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0 && value.length <= 64 && /^[\w-]+$/.test(value);
+}
 
 export async function GET(
   req: NextRequest,
@@ -73,8 +78,8 @@ export async function POST(
   await prisma.$transaction(async (tx) => {
     for (const entry of body.costs!) {
       const e = entry as { category?: unknown; amount?: unknown; currency?: unknown; notes?: unknown };
-      const category = e.category as Category;
-      if (!VALID_CATEGORIES.includes(category)) continue;
+      const category = e.category;
+      if (!isValidCategory(category)) continue;
 
       const amount = Number(e.amount ?? 0);
       const currency = typeof e.currency === "string" ? e.currency : "VND";
