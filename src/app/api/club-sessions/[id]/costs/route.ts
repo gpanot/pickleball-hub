@@ -1,18 +1,15 @@
 /**
  * GET  /api/club-sessions/[id]/costs — list all cost rows for a session.
- * POST /api/club-sessions/[id]/costs — upsert/delete cost entries.
+ * POST /api/club-sessions/[id]/costs — full replace: delete all existing rows,
+ *   then insert every entry with amount > 0.
  *
  * Auth: any manager of the club that owns this session (isAnyManager).
  *
  * POST body:
  *   { costs: Array<{ category: string; amount: number; currency: string; notes?: string }> }
  *
- * POST behaviour per entry:
- *   amount > 0  → upsert by (sessionId, category)
- *   amount === 0 → delete existing row for that category (no-op if none exists)
- *
- * Category can be any non-empty slug string (max 64 chars). The client is
- * responsible for generating stable slug keys for user-defined rows.
+ * Rows with amount === 0 are silently ignored (not inserted).
+ * Category can be any non-empty slug (max 64 chars, word chars + hyphens).
  *
  * Returns: { costs: ClubSessionCost[] }
  */
@@ -22,9 +19,13 @@ import { isAnyManager } from "@/lib/club-permissions";
 import { getSessionClubId } from "@/lib/club-auth";
 import { prisma } from "@/lib/db";
 
-/** Validate a category slug: non-empty, max 64 chars, only word chars + hyphens. */
 function isValidCategory(value: unknown): value is string {
-  return typeof value === "string" && value.length > 0 && value.length <= 64 && /^[\w-]+$/.test(value);
+  return (
+    typeof value === "string" &&
+    value.length > 0 &&
+    value.length <= 64 &&
+    /^[\w-]+$/.test(value)
+  );
 }
 
 export async function GET(
@@ -75,29 +76,34 @@ export async function POST(
     return NextResponse.json({ error: "costs must be an array" }, { status: 400 });
   }
 
-  // Process each entry inside a transaction
+  // Build validated rows to insert (amount > 0 only)
+  const toInsert: {
+    sessionId: string;
+    category: string;
+    amount: number;
+    currency: string;
+    notes: string | null;
+  }[] = [];
+
+  for (const entry of body.costs) {
+    const e = entry as { category?: unknown; amount?: unknown; currency?: unknown; notes?: unknown };
+    if (!isValidCategory(e.category)) continue;
+    const amount = Number(e.amount ?? 0);
+    if (amount <= 0) continue;
+    toInsert.push({
+      sessionId,
+      category: e.category,
+      amount,
+      currency: typeof e.currency === "string" ? e.currency : "VND",
+      notes: typeof e.notes === "string" && e.notes.trim() ? e.notes.trim() : null,
+    });
+  }
+
+  // Full replace inside a transaction: delete all, then insert current state
   await prisma.$transaction(async (tx) => {
-    for (const entry of body.costs!) {
-      const e = entry as { category?: unknown; amount?: unknown; currency?: unknown; notes?: unknown };
-      const category = e.category;
-      if (!isValidCategory(category)) continue;
-
-      const amount = Number(e.amount ?? 0);
-      const currency = typeof e.currency === "string" ? e.currency : "VND";
-      const notes = typeof e.notes === "string" ? e.notes : null;
-
-      if (amount > 0) {
-        await tx.clubSessionCost.upsert({
-          where: { sessionId_category: { sessionId, category } },
-          create: { sessionId, category, amount, currency, notes },
-          update: { amount, currency, notes },
-        });
-      } else {
-        // Zero → delete if exists
-        await tx.clubSessionCost.deleteMany({
-          where: { sessionId, category },
-        });
-      }
+    await tx.clubSessionCost.deleteMany({ where: { sessionId } });
+    if (toInsert.length > 0) {
+      await tx.clubSessionCost.createMany({ data: toInsert });
     }
   });
 
