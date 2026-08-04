@@ -4,6 +4,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useTranslation } from 'react-i18next';
 import { SquadDisbandedShieldIcon } from '../components/SquadDisbandedShieldIcon';
 import type { SquadDisbandedNotice } from '../types';
 
@@ -19,14 +20,15 @@ interface Props {
   onBrowseSquads: () => void;
 }
 
-const KEEP_ITEMS = [
-  { emoji: '⚡', text: 'All XP earned — stays on your lifetime profile' },
-  { emoji: '🏓', text: 'All sessions recorded — still count toward your stats' },
-  { emoji: '👥', text: 'Your crew — they\'re still in your Circle' },
-];
-
 export function SquadDisbandedScreen({ notice, onCreateSquad, onBrowseSquads }: Props) {
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation('squadd');
+
+  const KEEP_ITEMS = [
+    { emoji: '⚡', text: t('disbanded.keepXp') },
+    { emoji: '🏓', text: t('disbanded.keepSessions') },
+    { emoji: '👥', text: t('disbanded.keepCrew') },
+  ];
 
   return (
     <View style={s.container}>
@@ -34,20 +36,20 @@ export function SquadDisbandedScreen({ notice, onCreateSquad, onBrowseSquads }: 
         contentContainerStyle={[s.content, { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 32 }]}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={s.headerTitle}>SQUAD DISBANDED</Text>
+        <Text style={s.headerTitle}>{t('disbanded.header')}</Text>
 
         <View style={s.iconWrap}>
           <SquadDisbandedShieldIcon size={88} />
         </View>
 
-        <Text style={s.headline}>{notice.squadName} IS GONE.</Text>
+        <Text style={s.headline}>{t('disbanded.headline', { name: notice.squadName })}</Text>
         <Text style={s.subtext}>
           <Text style={s.founderName}>{notice.founderName}</Text>
-          {' disbanded the squad. Your XP and sessions are safe — they stay on your profile.'}
+          {' '}{t('disbanded.subtext')}
         </Text>
 
         <View style={s.keepSection}>
-          <Text style={s.keepTitle}>WHAT YOU KEEP</Text>
+          <Text style={s.keepTitle}>{t('disbanded.whatYouKeep')}</Text>
           <View style={s.keepCard}>
             {KEEP_ITEMS.map((item, index) => (
               <View
@@ -62,19 +64,17 @@ export function SquadDisbandedScreen({ notice, onCreateSquad, onBrowseSquads }: 
         </View>
 
         <View style={s.cooldownBanner}>
-          <Text style={s.cooldownText}>
-            7-day cooldown before you can join or create a new squad. You can still browse squads.
-          </Text>
+          <Text style={s.cooldownText}>{t('disbanded.cooldown')}</Text>
         </View>
 
         <TouchableOpacity onPress={onCreateSquad} activeOpacity={0.8}>
           <LinearGradient colors={[LIME, LIME_DARK]} style={s.primaryGrad}>
-            <Text style={s.primaryText}>Create your own squad →</Text>
+            <Text style={s.primaryText}>{t('disbanded.createOwn')}</Text>
           </LinearGradient>
         </TouchableOpacity>
 
         <TouchableOpacity style={s.secondaryBtn} onPress={onBrowseSquads} activeOpacity={0.7}>
-          <Text style={s.secondaryText}>Browse squads near me</Text>
+          <Text style={s.secondaryText}>{t('disbanded.browseNear')}</Text>
         </TouchableOpacity>
       </ScrollView>
     </View>

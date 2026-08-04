@@ -4,6 +4,7 @@ import {
   RefreshControl, ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useTranslation } from 'react-i18next';
 import { getLeaderboard } from '../api';
 import { SquadBackButton } from '../components/SquadBackButton';
 import type { LeaderboardData, LeaderboardSquad } from '../types';
@@ -19,6 +20,7 @@ interface Props {
 
 export function CityLeaderboardScreen({ mySquadId, onBack }: Props) {
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation('squadd');
   const [data, setData] = useState<LeaderboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -31,7 +33,7 @@ export function CityLeaderboardScreen({ mySquadId, onBack }: Props) {
       setData(result);
     } catch (e) {
       console.error('Leaderboard fetch error:', e);
-      setError('Could not load leaderboard. Pull to retry.');
+      setError(t('leaderboard.loadError'));
     } finally {
       setLoading(false);
     }
@@ -50,7 +52,7 @@ export function CityLeaderboardScreen({ mySquadId, onBack }: Props) {
       <View style={[s.container, { paddingTop: insets.top }]}>
         <View style={s.topBar}>
           <SquadBackButton onPress={onBack} />
-          <Text style={s.topTitle}>Leaderboard</Text>
+          <Text style={s.topTitle}>{t('leaderboard.title')}</Text>
           <View style={{ width: 32 }} />
         </View>
         <View style={s.loadingWrap}><ActivityIndicator color={GOLD} /></View>
@@ -63,13 +65,13 @@ export function CityLeaderboardScreen({ mySquadId, onBack }: Props) {
       <View style={[s.container, { paddingTop: insets.top }]}>
         <View style={s.topBar}>
           <SquadBackButton onPress={onBack} />
-          <Text style={s.topTitle}>Leaderboard</Text>
+          <Text style={s.topTitle}>{t('leaderboard.title')}</Text>
           <View style={{ width: 32 }} />
         </View>
         <View style={s.loadingWrap}>
-          <Text style={s.errorText}>{error ?? 'No data'}</Text>
+          <Text style={s.errorText}>{error ?? t('leaderboard.noData')}</Text>
           <TouchableOpacity onPress={fetchData} style={s.retryBtn}>
-            <Text style={s.retryText}>Retry</Text>
+            <Text style={s.retryText}>{t('leaderboard.retry')}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -89,23 +91,23 @@ export function CityLeaderboardScreen({ mySquadId, onBack }: Props) {
         <View style={s.hero}>
           <SquadBackButton onPress={onBack} style={s.heroBack} />
           <Text style={s.cityTitle}>{data.city.toUpperCase()}</Text>
-          <Text style={s.citySub}>Monthly squad leaderboard · resets in {daysToReset} days</Text>
+          <Text style={s.citySub}>{t('leaderboard.monthlySub', { days: daysToReset })}</Text>
           <View style={s.statsRow}>
             <View style={s.stat}>
               <Text style={s.statVal}>{data.totalSquads}</Text>
-              <Text style={s.statLabel}>SQUADS</Text>
+              <Text style={s.statLabel}>{t('leaderboard.squadsLabel')}</Text>
             </View>
             <View style={[s.stat, s.statBorder]}>
               <Text style={s.statVal}>{data.totalPlayers}</Text>
-              <Text style={s.statLabel}>PLAYERS</Text>
+              <Text style={s.statLabel}>{t('leaderboard.playersLabel')}</Text>
             </View>
             <View style={s.stat}>
               <Text style={s.statVal}>{data.totalSessions}</Text>
-              <Text style={s.statLabel}>SESSIONS</Text>
+              <Text style={s.statLabel}>{t('leaderboard.sessionsLabel')}</Text>
             </View>
           </View>
           <View style={s.resetPill}>
-            <Text style={s.resetText}>🔄 Resets monthly · rank badge persists</Text>
+            <Text style={s.resetText}>{t('leaderboard.resetNote')}</Text>
           </View>
         </View>
 
@@ -113,8 +115,8 @@ export function CityLeaderboardScreen({ mySquadId, onBack }: Props) {
         {mySquadEntry && (
           <View style={s.mySquadBanner}>
             <View style={{ flex: 1 }}>
-              <Text style={s.mySquadName}>{mySquadEntry.emoji} {mySquadEntry.name} · Your squad</Text>
-              <Text style={s.mySquadSub}>+{mySquadEntry.xp} XP this month · climbing</Text>
+              <Text style={s.mySquadName}>{mySquadEntry.emoji} {mySquadEntry.name} · {t('leaderboard.yourSquad')}</Text>
+              <Text style={s.mySquadSub}>+{mySquadEntry.xp} {t('leaderboard.xpThisMonth')}</Text>
             </View>
             <Text style={s.mySquadRank}>#{mySquadEntry.rank}</Text>
           </View>
@@ -122,7 +124,7 @@ export function CityLeaderboardScreen({ mySquadId, onBack }: Props) {
 
         {/* Top squads */}
         <View style={s.section}>
-          <Text style={s.sectionLabel}>TOP SQUADS THIS MONTH</Text>
+          <Text style={s.sectionLabel}>{t('leaderboard.topSquads')}</Text>
           {data.squads.map((squad, i) => (
             <SquadRow key={squad.squadId} squad={squad} isMe={squad.squadId === mySquadId} />
           ))}
@@ -130,14 +132,14 @@ export function CityLeaderboardScreen({ mySquadId, onBack }: Props) {
 
         {/* XP sources */}
         <View style={s.section}>
-          <Text style={s.sectionLabel}>HOW XP IS EARNED</Text>
+          <Text style={s.sectionLabel}>{t('leaderboard.howXpEarned')}</Text>
           <View style={s.xpCard}>
-            <XpSourceRow label="Member plays a session" xp="+80 XP" />
-            <XpSourceRow label="Member checks in" xp="+60 XP" />
-            <XpSourceRow label="Earner opens chest" xp="+30–80 XP" />
-            <XpSourceRow label="Contributor opens chest" xp="+10–30 XP" />
-            <XpSourceRow label="Daily streak maintained" xp="+20 XP" />
-            <XpSourceRow label="New member joins (first time)" xp="+40 XP" last />
+            <XpSourceRow label={t('leaderboard.xpPlaysSession')} xp="+80 XP" />
+            <XpSourceRow label={t('leaderboard.xpChecksIn')} xp="+60 XP" />
+            <XpSourceRow label={t('leaderboard.xpEarnerChest')} xp="+30–80 XP" />
+            <XpSourceRow label={t('leaderboard.xpContributorChest')} xp="+10–30 XP" />
+            <XpSourceRow label={t('leaderboard.xpStreak')} xp="+20 XP" />
+            <XpSourceRow label={t('leaderboard.xpNewMember')} xp="+40 XP" last />
           </View>
         </View>
       </ScrollView>
@@ -146,6 +148,7 @@ export function CityLeaderboardScreen({ mySquadId, onBack }: Props) {
 }
 
 function SquadRow({ squad, isMe }: { squad: LeaderboardSquad; isMe: boolean }) {
+  const { t } = useTranslation('squadd');
   const isTop3 = squad.rank <= 3;
   return (
     <View style={[s.lbItem, isMe && s.lbItemSelf]}>
@@ -157,10 +160,10 @@ function SquadRow({ squad, isMe }: { squad: LeaderboardSquad; isMe: boolean }) {
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
           <Text style={s.lbName}>{squad.name.toUpperCase()}</Text>
           {isMe && (
-            <View style={s.youBadge}><Text style={s.youText}>You</Text></View>
+            <View style={s.youBadge}><Text style={s.youText}>{t('battle.you')}</Text></View>
           )}
         </View>
-        <Text style={s.lbSub}>{squad.memberCount} members · {squad.sessionCount} sessions</Text>
+        <Text style={s.lbSub}>{t('leaderboard.membersAndSessions', { members: squad.memberCount, sessions: squad.sessionCount })}</Text>
       </View>
       <Text style={s.lbXp}>{squad.xp.toLocaleString()}</Text>
     </View>

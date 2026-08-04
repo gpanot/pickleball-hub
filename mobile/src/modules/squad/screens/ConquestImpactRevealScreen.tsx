@@ -3,6 +3,7 @@ import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, Animated,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useTranslation } from 'react-i18next';
 import type { ConquestImpactBreakdown } from '../types';
 
 const BANGERS = 'BarlowCondensed_800ExtraBold';
@@ -49,6 +50,7 @@ export function ConquestImpactRevealScreen({
   data, mySquadId, mySquadEmoji, onShare, onDone,
 }: Props) {
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation('squadd');
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(0.7)).current;
 
@@ -75,13 +77,13 @@ export function ConquestImpactRevealScreen({
     <View style={[s.container, { paddingTop: insets.top }]}>
       {/* Animated INF number */}
       <View style={s.bigInfSection}>
-        <Text style={s.infLabel}>INF EARNED</Text>
+        <Text style={s.infLabel}>{t('impact.infEarned')}</Text>
         <Animated.Text
           style={[s.infNumber, { opacity: fadeAnim, transform: [{ scale: scaleAnim }] }]}
         >
           +<CountUpNumber target={totalInf} />
         </Animated.Text>
-        <Text style={s.xpLine}>+{xpAwarded} Squad XP</Text>
+        <Text style={s.xpLine}>+{xpAwarded} {t('impact.squadXp')}</Text>
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.scroll}>
@@ -93,9 +95,9 @@ export function ConquestImpactRevealScreen({
               <Text style={s.venueName}>{data.venueName}</Text>
               {data.venueRank && (
                 <Text style={s.venueRank}>
-                  Rank #{data.venueRank} at this venue
+                  {t('impact.venueRank', { rank: data.venueRank })}
                   {rankImproved && (
-                    <Text style={s.rankUp}> ▲ up from #{data.prevRank}</Text>
+                    <Text style={s.rankUp}> ▲ {t('impact.upFrom', { rank: data.prevRank })}</Text>
                   )}
                 </Text>
               )}
@@ -105,38 +107,38 @@ export function ConquestImpactRevealScreen({
 
         {/* Breakdown rows */}
         <View style={s.breakdownCard}>
-          <Text style={s.sectionLabel}>INF BREAKDOWN</Text>
+          <Text style={s.sectionLabel}>{t('impact.infBreakdown')}</Text>
 
-          <BreakdownRow icon="📍" label="Base INF (time on court)" value={data.baseInf} color={LIME} />
+          <BreakdownRow icon="📍" label={t('impact.baseInf')} value={data.baseInf} color={LIME} />
           {data.copresentBonus > 0 && (
-            <BreakdownRow icon="👥" label="Squad co-presence bonus" value={data.copresentBonus} color={LIME} />
+            <BreakdownRow icon="👥" label={t('impact.copresentBonus')} value={data.copresentBonus} color={LIME} />
           )}
           {data.clashMultiplier > 1 && (
             <BreakdownRow
               icon="⚔️"
-              label={`Clash multiplier ×${data.clashMultiplier.toFixed(1)}`}
+              label={t('impact.clashMultiplier', { mult: data.clashMultiplier.toFixed(1) })}
               value={null}
               color={RED}
-              tag="ACTIVE"
+              tag={t('impact.active')}
               tagColor={RED}
             />
           )}
           {data.overlordMultiplier > 1 && (
             <BreakdownRow
               icon="👑"
-              label={`Overlord bonus ×${data.overlordMultiplier.toFixed(1)}`}
+              label={t('impact.overlordBonus', { mult: data.overlordMultiplier.toFixed(1) })}
               value={null}
               color={GOLD}
-              tag="CONTROL"
+              tag={t('impact.control')}
               tagColor={GOLD}
             />
           )}
           {data.cardBonus > 0 && (
-            <BreakdownRow icon="🃏" label="Card battle bonus" value={data.cardBonus} color={GOLD} />
+            <BreakdownRow icon="🃏" label={t('impact.cardBattleBonus')} value={data.cardBonus} color={GOLD} />
           )}
 
           <View style={s.totalRow}>
-            <Text style={s.totalLabel}>TOTAL</Text>
+            <Text style={s.totalLabel}>{t('impact.total')}</Text>
             <Text style={s.totalValue}>+{totalInf} INF</Text>
           </View>
         </View>
@@ -144,7 +146,7 @@ export function ConquestImpactRevealScreen({
         {/* Battle results */}
         {data.battles.length > 0 && (
           <View style={s.battlesCard}>
-            <Text style={s.sectionLabel}>BATTLE RESULTS ({battleWins}/{battleTotal} won)</Text>
+            <Text style={s.sectionLabel}>{t('impact.battleResults', { wins: battleWins, total: battleTotal })}</Text>
             {data.battles.map((battle, i) => {
               const won = battle.winnerSquadId === mySquadId;
               return (
@@ -152,7 +154,7 @@ export function ConquestImpactRevealScreen({
                   <Text style={s.battleIcon}>{battle.isCounterAttack ? '↩️' : '⚔️'}</Text>
                   <View style={s.battleInfo}>
                     <Text style={s.battleLabel}>
-                      {battle.isCounterAttack ? 'Counter-attack' : `Battle #${battle.battleNumber}`}
+                      {battle.isCounterAttack ? t('impact.counterAttack') : t('battle.battleNumber', { number: battle.battleNumber })}
                     </Text>
                     <Text style={s.battlePower}>
                       {battle.initiatingPower} vs {battle.rivalPower}
@@ -160,7 +162,7 @@ export function ConquestImpactRevealScreen({
                   </View>
                   <View style={[s.battleResult, won ? s.battleResultWin : s.battleResultLoss]}>
                     <Text style={[s.battleResultText, { color: won ? LIME : RED }]}>
-                      {won ? 'WIN' : 'LOSS'}
+                      {won ? t('impact.win') : t('impact.loss')}
                     </Text>
                   </View>
                 </View>
@@ -172,14 +174,14 @@ export function ConquestImpactRevealScreen({
         {/* Notify info */}
         {data.notifiedMemberCount > 0 && (
           <Text style={s.notifyText}>
-            {data.notifiedMemberCount} squadmate{data.notifiedMemberCount > 1 ? 's' : ''} notified
+            {t('impact.notified', { count: data.notifiedMemberCount })}
           </Text>
         )}
 
         {/* Rival */}
         {data.rivalSquadName && (
           <View style={s.rivalCard}>
-            <Text style={s.rivalLabel}>Battle against</Text>
+            <Text style={s.rivalLabel}>{t('impact.battleAgainst')}</Text>
             <View style={s.rivalRow}>
               <Text style={s.rivalEmoji}>{data.rivalSquadEmoji}</Text>
               <Text style={s.rivalName}>{data.rivalSquadName}</Text>
@@ -190,10 +192,10 @@ export function ConquestImpactRevealScreen({
         {/* CTAs */}
         <View style={s.ctaSection}>
           <TouchableOpacity style={s.shareBtn} onPress={onShare} activeOpacity={0.82}>
-            <Text style={s.shareBtnText}>📤 Share Results</Text>
+            <Text style={s.shareBtnText}>{t('impact.shareResults')}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={s.doneBtn} onPress={onDone} activeOpacity={0.82}>
-            <Text style={s.doneBtnText}>Back to Squad</Text>
+            <Text style={s.doneBtnText}>{t('impact.backToSquad')}</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>

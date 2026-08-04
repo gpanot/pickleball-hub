@@ -161,8 +161,10 @@ export async function GET(req: NextRequest) {
   }
 
   // ── Set seen flag + return ────────────────────────────────────────────────
-  // Fire-and-forget to not block the response.
-  void prisma.playerProfile.update({
+  // Must await: on Vercel the isolate can freeze as soon as the response is
+  // sent, so a fire-and-forget update often never lands — card would reappear
+  // on every cold start.
+  await prisma.playerProfile.update({
     where: { id: profile.id },
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     data: { preferences: { ...prefs, lastRecapSeenWeek: currentWeekStr } as any },

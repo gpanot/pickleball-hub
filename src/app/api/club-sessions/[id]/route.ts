@@ -154,7 +154,7 @@ const SESSION_SELECT = {
   host: { select: { id: true, displayName: true, squadNickname: true } },
   venue: { select: { id: true, name: true, address: true } },
   appClub: { select: { id: true, name: true, icon: true } },
-  _count: { select: { bookings: { where: { status: "confirmed" } } } },
+  _count: { select: { bookings: { where: { status: "confirmed" } }, guests: true } },
 } as const;
 
 // GET /api/club-sessions/[id] — fetch a single session
@@ -199,7 +199,14 @@ export async function PATCH(
 
   const existing = await prisma.clubSession.findUnique({
     where: { id },
-    select: { appClubId: true, lifecycleState: true, seriesId: true, detachedFromSeries: true, name: true },
+    select: {
+      appClubId: true, lifecycleState: true, seriesId: true, detachedFromSeries: true, name: true,
+      // Material field baseline — used to detect real changes before sending notifications
+      venueId: true, venuePending: true,
+      startTime: true, endTime: true, durationMin: true,
+      feeAmount: true, feeCurrency: true,
+      skillLevelMin: true, skillLevelMax: true,
+    },
   });
   if (!existing) return NextResponse.json({ error: "Session not found" }, { status: 404 });
 
@@ -334,8 +341,19 @@ export async function PATCH(
     lifecycleState === "published" &&
     existing.lifecycleState !== "published";
 
-  // Detect whether any material field is being changed
-  const materialFieldsChanged = Object.keys(updates).some((k) => MATERIAL_FIELDS.has(k));
+  // Detect whether any material field actually changed value (not just present in payload).
+  // The client always sends every field, so we compare against the DB values.
+  function toComparable(v: unknown): string {
+    if (v instanceof Date) return v.toISOString();
+    if (v === null || v === undefined) return "";
+    return String(v);
+  }
+  const materialFieldsChanged = Array.from(MATERIAL_FIELDS).some((field) => {
+    if (!(field in updates)) return false;
+    const incoming = updates[field];
+    const current = (existing as Record<string, unknown>)[field];
+    return toComparable(incoming) !== toComparable(current);
+  });
 
   try {
     // ── ENTIRE_SERIES scope ────────────────────────────────────────────────────

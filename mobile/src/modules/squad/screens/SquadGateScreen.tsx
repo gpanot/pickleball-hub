@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../../../stores/authStore';
 import { SquadScreenHeader } from '../components/SquadScreenHeader';
 
@@ -16,6 +17,7 @@ interface Props {
 
 export function SquadGateScreen({ onNavigateToCircle, onBack, followsThreshold }: Props) {
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation('squadd');
   const [followCount, setFollowCount] = useState(0);
 
   useEffect(() => {
@@ -40,15 +42,13 @@ export function SquadGateScreen({ onNavigateToCircle, onBack, followsThreshold }
 
       <ScrollView contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
         <Text style={{ fontSize: 56, textAlign: 'center', marginBottom: 16 }}>🛡️</Text>
-        <Text style={s.headline}>Squads unlock soon</Text>
-        <Text style={s.subtitle}>
-          Follow more players to unlock squad creation. Squads form from people you already play with.
-        </Text>
+        <Text style={s.headline}>{t('gate.unlockSoon')}</Text>
+        <Text style={s.subtitle}>{t('gate.subtitle')}</Text>
 
         {/* Progress card */}
         <View style={s.card}>
           <View style={s.cardHeader}>
-            <Text style={s.cardTitle}>Follows needed</Text>
+            <Text style={s.cardTitle}>{t('gate.followsNeeded')}</Text>
             <Text style={s.cardCount}>{followCount} / {followsThreshold}</Text>
           </View>
           <View style={s.progressTrack}>
@@ -56,21 +56,21 @@ export function SquadGateScreen({ onNavigateToCircle, onBack, followsThreshold }
           </View>
           <Text style={s.cardHint}>
             {remaining > 0
-              ? `Follow ${remaining} more player${remaining > 1 ? 's' : ''} to create or join a squad`
-              : 'You can now create a squad!'}
+              ? t(remaining === 1 ? 'gate.followMoreSingular' : 'gate.followMorePlural', { count: remaining })
+              : t('gate.canCreate')}
           </Text>
         </View>
 
         <TouchableOpacity style={s.secondaryBtn} onPress={onNavigateToCircle} activeOpacity={0.7}>
-          <Text style={s.secondaryBtnText}>Find players to follow →</Text>
+          <Text style={s.secondaryBtnText}>{t('gate.findPlayers')}</Text>
         </TouchableOpacity>
 
         {/* Nearby squads placeholder */}
-        <Text style={s.sectionLabel}>Squads near you</Text>
+        <Text style={s.sectionLabel}>{t('gate.squadsNearYou')}</Text>
         <View style={s.emptyCard}>
           <Text style={{ fontSize: 32, marginBottom: 8 }}>🔍</Text>
-          <Text style={s.emptyText}>No squads nearby yet</Text>
-          <Text style={s.emptyHint}>Be the first to create one in your area</Text>
+          <Text style={s.emptyText}>{t('gate.noSquadsNearby')}</Text>
+          <Text style={s.emptyHint}>{t('gate.beFirst')}</Text>
         </View>
       </ScrollView>
     </View>

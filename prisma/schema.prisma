@@ -1106,6 +1106,7 @@ model ClubSession {
   venue    Venue?               @relation(fields: [venueId], references: [id])
   series   SessionSeries?       @relation(fields: [seriesId], references: [id])
   bookings ClubSessionBooking[]
+  guests   ClubSessionGuest[]
   costs    ClubSessionCost[]
 
   @@index([appClubId, startTime])
@@ -1134,13 +1135,42 @@ model ClubSessionBooking {
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
 
-  player      PlayerProfile @relation(fields: [playerProfileId], references: [id])
-  clubSession ClubSession   @relation(fields: [clubSessionId], references: [id], onDelete: Cascade)
+  player      PlayerProfile      @relation(fields: [playerProfileId], references: [id])
+  clubSession ClubSession        @relation(fields: [clubSessionId], references: [id], onDelete: Cascade)
+  guests      ClubSessionGuest[]
 
   @@unique([playerProfileId, clubSessionId])
   @@index([clubSessionId, status])
   @@index([playerProfileId])
   @@map("club_session_bookings")
+}
+
+/// Name-only companion added to a ClubSessionBooking (player or host on behalf of player).
+/// Each guest occupies one capacity slot. Check-in and payment are tracked individually.
+model ClubSessionGuest {
+  id                String   @id @default(uuid())
+  clubSessionId     String   @map("club_session_id")
+  bookingId         String   @map("booking_id")
+  bookedByProfileId String   @map("booked_by_profile_id")
+  displayName       String   @map("display_name")
+  /// Sport-appropriate label: "3.0" | "Beginner" | "Advanced" etc.
+  skillLevelLabel   String   @map("skill_level_label")
+  skillLevelValue   Decimal? @map("skill_level_value") @db.Decimal(5, 3)
+  /// "player" | "host" — who created this guest row
+  addedBy           String   @default("player") @map("added_by")
+  paidStatus        Boolean  @default(false) @map("paid_status")
+  paidAmount        Decimal? @map("paid_amount") @db.Decimal(12, 2)
+  /// "unmarked" | "checked_in" | "no_show"
+  attendanceStatus  String   @default("unmarked") @map("attendance_status")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  booking     ClubSessionBooking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  clubSession ClubSession        @relation(fields: [clubSessionId], references: [id], onDelete: Cascade)
+
+  @@index([clubSessionId])
+  @@index([bookingId])
+  @@map("club_session_guests")
 }
 
 /// Cost entries for a ClubSession. One row per category per session (upsert by @@unique).

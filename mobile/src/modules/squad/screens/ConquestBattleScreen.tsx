@@ -3,6 +3,7 @@ import {
   View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Animated, Easing, ScrollView,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useTranslation } from 'react-i18next';
 import type { ConquestBattle, SquadCardData } from '../types';
 import { formatCountdown } from '../hooks/useConquest';
 
@@ -44,6 +45,7 @@ export function ConquestBattleScreen({
   onBack,
 }: BattleProps) {
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation('squadd');
   const [revealSecs, setRevealSecs] = useState(() =>
     Math.max(0, Math.floor((new Date(battle.revealAt).getTime() - Date.now()) / 1000))
   );
@@ -177,17 +179,17 @@ export function ConquestBattleScreen({
 
       {onBack && (
         <TouchableOpacity style={b.backBtn} onPress={onBack} activeOpacity={0.7}>
-          <Text style={b.backBtnText}>← My Squadd</Text>
+          <Text style={b.backBtnText}>{t('battle.backToSquad')}</Text>
         </TouchableOpacity>
       )}
 
       {/* Header */}
       <View style={b.header}>
         <Text style={[b.headerLabel, isFinale && b.headerLabelFinale]}>
-          {isFinale ? '🔥 DECIDING NOW' : '⚔️ BATTLE IN PROGRESS'}
+          {isFinale ? t('battle.decidingNow') : t('battle.inProgress')}
         </Text>
         {isFinale && (
-          <Text style={b.finaleSubtitle}>Cards are being locked in…</Text>
+          <Text style={b.finaleSubtitle}>{t('battle.cardsLockedIn')}</Text>
         )}
       </View>
 
@@ -202,7 +204,7 @@ export function ConquestBattleScreen({
             <Text style={[b.vsName, { color: LIME }]}>{mySquadName}</Text>
             <View style={b.powerBadge}>
               <Text style={b.powerValue}>{myPower ?? '?'}</Text>
-              <Text style={b.powerLabel}>POWER</Text>
+              <Text style={b.powerLabel}>{t('battle.power')}</Text>
             </View>
           </View>
 
@@ -217,41 +219,41 @@ export function ConquestBattleScreen({
               <Text style={[b.powerValue, { color: rivalPower !== null ? GOLD : '#52525b' }]}>
                 {rivalPower !== null ? rivalPower : '???'}
               </Text>
-              <Text style={[b.powerLabel, { color: '#52525b' }]}>POWER</Text>
+              <Text style={[b.powerLabel, { color: '#52525b' }]}>{t('battle.power')}</Text>
             </View>
           </View>
         </Animated.View>
 
         {/* My Squad Card */}
         <View style={b.squadCard}>
-          <View style={b.cardWatermark}><Text style={b.cardWatermarkText}>SQUAD CARD</Text></View>
+          <View style={b.cardWatermark}><Text style={b.cardWatermarkText}>{t('battle.squadCard')}</Text></View>
           <View style={b.cardTopRow}>
             <View style={b.cardEmojiBox}><Text style={b.cardEmoji}>{mySquadEmoji}</Text></View>
             <View style={b.cardNameWrap}>
               <Text style={b.cardName}>{mySquadName}</Text>
-              <Text style={b.cardSubName}>Level {mySquadLevel ?? 1}</Text>
+              <Text style={b.cardSubName}>{t('battle.level', { level: mySquadLevel ?? 1 })}</Text>
             </View>
             <View style={b.cardPowerWrap}>
-              <Text style={b.cardPowerLabel}>CARD POWER</Text>
+              <Text style={b.cardPowerLabel}>{t('battle.cardPower')}</Text>
               <Text style={b.cardPower}>{cardData?.cardPowerInf ?? myPower ?? '…'}</Text>
-              <Text style={b.cardPowerSub}>INF bonus</Text>
+              <Text style={b.cardPowerSub}>{t('battle.infBonus')}</Text>
             </View>
           </View>
           <View style={b.cardStats}>
             <View style={b.cardStat}>
               <Text style={b.cardStatIcon}>🏆</Text>
               <Text style={b.cardStatValue}>{cardData?.venuesOwnedCount ?? 0}</Text>
-              <Text style={b.cardStatLabel}>Venues owned</Text>
+              <Text style={b.cardStatLabel}>{t('battle.venuesOwned')}</Text>
             </View>
             <View style={b.cardStat}>
               <Text style={b.cardStatIcon}>⚡</Text>
-              <Text style={[b.cardStatValue, { color: LIME }]}>LV {mySquadLevel ?? 1}</Text>
-              <Text style={b.cardStatLabel}>Squad level</Text>
+              <Text style={[b.cardStatValue, { color: LIME }]}>{t('battle.level', { level: mySquadLevel ?? 1 })}</Text>
+              <Text style={b.cardStatLabel}>{t('battle.squadLevel')}</Text>
             </View>
             <View style={b.cardStat}>
               <Text style={b.cardStatIcon}>🏓</Text>
               <Text style={[b.cardStatValue, { color: LIME }]}>{cardData?.activeMembersThisWeek ?? 0}</Text>
-              <Text style={b.cardStatLabel}>Active this week</Text>
+              <Text style={b.cardStatLabel}>{t('battle.activeWeek')}</Text>
             </View>
           </View>
         </View>
@@ -259,23 +261,23 @@ export function ConquestBattleScreen({
         {/* Countdown */}
         <View style={b.revealSection}>
           <Text style={[b.revealLabel, isFinale && { color: RED }]}>
-            {isFinale ? '⚠️ REVEALS IN' : 'REVEAL IN'}
+            {isFinale ? t('battle.revealsIn') : t('battle.revealIn')}
           </Text>
           <Animated.Text style={[b.revealValue, { color: countdownColor, transform: [{ scale: scaleAnim }] }]}>
             {formatCountdown(revealSecs)}
           </Animated.Text>
-          {!isFinale && <Text style={b.revealSub}>Cards being locked in…</Text>}
+          {!isFinale && <Text style={b.revealSub}>{t('battle.cardsLockedIn')}</Text>}
         </View>
 
         {/* Battle badge */}
         <View style={[b.battleBadge, isFinale && { borderColor: 'rgba(239,68,68,0.4)', backgroundColor: 'rgba(239,68,68,0.1)' }]}>
           <Text style={b.battleBadgeText}>
-            {battle.isCounterAttack ? '↩️ COUNTER-ATTACK' : `BATTLE #${battle.battleNumber}`}
+            {battle.isCounterAttack ? t('battle.counterAttack') : t('battle.battleNumber', { number: battle.battleNumber })}
           </Text>
         </View>
 
         <Text style={b.hint}>
-          {isFinale ? 'Almost there — result drops in seconds 🔥' : 'Keep playing while the battle resolves 🏓'}
+          {isFinale ? t('battle.almostThere') : t('battle.keepPlaying')}
         </Text>
       </ScrollView>
     </View>
@@ -308,6 +310,7 @@ export function ConquestBattleWinScreen({
   onBack,
 }: WinProps) {
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation('squadd');
   const [counterSecs, setCounterSecs] = useState(() =>
     Math.max(0, Math.floor((new Date(counterAttackWindowEndsAt).getTime() - Date.now()) / 1000))
   );
@@ -328,12 +331,12 @@ export function ConquestBattleWinScreen({
     <View style={[w.container, { paddingTop: insets.top }]}>
       {onBack && (
         <TouchableOpacity style={w.backBtn} onPress={onBack} activeOpacity={0.7}>
-          <Text style={w.backBtnText}>← Back to session</Text>
+          <Text style={w.backBtnText}>{t('battle.backToSession')}</Text>
         </TouchableOpacity>
       )}
       <View style={w.header}>
-        <Text style={w.winBadge}>⚡ VICTORY</Text>
-        <Text style={w.winTitle}>You won the battle</Text>
+        <Text style={w.winBadge}>{t('battle.victory')}</Text>
+        <Text style={w.winTitle}>{t('battle.wonBattle')}</Text>
       </View>
 
       {/* Score reveal */}
@@ -342,7 +345,7 @@ export function ConquestBattleWinScreen({
           <View style={w.scoreTeam}>
             <Text style={w.scoreEmoji}>{mySquadEmoji}</Text>
             <Text style={[w.scorePower, { color: LIME }]}>{myPower}</Text>
-            <Text style={w.scoreLabel}>You</Text>
+            <Text style={w.scoreLabel}>{t('battle.you')}</Text>
           </View>
           <View style={w.scoreDivider} />
           <View style={w.scoreTeam}>
@@ -352,16 +355,16 @@ export function ConquestBattleWinScreen({
           </View>
         </View>
         <View style={w.bonusRow}>
-          <Text style={w.bonusText}>+INF card bonus applied to your session</Text>
+          <Text style={w.bonusText}>{t('battle.infBonusApplied')}</Text>
         </View>
       </View>
 
       {/* Rival intel (counter-attack info) */}
       <View style={w.intelCard}>
-        <Text style={w.intelTitle}>Rival Intel Unlocked</Text>
+        <Text style={w.intelTitle}>{t('battle.rivalIntelUnlocked')}</Text>
         <Text style={w.intelSub}>
           <Text style={{ color: GOLD, fontWeight: '700' }}>{rivalSquadName}</Text>
-          {' '}can counter-attack within <Text style={{ color: RED, fontWeight: '700' }}>
+          {' '}{t('battle.canCounterWithin')} <Text style={{ color: RED, fontWeight: '700' }}>
             {formatCountdown(counterSecs)}
           </Text>
         </Text>
@@ -372,7 +375,7 @@ export function ConquestBattleWinScreen({
 
       {/* View results */}
       <TouchableOpacity style={w.viewResultsBtn} onPress={onViewResults} activeOpacity={0.82}>
-        <Text style={w.viewResultsText}>See Full Impact →</Text>
+        <Text style={w.viewResultsText}>{t('battle.seeFullImpact')}</Text>
       </TouchableOpacity>
     </View>
   );
@@ -408,6 +411,7 @@ export function ConquestBattleLoseScreen({
   onBack,
 }: LoseProps) {
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation('squadd');
   const [counterSecs, setCounterSecs] = useState(() =>
     Math.max(0, Math.floor((new Date(counterAttackWindowEndsAt).getTime() - Date.now()) / 1000))
   );
@@ -447,15 +451,15 @@ export function ConquestBattleLoseScreen({
     <View style={[l.container, { paddingTop: insets.top }]}>
       {onBack && (
         <TouchableOpacity style={l.backBtn} onPress={onBack} activeOpacity={0.7}>
-          <Text style={l.backBtnText}>← My Squadd</Text>
+          <Text style={l.backBtnText}>{t('battle.backToSquadd')}</Text>
         </TouchableOpacity>
       )}
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
         <View style={l.header}>
-          <Text style={l.loseBadge}>💀 DEFEAT</Text>
-          <Text style={l.loseTitle}>You lost the battle</Text>
-          <Text style={l.loseSub}>But you can still hit back</Text>
+          <Text style={l.loseBadge}>{t('battle.defeat')}</Text>
+          <Text style={l.loseTitle}>{t('battle.lostBattle')}</Text>
+          <Text style={l.loseSub}>{t('battle.canStillHitBack')}</Text>
         </View>
 
         {/* Score reveal */}
@@ -464,7 +468,7 @@ export function ConquestBattleLoseScreen({
             <View style={l.scoreTeam}>
               <Text style={l.scoreEmoji}>{mySquadEmoji}</Text>
               <Text style={[l.scorePower, { color: '#52525b' }]}>{myPower}</Text>
-              <Text style={[l.scoreLabel, { color: '#52525b' }]}>You</Text>
+              <Text style={[l.scoreLabel, { color: '#52525b' }]}>{t('battle.you')}</Text>
             </View>
             <View style={l.scoreDivider} />
             <View style={l.scoreTeam}>
@@ -479,12 +483,12 @@ export function ConquestBattleLoseScreen({
         {counterWindowOpen && (
           <View style={l.counterCard}>
             <View style={l.counterHeader}>
-              <Text style={l.counterTitle}>🔁 Counter-Attack Window</Text>
+              <Text style={l.counterTitle}>{t('battle.counterAttackWindow')}</Text>
               <Text style={l.counterTimer}>{formatCountdown(counterSecs)}</Text>
             </View>
             <Text style={l.counterDesc}>
-              Fire a counter-attack against <Text style={{ color: GOLD, fontWeight: '700' }}>{rivalSquadName}</Text>.
-              {' '}Winner gets the venue INF bonus. Each session allows one counter.
+              {t('battle.fireCounterDesc1')} <Text style={{ color: GOLD, fontWeight: '700' }}>{rivalSquadName}</Text>.
+              {' '}{t('battle.fireCounterDesc2')}
             </Text>
             <TouchableOpacity
               style={l.counterBtn}
@@ -495,7 +499,7 @@ export function ConquestBattleLoseScreen({
               {countering ? (
                 <ActivityIndicator color={RED} />
               ) : (
-                <Text style={l.counterBtnText}>↩️ Fire Counter-Attack</Text>
+                <Text style={l.counterBtnText}>{t('battle.fireCounterAttack')}</Text>
               )}
             </TouchableOpacity>
             <View style={l.counterBar}>
@@ -508,31 +512,31 @@ export function ConquestBattleLoseScreen({
               onPress={handleBattleAnotherTime}
               activeOpacity={0.7}
             >
-              <Text style={l.skipBtnText}>Battle Another Time</Text>
+              <Text style={l.skipBtnText}>{t('battle.battleAnotherTime')}</Text>
             </TouchableOpacity>
           </View>
         )}
 
         {!counterWindowOpen && (
           <View style={l.windowClosed}>
-            <Text style={l.windowClosedText}>Counter-attack window has closed</Text>
+            <Text style={l.windowClosedText}>{t('battle.counterWindowClosed')}</Text>
           </View>
         )}
 
         {/* Rival intel */}
         <View style={l.intelCard}>
-          <Text style={l.intelTitle}>Rival Intel</Text>
+          <Text style={l.intelTitle}>{t('battle.rivalIntel')}</Text>
           <View style={l.intelRow}>
             <Text style={l.intelEmoji}>{rivalSquadEmoji}</Text>
             <View>
               <Text style={l.intelName}>{rivalSquadName}</Text>
-              <Text style={l.intelPowerText}>Card power: {rivalPower}</Text>
+              <Text style={l.intelPowerText}>{t('battle.cardPower', { power: rivalPower })}</Text>
             </View>
           </View>
         </View>
 
         <TouchableOpacity style={l.viewResultsBtn} onPress={onViewResults} activeOpacity={0.82}>
-          <Text style={l.viewResultsText}>Close →</Text>
+          <Text style={l.viewResultsText}>{t('battle.close')}</Text>
         </TouchableOpacity>
       </ScrollView>
     </View>

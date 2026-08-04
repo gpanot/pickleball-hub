@@ -4,6 +4,7 @@ import {
   ActivityIndicator, ScrollView,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useTranslation } from 'react-i18next';
 import { SquadBackButton } from '../components/SquadBackButton';
 
 const BANGERS = 'BarlowCondensed_800ExtraBold';
@@ -20,6 +21,7 @@ export function SquadLeaveConfirmScreen({
   squadName, founderName, onConfirmLeave, onCancel,
 }: Props) {
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation('squadd');
   const [loading, setLoading] = useState(false);
 
   const handleLeave = async () => {
@@ -35,7 +37,7 @@ export function SquadLeaveConfirmScreen({
     <View style={s.container}>
       <View style={[s.topBar, { paddingTop: insets.top + 12 }]}>
         <SquadBackButton onPress={onCancel} />
-        <Text style={s.topTitle}>Leave squad</Text>
+        <Text style={s.topTitle}>{t('leave.title')}</Text>
         <View style={{ width: 32 }} />
       </View>
 
@@ -45,39 +47,31 @@ export function SquadLeaveConfirmScreen({
       >
         <Text style={s.icon}>⛓️‍💥</Text>
 
-        <Text style={s.title}>LEAVE {squadName.toUpperCase()}?</Text>
-        <Text style={s.subtitle}>You will be removed from the squad immediately.</Text>
+        <Text style={s.title}>{t('leave.headline', { name: squadName.toUpperCase() })}</Text>
+        <Text style={s.subtitle}>{t('leave.subtitle')}</Text>
 
         <View style={s.card}>
-          <Text style={s.cardLabel}>WHAT HAPPENS</Text>
+          <Text style={s.cardLabel}>{t('leave.whatHappens')}</Text>
 
           <View style={s.row}>
             <Text style={s.rowEmoji}>⏱️</Text>
-            <Text style={s.rowText}>
-              7-day cooldown before joining or creating another squad
-            </Text>
+            <Text style={s.rowText}>{t('leave.cooldownRow')}</Text>
           </View>
           <View style={s.divider} />
 
           <View style={s.row}>
             <Text style={s.rowEmoji}>⚡</Text>
-            <Text style={s.rowText}>
-              Your XP contributions stay on your personal profile
-            </Text>
+            <Text style={s.rowText}>{t('leave.xpRow')}</Text>
           </View>
           <View style={s.divider} />
 
           <View style={s.row}>
             <Text style={s.rowEmoji}>🔔</Text>
-            <Text style={s.rowText}>
-              {founderName} will be notified you left
-            </Text>
+            <Text style={s.rowText}>{t('leave.notifiedRow', { founder: founderName })}</Text>
           </View>
 
           <View style={s.warningBox}>
-            <Text style={s.warningText}>
-              If you are the only remaining member, the squad will be automatically disbanded.
-            </Text>
+            <Text style={s.warningText}>{t('leave.onlyMemberWarning')}</Text>
           </View>
         </View>
 
@@ -90,7 +84,7 @@ export function SquadLeaveConfirmScreen({
           {loading ? (
             <ActivityIndicator color="#ef4444" />
           ) : (
-            <Text style={s.leaveText}>Leave {squadName}</Text>
+            <Text style={s.leaveText}>{t('leave.leaveBtn', { name: squadName })}</Text>
           )}
         </TouchableOpacity>
 
@@ -100,7 +94,7 @@ export function SquadLeaveConfirmScreen({
           disabled={loading}
           activeOpacity={0.7}
         >
-          <Text style={s.stayText}>Stay in squad</Text>
+          <Text style={s.stayText}>{t('leave.stayBtn')}</Text>
         </TouchableOpacity>
       </ScrollView>
     </View>

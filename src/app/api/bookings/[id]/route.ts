@@ -146,13 +146,20 @@ export async function PATCH(
       booking.player.displayName ?? booking.player.squadNickname ?? "A player";
 
     const updated = await prisma.$transaction(async (tx) => {
+      // Count and delete guests before cancelling so we know how many spots to free
+      const guestCount = await tx.clubSessionGuest.count({ where: { bookingId: id } });
+      await tx.clubSessionGuest.deleteMany({ where: { bookingId: id } });
+
       const b = await tx.clubSessionBooking.update({
         where: { id },
         data: { status: "declined", decidedAt: new Date() },
       });
-      // Auto-backfill only when a confirmed spot is freed
+      // Auto-backfill for every freed spot (1 booker + guests)
       if (wasConfirmed) {
-        await autoBackfill(tx, clubSession.id, sessionName, hostProfileId);
+        const slotsFreed = 1 + guestCount;
+        for (let i = 0; i < slotsFreed; i++) {
+          await autoBackfill(tx, clubSession.id, sessionName, hostProfileId);
+        }
       }
       return b;
     });
@@ -288,6 +295,7 @@ export async function GET(
     where: { id },
     include: {
       player: { select: { id: true, displayName: true, squadNickname: true, preferences: true, user: { select: { image: true } } } },
+      guests: { orderBy: { createdAt: "asc" } },
       clubSession: {
         select: {
           id: true, name: true, startTime: true, appClubId: true, hostId: true,

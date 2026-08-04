@@ -4,6 +4,7 @@ import {
   ActivityIndicator, ScrollView,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useTranslation } from 'react-i18next';
 import { SquadBackButton } from '../components/SquadBackButton';
 
 const BANGERS = 'BarlowCondensed_800ExtraBold';
@@ -16,6 +17,7 @@ interface Props {
 
 export function SquadDisbandConfirmScreen({ squadName, onConfirmDisband, onCancel }: Props) {
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation('squadd');
   const [loading, setLoading] = useState(false);
 
   const handleDisband = async () => {
@@ -32,7 +34,7 @@ export function SquadDisbandConfirmScreen({ squadName, onConfirmDisband, onCance
       {/* Top bar */}
       <View style={[s.topBar, { paddingTop: insets.top + 12 }]}>
         <SquadBackButton onPress={onCancel} />
-        <Text style={s.topTitle}>Disband squad</Text>
+        <Text style={s.topTitle}>{t('disband.title')}</Text>
         <View style={{ width: 32 }} />
       </View>
 
@@ -44,24 +46,24 @@ export function SquadDisbandConfirmScreen({ squadName, onConfirmDisband, onCance
         <Text style={s.skull}>💀</Text>
 
         {/* Title */}
-        <Text style={s.title}>Disband {squadName}?</Text>
-        <Text style={s.subtitle}>This is permanent. All members are removed immediately.</Text>
+        <Text style={s.title}>{t('disband.confirmTitle', { name: squadName })}</Text>
+        <Text style={s.subtitle}>{t('disband.subtitle')}</Text>
 
         {/* Consequence rows */}
         <View style={s.rows}>
           <View style={s.row}>
             <Text style={s.rowEmoji}>👥</Text>
-            <Text style={s.rowText}>All members removed and notified. Each gets a 7-day cooldown.</Text>
+            <Text style={s.rowText}>{t('disband.membersRow')}</Text>
           </View>
           <View style={s.divider} />
           <View style={s.row}>
             <Text style={s.rowEmoji}>📊</Text>
-            <Text style={s.rowText}>XP and session logs preserved on each member's individual profile.</Text>
+            <Text style={s.rowText}>{t('disband.xpRow')}</Text>
           </View>
           <View style={s.divider} />
           <View style={s.row}>
             <Text style={s.rowEmoji}>🏆</Text>
-            <Text style={s.rowText}>Squad name is freed — someone else can claim it.</Text>
+            <Text style={s.rowText}>{t('disband.nameRow')}</Text>
           </View>
         </View>
 
@@ -75,7 +77,7 @@ export function SquadDisbandConfirmScreen({ squadName, onConfirmDisband, onCance
           {loading ? (
             <ActivityIndicator color="#ef4444" />
           ) : (
-            <Text style={s.disbandText}>Disband {squadName}</Text>
+            <Text style={s.disbandText}>{t('disband.disbandBtn', { name: squadName })}</Text>
           )}
         </TouchableOpacity>
 
@@ -86,7 +88,7 @@ export function SquadDisbandConfirmScreen({ squadName, onConfirmDisband, onCance
           disabled={loading}
           activeOpacity={0.7}
         >
-          <Text style={s.cancelText}>Keep my squad</Text>
+          <Text style={s.cancelText}>{t('disband.keepSquad')}</Text>
         </TouchableOpacity>
       </ScrollView>
     </View>

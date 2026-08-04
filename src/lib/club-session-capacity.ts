@@ -42,9 +42,11 @@ export async function maybePromoteCapacity(
     return;
   }
 
-  const confirmedCount = await tx.clubSessionBooking.count({
-    where: { clubSessionId, status: "confirmed" },
-  });
+  const [confirmedBookings, confirmedGuests] = await Promise.all([
+    tx.clubSessionBooking.count({ where: { clubSessionId, status: "confirmed" } }),
+    tx.clubSessionGuest.count({ where: { clubSessionId } }),
+  ]);
+  const confirmedCount = confirmedBookings + confirmedGuests;
 
   const fillRatio = confirmedCount / session.maxPlayers;
   if (fillRatio < 0.8) return;

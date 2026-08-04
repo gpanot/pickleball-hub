@@ -175,7 +175,7 @@ export async function POST(req: NextRequest) {
         include: {
           host: { select: { id: true, displayName: true, squadNickname: true } },
           venue: { select: { id: true, name: true, address: true } },
-          _count: { select: { bookings: { where: { status: "confirmed" } } } },
+          _count: { select: { bookings: { where: { status: "confirmed" } }, guests: true } },
         },
       });
 
@@ -200,7 +200,7 @@ export async function POST(req: NextRequest) {
       include: {
         host: { select: { id: true, displayName: true, squadNickname: true } },
         venue: { select: { id: true, name: true, address: true } },
-        _count: { select: { bookings: { where: { status: "confirmed" } } } },
+        _count: { select: { bookings: { where: { status: "confirmed" } }, guests: true } },
       },
     });
     return NextResponse.json({ ok: true, session }, { status: 201 });
@@ -323,7 +323,7 @@ export async function GET(req: NextRequest) {
           },
         },
       },
-      _count: { select: { bookings: { where: { status: "confirmed" } } } },
+      _count: { select: { bookings: { where: { status: "confirmed" } }, guests: true } },
     },
     orderBy: timeframe === "past" ? { startTime: "desc" } : { startTime: "asc" },
     take,

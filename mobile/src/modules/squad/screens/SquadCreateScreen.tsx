@@ -7,6 +7,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Location from 'expo-location';
+import { useTranslation } from 'react-i18next';
 import type { CreateSquadPayload } from '../types';
 import { SquadScreenHeader } from '../components/SquadScreenHeader';
 
@@ -35,6 +36,7 @@ interface Props {
 
 export function SquadCreateScreen({ onCreated, onBack, loading }: Props) {
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation('squadd');
   const [name, setName] = useState(SUGGESTIONS[0]);
   const [nameError, setNameError] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -81,8 +83,8 @@ export function SquadCreateScreen({ onCreated, onBack, loading }: Props) {
   const handleCreate = async () => {
     Keyboard.dismiss();
     const trimmed = name.trim();
-    if (trimmed.length < 2) { setNameError('Name must be at least 2 characters'); return; }
-    if (trimmed.length > 24) { setNameError('Name must be 24 characters or less'); return; }
+    if (trimmed.length < 2) { setNameError(t('create.nameErrorMin')); return; }
+    if (trimmed.length > 24) { setNameError(t('create.nameErrorMax')); return; }
     setNameError('');
     setSubmitting(true);
     try {
@@ -95,7 +97,7 @@ export function SquadCreateScreen({ onCreated, onBack, loading }: Props) {
         ...(coords ? { latitude: coords.latitude, longitude: coords.longitude } : {}),
       });
     } catch (e: any) {
-      setNameError(e.message || 'Failed to create squad');
+      setNameError(e.message || t('create.createError'));
     } finally {
       setSubmitting(false);
     }
@@ -105,7 +107,7 @@ export function SquadCreateScreen({ onCreated, onBack, loading }: Props) {
 
   return (
     <View style={s.container}>
-      <SquadScreenHeader title="CREATE SQUAD" insetTop={insets.top} onBack={onBack} />
+      <SquadScreenHeader title={t('create.title')} insetTop={insets.top} onBack={onBack} />
 
       <ScrollView
         contentContainerStyle={[s.content, { paddingBottom: insets.bottom + 24 }]}
@@ -115,7 +117,7 @@ export function SquadCreateScreen({ onCreated, onBack, loading }: Props) {
 
         {/* ── Preview card ── */}
         <Animated.View style={[s.previewCard, { opacity: cardOpacity, transform: [{ translateY: cardTranslateY }] }]}>
-          <Text style={s.previewLabel}>YOUR SQUAD</Text>
+          <Text style={s.previewLabel}>{t('create.yourSquad')}</Text>
 
           {/* Tile grid */}
           <View style={s.tileGrid}>
@@ -134,17 +136,15 @@ export function SquadCreateScreen({ onCreated, onBack, loading }: Props) {
           </View>
 
           <Animated.Text style={[s.previewName, { opacity: nameOpacity }]}>{displayName}</Animated.Text>
-          <Text style={s.previewHint}>
-            Squads hold territory. Win courts to claim tiles,{'\n'}every Pod you invite expands the grid.
-          </Text>
+          <Text style={s.previewHint}>{t('create.previewHint')}</Text>
         </Animated.View>
 
         {/* ── Squad name ── */}
         <View style={s.section}>
-          <Text style={s.label}>SQUAD NAME</Text>
+          <Text style={s.label}>{t('create.squadNameLabel')}</Text>
           <TextInput
             style={[s.input, nameError ? s.inputError : null]}
-            placeholder="Type to see it appear above"
+            placeholder={t('create.namePlaceholder')}
             placeholderTextColor="rgba(255,255,255,0.2)"
             value={name}
             onChangeText={(t) => { setName(t); setNameError(''); flashName(); }}
@@ -185,7 +185,7 @@ export function SquadCreateScreen({ onCreated, onBack, loading }: Props) {
             {submitting || loading ? (
               <ActivityIndicator color="#000" />
             ) : (
-              <Text style={s.ctaText}>CREATE SQUAD + INVITE →</Text>
+              <Text style={s.ctaText}>{t('create.ctaButton')}</Text>
             )}
           </LinearGradient>
         </TouchableOpacity>

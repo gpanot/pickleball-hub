@@ -4,6 +4,7 @@ import {
   Animated, Easing, ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useTranslation } from 'react-i18next';
 import Svg, { Defs, RadialGradient, Stop, Path } from 'react-native-svg';
 import { SquadBackButton } from '../components/SquadBackButton';
 import type { ConquestSession, SquadCardData, ClashRival } from '../types';
@@ -114,6 +115,7 @@ export function ConquestActiveSessionScreen({
   activeBattle,
 }: Props) {
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation('squadd');
 
   // Auto-exit if session expires
   useEffect(() => {
@@ -196,7 +198,7 @@ export function ConquestActiveSessionScreen({
       <View style={s.header}>
         <SquadBackButton onPress={onBack} />
         <View style={s.headerCenter}>
-          <Text style={s.headerSubtitle}>📡 RADAR PULSE ACTIVE</Text>
+          <Text style={s.headerSubtitle}>{t('conquest.radarActive')}</Text>
           <Text style={s.headerTitle}>{session.venueName.toUpperCase()}</Text>
         </View>
         <View style={s.headerRight}>
@@ -208,7 +210,7 @@ export function ConquestActiveSessionScreen({
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.scroll}>
         {/* ── Radar ── */}
         <View style={s.radarSection}>
-          <Text style={s.radarLabel}>⚡ LIVE COURT RADAR</Text>
+          <Text style={s.radarLabel}>{t('conquest.liveCourtRadar')}</Text>
           <View style={[s.radarWrap, { width: RADAR_SIZE, height: RADAR_SIZE }]}>
             <View style={[s.ring, s.ring1]} />
             <View style={[s.ring, s.ring2]} />
@@ -230,9 +232,9 @@ export function ConquestActiveSessionScreen({
             <View style={s.centerDot} />
           </View>
           <View style={s.legend}>
-            <View style={s.legendItem}><View style={[s.legendDot, { backgroundColor: LIME }]} /><Text style={s.legendText}>Your squad</Text></View>
-            <View style={s.legendItem}><View style={[s.legendDot, { backgroundColor: BLUE }]} /><Text style={s.legendText}>Players nearby</Text></View>
-            <View style={s.legendItem}><View style={[s.legendDot, { backgroundColor: GOLD }]} /><Text style={s.legendText}>Rival squad</Text></View>
+            <View style={s.legendItem}><View style={[s.legendDot, { backgroundColor: LIME }]} /><Text style={s.legendText}>{t('conquest.yourSquad')}</Text></View>
+            <View style={s.legendItem}><View style={[s.legendDot, { backgroundColor: BLUE }]} /><Text style={s.legendText}>{t('conquest.playersNearby')}</Text></View>
+            <View style={s.legendItem}><View style={[s.legendDot, { backgroundColor: GOLD }]} /><Text style={s.legendText}>{t('conquest.rivalSquad')}</Text></View>
           </View>
         </View>
 
@@ -249,7 +251,7 @@ export function ConquestActiveSessionScreen({
           />
         )) : (
           <View style={s.noRivalCard}>
-            <Text style={s.noRivalText}>No rival detected · INF accumulating quietly 🕵️</Text>
+            <Text style={s.noRivalText}>{t('conquest.noRival')}</Text>
           </View>
         )}
 
@@ -271,12 +273,12 @@ export function ConquestActiveSessionScreen({
 
         {/* ── Auto-reveal countdown ── */}
         <View style={s.revealCard}>
-          <Text style={s.revealLabel}>INF AUTO-REVEALS IN</Text>
+          <Text style={s.revealLabel}>{t('conquest.infAutoReveals')}</Text>
           <Text style={s.revealValue}>{formatCountdown(revealSeconds)}</Text>
           <View style={s.revealBar}>
             <View style={[s.revealBarFill, { width: `${Math.round(revealProgress * 100)}%` }]} />
           </View>
-          <Text style={s.revealNote}>Session ends automatically · just keep playing 🏓</Text>
+          <Text style={s.revealNote}>{t('conquest.sessionEndsNote')}</Text>
         </View>
       </ScrollView>
     </View>
@@ -300,6 +302,7 @@ function RivalSection({
   onWatchBattle: () => void;
   onSeeResult: () => void;
 }) {
+  const { t } = useTranslation('squadd');
   const hasBattle = !!rival.battle;
   const battleRevealed = !!(rival.battle?.revealed || (rival.battle && Date.now() >= new Date(rival.battle.revealAt).getTime()));
 
@@ -344,7 +347,7 @@ function RivalSection({
       <View style={s.triggerBanner}>
         <View style={s.triggerDot} />
         <Text style={s.triggerText}>
-          {rival.squadName} just checked in — battle triggered automatically
+          {t('conquest.rivalCheckedIn', { name: rival.squadName })}
         </Text>
       </View>
 
@@ -355,21 +358,21 @@ function RivalSection({
           <View style={s.vsSquad}>
             <Text style={s.vsEmoji}>{mySquad.emoji}</Text>
             <Text style={[s.vsName, { color: LIME }]}>{mySquad.name}</Text>
-            <Text style={s.vsSub}>You</Text>
+            <Text style={s.vsSub}>{t('battle.you')}</Text>
           </View>
           <View style={s.vsCenter}>
             <Text style={s.vsLabel}>VS</Text>
-            <Text style={s.vsClash}>CLASH</Text>
+            <Text style={s.vsClash}>{t('conquest.clash')}</Text>
           </View>
           <View style={s.vsSquad}>
             <Text style={s.vsEmoji}>{rival.squadEmoji}</Text>
             <Text style={[s.vsName, { color: GOLD }]}>{rival.squadName}</Text>
-            <Text style={s.vsSub}>just arrived</Text>
+            <Text style={s.vsSub}>{t('conquest.justArrived')}</Text>
           </View>
         </View>
         <View style={s.clashMultiplier}>
           <Text style={s.clashMultiplierText}>
-            🏟️ <Text style={s.clashRed}>Arena Clash active</Text>{' '}— both squads earn ×2.0
+            🏟️ <Text style={s.clashRed}>{t('conquest.arenaClashActive')}</Text>{' '}{t('conquest.bothEarn')}
           </Text>
           <Text style={s.clashX}>×2.0</Text>
         </View>
@@ -377,36 +380,36 @@ function RivalSection({
 
       {/* Squad card */}
       <View style={s.cardSection}>
-        <Text style={s.sectionLabel}>YOUR SQUAD CARD</Text>
+        <Text style={s.sectionLabel}>{t('battle.squadCard')}</Text>
         <View style={s.squadCard}>
-          <View style={s.cardWatermark}><Text style={s.cardWatermarkText}>SQUAD CARD</Text></View>
+          <View style={s.cardWatermark}><Text style={s.cardWatermarkText}>{t('battle.squadCard')}</Text></View>
           <View style={s.cardTopRow}>
             <View style={s.cardEmojiBox}><Text style={s.cardEmoji}>{mySquad.emoji}</Text></View>
             <View style={s.cardNameWrap}>
               <Text style={s.cardName}>{mySquad.name}</Text>
-              <Text style={s.cardSubName}>Level {mySquad.level}</Text>
+              <Text style={s.cardSubName}>{t('battle.level', { level: mySquad.level })}</Text>
             </View>
             <View style={s.cardPowerWrap}>
-              <Text style={s.cardPowerLabel}>CARD POWER</Text>
+              <Text style={s.cardPowerLabel}>{t('battle.cardPowerLabel')}</Text>
               <Text style={s.cardPower}>{cardData?.cardPowerInf ?? '…'}</Text>
-              <Text style={s.cardPowerSub}>INF bonus</Text>
+              <Text style={s.cardPowerSub}>{t('battle.infBonus')}</Text>
             </View>
           </View>
           <View style={s.cardStats}>
             <View style={s.cardStat}>
               <Text style={s.cardStatIcon}>🏆</Text>
               <Text style={s.cardStatValue}>{cardData?.venuesOwnedCount ?? 0}</Text>
-              <Text style={s.cardStatLabel}>Venues owned</Text>
+              <Text style={s.cardStatLabel}>{t('battle.venuesOwned')}</Text>
             </View>
             <View style={s.cardStat}>
               <Text style={s.cardStatIcon}>⚡</Text>
               <Text style={[s.cardStatValue, { color: LIME }]}>LV {mySquad.level}</Text>
-              <Text style={s.cardStatLabel}>Squad level</Text>
+              <Text style={s.cardStatLabel}>{t('battle.squadLevel')}</Text>
             </View>
             <View style={s.cardStat}>
               <Text style={s.cardStatIcon}>🏓</Text>
               <Text style={[s.cardStatValue, { color: LIME }]}>{cardData?.activeMembersThisWeek ?? 0}</Text>
-              <Text style={s.cardStatLabel}>Active this week</Text>
+              <Text style={s.cardStatLabel}>{t('battle.activeWeek')}</Text>
             </View>
           </View>
 
@@ -418,7 +421,7 @@ function RivalSection({
               activeOpacity={0.82}
             >
               <Text style={[s.playBtnText, battleRevealed ? s.resultBtnText : s.watchBtnText]}>
-                {battleRevealed ? '🏆 See result →' : '⚡ Watch the battle →'}
+                {battleRevealed ? t('conquest.seeResult') : t('conquest.watchBattle')}
               </Text>
             </TouchableOpacity>
           ) : (
@@ -428,11 +431,11 @@ function RivalSection({
               {playing ? (
                 <ActivityIndicator color={RED} size="small" style={{ zIndex: 1 }} />
               ) : (
-                <Text style={s.autoStartBarText}>⚔️ Battle is starting in {autoCountdown}s</Text>
+                <Text style={s.autoStartBarText}>{t('conquest.battleStartingIn', { secs: autoCountdown })}</Text>
               )}
             </View>
           )}
-          <Text style={s.gamblerNote}>You don't know their card power — it's a gamble</Text>
+          <Text style={s.gamblerNote}>{t('conquest.gamblerNote')}</Text>
         </View>
       </View>
     </>

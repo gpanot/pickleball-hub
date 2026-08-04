@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { Medal } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useTranslation } from 'react-i18next';
 import { SquadIdentityBar } from '../components/SquadIdentityBar';
 import { SquadMembersRow } from '../components/SquadMembersRow';
 import { SquadInviteStatusCard } from '../components/SquadInviteStatusCard';
@@ -91,6 +92,7 @@ export function SquadHomeScreen({
   placesData, onPlacesPress,
 }: Props) {
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation('squadd');
   const [refreshing, setRefreshing] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [phase3DotIdx, setPhase3DotIdx] = useState(0);
@@ -150,10 +152,10 @@ export function SquadHomeScreen({
             )}
           </TouchableOpacity>
         )}
-        <Text style={s.topTitle}>MY SQUADD</Text>
+        <Text style={s.topTitle}>{t('home.title')}</Text>
         {cityRank !== null && (
           <TouchableOpacity style={s.rankPill} onPress={onLeaderboard}>
-            <Text style={s.rankText}>#{cityRank} City</Text>
+            <Text style={s.rankText}>{t('home.cityRank', { rank: cityRank })}</Text>
           </TouchableOpacity>
         )}
         {/* Conquest bell icon — right side, same position as the old manage button */}
@@ -225,16 +227,16 @@ export function SquadHomeScreen({
               <Text style={s.phase3CardTitle}>{brandData.brand.toUpperCase().replace('_', ' ')}</Text>
               <Text style={s.phase3CardSub}>Lv {brandData.supportLevel} · {walletData?.brandTokens ?? 0} ★</Text>
               <View style={[s.phase3CardCta, { borderColor: PURPLE }]}>
-                <Text style={[s.phase3CardCtaText, { color: PURPLE }]}>My Brand</Text>
+                <Text style={[s.phase3CardCtaText, { color: PURPLE }]}>{t('squad.mySquad')}</Text>
               </View>
             </TouchableOpacity>
           ) : (
             <TouchableOpacity style={s.phase3Card} onPress={onBrandDetail} activeOpacity={0.8}>
               <Medal size={28} color="#52525b" strokeWidth={1.75} style={s.phase3CardIcon} />
-              <Text style={s.phase3CardTitle}>No Brand</Text>
-              <Text style={s.phase3CardSub}>Pick your paddle brand</Text>
+              <Text style={s.phase3CardTitle}>{t('home.noBrand')}</Text>
+              <Text style={s.phase3CardSub}>{t('home.pickBrand')}</Text>
               <View style={[s.phase3CardCta, { borderColor: '#52525b' }]}>
-                <Text style={[s.phase3CardCtaText, { color: '#a1a1aa' }]}>Choose →</Text>
+                <Text style={[s.phase3CardCtaText, { color: '#a1a1aa' }]}>{t('home.chooseBrand')}</Text>
               </View>
             </TouchableOpacity>
           )}
@@ -305,18 +307,18 @@ export function SquadHomeScreen({
         {/* Welcome card for new squads */}
         {showWelcomeCard && (
           <View style={s.welcomeCard}>
-            <Text style={s.welcomeTitle}>What happens next</Text>
+            <Text style={s.welcomeTitle}>{t('home.whatHappensNext')}</Text>
             <View style={s.welcomeRow}>
               <Text style={s.welcomeEmoji}>👥</Text>
-              <Text style={s.welcomeText}>Invite up to 7 more players to your squad</Text>
+              <Text style={s.welcomeText}>{t('home.inviteUpTo')}</Text>
             </View>
             <View style={s.welcomeRow}>
               <Text style={s.welcomeEmoji}>🎮</Text>
-              <Text style={s.welcomeText}>When anyone plays a session, the whole squad earns XP</Text>
+              <Text style={s.welcomeText}>{t('home.earnXp')}</Text>
             </View>
             <View style={s.welcomeRow}>
               <Text style={s.welcomeEmoji}>🏆</Text>
-              <Text style={s.welcomeText}>Level up and climb the city leaderboard together</Text>
+              <Text style={s.welcomeText}>{t('home.levelUp')}</Text>
             </View>
           </View>
         )}
@@ -328,12 +330,12 @@ export function SquadHomeScreen({
         <View style={s.bottomActionsRow}>
           <TouchableOpacity style={s.bottomActionBtn} onPress={onLeaderboard} activeOpacity={0.7}>
             <Text style={s.bottomActionIcon}>🏆</Text>
-            <Text style={s.bottomActionText}>City Leaderboard</Text>
+            <Text style={s.bottomActionText}>{t('home.cityLeaderboard')}</Text>
           </TouchableOpacity>
           <View style={s.bottomActionDivider} />
           <TouchableOpacity style={s.bottomActionBtn} onPress={onInviteMore} activeOpacity={0.7}>
             <Text style={s.bottomActionIcon}>👥</Text>
-            <Text style={s.bottomActionText}>Invite Players</Text>
+            <Text style={s.bottomActionText}>{t('home.invitePlayers')}</Text>
           </TouchableOpacity>
         </View>
 
@@ -346,6 +348,7 @@ export function SquadHomeScreen({
 }
 
 function PulsingFab({ onPress, bottom }: { onPress: () => void; bottom: number }) {
+  const { t } = useTranslation('squadd');
   const pulse = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
@@ -363,7 +366,7 @@ function PulsingFab({ onPress, bottom }: { onPress: () => void; bottom: number }
     <View style={[s.fabContainer, { bottom }]}>
       <Animated.View style={[s.fabGlow, { transform: [{ scale: pulse }] }]} />
       <TouchableOpacity style={s.fab} onPress={onPress} activeOpacity={0.8}>
-        <Text style={s.fabText}>📍 Check in</Text>
+        <Text style={s.fabText}>{t('home.checkIn')}</Text>
       </TouchableOpacity>
     </View>
   );

@@ -5,6 +5,22 @@ import { prisma } from "@/lib/db";
 import { notifyBookingRequested, notifyPlayerJoined } from "@/lib/club-session-notifications";
 import { maybePromoteCapacity } from "@/lib/club-session-capacity";
 
+const GUEST_SELECT = {
+  id: true,
+  bookingId: true,
+  clubSessionId: true,
+  bookedByProfileId: true,
+  displayName: true,
+  skillLevelLabel: true,
+  skillLevelValue: true,
+  addedBy: true,
+  paidStatus: true,
+  paidAmount: true,
+  attendanceStatus: true,
+  createdAt: true,
+  updatedAt: true,
+} as const;
+
 const BOOKING_SELECT = {
   id: true,
   playerProfileId: true,
@@ -18,6 +34,7 @@ const BOOKING_SELECT = {
   createdAt: true,
   updatedAt: true,
   player: { select: { id: true, displayName: true, squadNickname: true, preferences: true, user: { select: { image: true } } } },
+  guests: { select: GUEST_SELECT, orderBy: { createdAt: "asc" as const } },
   clubSession: {
     select: {
       id: true,
@@ -31,7 +48,7 @@ const BOOKING_SELECT = {
       bookings: {
         where: { status: "confirmed" },
         take: 4,
-        orderBy: { requestedAt: "asc" },
+        orderBy: { requestedAt: "asc" as const },
         select: {
           player: {
             select: {
@@ -89,10 +106,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Session is not open for booking" }, { status: 409 });
   }
 
-  // Count confirmed bookings to determine capacity (soft gate — only affects player self-bookings)
-  const confirmedCount = await prisma.clubSessionBooking.count({
-    where: { clubSessionId, status: "confirmed" },
-  });
+  // Count confirmed heads (bookings + guests) for capacity soft-gate
+  const [confirmedBookings, confirmedGuests] = await Promise.all([
+    prisma.clubSessionBooking.count({ where: { clubSessionId, status: "confirmed" } }),
+    prisma.clubSessionGuest.count({ where: { clubSessionId } }),
+  ]);
+  const confirmedCount = confirmedBookings + confirmedGuests;
   const atCapacity = confirmedCount >= session.maxPlayers;
 
   // 3-way booking mode (B1-G). requiresApproval is kept for backward compat.

@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useTranslation } from 'react-i18next';
 import { SquadShareCard } from '../components/SquadShareCard';
 import { SquadBackButton } from '../components/SquadBackButton';
 import { useAuthStore } from '../../../stores/authStore';
@@ -36,6 +37,7 @@ function joinNames(names: string[]): string {
 
 export function SquadCreatedScreen({ squad, inviteResult, onGoToSquad, onInviteMore, onBack }: Props) {
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation('squadd');
   const scale = useRef(new Animated.Value(0.3)).current;
   const opacity = useRef(new Animated.Value(0)).current;
   const founderName = useAuthStore.getState().displayName ?? 'You';
@@ -86,7 +88,7 @@ export function SquadCreatedScreen({ squad, inviteResult, onGoToSquad, onInviteM
       {/* Top bar */}
       <View style={[s.topBar, { paddingTop: insets.top + 12 }]}>
         <SquadBackButton onPress={onBack} />
-        <Text style={s.topTitle}>Squad created</Text>
+        <Text style={s.topTitle}>{t('created.title')}</Text>
         <View style={{ width: 32 }} />
       </View>
 
@@ -97,20 +99,20 @@ export function SquadCreatedScreen({ squad, inviteResult, onGoToSquad, onInviteM
         </Animated.View>
 
         <Animated.Text style={[s.headline, { opacity }]}>
-          {squad.name.toUpperCase()} IS LIVE
+          {t('created.isLive', { name: squad.name.toUpperCase() })}
         </Animated.Text>
 
         <Animated.Text style={[s.subtitle, { opacity }]}>
           {hasInvited
-            ? `Invites sent to ${joinNames(invitedNames)}.\nNow get the rest of your crew in.`
-            : 'Your squad is live. Invite your crew to start earning together.'}
+            ? t('created.invitesSent', { names: joinNames(invitedNames) })
+            : t('created.noInvites')}
         </Animated.Text>
 
         {/* Not-on-app card */}
         {hasNotOnApp && (
           <View style={s.notOnAppCard}>
             <Text style={s.notOnAppTitle}>
-              {joinNames(notOnAppNames)} aren't on Squadd yet
+              {t('created.notOnApp', { names: joinNames(notOnAppNames) })}
             </Text>
             <View style={s.pillRow}>
               {notOnAppNames.map((name) => (
@@ -120,9 +122,7 @@ export function SquadCreatedScreen({ squad, inviteResult, onGoToSquad, onInviteM
                 </View>
               ))}
             </View>
-            <Text style={s.notOnAppHint}>
-              Ask them to join your squad by sharing this card. It's free.
-            </Text>
+            <Text style={s.notOnAppHint}>{t('created.notOnAppHint')}</Text>
           </View>
         )}
 
@@ -141,45 +141,41 @@ export function SquadCreatedScreen({ squad, inviteResult, onGoToSquad, onInviteM
           activeOpacity={0.8}
         >
           <LinearGradient colors={[LIME, LIME_DARK]} style={s.primaryGrad}>
-            <Text style={s.primaryText}>Share invite card →</Text>
+            <Text style={s.primaryText}>{t('created.shareInvite')}</Text>
           </LinearGradient>
         </TouchableOpacity>
 
-        <Text style={s.shareLinkHint}>
-          Deep-link survives install · auto-shows squad on first open
-        </Text>
+        <Text style={s.shareLinkHint}>{t('created.deepLink')}</Text>
 
         {/* WHEN THEY INSTALL section */}
         <View style={s.whenCard}>
-          <Text style={s.whenTitle}>WHEN THEY INSTALL SQUADD</Text>
+          <Text style={s.whenTitle}>{t('created.whenInstall')}</Text>
           <View style={s.whenRow}>
             <Text style={s.whenEmoji}>🔔</Text>
             <Text style={s.whenText}>
-              They get notified:{' '}
-              <Text style={s.whenQuote}>"{founderHandle} invited you to {squad.name}"</Text>
+              {t('created.notified')}
+              <Text style={s.whenQuote}>{t('created.notifiedQuote', { founder: founderHandle, squad: squad.name })}</Text>
             </Text>
           </View>
           <View style={s.whenRow}>
             <Text style={s.whenEmoji}>👥</Text>
-            <Text style={s.whenText}>You appear first in their Players you may know</Text>
+            <Text style={s.whenText}>{t('created.appearsFirst')}</Text>
           </View>
           <View style={s.whenRow}>
             <Text style={s.whenEmoji}>{squad.emoji}</Text>
-            <Text style={s.whenText}>
-              {squad.name} pinned top of squad suggestions — one tap to join
-            </Text>
+            <Text style={s.whenText}>{t('created.pinnedTop', { squad: squad.name })}</Text>
           </View>
         </View>
 
         {/* Go to squad */}
         <TouchableOpacity style={s.goToSquadBtn} onPress={onGoToSquad} activeOpacity={0.8}>
           <LinearGradient colors={[LIME, LIME_DARK]} style={s.primaryGrad}>
-            <Text style={s.primaryText}>Go to my squad →</Text>
+            <Text style={s.primaryText}>{t('created.goToSquad')}</Text>
           </LinearGradient>
         </TouchableOpacity>
 
         <TouchableOpacity style={s.secondaryBtn} onPress={onInviteMore} activeOpacity={0.7}>
-          <Text style={s.secondaryText}>Invite more players</Text>
+          <Text style={s.secondaryText}>{t('created.inviteMore')}</Text>
         </TouchableOpacity>
       </ScrollView>
     </View>
