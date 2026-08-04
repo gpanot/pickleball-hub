@@ -9,6 +9,7 @@ import * as Location from 'expo-location';
 import { getNearbySquads } from '../api';
 import { SquadBackButton } from '../components/SquadBackButton';
 import type { NearbySquad } from '../types';
+import { useTranslation } from 'react-i18next';
 
 const BANGERS = 'BarlowCondensed_800ExtraBold';
 const GOLD = '#facc15';
@@ -41,6 +42,7 @@ const BUCKET_ORDER = [
 
 export function SquadBrowseScreen({ onJoinSquad, onBack }: Props) {
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation('squadd');
   const [squads, setSquads] = useState<NearbySquad[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -218,7 +220,7 @@ export function SquadBrowseScreen({ onJoinSquad, onBack }: Props) {
     <View style={s.container}>
       <View style={[s.topBar, { paddingTop: insets.top + 12 }]}>
         <SquadBackButton onPress={onBack} />
-        <Text style={s.topTitle}>Squads near you</Text>
+        <Text style={s.topTitle}>{t('browse.nearYou')}</Text>
         <Text style={s.cityLabel} numberOfLines={1}>{cityLabel}</Text>
       </View>
 
@@ -226,7 +228,7 @@ export function SquadBrowseScreen({ onJoinSquad, onBack }: Props) {
         <Text style={s.searchIcon}>🔍</Text>
         <TextInput
           style={s.searchInput}
-          placeholder="Search squad name..."
+          placeholder={t('browse.searchPlaceholder')}
           placeholderTextColor="#52525b"
           value={search}
           onChangeText={setSearch}

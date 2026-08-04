@@ -63,6 +63,7 @@ const BOOKING_SELECT = {
       _count: {
         select: {
           bookings: { where: { status: "confirmed" } },
+          guests: true,
         },
       },
     },

@@ -1,0 +1,90 @@
+---
+description: React Native — Internationalization (i18n) for new screens and components
+globs: mobile/src/**/*.tsx
+alwaysApply: true
+---
+
+# React Native — Multi-language (i18n) Rule
+
+## HARD RULE: every new screen or user-facing component must use `react-i18next` for all visible strings
+
+Never hardcode English (or any language) text directly in JSX or component props. Always use the `t()` translation function.
+
+### Supported languages
+
+`en` | `fr` | `vi` | `ms` | `es` | `it`
+
+Locale files live in `mobile/src/i18n/locales/<lang>/<namespace>.json`.
+
+---
+
+## Required pattern for every new screen
+
+```tsx
+import { useTranslation } from 'react-i18next'
+
+export function MyScreen() {
+  const { t } = useTranslation('common') // or 'play', 'club-sessions', 'squadd', etc.
+
+  return (
+    <View>
+      <Text>{t('myScreen.title')}</Text>
+      <TextInput placeholder={t('myScreen.placeholder')} />
+    </View>
+  )
+}
+```
+
+---
+
+## Namespaces
+
+| Namespace | Use for |
+|---|---|
+| `common` | Shared UI (actions, errors, navigation, generic labels) |
+| `onboarding` | Onboarding flows |
+| `play` | SwipeScreen / session discovery |
+| `circle` | Circle / social screens |
+| `club-sessions` | Club sessions module |
+| `squadd` | Squadd / squad feature |
+| `push` | Push notification content |
+| `errors` | Error messages |
+| `logbook` | Logbook module |
+
+---
+
+## Checklist for every new screen
+
+1. **Import** `useTranslation` from `react-i18next`.
+2. **Call** `const { t } = useTranslation('<namespace>')` inside the component.
+3. **Add keys** to `en/<namespace>.json` — group them under a screen-specific object (e.g. `"myScreen": { ... }`).
+4. **Translate** those keys into **all 6 locale files**: `fr`, `vi`, `ms`, `es`, `it`.
+5. **Never** use raw string literals for any user-visible text: titles, labels, placeholders, button text, empty states, alert messages, accessibility labels.
+
+---
+
+## Pluralization
+
+```tsx
+// en/common.json: "items_one": "{{count}} item", "items_other": "{{count}} items"
+t('items', { count: 3 }) // → "3 items"
+```
+
+## Cross-namespace reference
+
+```tsx
+const { t } = useTranslation('club-sessions')
+t('actions.save', { ns: 'common' }) // reference a key from another namespace
+```
+
+## Module-level constants that need translation
+
+If a constant array/object contains display labels, move label generation inside the component using `t()`, or pass translated strings as props — do NOT hardcode labels in module-level constants.
+
+```tsx
+// ❌ BAD — hardcoded at module level
+const TABS = [{ key: 'today', label: 'Today' }]
+
+// ✅ GOOD — derived inside component
+const tabs = [{ key: 'today', label: t('dates.today') }]
+```
