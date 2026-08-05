@@ -18,6 +18,7 @@ import { useIpGeolocation } from './src/onboarding/useIpGeolocation'
 import { CsOnboardingOrchestrator } from './src/cs-onboarding/CsOnboardingOrchestrator'
 import { csOnboardingStorage } from './src/cs-onboarding/csOnboardingStorage'
 import type { CsOrchestratorMode } from './src/cs-onboarding/types'
+import { IntroOnboardingOrchestrator } from './src/intro-onboarding/IntroOnboardingOrchestrator'
 import { PeopleYouMayKnowScreen } from './src/screens/PeopleYouMayKnowScreen'
 import { ProfileScreen } from './src/modules/club-sessions/screens/ProfileScreen'
 import { GearSetupScreen } from './src/components/gear/GearSetupScreen'
@@ -289,7 +290,7 @@ console.log('[BOOT] All top-level imports done')
 // The app renders a splash while this resolves (typically < 50ms from AsyncStorage).
 initI18n().catch((e) => console.warn('[i18n] init error:', e))
 
-type FlowScreen = 'main' | 'reclub-link' | 'cs-orchestrator' | 'people' | 'profile' | 'gear' | 'explore' | 'pushDebug' | 'guest-reclub' | 'guest-follow'
+type FlowScreen = 'main' | 'reclub-link' | 'cs-orchestrator' | 'people' | 'profile' | 'gear' | 'explore' | 'pushDebug' | 'guest-reclub' | 'guest-follow' | 'intro-onboarding'
 
 
 const BOOT_BG = '#0a0a0a'
@@ -541,6 +542,11 @@ export default function App() {
         if (current === 'cs-orchestrator' || current === 'guest-reclub' || current === 'guest-follow') {
           return current
         }
+        // Gate on intro onboarding: show the 4-screen mini-flow for new users.
+        // introOnboardingCompleted is authoritative (server reads from preferences JSON).
+        if (!useAuthStore.getState().introOnboardingCompleted) {
+          return 'intro-onboarding'
+        }
         return 'main'
       })
     })
@@ -768,6 +774,11 @@ export default function App() {
     setActiveTab('circle')
   }
 
+  const handleIntroOnboardingComplete = () => {
+    setFlowScreen('main')
+    setActiveTab('circle')
+  }
+
   console.log('[BOOT] GATE: rendering app, showSplash:', showSplash, 'flowScreen:', flowScreen)
 
   // Splash stays as an opaque overlay while the real tree mounts underneath.
@@ -803,6 +814,19 @@ export default function App() {
                 onBack={() => setFlowScreen('guest-reclub')}
               />
             </SignUpModalProvider>
+          </ThemedAppChrome>
+        </SafeAreaProvider>
+        {splashOverlay}
+      </GestureHandlerRootView>
+    )
+  }
+
+  if (flowScreen === 'intro-onboarding') {
+    return (
+      <GestureHandlerRootView style={{ flex: 1, backgroundColor: BOOT_BG }}>
+        <SafeAreaProvider>
+          <ThemedAppChrome>
+            <IntroOnboardingOrchestrator onComplete={handleIntroOnboardingComplete} />
           </ThemedAppChrome>
         </SafeAreaProvider>
         {splashOverlay}

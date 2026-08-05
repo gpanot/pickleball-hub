@@ -64,6 +64,7 @@ export async function GET(req: NextRequest) {
   const market = prefs.market ?? null;
   const logbookSportId =
     prefs.logbookSportId === "padel" ? "padel" : "pickleball";
+  const introOnboardingCompleted = prefs.introOnboardingCompleted === true;
 
   return NextResponse.json({
     onboardingCompleted,
@@ -71,6 +72,7 @@ export async function GET(req: NextRequest) {
     welcomeChestClaimed: profile.welcomeChestClaimed,
     market,
     logbookSportId,
+    introOnboardingCompleted,
     autoHealed: wasAutoHealed,
     reclubUserId: profile.reclubUserId ? profile.reclubUserId.toString() : null,
     email: profile.user?.email ?? null,
