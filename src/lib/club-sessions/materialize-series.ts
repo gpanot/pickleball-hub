@@ -169,7 +169,18 @@ export async function materializeSeries(
     skillLevelMax: number | null;
     hostRole: string;
     notes: string | null;
+    autoGrowEnabled: boolean;
+    minCapacity: number | null;
+    capacityCeiling: number | null;
+    capacityTierStep: number;
   }[] = [];
+
+  // When auto-grow is on, each new occurrence opens at minCapacity (the opening tier),
+  // not at the series maxPlayers (which equals minCapacity at creation time anyway).
+  const autoGrowEnabled = series.autoGrowEnabled ?? false;
+  const openingMaxPlayers = autoGrowEnabled && series.minCapacity != null
+    ? series.minCapacity
+    : series.maxPlayers;
 
   // We need the club's host — use the series creator as hostId
   // The club's owner will be fetched from AppClubManager
@@ -209,7 +220,7 @@ export async function materializeSeries(
       durationMin: series.durationMin,
       venueId: series.venueId,
       venuePending: series.venuePending,
-      maxPlayers: series.maxPlayers,
+      maxPlayers: openingMaxPlayers,
       requiresApproval: series.requiresApproval,
       autoConfirmMode: series.autoConfirmMode,
       privacy: series.privacy,
@@ -219,6 +230,10 @@ export async function materializeSeries(
       skillLevelMax: series.skillLevelMax ? Number(series.skillLevelMax) : null,
       hostRole: series.hostRole,
       notes: series.notes,
+      autoGrowEnabled,
+      minCapacity: series.minCapacity ?? null,
+      capacityCeiling: series.capacityCeiling ?? null,
+      capacityTierStep: series.capacityTierStep ?? 4,
     });
 
     // Advance to one week after this occurrence

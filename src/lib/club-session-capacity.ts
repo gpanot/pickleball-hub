@@ -1,9 +1,17 @@
 /**
  * Auto-grow capacity helper for Club Sessions.
  *
- * When a host enables auto-grow, `max_players` acts as the *current tier* and
- * automatically advances in steps of `capacity_tier_step` up to `capacity_ceiling`
- * each time the confirmed fill ratio hits 80%.
+ * UX model:
+ *  - `capacity_ceiling` = what the host calls "Capacity" — the full point, triggers waitlist.
+ *  - `min_capacity`     = what the host calls "Min start" — the opening tier.
+ *  - `max_players`      = the *current* tier; starts at min_capacity and advances in steps
+ *                         of `capacity_tier_step` until it reaches `capacity_ceiling`.
+ *
+ * Players always see `n / max_players` (the current tier), so the session always looks
+ * full or nearly full at each stage rather than half-empty against a large ceiling.
+ *
+ * Tier promotion fires each time a player becomes confirmed and the fill ratio
+ * (confirmed / max_players) hits 80%.
  *
  * All callers pass a Prisma transaction handle so the capacity update is atomic
  * with the roster change that triggered it.

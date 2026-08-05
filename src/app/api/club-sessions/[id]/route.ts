@@ -144,7 +144,7 @@ const SESSION_SELECT = {
   seriesId: true,
   detachedFromSeries: true,
   autoGrowEnabled: true,
-  baseCapacity: true,
+  minCapacity: true,
   capacityCeiling: true,
   capacityTierStep: true,
   publishAfterMin: true,
@@ -224,7 +224,7 @@ export async function PATCH(
     name, format, startTime, endTime, durationMin, venueId, venuePending,
     maxPlayers, requiresApproval, autoConfirmMode, privacy, feeAmount, feeCurrency,
     skillLevelMin, skillLevelMax, hostRole, notes, sportId, lifecycleState,
-    autoGrowEnabled, baseCapacity, capacityCeiling, capacityTierStep,
+    autoGrowEnabled, minCapacity, capacityCeiling, capacityTierStep,
     publishAfterMin, cancellationCutoffMin,
     scope,
   } = body as Record<string, unknown>;
@@ -302,18 +302,29 @@ export async function PATCH(
     updates.autoGrowEnabled = autoGrowEnabled === true;
     if (!autoGrowEnabled) {
       // Clearing auto-grow: also null out the grow-specific fields
-      updates.baseCapacity = null;
+      updates.minCapacity = null;
       updates.capacityCeiling = null;
     }
   }
-  if (baseCapacity !== undefined) {
-    updates.baseCapacity = typeof baseCapacity === "number" && baseCapacity > 0 ? baseCapacity : null;
+  if (minCapacity !== undefined) {
+    updates.minCapacity = typeof minCapacity === "number" && minCapacity > 0 ? minCapacity : null;
   }
   if (capacityCeiling !== undefined) {
     updates.capacityCeiling = typeof capacityCeiling === "number" && capacityCeiling > 0 ? capacityCeiling : null;
   }
   if (capacityTierStep !== undefined && typeof capacityTierStep === "number" && capacityTierStep > 0) {
     updates.capacityTierStep = capacityTierStep;
+  }
+  // When auto-grow is being enabled or minCapacity is updated, reset maxPlayers to the opening tier.
+  // This ensures an edit doesn't leave maxPlayers stuck at a previously-promoted tier.
+  if (
+    updates.autoGrowEnabled === true &&
+    (updates.minCapacity != null || (autoGrowEnabled === true && minCapacity === undefined))
+  ) {
+    const openingTier = updates.minCapacity != null ? (updates.minCapacity as number) : undefined;
+    if (openingTier != null) {
+      updates.maxPlayers = openingTier;
+    }
   }
 
   if (publishAfterMin !== undefined) {

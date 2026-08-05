@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
     venueId, venuePending, maxPlayers, requiresApproval, autoConfirmMode, privacy,
     feeAmount, feeCurrency, skillLevelMin, skillLevelMax,
     hostRole, notes, sportId,
-    autoGrowEnabled, baseCapacity, capacityCeiling, capacityTierStep,
+    autoGrowEnabled, minCapacity, capacityCeiling, capacityTierStep,
     publishAfterMin, cancellationCutoffMin,
     repeat,
   } = body as Record<string, unknown>;
@@ -76,6 +76,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "maxPlayers must be a positive integer" }, { status: 400 });
   }
 
+  // When auto-grow is enabled, validate that minCapacity < capacityCeiling.
+  // maxPlayers (the "Capacity" field from the UI) is repurposed as capacityCeiling;
+  // the session opens at minCapacity instead.
+  const resolvedAutoGrow = autoGrowEnabled === true;
+  const resolvedMinCapacity = resolvedAutoGrow && typeof minCapacity === "number" && minCapacity > 0 ? minCapacity : null;
+  const resolvedCeiling = resolvedAutoGrow && typeof capacityCeiling === "number" && capacityCeiling > 0 ? capacityCeiling : null;
+  // When auto-grow is on, the opening tier is minCapacity; otherwise use the plain maxPlayers value.
+  const resolvedMaxPlayers = resolvedAutoGrow && resolvedMinCapacity != null
+    ? resolvedMinCapacity
+    : (maxPlayers as number);
+
   // Validate repeat field if present
   const repeatObj = repeat && typeof repeat === "object" ? (repeat as Record<string, unknown>) : null;
   const isWeeklyRepeat =
@@ -108,7 +119,7 @@ export async function POST(req: NextRequest) {
     durationMin: dur,
     venueId: typeof venueId === "number" ? venueId : null,
     venuePending: venuePending === true,
-    maxPlayers: maxPlayers as number,
+    maxPlayers: resolvedMaxPlayers,
     requiresApproval: resolvedAutoConfirmMode === "requires_approval",
     autoConfirmMode: resolvedAutoConfirmMode,
     privacy: privacy === "private" ? "private" : "public",
@@ -118,9 +129,9 @@ export async function POST(req: NextRequest) {
     skillLevelMax: typeof skillLevelMax === "number" ? skillLevelMax : null,
     hostRole: resolvedHostRole,
     notes: typeof notes === "string" ? notes : null,
-    autoGrowEnabled: autoGrowEnabled === true,
-    baseCapacity: autoGrowEnabled === true && typeof baseCapacity === "number" && baseCapacity > 0 ? baseCapacity : null,
-    capacityCeiling: autoGrowEnabled === true && typeof capacityCeiling === "number" && capacityCeiling > 0 ? capacityCeiling : null,
+    autoGrowEnabled: resolvedAutoGrow,
+    minCapacity: resolvedMinCapacity,
+    capacityCeiling: resolvedCeiling,
     capacityTierStep: typeof capacityTierStep === "number" && capacityTierStep > 0 ? capacityTierStep : 4,
     publishAfterMin: typeof publishAfterMin === "number" && publishAfterMin > 0 ? publishAfterMin : null,
     cancellationCutoffMin: typeof cancellationCutoffMin === "number" && cancellationCutoffMin > 0 ? cancellationCutoffMin : null,
@@ -153,7 +164,7 @@ export async function POST(req: NextRequest) {
           name: (name as string).trim(),
           venueId: typeof venueId === "number" ? venueId : null,
           venuePending: venuePending === true,
-          maxPlayers: maxPlayers as number,
+          maxPlayers: resolvedMaxPlayers,
           requiresApproval: resolvedAutoConfirmMode === "requires_approval",
           autoConfirmMode: resolvedAutoConfirmMode,
           privacy: privacy === "private" ? "private" : "public",
@@ -163,6 +174,10 @@ export async function POST(req: NextRequest) {
           skillLevelMax: typeof skillLevelMax === "number" ? skillLevelMax : null,
           notes: typeof notes === "string" ? notes : null,
           lifecycleState: "active",
+          autoGrowEnabled: resolvedAutoGrow,
+          minCapacity: resolvedMinCapacity,
+          capacityCeiling: resolvedCeiling,
+          capacityTierStep: typeof capacityTierStep === "number" && capacityTierStep > 0 ? capacityTierStep : 4,
         },
       });
 
@@ -295,7 +310,7 @@ export async function GET(req: NextRequest) {
       venuePending: true,
       notes: true,
       autoGrowEnabled: true,
-      baseCapacity: true,
+      minCapacity: true,
       capacityCeiling: true,
       capacityTierStep: true,
       publishAfterMin: true,

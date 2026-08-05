@@ -1036,6 +1036,11 @@ model SessionSeries {
   notes            String?
   /// "active" | "cancelled" — separate from ClubSession.lifecycleState
   lifecycleState   String   @default("active") @map("lifecycle_state")
+  /// Auto-grow fields — mirrored from ClubSession for new occurrence materialisation.
+  autoGrowEnabled  Boolean  @default(false) @map("auto_grow_enabled")
+  minCapacity      Int?     @map("min_capacity")
+  capacityCeiling  Int?     @map("capacity_ceiling")
+  capacityTierStep Int      @default(4) @map("capacity_tier_step")
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
 
@@ -1078,11 +1083,15 @@ model ClubSession {
   /// "host_and_play" | "host_only"
   hostRole       String    @default("host_and_play") @map("host_role")
   notes          String?
-  /// Auto-grow capacity: when true, max_players auto-promotes in tiers until it reaches capacity_ceiling.
+  /// Auto-grow capacity: when true, max_players starts at min_capacity and auto-promotes in tiers
+  /// until it reaches capacity_ceiling. Players always see n/max_players (the current tier).
   autoGrowEnabled   Boolean @default(false) @map("auto_grow_enabled")
-  /// Starting capacity when auto-grow is on; null when auto-grow is off.
-  baseCapacity      Int?    @map("base_capacity")
-  /// Host-set upper bound for auto-grow; null when auto-grow is off.
+  /// Minimum opening tier when auto-grow is on (what host calls "Min start"); null when off.
+  /// max_players is initialised to this value on session creation.
+  minCapacity       Int?    @map("min_capacity")
+  /// Host-set upper bound for auto-grow — what the host calls "Capacity" (the ceiling / full point).
+  /// Waitlist kicks in once max_players reaches this value and the session is at capacity.
+  /// null when auto-grow is off.
   capacityCeiling   Int?    @map("capacity_ceiling")
   /// Number of spots added per tier promotion. Ignored when auto-grow is off.
   capacityTierStep  Int     @default(4) @map("capacity_tier_step")
