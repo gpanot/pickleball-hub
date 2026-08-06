@@ -99,7 +99,7 @@ export async function GET(
     },
     _count: { sessionId: true },
     orderBy: { _count: { sessionId: "desc" } },
-    take: 20,
+    take: 200,
   });
 
   const coPlayerIds = coAttendees.map((c) => c.userId);
