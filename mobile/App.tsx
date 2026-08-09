@@ -19,6 +19,7 @@ import { CsOnboardingOrchestrator } from './src/cs-onboarding/CsOnboardingOrches
 import { csOnboardingStorage } from './src/cs-onboarding/csOnboardingStorage'
 import type { CsOrchestratorMode } from './src/cs-onboarding/types'
 import { IntroOnboardingOrchestrator } from './src/intro-onboarding/IntroOnboardingOrchestrator'
+import { introOnboardingStorage } from './src/intro-onboarding/introOnboardingStorage'
 import { PeopleYouMayKnowScreen } from './src/screens/PeopleYouMayKnowScreen'
 import { ProfileScreen } from './src/modules/club-sessions/screens/ProfileScreen'
 import { GearSetupScreen } from './src/components/gear/GearSetupScreen'
@@ -352,6 +353,7 @@ export default function App() {
   }, [fontsLoaded, fontError])
 
   const jwt = useAuthStore((s) => s.jwt)
+  const hydrated = useAuthStore((s) => s.hydrated)
   const authStore = useAuthStore()
   const profileId = useAuthStore((s) => s.profileId)
   const guestReclubUserId = useUiStore((s) => s.guestReclubUserId)
@@ -482,6 +484,19 @@ export default function App() {
     void useAvatarCacheStore.getState().hydrate()
   }, [])
 
+  // Show intro onboarding for unauthenticated new users.
+  // Waits for the SecureStore hydration to complete so we know whether jwt is
+  // genuinely absent (new install) vs. not yet loaded.
+  // If the user already has a JWT, the hydrateBootStatus effect below handles routing.
+  useEffect(() => {
+    if (!hydrated || jwt) return
+    void introOnboardingStorage.isCompleted().then((done) => {
+      if (!done) {
+        setFlowScreen((current) => (current === 'main' ? 'intro-onboarding' : current))
+      }
+    })
+  }, [hydrated, jwt])
+
   // Resolve IP geolocation once after sign-in — sets showReclub + market in authStore.
   // This is what gates the 'reclub' step in the onboarding sequence.
   useIpGeolocation()
@@ -530,24 +545,28 @@ export default function App() {
     if (!jwt || bootStatusFetched.current) return
     bootStatusFetched.current = true
     consumeSignedInFromClubSessions()
-    void useAuthStore.getState().hydrateBootStatus().then(() => {
+    void useAuthStore.getState().hydrateBootStatus().then(async () => {
       debugLog('App', 'boot-status: hydrated → main')
       // Hydrate logbook sport preference from the boot-status payload
       void useLogbookStore.getState().hydrate(
         useAuthStore.getState().logbookSportId ?? 'pickleball'
       )
+      // Also check local AsyncStorage flag: users who completed the intro
+      // onboarding before signing in won't have the server flag set yet,
+      // but we should not re-show the flow.
+      const localCompleted = await introOnboardingStorage.isCompleted()
+
       // Only navigate to main if we are not already in a deliberate flow
       // (e.g. cs-orchestrator set by handleSignedIn — must not be overridden)
       setFlowScreen((current) => {
         if (current === 'cs-orchestrator' || current === 'guest-reclub' || current === 'guest-follow') {
           return current
         }
-        // Gate on intro onboarding: show the 4-screen mini-flow for new users.
-        // introOnboardingCompleted is authoritative (server reads from preferences JSON).
-        if (!useAuthStore.getState().introOnboardingCompleted) {
-          return 'intro-onboarding'
+        // Server completed OR local completed → never re-show the intro flow
+        if (useAuthStore.getState().introOnboardingCompleted || localCompleted) {
+          return 'main'
         }
-        return 'main'
+        return 'intro-onboarding'
       })
     })
   }, [jwt, activeTab]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -776,7 +795,7 @@ export default function App() {
 
   const handleIntroOnboardingComplete = () => {
     setFlowScreen('main')
-    setActiveTab('circle')
+    setActiveTab('club-sessions')
   }
 
   console.log('[BOOT] GATE: rendering app, showSplash:', showSplash, 'flowScreen:', flowScreen)

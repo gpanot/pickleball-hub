@@ -667,6 +667,120 @@ async function run() {
   assert(farInBig || allSessions.length > 0,
     '9.3 radiusKm=50000 → all sessions returned (far included)', `count=${allSessions.length}`)
 
+  // ═══════════════════════════════════════════════════════════
+  // Section 10 — Round Robin lifecycle (rr-tests)
+  // ═══════════════════════════════════════════════════════════
+  section(10, 'Round Robin lifecycle')
+
+  // 10.0 Create a round_robin session
+  r = await api('POST', '/api/club-sessions', hostToken, {
+    appClubId: clubId, name: 'RR Test Session', format: 'round_robin',
+    venueId: nearVenue.id,
+    startTime: new Date(Date.now() + 7 * 86400000).toISOString(),
+    durationMins: 120,
+  })
+  assert(r.status === 201, '10.0 Create round_robin session', `status=${r.status}`)
+  const rrSessionId = r.json?.session?.id
+  assert(!!rrSessionId, '10.0b round_robin session has id')
+
+  // Publish the session
+  await api('PATCH', `/api/club-sessions/${rrSessionId}`, hostToken, { lifecycleState: 'published' })
+
+  // 10.1 GET /rr before draw → tournament:null
+  r = await api('GET', `/api/club-sessions/${rrSessionId}/rr`, hostToken)
+  assert(r.status === 200, '10.1 GET /rr before draw → 200', `status=${r.status}`)
+  assert(r.json?.tournament === null, '10.1b tournament is null before draw')
+
+  // Add 4 confirmed bookings (host + A + B + C)
+  const bookingPlayers = [playerA, playerB, playerC, playerD]
+  const rrBookingTokens = [tokenA, tokenB, tokenC, tokenD]
+  const rrBookingIds = []
+  for (let i = 0; i < bookingPlayers.length; i++) {
+    const bRes = await api('POST', `/api/club-sessions/${rrSessionId}/bookings`, rrBookingTokens[i], {})
+    if (bRes.status === 201 || bRes.status === 200) {
+      rrBookingIds.push(bRes.json?.booking?.id ?? bRes.json?.id)
+    }
+  }
+  // Approve all bookings as host
+  for (const bid of rrBookingIds) {
+    if (bid) await api('PATCH', `/api/club-sessions/${rrSessionId}/bookings/${bid}`, hostToken, { status: 'confirmed' })
+  }
+
+  // 10.2 POST /rr → generate draw
+  r = await api('POST', `/api/club-sessions/${rrSessionId}/rr`, hostToken)
+  assert(r.status === 201, '10.2 POST /rr → 201', `status=${r.status}`)
+  assert(r.json?.tournament?.status === 'draw_created', '10.2b status=draw_created')
+  assert(Array.isArray(r.json?.rounds) && r.json.rounds.length > 0, '10.2c rounds array non-empty')
+  assert(r.json?.participants?.length === 4, '10.2d 4 participants', `count=${r.json?.participants?.length}`)
+
+  // 10.3 Non-manager cannot POST /rr
+  r = await api('POST', `/api/club-sessions/${rrSessionId}/rr`, tokenA)
+  assert(r.status === 403, '10.3 Non-manager POST /rr → 403', `status=${r.status}`)
+
+  // 10.4 GET /rr returns tournament state
+  r = await api('GET', `/api/club-sessions/${rrSessionId}/rr`, hostToken)
+  assert(r.status === 200 && r.json?.tournament?.status === 'draw_created', '10.4 GET /rr after draw', `status=${r.status}`)
+  const rounds = r.json?.rounds ?? []
+  const firstRound = rounds[0]
+  const firstMatch = firstRound?.matches?.find(m => !m.isBye)
+  assert(!!firstMatch, '10.4b first non-bye match exists')
+
+  // 10.5 Submit score for first match
+  if (firstMatch?.id) {
+    r = await api('PATCH', `/api/club-sessions/${rrSessionId}/rr/matches/${firstMatch.id}`, hostToken, {
+      scoreTeam1: 11, scoreTeam2: 7,
+    })
+    assert(r.status === 200, '10.5 PATCH match score → 200', `status=${r.status}`)
+    assert(r.json?.scoreTeam1 === 11 && r.json?.scoreTeam2 === 7, '10.5b score values correct')
+  }
+
+  // 10.6 GET /rr standings reflect the score
+  r = await api('GET', `/api/club-sessions/${rrSessionId}/rr`, hostToken)
+  const standings = r.json?.standings ?? []
+  const topPlayer = standings[0]
+  assert(Array.isArray(standings) && standings.length === 4, '10.6 standings has 4 rows', `count=${standings.length}`)
+  assert(topPlayer?.wins === 1, '10.6b top player has 1 win', `wins=${topPlayer?.wins}`)
+
+  // 10.7 Cannot score a bye match
+  const byeMatch = firstRound?.matches?.find(m => m.isBye)
+  if (byeMatch?.id) {
+    r = await api('PATCH', `/api/club-sessions/${rrSessionId}/rr/matches/${byeMatch.id}`, hostToken, {
+      scoreTeam1: 5, scoreTeam2: 5,
+    })
+    assert(r.status === 400, '10.7 Cannot score bye match → 400', `status=${r.status}`)
+  }
+
+  // 10.8 PATCH /rr → advance round
+  r = await api('PATCH', `/api/club-sessions/${rrSessionId}/rr`, hostToken, { currentRound: 2 })
+  assert(r.status === 200, '10.8 PATCH /rr (advance round) → 200', `status=${r.status}`)
+
+  // 10.9 GET /rr/schedule for a participant
+  r = await api('GET', `/api/club-sessions/${rrSessionId}/rr/schedule`, tokenA)
+  assert(r.status === 200, '10.9 GET /rr/schedule → 200', `status=${r.status}`)
+  assert(Array.isArray(r.json?.schedule), '10.9b schedule is array')
+  assert((r.json?.schedule?.length ?? 0) > 0, '10.9c schedule has rounds')
+
+  // 10.10 GET /rr/schedule for non-participant → notParticipant
+  // (use a fresh profile that never booked)
+  r = await api('GET', `/api/club-sessions/${rrSessionId}/rr/schedule`, tokenE)
+  assert(r.status === 200, '10.10 GET /rr/schedule non-participant → 200', `status=${r.status}`)
+  assert(r.json?.notParticipant === true || r.json?.schedule === null, '10.10b non-participant sees null schedule or flag')
+
+  // 10.11 POST /rr/complete → finish event
+  r = await api('POST', `/api/club-sessions/${rrSessionId}/rr/complete`, hostToken)
+  assert(r.status === 200, '10.11 POST /rr/complete → 200', `status=${r.status}`)
+  assert(r.json?.status === 'complete', '10.11b status=complete')
+  assert(Array.isArray(r.json?.standings), '10.11c final standings array')
+  assert((r.json?.topPlayers?.length ?? 0) <= 3, '10.11d topPlayers ≤3')
+
+  // 10.12 Tournament marked complete in DB
+  r = await api('GET', `/api/club-sessions/${rrSessionId}/rr`, hostToken)
+  assert(r.json?.tournament?.status === 'complete', '10.12 GET /rr after complete → status=complete', `status=${r.json?.tournament?.status}`)
+
+  // 10.13 Second POST /rr/complete → 409
+  r = await api('POST', `/api/club-sessions/${rrSessionId}/rr/complete`, hostToken)
+  assert(r.status === 409, '10.13 Double complete → 409', `status=${r.status}`)
+
   // ─────────────────────────────────────────────────────────
   // Summary
   // ─────────────────────────────────────────────────────────
