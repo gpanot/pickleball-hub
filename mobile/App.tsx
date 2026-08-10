@@ -312,6 +312,7 @@ export default function App() {
   const [myBizTabBarVisible, setMyBizTabBarVisible] = useState(true)
   const [logbookModalOpen, setLogbookModalOpen] = useState(false)
   const [circleActivityOpen, setCircleActivityOpen] = useState(false)
+  const [circleClubOverlayOpen, setCircleClubOverlayOpen] = useState(false)
   const [gearReturnTo, setGearReturnTo] = useState<FlowScreen>('main')
   const [gearSheetOpen, setGearSheetOpen] = useState(false)
   const [squadDeeplinkCode, setSquadDeeplinkCode] = useState<string | null>(null)
@@ -937,6 +938,7 @@ export default function App() {
                   onLinkReclub={startLinkReclub}
                   onSignIn={() => { void handleCircleSignedIn() }}
                   onActivityChange={setCircleActivityOpen}
+                  onClubOverlayChange={setCircleClubOverlayOpen}
                   onNavScroll={handleNavScroll}
                 />
               </View>
@@ -976,7 +978,7 @@ export default function App() {
                 />
               </View>
               {/* Floating tab bar — hidden during reclub-link (fullscreen overlay), explore, circle activity, and logbook modals */}
-              {flowScreen !== 'explore' && flowScreen !== 'reclub-link' && !circleActivityOpen && !logbookModalOpen && (activeTab !== 'club-sessions' || csTabBarVisible) && (activeTab !== 'my-business' || myBizTabBarVisible) && (
+              {flowScreen !== 'explore' && flowScreen !== 'reclub-link' && !circleActivityOpen && !circleClubOverlayOpen && !logbookModalOpen && (activeTab !== 'club-sessions' || csTabBarVisible) && (activeTab !== 'my-business' || myBizTabBarVisible) && (
                 <Animated.View
                   style={{ position: 'absolute', bottom: 0, left: 0, right: 0, transform: [{ translateY: navBarAnim }] }}
                   pointerEvents="box-none"
