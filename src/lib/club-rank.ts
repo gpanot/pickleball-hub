@@ -72,7 +72,10 @@ export async function upsertPlayerClubRank(
     select: {
       session: { select: { startTime: true, scrapedDate: true } },
     },
-    orderBy: { session: { startTime: "desc" } },
+    orderBy: [
+      { session: { scrapedDate: "desc" } },
+      { session: { startTime: "desc" } },
+    ],
   });
 
   // Step 3 — compute score
