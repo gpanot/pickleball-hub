@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { sendPushNotification } from "@/lib/notifications";
 import { reclubAvatarUrl } from "@/lib/utils";
+import { upsertPlayerClubRank } from "@/lib/club-rank";
 import {
   isPnScheduleHour,
   isSessionEndedInWindow,
@@ -291,6 +292,22 @@ export async function sendSessionFinishedKudosNotifications(): Promise<{
       }
     } catch (err) {
       console.error(`[PN6] early_adopter detection failed for player ${playerId}:`, err);
+    }
+
+    // ── auto club membership rank update ────────────────────────────────────
+    if (session.venueId) {
+      try {
+        // Find which AppClub (if any) operates at this venue
+        const linkedClubSession = await prisma.clubSession.findFirst({
+          where: { venueId: session.venueId },
+          select: { appClubId: true },
+        });
+        if (linkedClubSession) {
+          await upsertPlayerClubRank(playerId, linkedClubSession.appClubId);
+        }
+      } catch (err) {
+        console.error(`[PN6] club rank update failed for player ${playerId}:`, err);
+      }
     }
 
     const followers = await prisma.follow.findMany({

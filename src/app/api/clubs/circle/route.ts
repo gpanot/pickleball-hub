@@ -1,7 +1,8 @@
 /**
  * GET /api/clubs/circle
- * Returns AppClubs where players the viewer follows have played sessions (via ClubSession.venueId
- * matched to scrape Session.venueId in session_rosters).
+ * Returns AppClubs where players the viewer follows are ranked members (rank <= 3).
+ * Using player_club_ranks as the source of truth rather than joining through raw
+ * session history on every request.
  *
  * Shape returned: ClubCardData[]
  * Auth: required (JWT).
@@ -26,45 +27,26 @@ export async function GET(req: NextRequest) {
   const followeeIds = follows.map((f) => f.followeeId);
   if (followeeIds.length === 0) return NextResponse.json({ clubs: [] });
 
-  // Find venues where followed players have recent sessions (last 90 days)
-  const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
-  const ninetyAgoStr = ninetyDaysAgo.toISOString().slice(0, 10);
-
-  const venueRosters = await prisma.sessionRoster.findMany({
+  // Use player_club_ranks (rank <= 3) as the source of truth — much cheaper
+  // than re-joining through session history on every request.
+  const rankRows = await prisma.playerClubRank.findMany({
     where: {
       userId: { in: followeeIds },
-      isConfirmed: true,
-      session: {
-        venueId: { not: null },
-        scrapedDate: { gte: ninetyAgoStr },
-      },
+      rank: { lte: 3 },
     },
-    select: {
-      userId: true,
-      session: { select: { venueId: true } },
-    },
+    select: { userId: true, appClubId: true },
   });
 
-  // Build map: venueId → set of follower player userIds
-  const venueToFollowers = new Map<number, Set<bigint>>();
-  for (const r of venueRosters) {
-    const vid = r.session.venueId!;
-    if (!venueToFollowers.has(vid)) venueToFollowers.set(vid, new Set());
-    venueToFollowers.get(vid)!.add(r.userId);
+  if (rankRows.length === 0) return NextResponse.json({ clubs: [] });
+
+  // Build map: appClubId → set of follower userIds
+  const clubToFollowers = new Map<string, Set<bigint>>();
+  for (const r of rankRows) {
+    if (!clubToFollowers.has(r.appClubId)) clubToFollowers.set(r.appClubId, new Set());
+    clubToFollowers.get(r.appClubId)!.add(r.userId);
   }
-  if (venueToFollowers.size === 0) return NextResponse.json({ clubs: [] });
 
-  // Find AppClubs that have sessions at those venues
-  const venueIds = Array.from(venueToFollowers.keys());
-  const clubSessionRows = await prisma.clubSession.findMany({
-    where: { venueId: { in: venueIds } },
-    select: { appClubId: true, venueId: true },
-    distinct: ["appClubId"],
-  });
-
-  if (clubSessionRows.length === 0) return NextResponse.json({ clubs: [] });
-
-  const clubIds = [...new Set(clubSessionRows.map((r) => r.appClubId))];
+  const clubIds = Array.from(clubToFollowers.keys());
 
   const clubs = await prisma.appClub.findMany({
     where: { id: { in: clubIds } },
@@ -80,25 +62,14 @@ export async function GET(req: NextRequest) {
     take: 20,
   });
 
-  // Build circle follower player objects
   const result: ClubCardData[] = [];
   for (const club of clubs) {
-    const clubVenueIds = clubSessionRows
-      .filter((r) => r.appClubId === club.id)
-      .map((r) => r.venueId)
-      .filter((v): v is number => v !== null);
-
-    const circleUserIds: bigint[] = [];
-    for (const vid of clubVenueIds) {
-      const s = venueToFollowers.get(vid);
-      if (s) s.forEach((uid) => circleUserIds.push(uid));
-    }
-    const uniqueCircleIds = [...new Set(circleUserIds)];
+    const circleUserIds = Array.from(clubToFollowers.get(club.id) ?? new Set<bigint>());
 
     let circlePlayers: { userId: string; displayName: string | null; imageUrl: string | null }[] = [];
-    if (uniqueCircleIds.length > 0) {
+    if (circleUserIds.length > 0) {
       const players = await prisma.player.findMany({
-        where: { userId: { in: uniqueCircleIds } },
+        where: { userId: { in: circleUserIds } },
         select: { userId: true, displayName: true, imageUrl: true },
         take: 5,
       });

@@ -964,14 +964,33 @@ model AppClub {
   createdAt             DateTime @default(now()) @map("created_at")
   updatedAt             DateTime @updatedAt @map("updated_at")
 
-  creator   PlayerProfile    @relation("AppClubCreator", fields: [creatorId], references: [id])
-  managers  AppClubManager[]
-  sessions  ClubSession[]
-  members   AppClubMember[]
-  series    SessionSeries[]
+  creator          PlayerProfile    @relation("AppClubCreator", fields: [creatorId], references: [id])
+  managers         AppClubManager[]
+  sessions         ClubSession[]
+  members          AppClubMember[]
+  series           SessionSeries[]
+  playerClubRanks  PlayerClubRank[]
 
   @@index([privacy])
   @@map("app_clubs")
+}
+
+/// Auto-derived club membership + weighted rank. No explicit join — updated after every session confirmation.
+model PlayerClubRank {
+  id            Int       @id @default(autoincrement())
+  userId        BigInt    @map("user_id")
+  appClubId     String    @map("app_club_id")
+  weightedScore Int       @default(0) @map("weighted_score")
+  sessionCount  Int       @default(0) @map("session_count")
+  lastSessionAt DateTime? @map("last_session_at")
+  rank          Int?
+  updatedAt     DateTime  @default(now()) @map("updated_at")
+
+  appClub  AppClub @relation(fields: [appClubId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, appClubId])
+  @@index([userId, weightedScore(sort: Desc)])
+  @@map("player_club_ranks")
 }
 
 /// Multi-manager support for AppClub. Creator row is seeded automatically on club creation.
