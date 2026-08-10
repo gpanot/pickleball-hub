@@ -959,6 +959,11 @@ model AppClub {
   tagline               String?
   coverImageUrl         String?  @map("cover_image_url")
   vibeTag               String?  @map("vibe_tag")
+  /// Human-readable city label, e.g. "Ho Chi Minh City, Vietnam". Set via "Use My Location" on club create/edit.
+  city                  String?
+  /// Club anchor lat/lng — set by the host at create/edit time from their GPS. Used for "Discover near you" 50 km filter.
+  latitude              Float?
+  longitude             Float?
   /// One club per creator — enforced as @unique. A player can found only one club.
   creatorId             String   @unique @map("creator_id")
   createdAt             DateTime @default(now()) @map("created_at")
@@ -972,6 +977,7 @@ model AppClub {
   playerClubRanks  PlayerClubRank[]
 
   @@index([privacy])
+  @@index([latitude, longitude])
   @@map("app_clubs")
 }
 

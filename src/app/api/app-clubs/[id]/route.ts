@@ -15,6 +15,9 @@ const CLUB_SELECT = {
   tagline: true,
   coverImageUrl: true,
   vibeTag: true,
+  city: true,
+  latitude: true,
+  longitude: true,
   createdAt: true,
   updatedAt: true,
   creator: { select: { id: true, displayName: true, squadNickname: true } },
@@ -234,7 +237,7 @@ export async function PATCH(
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { name, icon, sportId, privacy, level, autoApproveNewMembers, tagline, coverImageUrl, vibeTag } = body as Record<string, unknown>;
+  const { name, icon, sportId, privacy, level, autoApproveNewMembers, tagline, coverImageUrl, vibeTag, city, latitude, longitude } = body as Record<string, unknown>;
 
   const updates: Record<string, unknown> = {};
   if (name !== undefined) {
@@ -260,6 +263,24 @@ export async function PATCH(
     updates.vibeTag = typeof vibeTag === "string" && vibeTag.trim().length > 0
       ? vibeTag.trim().slice(0, 30)
       : null;
+  }
+  // Location — validate as a set when any of the three is provided
+  const hasCity = city !== undefined;
+  const hasLat = latitude !== undefined;
+  const hasLng = longitude !== undefined;
+  if (hasCity || hasLat || hasLng) {
+    if (!city || typeof city !== "string" || (city as string).trim().length < 1) {
+      return NextResponse.json({ error: "Club city is required when setting location" }, { status: 400 });
+    }
+    if (typeof latitude !== "number" || !Number.isFinite(latitude) || (latitude as number) < -90 || (latitude as number) > 90) {
+      return NextResponse.json({ error: "Valid latitude is required when setting location" }, { status: 400 });
+    }
+    if (typeof longitude !== "number" || !Number.isFinite(longitude) || (longitude as number) < -180 || (longitude as number) > 180) {
+      return NextResponse.json({ error: "Valid longitude is required when setting location" }, { status: 400 });
+    }
+    updates.city = (city as string).trim().slice(0, 120);
+    updates.latitude = latitude as number;
+    updates.longitude = longitude as number;
   }
 
   try {

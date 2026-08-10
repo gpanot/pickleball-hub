@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { name, icon, sportId, privacy, level, autoApproveNewMembers, tagline, coverImageUrl, vibeTag } = body as {
+  const { name, icon, sportId, privacy, level, autoApproveNewMembers, tagline, coverImageUrl, vibeTag, city, latitude, longitude } = body as {
     name?: unknown;
     icon?: unknown;
     sportId?: unknown;
@@ -29,10 +29,24 @@ export async function POST(req: NextRequest) {
     tagline?: unknown;
     coverImageUrl?: unknown;
     vibeTag?: unknown;
+    city?: unknown;
+    latitude?: unknown;
+    longitude?: unknown;
   };
 
   if (!name || typeof name !== "string" || name.trim().length < 1 || name.trim().length > 80) {
     return NextResponse.json({ error: "Club name must be 1–80 characters" }, { status: 400 });
+  }
+
+  // Location is required on create
+  if (!city || typeof city !== "string" || city.trim().length < 1) {
+    return NextResponse.json({ error: "Club city is required" }, { status: 400 });
+  }
+  if (typeof latitude !== "number" || !Number.isFinite(latitude) || latitude < -90 || latitude > 90) {
+    return NextResponse.json({ error: "Valid latitude is required" }, { status: 400 });
+  }
+  if (typeof longitude !== "number" || !Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
+    return NextResponse.json({ error: "Valid longitude is required" }, { status: 400 });
   }
 
   const privacyValue = typeof privacy === "string" && VALID_PRIVACY.includes(privacy as typeof VALID_PRIVACY[number])
@@ -52,6 +66,9 @@ export async function POST(req: NextRequest) {
           tagline: typeof tagline === "string" && tagline.trim().length > 0 ? tagline.trim().slice(0, 60) : null,
           coverImageUrl: typeof coverImageUrl === "string" && coverImageUrl.length > 0 ? coverImageUrl : null,
           vibeTag: typeof vibeTag === "string" && vibeTag.trim().length > 0 ? vibeTag.trim().slice(0, 30) : null,
+          city: (city as string).trim().slice(0, 120),
+          latitude: latitude as number,
+          longitude: longitude as number,
           creatorId: user.profileId,
           managers: {
             create: {
@@ -88,6 +105,12 @@ const CLUB_SELECT = {
   privacy: true,
   level: true,
   autoApproveNewMembers: true,
+  tagline: true,
+  coverImageUrl: true,
+  vibeTag: true,
+  city: true,
+  latitude: true,
+  longitude: true,
   createdAt: true,
   creator: { select: { id: true, displayName: true, squadNickname: true } },
   _count: { select: { members: true, sessions: true } },
