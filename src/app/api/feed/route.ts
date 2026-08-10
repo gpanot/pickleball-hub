@@ -13,12 +13,12 @@ import { reclubAvatarUrl } from "@/lib/utils";
 import {
   STREAK_MILESTONES,
   getWeekKey,
-  getDuprThresholdCrossed,
+  getDuprImprovementDelta,
   getSessionMilestoneReached,
   getBatchLifetimeSessionCounts,
   getBatchPlayerPrefs,
   setMilestoneFlag,
-  duprMilestoneKey,
+  DUPR_IMPROVEMENT_LAST_KEY,
   sessionMilestoneKey,
 } from "@/lib/feed-milestones";
 
@@ -670,16 +670,32 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // Collect players who cross a threshold so we can batch-fetch their prefs.
+    // Collect players who have improved DUPR by ≥ 0.10 since last fired value.
     type DuprCandidate = {
       followeeId: bigint;
       history: typeof allDuprHistory;
       newVal: number;
       oldVal: number;
-      threshold: number;
+      lastFiredVal: number | null;
+      delta: number;
     };
     const duprMilestoneCandidates: DuprCandidate[] = [];
     const duprStandardItems: any[] = [];
+
+    // Collect all candidates first, then batch-fetch prefs for them.
+    const allCandidateIds: bigint[] = [];
+    for (const [followeeId, history] of duprByPlayer) {
+      if (history.length < 2) continue;
+      const latest = history[0];
+      const previous = history[1];
+      if (!latest.duprDoubles || !previous.duprDoubles) continue;
+      const newVal = Number(latest.duprDoubles);
+      const oldVal = Number(previous.duprDoubles);
+      if (newVal <= oldVal) continue;
+      allCandidateIds.push(followeeId);
+    }
+
+    const allCandidatePrefs = await getBatchPlayerPrefs(allCandidateIds);
 
     for (const [followeeId, history] of duprByPlayer) {
       if (history.length < 2) continue;
@@ -690,11 +706,17 @@ export async function GET(req: NextRequest) {
       const oldVal = Number(previous.duprDoubles);
       if (newVal <= oldVal) continue;
 
-      const threshold = getDuprThresholdCrossed(oldVal, newVal);
-      if (threshold !== null) {
-        duprMilestoneCandidates.push({ followeeId, history, newVal, oldVal, threshold });
+      const prefs = allCandidatePrefs.get(followeeId.toString()) ?? {};
+      const lastFiredVal =
+        typeof prefs[DUPR_IMPROVEMENT_LAST_KEY] === "number"
+          ? (prefs[DUPR_IMPROVEMENT_LAST_KEY] as number)
+          : null;
+
+      const delta = getDuprImprovementDelta(oldVal, newVal, lastFiredVal);
+      if (delta !== null) {
+        duprMilestoneCandidates.push({ followeeId, history, newVal, oldVal, lastFiredVal, delta });
       } else {
-        // Standard DUPR update — copy now updated per spec
+        // Standard DUPR update (no milestone threshold crossed)
         const latest2 = history[0];
         duprStandardItems.push({
           id: `dupr_update_${followeeId}_${latest2.id}`,
@@ -708,28 +730,26 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // Batch-fetch prefs for milestone candidates.
-    const milestonePrefs = await getBatchPlayerPrefs(
-      duprMilestoneCandidates.map((c) => c.followeeId)
-    );
+    // Batch-fetch prefs for milestone candidates (already fetched above in allCandidatePrefs).
+    const milestonePrefs = allCandidatePrefs;
 
     const result: any[] = [...duprStandardItems];
 
     for (const c of duprMilestoneCandidates) {
       const latest = c.history[0];
-      const flagKey = duprMilestoneKey(c.threshold);
       const prefs = milestonePrefs.get(c.followeeId.toString()) ?? {};
+      const lastFiredVal =
+        typeof prefs[DUPR_IMPROVEMENT_LAST_KEY] === "number"
+          ? (prefs[DUPR_IMPROVEMENT_LAST_KEY] as number)
+          : null;
 
-      let milestoneKind: string | undefined;
-      let milestoneDupr: number | undefined;
+      // Re-check delta using stored prefs (consistent with candidate detection above).
+      const delta = getDuprImprovementDelta(c.oldVal, c.newVal, lastFiredVal);
+      if (!delta) continue;
 
-      if (!prefs[flagKey]) {
-        milestoneKind = "dupr_threshold";
-        milestoneDupr = c.threshold;
-        // Set flag so each threshold fires at most once per player.
-        void setMilestoneFlag(c.followeeId, flagKey);
-      }
-      // Always emit the card (milestone or standard copy); milestone fields are optional.
+      // Store the new DUPR value as the last-fired baseline.
+      void setMilestoneFlag(c.followeeId, DUPR_IMPROVEMENT_LAST_KEY, c.newVal);
+
       result.push({
         id: `dupr_update_${c.followeeId}_${latest.id}`,
         type: "dupr_update",
@@ -738,7 +758,8 @@ export async function GET(req: NextRequest) {
         timestamp: latest.recordedAt.toISOString(),
         duprOld: c.oldVal,
         duprNew: c.newVal,
-        ...(milestoneKind ? { milestoneKind, milestoneDupr } : {}),
+        milestoneKind: "dupr_improvement",
+        milestoneDuprDelta: delta,
       });
     }
 

@@ -956,6 +956,9 @@ model AppClub {
   level                 String?
   /// When true, booking a session auto-enrolls the player as a member with no separate step.
   autoApproveNewMembers Boolean  @default(true) @map("auto_approve_new_members")
+  tagline               String?
+  coverImageUrl         String?  @map("cover_image_url")
+  vibeTag               String?  @map("vibe_tag")
   /// One club per creator — enforced as @unique. A player can found only one club.
   creatorId             String   @unique @map("creator_id")
   createdAt             DateTime @default(now()) @map("created_at")

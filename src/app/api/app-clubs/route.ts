@@ -19,13 +19,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { name, icon, sportId, privacy, level, autoApproveNewMembers } = body as {
+  const { name, icon, sportId, privacy, level, autoApproveNewMembers, tagline, coverImageUrl, vibeTag } = body as {
     name?: unknown;
     icon?: unknown;
     sportId?: unknown;
     privacy?: unknown;
     level?: unknown;
     autoApproveNewMembers?: unknown;
+    tagline?: unknown;
+    coverImageUrl?: unknown;
+    vibeTag?: unknown;
   };
 
   if (!name || typeof name !== "string" || name.trim().length < 1 || name.trim().length > 80) {
@@ -46,6 +49,9 @@ export async function POST(req: NextRequest) {
           privacy: privacyValue,
           level: typeof level === "string" ? level : null,
           autoApproveNewMembers: autoApproveNewMembers !== false,
+          tagline: typeof tagline === "string" && tagline.trim().length > 0 ? tagline.trim().slice(0, 60) : null,
+          coverImageUrl: typeof coverImageUrl === "string" && coverImageUrl.length > 0 ? coverImageUrl : null,
+          vibeTag: typeof vibeTag === "string" && vibeTag.trim().length > 0 ? vibeTag.trim().slice(0, 30) : null,
           creatorId: user.profileId,
           managers: {
             create: {

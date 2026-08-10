@@ -8,7 +8,7 @@ import { prisma } from "@/lib/db";
 
 export const STREAK_MILESTONES = [3, 5, 10] as const;
 export const SESSION_MILESTONES = [10, 50, 100, 200] as const;
-export const DUPR_MILESTONES = [3.0, 3.5, 4.0, 4.5] as const;
+export const PAIR_MILESTONES = [10, 25, 50] as const;
 
 // ── Preference key helpers ─────────────────────────────────────────────────
 
@@ -20,20 +20,39 @@ export function sessionMilestoneKey(n: number): string {
   return `milestone_sessions_${n}`;
 }
 
-export function duprMilestoneKey(threshold: number): string {
-  return `milestone_dupr_${String(threshold).replace(".", "_")}`;
+/** Key for storing the last DUPR value that triggered a dupr_improvement card. */
+export const DUPR_IMPROVEMENT_LAST_KEY = "milestone_dupr_improvement_last";
+
+export function pairFirstKey(otherUserId: string): string {
+  return `milestone_pair_first_${otherUserId}`;
 }
+
+export function pairMilestoneKey(n: number, otherUserId: string): string {
+  return `milestone_pair_${n}_${otherUserId}`;
+}
+
+export function venueRegularKey(venueId: number): string {
+  return `milestone_venue_regular_${venueId}`;
+}
+
+export const EARLY_ADOPTER_KEY = "milestone_early_adopter";
 
 // ── Threshold detectors ────────────────────────────────────────────────────
 
-/** First DUPR threshold crossed going from oldVal → newVal, or null. */
-export function getDuprThresholdCrossed(
+/**
+ * DUPR improvement delta detector.
+ * Returns `newVal - lastFiredVal` if it is >= 0.10, otherwise null.
+ * `lastFiredVal` is the DUPR value stored in preferences when the last card fired,
+ * defaulting to `oldVal` on first run.
+ */
+export function getDuprImprovementDelta(
   oldVal: number,
-  newVal: number
+  newVal: number,
+  lastFiredVal: number | null = null
 ): number | null {
-  for (const t of DUPR_MILESTONES) {
-    if (oldVal < t && newVal >= t) return t;
-  }
+  const base = lastFiredVal ?? oldVal;
+  const delta = newVal - base;
+  if (delta >= 0.1) return Math.round(delta * 100) / 100;
   return null;
 }
 
@@ -82,12 +101,13 @@ export async function getBatchPlayerPrefs(
 }
 
 /**
- * Set a single milestone flag on a PlayerProfile's preferences JSON.
+ * Set a single milestone flag (boolean or numeric value) on a PlayerProfile's preferences JSON.
  * Safe to fire-and-forget — errors are caught internally.
  */
 export async function setMilestoneFlag(
   reclubUserId: bigint,
-  key: string
+  key: string,
+  value: unknown = true
 ): Promise<void> {
   try {
     const profile = await prisma.playerProfile.findUnique({
@@ -99,7 +119,7 @@ export async function setMilestoneFlag(
     await prisma.playerProfile.update({
       where: { id: profile.id },
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      data: { preferences: { ...prefs, [key]: true } as any },
+      data: { preferences: { ...prefs, [key]: value } as any },
     });
   } catch (err) {
     console.error("[feed-milestones] setMilestoneFlag failed:", key, err);

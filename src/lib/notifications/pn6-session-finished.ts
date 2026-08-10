@@ -11,11 +11,16 @@ import {
 } from "@/lib/notifications/session-time";
 import {
   STREAK_MILESTONES,
+  PAIR_MILESTONES,
   getLifetimeSessionCount,
   computePlayerStreak,
   getSessionMilestoneReached,
   sessionMilestoneKey,
   streakMilestoneKey,
+  pairFirstKey,
+  pairMilestoneKey,
+  venueRegularKey,
+  EARLY_ADOPTER_KEY,
   setMilestoneFlag,
 } from "@/lib/feed-milestones";
 
@@ -68,6 +73,7 @@ export async function sendSessionFinishedKudosNotifications(): Promise<{
           endTime: true,
           scrapedDate: true,
           eventUrl: true,
+          venueId: true,
           venue: { select: { name: true } },
           club: { select: { name: true } },
           snapshots: { orderBy: { scrapedAt: "desc" }, take: 1 },
@@ -80,6 +86,7 @@ export async function sendSessionFinishedKudosNotifications(): Promise<{
   let sent = 0;
   let skipped = 0;
   let feedItemsCreated = 0;
+  const processedSessionIds = new Set<number>();
 
   for (const roster of finishedRosters) {
     const playerId = roster.userId;
@@ -178,6 +185,112 @@ export async function sendSessionFinishedKudosNotifications(): Promise<{
       }
     } catch (err) {
       console.error(`[PN6] milestone detection failed for player ${playerId}:`, err);
+    }
+
+    // ── venue_regular detection ──────────────────────────────────────────────
+    try {
+      const prefs = (playerProfile?.preferences ?? {}) as Record<string, unknown>;
+      const venueId = session.venueId ?? null;
+      if (venueId) {
+        const sessionAtVenue = await prisma.sessionRoster.count({
+          where: {
+            userId: playerId,
+            isConfirmed: true,
+            session: { venueId },
+          },
+        });
+        if (sessionAtVenue === 10) {
+          const key = venueRegularKey(venueId);
+          if (!prefs[key]) {
+            void setMilestoneFlag(playerId, key);
+            // Fan out venue_regular feed items to followers
+            const venueRegularFollowers = await prisma.follow.findMany({
+              where: { followeeId: playerId },
+              select: { follower: { select: { id: true } } },
+            });
+            const vName = session.venue?.name ?? "their venue";
+            for (const { follower } of venueRegularFollowers) {
+              const vrItemId = `venue_regular_${playerId}_${venueId}_${follower.id}`;
+              await prisma.feedItem.upsert({
+                where: { id: vrItemId },
+                create: {
+                  id: vrItemId,
+                  profileId: follower.id,
+                  type: "venue_regular",
+                  playerUserId: playerId.toString(),
+                  payload: {
+                    id: vrItemId,
+                    type: "venue_regular",
+                    player: {
+                      userId: playerId.toString(),
+                      displayName: player.displayName,
+                      imageUrl: playerImageUrl,
+                      duprDoubles: player.duprDoubles ? Number(player.duprDoubles) : null,
+                    },
+                    venueName: vName,
+                    venueSessionCount: 10,
+                    timestamp: sessionTimestamp,
+                    isFollowing: true,
+                    kudos: { fistbump: 0, flame: 0, star: 0, myReactions: [] },
+                  },
+                  timestamp: new Date(sessionTimestamp),
+                },
+                update: {},
+              });
+              feedItemsCreated++;
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.error(`[PN6] venue_regular detection failed for player ${playerId}:`, err);
+    }
+
+    // ── early_adopter detection ──────────────────────────────────────────────
+    try {
+      const prefs = (playerProfile?.preferences ?? {}) as Record<string, unknown>;
+      if (!prefs[EARLY_ADOPTER_KEY]) {
+        const rank = await prisma.player.count({
+          where: { userId: { lte: playerId } },
+        });
+        if (rank <= 1000) {
+          void setMilestoneFlag(playerId, EARLY_ADOPTER_KEY);
+          const eaFollowers = await prisma.follow.findMany({
+            where: { followeeId: playerId },
+            select: { follower: { select: { id: true } } },
+          });
+          for (const { follower } of eaFollowers) {
+            const eaItemId = `early_adopter_${playerId}_${follower.id}`;
+            await prisma.feedItem.upsert({
+              where: { id: eaItemId },
+              create: {
+                id: eaItemId,
+                profileId: follower.id,
+                type: "early_adopter",
+                playerUserId: playerId.toString(),
+                payload: {
+                  id: eaItemId,
+                  type: "early_adopter",
+                  player: {
+                    userId: playerId.toString(),
+                    displayName: player.displayName,
+                    imageUrl: playerImageUrl,
+                    duprDoubles: player.duprDoubles ? Number(player.duprDoubles) : null,
+                  },
+                  timestamp: sessionTimestamp,
+                  isFollowing: true,
+                  kudos: { fistbump: 0, flame: 0, star: 0, myReactions: [] },
+                },
+                timestamp: new Date(sessionTimestamp),
+              },
+              update: {},
+            });
+            feedItemsCreated++;
+          }
+        }
+      }
+    } catch (err) {
+      console.error(`[PN6] early_adopter detection failed for player ${playerId}:`, err);
     }
 
     const followers = await prisma.follow.findMany({
@@ -330,6 +443,15 @@ export async function sendSessionFinishedKudosNotifications(): Promise<{
         skipped++;
       }
     }
+    // ── pair milestone detection (once per session) ──────────────────────────
+    if (!processedSessionIds.has(session.id)) {
+      processedSessionIds.add(session.id);
+      const pairCounter = { count: 0 };
+      await detectPairMilestones(session.id, sessionTimestamp, pairCounter).catch((err) => {
+        console.error(`[PN6] pair milestone detection failed for session ${session.id}:`, err);
+      });
+      feedItemsCreated += pairCounter.count;
+    }
   }
 
   return {
@@ -338,4 +460,162 @@ export async function sendSessionFinishedKudosNotifications(): Promise<{
     sessions: finishedRosters.length,
     feedItemsCreated,
   };
+}
+
+/**
+ * Detect play_pair_first and play_pair_milestone for all pairs in a session
+ * and fan out feed items to both players' followers.
+ */
+async function detectPairMilestones(
+  sessionId: number,
+  sessionTimestamp: string,
+  feedItemsCreated: { count: number }
+): Promise<void> {
+  const rosterPlayers = await prisma.sessionRoster.findMany({
+    where: { sessionId, isConfirmed: true },
+    select: {
+      userId: true,
+      player: {
+        select: {
+          userId: true,
+          displayName: true,
+          imageUrl: true,
+          duprDoubles: true,
+          _count: { select: { followers: true } },
+        },
+      },
+    },
+  });
+
+  if (rosterPlayers.length < 2) return;
+
+  for (let i = 0; i < rosterPlayers.length; i++) {
+    for (let j = i + 1; j < rosterPlayers.length; j++) {
+      const playerA = rosterPlayers[i];
+      const playerB = rosterPlayers[j];
+      if (!playerA.player || !playerB.player) continue;
+
+      // Count co-sessions (excluding the current one)
+      const coCount = await prisma.sessionRoster.count({
+        where: {
+          userId: playerA.userId,
+          isConfirmed: true,
+          sessionId: { not: sessionId },
+          session: {
+            rosters: { some: { userId: playerB.userId, isConfirmed: true } },
+          },
+        },
+      });
+
+      // Determine which player is the "subject" (more followers; lower userId as tiebreak)
+      const aFollowers = playerA.player._count.followers;
+      const bFollowers = playerB.player._count.followers;
+      const subject =
+        aFollowers > bFollowers ? playerA
+        : bFollowers > aFollowers ? playerB
+        : (playerA.userId < playerB.userId ? playerA : playerB);
+      const other = subject === playerA ? playerB : playerA;
+
+      const subjectPrefs = await prisma.playerProfile.findUnique({
+        where: { reclubUserId: subject.userId },
+        select: { preferences: true },
+      });
+      const prefs = (subjectPrefs?.preferences ?? {}) as Record<string, unknown>;
+
+      if (coCount === 0) {
+        // First time playing together
+        const key = pairFirstKey(other.userId.toString());
+        if (!prefs[key]) {
+          void setMilestoneFlag(subject.userId, key);
+          // Fan out to followers of BOTH players
+          const allFollowerIds = await getPairFollowerIds([subject.userId, other.userId]);
+          for (const profileId of allFollowerIds) {
+            const itemId = `play_pair_first_${subject.userId}_${other.userId}_${profileId}`;
+            await prisma.feedItem.upsert({
+              where: { id: itemId },
+              create: {
+                id: itemId,
+                profileId,
+                type: "play_pair_first",
+                playerUserId: subject.userId.toString(),
+                payload: {
+                  id: itemId,
+                  type: "play_pair_first",
+                  player: {
+                    userId: subject.userId.toString(),
+                    displayName: subject.player!.displayName,
+                    imageUrl: subject.player!.imageUrl ?? reclubAvatarUrl(subject.userId),
+                    duprDoubles: subject.player!.duprDoubles ? Number(subject.player!.duprDoubles) : null,
+                  },
+                  relatedPlayer: {
+                    userId: other.userId.toString(),
+                    displayName: other.player!.displayName ?? "",
+                    imageUrl: other.player!.imageUrl ?? reclubAvatarUrl(other.userId),
+                  },
+                  timestamp: sessionTimestamp,
+                  isFollowing: true,
+                  kudos: { fistbump: 0, flame: 0, star: 0, myReactions: [] },
+                },
+                timestamp: new Date(sessionTimestamp),
+              },
+              update: {},
+            }).catch(() => {});
+            feedItemsCreated.count++;
+          }
+        }
+      } else if ((PAIR_MILESTONES as readonly number[]).includes(coCount + 1)) {
+        // Pair milestone (10th, 25th, or 50th game)
+        const n = coCount + 1;
+        const key = pairMilestoneKey(n, other.userId.toString());
+        if (!prefs[key]) {
+          void setMilestoneFlag(subject.userId, key);
+          const allFollowerIds = await getPairFollowerIds([subject.userId, other.userId]);
+          for (const profileId of allFollowerIds) {
+            const itemId = `play_pair_milestone_${subject.userId}_${other.userId}_${n}_${profileId}`;
+            await prisma.feedItem.upsert({
+              where: { id: itemId },
+              create: {
+                id: itemId,
+                profileId,
+                type: "play_pair_milestone",
+                playerUserId: subject.userId.toString(),
+                payload: {
+                  id: itemId,
+                  type: "play_pair_milestone",
+                  player: {
+                    userId: subject.userId.toString(),
+                    displayName: subject.player!.displayName,
+                    imageUrl: subject.player!.imageUrl ?? reclubAvatarUrl(subject.userId),
+                    duprDoubles: subject.player!.duprDoubles ? Number(subject.player!.duprDoubles) : null,
+                  },
+                  relatedPlayer: {
+                    userId: other.userId.toString(),
+                    displayName: other.player!.displayName ?? "",
+                    imageUrl: other.player!.imageUrl ?? reclubAvatarUrl(other.userId),
+                  },
+                  pairSessionCount: n,
+                  timestamp: sessionTimestamp,
+                  isFollowing: true,
+                  kudos: { fistbump: 0, flame: 0, star: 0, myReactions: [] },
+                },
+                timestamp: new Date(sessionTimestamp),
+              },
+              update: {},
+            }).catch(() => {});
+            feedItemsCreated.count++;
+          }
+        }
+      }
+    }
+  }
+}
+
+async function getPairFollowerIds(userIds: bigint[]): Promise<string[]> {
+  const follows = await prisma.follow.findMany({
+    where: { followeeId: { in: userIds } },
+    select: { followerId: true },
+  });
+  const seen = new Set<string>();
+  for (const f of follows) seen.add(f.followerId);
+  return Array.from(seen);
 }
