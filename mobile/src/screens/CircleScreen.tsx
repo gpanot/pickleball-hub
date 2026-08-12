@@ -128,7 +128,20 @@ const CIRCLE_TABS = [
   { key: 'clubs' as const, label: 'Clubs' },
 ] as const
 
-export const CircleScreen = React.forwardRef<CircleScreenHandle, { onOpenGear?: () => void; gearSaved?: boolean; gearSetupComplete?: boolean; onStartGuestReclub?: () => void; onGuestReclubComplete?: (reclubUserId: string) => void; onLinkReclub?: () => void; onSignIn?: () => void; onActivityChange?: (open: boolean) => void; onClubOverlayChange?: (open: boolean) => void; onNavScroll?: (scrollingDown: boolean) => void }>(
+interface CircleScreenProps {
+  onOpenGear?: () => void
+  gearSaved?: boolean
+  gearSetupComplete?: boolean
+  onStartGuestReclub?: () => void
+  onGuestReclubComplete?: (reclubUserId: string) => void
+  onLinkReclub?: () => void
+  onSignIn?: () => void
+  onActivityChange?: (open: boolean) => void
+  onClubOverlayChange?: (open: boolean) => void
+  onNavScroll?: (scrollingDown: boolean) => void
+}
+
+export const CircleScreen = React.forwardRef<CircleScreenHandle, CircleScreenProps>(
 function CircleScreen({ onOpenGear, gearSaved, gearSetupComplete, onStartGuestReclub, onGuestReclubComplete, onLinkReclub, onSignIn, onActivityChange, onClubOverlayChange, onNavScroll }, ref) {
   const T = useGlassTheme()
   const styles = useMemo(() => createStyles(T), [T])
