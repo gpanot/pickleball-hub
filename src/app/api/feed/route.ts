@@ -872,8 +872,9 @@ export async function GET(req: NextRequest) {
     (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
   );
 
-  const finalItems = isPaginating ? mergedItems.slice(0, PAGE_SIZE) : mergedItems.slice(0, 200);
-  const hasMore = persistedItems.length === PAGE_SIZE;
+  const finalItems = mergedItems.slice(0, PAGE_SIZE);
+  // hasMore when there are persisted items beyond this page (either more fetched or merged list was trimmed)
+  const hasMore = persistedItems.length === PAGE_SIZE || mergedItems.length > PAGE_SIZE;
 
   // kudosCounts was fetched in parallel with streaks+dupr above (live items only).
   // myKudos requires finalItems (includes historical persisted items) so is fetched here.
