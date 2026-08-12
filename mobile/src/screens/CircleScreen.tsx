@@ -274,6 +274,8 @@ function CircleScreenInner({ onOpenGear, gearSaved, gearSetupComplete, onStartGu
   }));
   const [friends, setFriends] = useState<FollowedPlayer[]>([])
   const [loadingFriends, setLoadingFriends] = useState(false)
+  const [hasMorePlayers, setHasMorePlayers] = useState(false)
+  const [loadingMorePlayers, setLoadingMorePlayers] = useState(false)
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null)
   const [selectedPlayerStub, setSelectedPlayerStub] = useState<import('../components/PlayerProfileSheet').PlayerProfileStub | null>(null)
 
@@ -416,6 +418,7 @@ function CircleScreenInner({ onOpenGear, gearSaved, gearSetupComplete, onStartGu
     setFriends([])
     setHasFollows(false)
     setHasMore(false)
+    setHasMorePlayers(false)
     feedLoadedRef.current = true   // mark loaded so auto-load effect doesn't double-fire
     friendsLoadedRef.current = true
     suggestionsLoadedRef.current = true
@@ -638,7 +641,7 @@ function CircleScreenInner({ onOpenGear, gearSaved, gearSetupComplete, onStartGu
   useEffect(() => { loadFeedRef.current = loadFeed }, [loadFeed])
 
   const loadMore = useCallback(async () => {
-    if (loadingMore || !hasMore || feedItems.length === 0) return
+    if (loadingMore || !hasMore || feedItems.length === 0 || feedItems.length >= 200) return
     setLoadingMore(true)
     try {
       const oldest = feedItems[feedItems.length - 1]
@@ -864,9 +867,11 @@ function CircleScreenInner({ onOpenGear, gearSaved, gearSetupComplete, onStartGu
       console.log(`[TheHub][PERF[PLAYERS]] ⏱ /api/follows network: ${Date.now() - tFetch}ms → HTTP ${res.status}`)
       if (res.ok) {
         const tParse = Date.now()
-        const list = await res.json()
+        const data = await res.json()
+        const list: FollowedPlayer[] = data.players ?? data
         console.log(`[TheHub][PERF[PLAYERS]] ⏱ JSON parse: ${Date.now() - tParse}ms — friends=${list.length}`)
         setFriends(list)
+        setHasMorePlayers(data.hasMore ?? false)
         console.log(`[TheHub][PERF[PLAYERS]] ⏱ TOTAL loadFriends: ${Date.now() - t0}ms ✅`)
       } else {
         const body = await res.text()
@@ -883,6 +888,28 @@ function CircleScreenInner({ onOpenGear, gearSaved, gearSetupComplete, onStartGu
   // Keep the ref in sync so useImperativeHandle can call loadFriends
   // without capturing a stale closure (loadFriends is defined after the handle).
   useEffect(() => { loadFriendsRef.current = loadFriends }, [loadFriends])
+
+  const loadMoreFriends = useCallback(async () => {
+    if (loadingMorePlayers || !hasMorePlayers || friends.length === 0 || friends.length >= 200) return
+    setLoadingMorePlayers(true)
+    try {
+      const oldest = friends[friends.length - 1]
+      const res = await authedFetch(`/api/follows?before=${encodeURIComponent(oldest.followedAt ?? '')}`)
+      if (!res.ok) return
+      const data = await res.json()
+      const newPlayers: FollowedPlayer[] = data.players ?? data
+      setFriends((prev) => {
+        const existingIds = new Set(prev.map((f) => f.userId))
+        const deduped = newPlayers.filter((p) => !existingIds.has(p.userId))
+        return [...prev, ...deduped]
+      })
+      setHasMorePlayers(data.hasMore ?? false)
+    } catch (e) {
+      if (__DEV__) console.warn('[Players] loadMoreFriends', e)
+    } finally {
+      setLoadingMorePlayers(false)
+    }
+  }, [friends, hasMorePlayers, loadingMorePlayers, authedFetch])
 
   const prependJustFollowedFeedItem = useCallback(
     (
@@ -1453,7 +1480,7 @@ function CircleScreenInner({ onOpenGear, gearSaved, gearSetupComplete, onStartGu
             })
           })()}
 
-          {!feedLoading && hasMore && (
+          {!feedLoading && hasMore && feedItems.length < 200 && (
             <TouchableOpacity
               style={styles.loadMoreBtn}
               onPress={loadMore}
@@ -1715,6 +1742,20 @@ function CircleScreenInner({ onOpenGear, gearSaved, gearSetupComplete, onStartGu
                       onAvatarPress={() => setSelectedPlayerId(item.userId)}
                     />
                   )}
+                  ListFooterComponent={
+                    !isGuestMode && hasMorePlayers && friends.length < 200 ? (
+                      <TouchableOpacity
+                        style={styles.loadMoreBtn}
+                        onPress={loadMoreFriends}
+                        disabled={loadingMorePlayers}
+                      >
+                        {loadingMorePlayers
+                          ? <ActivityIndicator size="small" color={T.glassPrimary} />
+                          : <Text style={styles.loadMoreText}>Load more</Text>
+                        }
+                      </TouchableOpacity>
+                    ) : null
+                  }
                   contentContainerStyle={{ paddingBottom: navBarHeight }}
                   onScroll={handleScroll}
                   scrollEventThrottle={16}

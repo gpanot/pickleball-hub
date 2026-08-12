@@ -4,9 +4,12 @@ import { getMobileUser } from "@/lib/mobile-auth";
 import { reclubAvatarUrl } from "@/lib/utils";
 import { notifyNewFollower } from "@/lib/notifications/pn4-new-follower";
 
+const FOLLOWS_PAGE_SIZE = 50;
+
 /**
  * GET /api/follows
  * Returns the list of players the current user follows.
+ * Supports cursor-based pagination via ?before=<ISO timestamp> (up to 200 total).
  */
 export async function GET(req: NextRequest) {
   const user = await getMobileUser(req);
@@ -14,8 +17,13 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const before = req.nextUrl.searchParams.get("before");
+
   const follows = await prisma.follow.findMany({
-    where: { followerId: user.profileId },
+    where: {
+      followerId: user.profileId,
+      ...(before ? { createdAt: { lt: new Date(before) } } : {}),
+    },
     include: {
       followee: {
         select: {
@@ -27,7 +35,10 @@ export async function GET(req: NextRequest) {
       },
     },
     orderBy: { createdAt: "desc" },
+    take: FOLLOWS_PAGE_SIZE,
   });
+
+  const hasMore = follows.length === FOLLOWS_PAGE_SIZE;
 
   const followeeIds = follows.map((f) => f.followee.userId);
   const profiles = await prisma.playerProfile.findMany({
@@ -49,8 +60,8 @@ export async function GET(req: NextRequest) {
     ]),
   );
 
-  return NextResponse.json(
-    follows.map((f) => {
+  return NextResponse.json({
+    players: follows.map((f) => {
       const reclubId = f.followee.userId.toString();
       const linked = profileByReclubId.get(reclubId);
       return {
@@ -67,7 +78,8 @@ export async function GET(req: NextRequest) {
         followedAt: f.createdAt.toISOString(),
       };
     }),
-  );
+    hasMore,
+  });
 }
 
 /**

@@ -93,13 +93,14 @@ export async function GET(req: NextRequest) {
   const items: any[] = [];
 
   // Read persisted feed items — cursor-paginated when `before` is supplied
+  const PAGE_SIZE = 50;
   const persistedItems = await prisma.feedItem.findMany({
     where: {
       profileId: user.profileId,
       ...(before ? { timestamp: { lt: new Date(before) } } : {}),
     },
     orderBy: { timestamp: "desc" },
-    take: 30,
+    take: PAGE_SIZE,
   });
 
   let liveItems: any[] = [];
@@ -871,8 +872,8 @@ export async function GET(req: NextRequest) {
     (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
   );
 
-  const finalItems = isPaginating ? mergedItems.slice(0, 30) : mergedItems.slice(0, 200);
-  const hasMore = persistedItems.length === 30;
+  const finalItems = isPaginating ? mergedItems.slice(0, PAGE_SIZE) : mergedItems.slice(0, 200);
+  const hasMore = persistedItems.length === PAGE_SIZE;
 
   // kudosCounts was fetched in parallel with streaks+dupr above (live items only).
   // myKudos requires finalItems (includes historical persisted items) so is fetched here.

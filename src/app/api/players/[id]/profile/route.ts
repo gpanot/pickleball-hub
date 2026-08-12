@@ -25,7 +25,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const user = await getMobileUser(req)
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  // Allow unauthenticated requests — public profile data is returned without personalised fields
 
   const { id } = await params
   const targetId = BigInt(id)
@@ -54,9 +54,11 @@ export async function GET(
         _count: { select: { rosters: true, followers: true } }
       }
     }),
-    prisma.follow.findFirst({
-      where: { followerId: user.profileId, followeeId: targetId }
-    }),
+    user
+      ? prisma.follow.findFirst({
+          where: { followerId: user.profileId, followeeId: targetId }
+        })
+      : Promise.resolve(null),
     prisma.playerProfile.findUnique({
       where: { reclubUserId: targetId },
       select: { id: true, _count: { select: { following: true } } }
@@ -66,10 +68,12 @@ export async function GET(
       where: { toPlayerId: targetId },
       _count: { type: true }
     }).catch(() => [] as Array<{ type: string; _count: { type: number } }>),
-    prisma.kudos.findMany({
-      where: { fromPlayerId: user.profileId, toPlayerId: targetId },
-      select: { type: true }
-    }).catch(() => [] as Array<{ type: string }>),
+    user
+      ? prisma.kudos.findMany({
+          where: { fromPlayerId: user.profileId, toPlayerId: targetId },
+          select: { type: true }
+        }).catch(() => [] as Array<{ type: string }>)
+      : Promise.resolve([] as Array<{ type: string }>),
   ])
 
   // Heavy query — only run when not in quick mode
