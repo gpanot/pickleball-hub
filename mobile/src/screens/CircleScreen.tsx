@@ -210,6 +210,16 @@ function CircleScreen({ onOpenGear, gearSaved, gearSetupComplete, onStartGuestRe
   const feedLoadedRef = useRef(false)
   const localFeedItemIds = useRef<Set<string>>(new Set())
   const friendsLoadedRef = useRef(false)
+
+  // Stable refs for async load functions — keep effects' dep arrays minimal so
+  // navigating between tabs does not re-trigger fetches.
+  const loadFeedRef = useRef<() => Promise<void>>(async () => {})
+  const loadRecapRef = useRef<() => Promise<void>>(async () => {})
+  const loadPresenceRef = useRef<() => Promise<void>>(async () => {})
+  const loadSuggestionsRef = useRef<() => Promise<void>>(async () => {})
+  // Whether the presence interval has been started at least once (prevents
+  // restarting it on every tab-switch back to the feed).
+  const presenceIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const suggestionsLoadedRef = useRef(false)
   const [showSearch, setShowSearch] = useState(false)
   const [showSuggested, setShowSuggested] = useState(false)
@@ -552,7 +562,8 @@ function CircleScreen({ onOpenGear, gearSaved, gearSetupComplete, onStartGuestRe
     }
   }, [authedFetch, jwt, ensureServerAuth])
 
-  const loadMore = useCallback(async () => {
+  // Keep ref in sync so effects can call latest version without being in deps
+  useEffect(() => { loadFeedRef.current = loadFeed }, [loadFeed])
     if (loadingMore || !hasMore || feedItems.length === 0) return
     setLoadingMore(true)
     try {
@@ -608,6 +619,8 @@ function CircleScreen({ onOpenGear, gearSaved, gearSetupComplete, onStartGuestRe
     }
   }, [authedFetch, effectiveReclubUserId, jwt])
 
+  useEffect(() => { loadSuggestionsRef.current = loadSuggestions }, [loadSuggestions])
+
   const loadPresence = useCallback(async () => {
     if (!jwt) return
     console.log('[FREEZE_DEBUG] loadPresence — start')
@@ -619,6 +632,8 @@ function CircleScreen({ onOpenGear, gearSaved, gearSetupComplete, onStartGuestRe
       console.log('[FREEZE_DEBUG] loadPresence — setPresence called')
     } catch {}
   }, [jwt, authedFetch])
+
+  useEffect(() => { loadPresenceRef.current = loadPresence }, [loadPresence])
 
   const loadRecap = useCallback(async () => {
     if (!jwt || recapLoadedRef.current) return
@@ -633,6 +648,8 @@ function CircleScreen({ onOpenGear, gearSaved, gearSetupComplete, onStartGuestRe
       setWeeklyRecap(data)
     } catch {}
   }, [jwt, authedFetch])
+
+  useEffect(() => { loadRecapRef.current = loadRecap }, [loadRecap])
 
   const dismissWeeklyRecap = useCallback(async () => {
     const weekOf = weeklyRecap?.weekOf
@@ -716,18 +733,32 @@ function CircleScreen({ onOpenGear, gearSaved, gearSetupComplete, onStartGuestRe
     if (jwt && subTab === 'feed' && !feedLoadedRef.current) {
       console.log('[FREEZE_DEBUG] initial loadFeed trigger — jwt+feed tab ready')
       feedLoadedRef.current = true
-      loadFeed()
-      loadRecap()
+      void loadFeedRef.current()
+      void loadRecapRef.current()
     }
-  }, [jwt, subTab, loadFeed, loadRecap])
+  }, [jwt, subTab]) // intentionally omit loadFeed/loadRecap — use stable refs
 
   useEffect(() => {
-    if (jwt && subTab === 'feed') {
-      loadPresence()
-      const interval = setInterval(loadPresence, 60000)
-      return () => clearInterval(interval)
+    // Start the presence polling once when the feed tab is first shown.
+    // Do NOT include subTab as a dep change — navigating away and back must
+    // not restart the interval or re-fetch.
+    if (jwt && subTab === 'feed' && !presenceIntervalRef.current) {
+      void loadPresenceRef.current()
+      presenceIntervalRef.current = setInterval(() => void loadPresenceRef.current(), 60000)
     }
-  }, [jwt, subTab, loadPresence])
+    // No cleanup here — interval lives for the component lifetime and is
+    // cleared in the dedicated unmount effect below.
+  }, [jwt, subTab]) // intentionally omit loadPresence — use stable ref
+
+  // Clear presence interval on unmount
+  useEffect(() => {
+    return () => {
+      if (presenceIntervalRef.current) {
+        clearInterval(presenceIntervalRef.current)
+        presenceIntervalRef.current = null
+      }
+    }
+  }, [])
 
   useEffect(() => {
     if ((!jwt && !isGuestMode) || subTab !== 'players' || suggestionsLoadedRef.current) return
@@ -736,8 +767,8 @@ function CircleScreen({ onOpenGear, gearSaved, gearSetupComplete, onStartGuestRe
       return
     }
     suggestionsLoadedRef.current = true
-    loadSuggestions()
-  }, [jwt, isGuestMode, subTab, effectiveReclubUserId, loadSuggestions])
+    void loadSuggestionsRef.current()
+  }, [jwt, isGuestMode, subTab, effectiveReclubUserId]) // intentionally omit loadSuggestions — use stable ref
 
   const handleFeedRefresh = useCallback(async () => {
     setFeedRefreshing(true)
@@ -838,9 +869,9 @@ function CircleScreen({ onOpenGear, gearSaved, gearSetupComplete, onStartGuestRe
   useEffect(() => {
     if (jwt && subTab === 'players' && !friendsLoadedRef.current) {
       friendsLoadedRef.current = true
-      loadFriends()
+      void loadFriendsRef.current()
     }
-  }, [jwt, subTab, loadFriends])
+  }, [jwt, subTab]) // intentionally omit loadFriends — use stable loadFriendsRef
 
   const performUnfollow = useCallback(
     async (userId: string) => {
