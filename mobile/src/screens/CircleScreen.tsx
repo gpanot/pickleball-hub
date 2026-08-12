@@ -141,8 +141,8 @@ interface CircleScreenProps {
   onNavScroll?: (scrollingDown: boolean) => void
 }
 
-export const CircleScreen = React.forwardRef<CircleScreenHandle, CircleScreenProps>(
-function CircleScreen({ onOpenGear, gearSaved, gearSetupComplete, onStartGuestReclub, onGuestReclubComplete, onLinkReclub, onSignIn, onActivityChange, onClubOverlayChange, onNavScroll }, ref) {
+export const CircleScreen = React.forwardRef(
+function CircleScreenInner({ onOpenGear, gearSaved, gearSetupComplete, onStartGuestReclub, onGuestReclubComplete, onLinkReclub, onSignIn, onActivityChange, onClubOverlayChange, onNavScroll }: CircleScreenProps, ref: React.Ref<CircleScreenHandle>) {
   const T = useGlassTheme()
   const styles = useMemo(() => createStyles(T), [T])
   const insets = useSafeAreaInsets()
@@ -1851,7 +1851,7 @@ function CircleScreen({ onOpenGear, gearSaved, gearSetupComplete, onStartGuestRe
       />
     </LinearGradient>
   )
-})
+}) as React.ForwardRefExoticComponent<CircleScreenProps & React.RefAttributes<CircleScreenHandle>>
 
 function createStyles(T: GlassThemeColors) {
   const glassShadow = {
