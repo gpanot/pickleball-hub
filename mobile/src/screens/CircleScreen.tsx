@@ -128,8 +128,8 @@ const CIRCLE_TABS = [
   { key: 'clubs' as const, label: 'Clubs' },
 ] as const
 
-export const CircleScreen = React.forwardRef<CircleScreenHandle, { onOpenGear?: () => void; gearSaved?: boolean; gearSetupComplete?: boolean; onStartGuestReclub?: () => void; onLinkReclub?: () => void; onSignIn?: () => void; onActivityChange?: (open: boolean) => void; onClubOverlayChange?: (open: boolean) => void; onNavScroll?: (scrollingDown: boolean) => void }>(
-function CircleScreen({ onOpenGear, gearSaved, gearSetupComplete, onStartGuestReclub, onLinkReclub, onSignIn, onActivityChange, onClubOverlayChange, onNavScroll }, ref) {
+export const CircleScreen = React.forwardRef<CircleScreenHandle, { onOpenGear?: () => void; gearSaved?: boolean; gearSetupComplete?: boolean; onStartGuestReclub?: () => void; onGuestReclubComplete?: (reclubUserId: string) => void; onLinkReclub?: () => void; onSignIn?: () => void; onActivityChange?: (open: boolean) => void; onClubOverlayChange?: (open: boolean) => void; onNavScroll?: (scrollingDown: boolean) => void }>(
+function CircleScreen({ onOpenGear, gearSaved, gearSetupComplete, onStartGuestReclub, onGuestReclubComplete, onLinkReclub, onSignIn, onActivityChange, onClubOverlayChange, onNavScroll }, ref) {
   const T = useGlassTheme()
   const styles = useMemo(() => createStyles(T), [T])
   const insets = useSafeAreaInsets()
@@ -983,7 +983,34 @@ function CircleScreen({ onOpenGear, gearSaved, gearSetupComplete, onStartGuestRe
         activeGradient={[T.glassPrimary, T.glassPrimaryEnd]}
       />
 
-      {subTab === 'feed' && !jwt && !isGuestMode && <SignInPrompt onSignIn={onSignIn} onLinkReclub={onStartGuestReclub} />}
+      {subTab === 'feed' && !jwt && !isGuestMode && (
+        onGuestReclubComplete ? (
+          /* Inline reclub search — saves one tap vs the full-screen flow */
+          <ScrollView
+            style={{ flex: 1 }}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ paddingBottom: navBarHeight }}
+            keyboardShouldPersistTaps="handled"
+          >
+            <View style={styles.inlineReclubCard}>
+              <Text style={[styles.inlineReclubHero, { color: T.glassPrimary }]}>
+                LET'S FIND YOU{'\n'}ON RECLUB
+              </Text>
+              <Text style={styles.inlineReclubSub}>
+                Search for your Reclub profile to see players you've played with.
+              </Text>
+              <PlayerSearch
+                mode="select"
+                onSelectPlayer={(player) => {
+                  if (player) onGuestReclubComplete(player.userId)
+                }}
+              />
+            </View>
+          </ScrollView>
+        ) : (
+          <SignInPrompt onSignIn={onSignIn} onLinkReclub={onStartGuestReclub} />
+        )
+      )}
 
       {subTab === 'feed' && isGuestMode && (
         <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: navBarHeight }} onScroll={handleScroll} scrollEventThrottle={16}>
@@ -1988,6 +2015,23 @@ function createStyles(T: GlassThemeColors) {
     overflow: 'hidden',
   },
   emptyBtnText: { fontSize: 11, fontWeight: '600', color: '#FFFFFF' },
+  inlineReclubCard: {
+    paddingHorizontal: 24,
+    paddingTop: 32,
+    paddingBottom: 24,
+  },
+  inlineReclubHero: {
+    fontFamily: 'BarlowCondensed_800ExtraBold',
+    fontSize: 34,
+    lineHeight: 38,
+    marginBottom: 10,
+  },
+  inlineReclubSub: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: T.textSecondary,
+    marginBottom: 20,
+  },
   linkReclubCtaWrap: {
     flex: 1,
     alignItems: 'center',

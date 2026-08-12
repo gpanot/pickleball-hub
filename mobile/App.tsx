@@ -3,6 +3,7 @@ import { View, Pressable, Platform, AppState, StyleSheet, Linking, Text as RNTex
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 import Constants from 'expo-constants'
+import * as ExpoSplashScreen from 'expo-splash-screen'
 import { NavBar, type TabId } from './src/components/NavBar'
 import { ExploreSessionsScreen } from './src/screens/ExploreSessionsScreen'
 import { CircleScreen, type CircleScreenHandle } from './src/screens/CircleScreen'
@@ -43,6 +44,10 @@ import { DMSans_400Regular, DMSans_700Bold, DMSans_900Black } from '@expo-google
 import { Lobster_400Regular } from '@expo-google-fonts/lobster'
 import { BarlowCondensed_800ExtraBold } from '@expo-google-fonts/barlow-condensed'
 import { ThemedAppChrome, useThemedOverlayStyles } from './src/components/ThemedAppChrome'
+
+// Prevent the native splash screen from auto-hiding before JS is ready.
+// Must be called as early as possible — before any async work.
+ExpoSplashScreen.preventAutoHideAsync().catch(() => {})
 
 console.log('[BOOT] ======= App.tsx module loading =======')
 console.log('[BOOT] Platform: ' + Platform.OS + ' ' + Platform.Version)
@@ -319,6 +324,7 @@ export default function App() {
   /** Gang-level invite code (type=gang in URL). Routes to gang onboarding, skips gang-setup. */
   const [gangInviteCode, setGangInviteCode] = useState<string | null>(null)
   const circleScreenRef = useRef<CircleScreenHandle>(null)
+  const myBizResetRef = useRef<(() => void) | null>(null)
   const [squadDeeplinkInviteId, setSquadDeeplinkInviteId] = useState<string | null>(null)
   const [squadDeeplinkSquadId, setSquadDeeplinkSquadId] = useState<string | null>(null)
   /** PlayerProfile UUID from /u/{profileId} deep link — resolved after auth is ready. */
@@ -935,6 +941,7 @@ export default function App() {
                   gearSaved={savedConfirmation}
                   gearSetupComplete={gearSetupComplete}
                   onStartGuestReclub={startGuestReclubFlow}
+                  onGuestReclubComplete={handleGuestReclubComplete}
                   onLinkReclub={startLinkReclub}
                   onSignIn={() => { void handleCircleSignedIn() }}
                   onActivityChange={setCircleActivityOpen}
@@ -969,6 +976,7 @@ export default function App() {
                   isActive={activeTab === 'my-business'}
                   onTabBarVisibilityChange={setMyBizTabBarVisible}
                   onLinkReclub={startLinkReclub}
+                  onTabReactivated={(resetFn) => { myBizResetRef.current = resetFn }}
                 />
               </View>
               <View style={{ flex: 1, display: activeTab === 'logbook' ? 'flex' : 'none' }}>
@@ -984,12 +992,15 @@ export default function App() {
                   pointerEvents="box-none"
                 >
                   <NavBar active={activeTab} onChange={(tab) => {
-                    // Reset nav bar when switching tabs
                     if (tab !== activeTab) {
+                      // Reset nav bar animation when switching tabs
                       navBarVisible.current = true
                       navBarAnim.setValue(0)
+                      setActiveTab(tab)
+                    } else {
+                      // Same tab tapped — reset the navigator to its root
+                      if (tab === 'my-business') myBizResetRef.current?.()
                     }
-                    setActiveTab(tab)
                   }} />
                 </Animated.View>
               )}
