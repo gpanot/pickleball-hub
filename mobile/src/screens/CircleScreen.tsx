@@ -113,6 +113,65 @@ function formatClock(clock: string): string {
   return `${h12}${m > 0 ? `:${String(m).padStart(2, '0')}` : ''} ${ampm}`
 }
 
+// ─── Reusable inline reclub search ─────────────────────────────────────────
+// Shown in all 3 tabs (My Feed, Players, Clubs) when the user has not yet
+// linked their Reclub account. Two modes:
+//   • onComplete   — unauthenticated (guest) flow: selecting a player
+//                    immediately resolves with their userId
+//   • onLinkReclub — signed-in but unlinked: selecting triggers the
+//                    full "link reclub" screen (which handles the API link)
+
+interface InlineReclubSearchProps {
+  onComplete?: (reclubUserId: string) => void
+  onLinkReclub?: () => void
+  primaryColor: string
+  secondaryColor: string
+}
+
+function InlineReclubSearch({ onComplete, onLinkReclub, primaryColor, secondaryColor }: InlineReclubSearchProps) {
+  return (
+    <View style={inlineStyles.card}>
+      <Text style={[inlineStyles.hero, { color: primaryColor }]}>
+        LET'S FIND YOU{'\n'}ON RECLUB
+      </Text>
+      <Text style={[inlineStyles.sub, { color: secondaryColor }]}>
+        Search for your Reclub profile to see players you've played with.
+      </Text>
+      <PlayerSearch
+        mode="select"
+        onSelectPlayer={(player) => {
+          if (!player) return
+          if (onComplete) {
+            onComplete(player.userId)
+          } else {
+            onLinkReclub?.()
+          }
+        }}
+      />
+    </View>
+  )
+}
+
+const inlineStyles = StyleSheet.create({
+  card: {
+    paddingHorizontal: 24,
+    paddingTop: 32,
+    paddingBottom: 24,
+  },
+  hero: {
+    fontFamily: 'BarlowCondensed_800ExtraBold',
+    fontSize: 34,
+    lineHeight: 38,
+    marginBottom: 10,
+  },
+  sub: {
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 20,
+  },
+})
+// ───────────────────────────────────────────────────────────────────────────
+
 export interface CircleScreenHandle {
   openPlayersTab: () => void;
   openClubsTab: () => void;
@@ -1038,20 +1097,11 @@ function CircleScreenInner({ onOpenGear, gearSaved, gearSetupComplete, onStartGu
             contentContainerStyle={{ paddingBottom: navBarHeight }}
             keyboardShouldPersistTaps="handled"
           >
-            <View style={styles.inlineReclubCard}>
-              <Text style={[styles.inlineReclubHero, { color: T.glassPrimary }]}>
-                LET'S FIND YOU{'\n'}ON RECLUB
-              </Text>
-              <Text style={styles.inlineReclubSub}>
-                Search for your Reclub profile to see players you've played with.
-              </Text>
-              <PlayerSearch
-                mode="select"
-                onSelectPlayer={(player) => {
-                  if (player) onGuestReclubComplete(player.userId)
-                }}
-              />
-            </View>
+            <InlineReclubSearch
+              onComplete={onGuestReclubComplete}
+              primaryColor={T.glassPrimary}
+              secondaryColor={T.textSecondary}
+            />
           </ScrollView>
         ) : (
           <SignInPrompt onSignIn={onSignIn} onLinkReclub={onStartGuestReclub} />
@@ -1289,21 +1339,11 @@ function CircleScreenInner({ onOpenGear, gearSaved, gearSetupComplete, onStartGu
           )}
 
           {jwt && !reclubUserId && (
-            <View style={styles.linkReclubCtaWrap}>
-              <TouchableOpacity style={styles.linkReclubCtaBtn} onPress={onLinkReclub ?? onStartGuestReclub} activeOpacity={0.85}>
-                <LinearGradient
-                  colors={[T.glassPrimary, T.glassPrimaryEnd]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={styles.linkReclubCtaGradient}
-                >
-                  <Text style={styles.linkReclubCtaText}>Link your Reclub account</Text>
-                </LinearGradient>
-              </TouchableOpacity>
-              <Text style={styles.linkReclubCtaSub}>
-                See your friends' activities in real time, give them kudos and join them on court.
-              </Text>
-            </View>
+            <InlineReclubSearch
+              onLinkReclub={onLinkReclub ?? onStartGuestReclub}
+              primaryColor={T.glassPrimary}
+              secondaryColor={T.textSecondary}
+            />
           )}
 
           {!feedLoading && !hasFollows && reclubUserId && (
@@ -1428,7 +1468,24 @@ function CircleScreenInner({ onOpenGear, gearSaved, gearSetupComplete, onStartGu
         </ScrollView>
       )}
 
-      {subTab === 'players' && !jwt && !isGuestMode && <SignInPrompt onSignIn={onSignIn} onLinkReclub={onStartGuestReclub} />}
+      {subTab === 'players' && !jwt && !isGuestMode && (
+        onGuestReclubComplete ? (
+          <ScrollView
+            style={{ flex: 1 }}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ paddingBottom: navBarHeight }}
+            keyboardShouldPersistTaps="handled"
+          >
+            <InlineReclubSearch
+              onComplete={onGuestReclubComplete}
+              primaryColor={T.glassPrimary}
+              secondaryColor={T.textSecondary}
+            />
+          </ScrollView>
+        ) : (
+          <SignInPrompt onSignIn={onSignIn} onLinkReclub={onStartGuestReclub} />
+        )
+      )}
 
       {/* Guest mode: show co-players fetched via public API — now handled by the full players view below */}
 
@@ -1442,21 +1499,11 @@ function CircleScreenInner({ onOpenGear, gearSaved, gearSetupComplete, onStartGu
           )}
           {/* Link Reclub CTA — shown centered when Reclub not linked (signed-in only) */}
           {jwt && !reclubUserId ? (
-            <View style={styles.linkReclubCtaWrap}>
-              <TouchableOpacity style={styles.linkReclubCtaBtn} onPress={onLinkReclub ?? onStartGuestReclub} activeOpacity={0.85}>
-                <LinearGradient
-                  colors={[T.glassPrimary, T.glassPrimaryEnd]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={styles.linkReclubCtaGradient}
-                >
-                  <Text style={styles.linkReclubCtaText}>Link your Reclub account</Text>
-                </LinearGradient>
-              </TouchableOpacity>
-              <Text style={styles.linkReclubCtaSub}>
-                See your friends' activities in real time, give them kudos and join them on court.
-              </Text>
-            </View>
+            <InlineReclubSearch
+              onLinkReclub={onLinkReclub ?? onStartGuestReclub}
+              primaryColor={T.glassPrimary}
+              secondaryColor={T.textSecondary}
+            />
           ) : showSuggested ? (
             <View style={{ flex: 1 }}>
               <View style={styles.searchHeaderRow}>
@@ -1681,9 +1728,34 @@ function CircleScreenInner({ onOpenGear, gearSaved, gearSetupComplete, onStartGu
         </View>
       )}
 
-      {subTab === 'clubs' && !jwt && !isGuestMode && <SignInPrompt onSignIn={onSignIn} onLinkReclub={onStartGuestReclub} />}
+      {subTab === 'clubs' && !jwt && !isGuestMode && (
+        onGuestReclubComplete ? (
+          <ScrollView
+            style={{ flex: 1 }}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ paddingBottom: navBarHeight }}
+            keyboardShouldPersistTaps="handled"
+          >
+            <InlineReclubSearch
+              onComplete={onGuestReclubComplete}
+              primaryColor={T.glassPrimary}
+              secondaryColor={T.textSecondary}
+            />
+          </ScrollView>
+        ) : (
+          <SignInPrompt onSignIn={onSignIn} onLinkReclub={onStartGuestReclub} />
+        )
+      )}
 
-      {subTab === 'clubs' && jwt && (
+      {subTab === 'clubs' && jwt && !reclubUserId && (
+        <InlineReclubSearch
+          onLinkReclub={onLinkReclub ?? onStartGuestReclub}
+          primaryColor={T.glassPrimary}
+          secondaryColor={T.textSecondary}
+        />
+      )}
+
+      {subTab === 'clubs' && jwt && reclubUserId && (
         <ClubsTab onSelectClub={(clubId) => { setSelectedClubId(clubId); onClubOverlayChange?.(true) }} />
       )}
 
@@ -2061,54 +2133,6 @@ function createStyles(T: GlassThemeColors) {
     overflow: 'hidden',
   },
   emptyBtnText: { fontSize: 11, fontWeight: '600', color: '#FFFFFF' },
-  inlineReclubCard: {
-    paddingHorizontal: 24,
-    paddingTop: 32,
-    paddingBottom: 24,
-  },
-  inlineReclubHero: {
-    fontFamily: 'BarlowCondensed_800ExtraBold',
-    fontSize: 34,
-    lineHeight: 38,
-    marginBottom: 10,
-  },
-  inlineReclubSub: {
-    fontSize: 14,
-    lineHeight: 20,
-    color: T.textSecondary,
-    marginBottom: 20,
-  },
-  linkReclubCtaWrap: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingBottom: 80,
-  },
-  linkReclubCtaBtn: {
-    borderRadius: 14,
-    overflow: 'hidden',
-    ...glassShadow,
-  },
-  linkReclubCtaGradient: {
-    paddingHorizontal: 32,
-    paddingVertical: 16,
-    borderRadius: 14,
-    alignItems: 'center',
-  },
-  linkReclubCtaText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    letterSpacing: 0.2,
-  },
-  linkReclubCtaSub: {
-    fontSize: 13,
-    color: T.textSecondary,
-    textAlign: 'center',
-    lineHeight: 19,
-    marginTop: 14,
-    paddingHorizontal: 20,
-  },
   presenceBannerWrap: {
     marginHorizontal: 12,
     marginBottom: 10,
