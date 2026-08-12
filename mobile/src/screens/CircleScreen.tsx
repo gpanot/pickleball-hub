@@ -577,6 +577,8 @@ function CircleScreenInner({ onOpenGear, gearSaved, gearSetupComplete, onStartGu
 
   // Keep ref in sync so effects can call latest version without being in deps
   useEffect(() => { loadFeedRef.current = loadFeed }, [loadFeed])
+
+  const loadMore = useCallback(async () => {
     if (loadingMore || !hasMore || feedItems.length === 0) return
     setLoadingMore(true)
     try {
