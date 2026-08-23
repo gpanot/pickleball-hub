@@ -16,10 +16,21 @@ import { calculateMatchScore } from "@/lib/match-score";
 const ROSTER_CAP = 10;
 const REGULARS_CAP = 5;
 
-// Cached session query for swipe-deck — TTL 10 min.
+const toMb = (bytes: number) => Math.round((bytes / (1024 * 1024)) * 10) / 10;
+
+function logSwipeDeckMemory(stage: string) {
+  if (process.env.SWIPE_DECK_DEBUG_MEM !== "1") return;
+  const mem = process.memoryUsage();
+  console.log(
+    `[swipe-deck][mem] ${stage} rss=${toMb(mem.rss)}MB heapUsed=${toMb(mem.heapUsed)}MB heapTotal=${toMb(mem.heapTotal)}MB external=${toMb(mem.external)}MB`,
+  );
+}
+
+// Cached *lightweight* session query for swipe-deck — TTL 10 min.
+// We intentionally avoid loading rosters here because that can explode memory.
 // Does NOT include minTime (applied in-memory post-retrieval) so the cache is
 // shared across all users hitting the same date. Keyed as ['swipe-deck-sessions', date].
-const getCachedSwipeSessions = unstable_cache(
+const getCachedSwipeSessionsLite = unstable_cache(
   async (date: string, market: string = "hcm") => {
     const sessions = await prisma.session.findMany({
       where: { scrapedDate: date, status: "active", club: { market } },
@@ -28,19 +39,6 @@ const getCachedSwipeSessions = unstable_cache(
         venue: { select: { name: true, latitude: true, longitude: true } },
         duprStat: true,
         snapshots: { orderBy: { scrapedAt: "desc" }, take: 2 },
-        rosters: {
-          where: { isConfirmed: true },
-          include: {
-            player: {
-              select: {
-                userId: true,
-                displayName: true,
-                imageUrl: true,
-                duprDoubles: true,
-              },
-            },
-          },
-        },
       },
       orderBy: { startTime: "asc" },
     });
@@ -61,19 +59,6 @@ const getCachedSwipeSessions = unstable_cache(
               : null,
           }
         : null,
-      rosters: s.rosters.map((r) => ({
-        ...r,
-        userId: r.userId.toString(),
-        player: r.player
-          ? {
-              ...r.player,
-              userId: r.player.userId.toString(),
-              duprDoubles: r.player.duprDoubles != null
-                ? Number(r.player.duprDoubles)
-                : null,
-            }
-          : null,
-      })),
     }));
   },
   ["swipe-deck-sessions"],
@@ -147,12 +132,17 @@ export async function GET(req: NextRequest) {
       userProfile = profile;
     }
 
+    logSwipeDeckMemory("after-auth");
+
     // Fetch all active sessions for the date from cache, then apply minTime in-memory.
     // This way the 10-min cache is shared across all users regardless of request time.
-    const allSessions = await getCachedSwipeSessions(date, market);
+    const allSessions = await getCachedSwipeSessionsLite(date, market);
+    logSwipeDeckMemory("after-cache-load");
+
     const sessions = minTime
       ? allSessions.filter((s) => s.startTime >= minTime)
       : allSessions;
+    logSwipeDeckMemory("after-minTime-filter");
 
     const totalCount = sessions.length;
 
@@ -172,6 +162,7 @@ export async function GET(req: NextRequest) {
     const sessionWhere = {
       scrapedDate: date,
       status: "active" as const,
+      club: { market },
       ...(minTime ? { startTime: { gte: minTime } } : {}),
     };
 
@@ -209,6 +200,7 @@ export async function GET(req: NextRequest) {
         }
       }
     }
+    logSwipeDeckMemory("after-friend-map");
 
     const friendSessionIds = [...friendsBySessionId.keys()];
 
@@ -223,26 +215,75 @@ export async function GET(req: NextRequest) {
       `\n────────────────────────────────────────────`
     );
 
+    const pagedSessionIds = pagedSessions.map((s) => s.id);
+    const rosterRows = pagedSessionIds.length
+      ? await prisma.sessionRoster.findMany({
+          where: {
+            sessionId: { in: pagedSessionIds },
+            isConfirmed: true,
+          },
+          select: {
+            sessionId: true,
+            userId: true,
+            isHost: true,
+            player: {
+              select: {
+                userId: true,
+                displayName: true,
+                imageUrl: true,
+                duprDoubles: true,
+              },
+            },
+          },
+        })
+      : [];
+    logSwipeDeckMemory("after-page-rosters");
+
+    const rostersBySessionId = new Map<number, typeof rosterRows>();
+    for (const row of rosterRows) {
+      const list = rostersBySessionId.get(row.sessionId);
+      if (list) {
+        list.push(row);
+      } else {
+        rostersBySessionId.set(row.sessionId, [row]);
+      }
+    }
+
     // --- Regulars: players with >= 3 sessions at the same club in past 60 days ---
     const clubIds = [...new Set(pagedSessions.map((s) => s.clubId))];
+    const pagedUserIds: bigint[] = [];
+    const seenPagedUsers = new Set<string>();
+    for (const r of rosterRows) {
+      const key = r.userId.toString();
+      if (!seenPagedUsers.has(key)) {
+        seenPagedUsers.add(key);
+        pagedUserIds.push(r.userId);
+      }
+    }
+
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - 60);
     const cutoffStr = cutoffDate.toISOString().slice(0, 10);
 
-    const regularRows = await prisma.sessionRoster.findMany({
-      where: {
-        isConfirmed: true,
-        isHost: false,
-        session: {
-          clubId: { in: clubIds },
-          scrapedDate: { gte: cutoffStr, lt: date },
-        },
-      },
-      select: {
-        userId: true,
-        session: { select: { clubId: true, id: true } },
-      },
-    });
+    const regularRows =
+      clubIds.length > 0 && pagedUserIds.length > 0
+        ? await prisma.sessionRoster.findMany({
+            where: {
+              userId: { in: pagedUserIds },
+              isConfirmed: true,
+              isHost: false,
+              session: {
+                clubId: { in: clubIds },
+                scrapedDate: { gte: cutoffStr, lt: date },
+              },
+            },
+            select: {
+              userId: true,
+              session: { select: { clubId: true, id: true } },
+            },
+          })
+        : [];
+    logSwipeDeckMemory("after-regulars");
 
     // Build Map<clubId, Set<userId>> where user appeared in >= 3 distinct sessions
     const clubUserSessions = new Map<number, Map<bigint, Set<number>>>();
@@ -265,6 +306,7 @@ export async function GET(req: NextRequest) {
 
     // --- Map each session ---
     const mapped = pagedSessions.map((s) => {
+      const sessionRosters = rostersBySessionId.get(s.id) ?? [];
       const snap0 = s.snapshots[0];
       const snap1 = s.snapshots[1];
       const joined = snap0?.joined ?? 0;
@@ -296,7 +338,7 @@ export async function GET(req: NextRequest) {
 
       // DUPR range: prefer actual roster DUPR values, fall back to session-level fields
       let duprRange: { min: number; max: number } | null = null;
-      const duprVals = s.rosters
+      const duprVals = sessionRosters
         .map((r) =>
           r.player?.duprDoubles != null ? Number(r.player.duprDoubles) : null,
         )
@@ -322,7 +364,7 @@ export async function GET(req: NextRequest) {
       // Roster for card display
       const clubRegulars = regularsByClub.get(s.clubId) ?? new Set<bigint>();
 
-      const roster = s.rosters.slice(0, ROSTER_CAP).map((r) => {
+      const roster = sessionRosters.slice(0, ROSTER_CAP).map((r) => {
         const uid = (r.player?.userId ?? r.userId).toString();
         return {
           userId: uid,
@@ -336,7 +378,7 @@ export async function GET(req: NextRequest) {
         };
       });
 
-      const regulars = s.rosters
+      const regulars = sessionRosters
         .filter((r) => !r.isHost && clubRegulars.has(BigInt(r.userId)))
         .slice(0, REGULARS_CAP)
         .map((r) => ({
@@ -397,6 +439,7 @@ export async function GET(req: NextRequest) {
         scrapedDate: s.scrapedDate,
       };
     });
+    logSwipeDeckMemory("after-map");
 
     // Apply post-map filters
     const filtered = mapped.filter((s) => {
