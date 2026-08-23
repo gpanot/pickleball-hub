@@ -15,6 +15,8 @@ import { calculateMatchScore } from "@/lib/match-score";
 
 const ROSTER_CAP = 10;
 const REGULARS_CAP = 5;
+const DEFAULT_LIMIT = 20;
+const MAX_LIMIT = 50;
 
 const toMb = (bytes: number) => Math.round((bytes / (1024 * 1024)) * 10) / 10;
 
@@ -87,9 +89,14 @@ export async function GET(req: NextRequest) {
 
     const limitParam = searchParams.get("limit");
     const offsetParam = searchParams.get("offset");
-    // When filters active we overfetch and return all matching — don't cap at 50.
-    const limit = limitParam ? parseInt(limitParam, 10) : null;
-    const offset = offsetParam ? parseInt(offsetParam, 10) : 0;
+    const parsedLimit = limitParam ? parseInt(limitParam, 10) : NaN;
+    const limit =
+      Number.isFinite(parsedLimit) && parsedLimit > 0
+        ? Math.min(parsedLimit, MAX_LIMIT)
+        : DEFAULT_LIMIT;
+    const parsedOffset = offsetParam ? parseInt(offsetParam, 10) : 0;
+    const offset =
+      Number.isFinite(parsedOffset) && parsedOffset > 0 ? parsedOffset : 0;
 
     // New filters
     const duprMinParam = searchParams.get("duprMin");
@@ -104,10 +111,16 @@ export async function GET(req: NextRequest) {
     const marketParam = searchParams.get("market") ?? "hcm";
     const market = marketParam === "kl" ? "kl" : "hcm";
 
-    // When filters are active, fetch a larger batch so post-map filtering has enough to work with.
-    // Without this, limit=20 is applied at DB level, then filtering can reduce to just a few results.
-    const filtersActive = (duprMin !== null) || (timeSlots !== null && timeSlots.length < 3);
-    const FILTER_BATCH = 400; // fetch up to this many when filters are active
+    // When filters are active, scan a bounded window (not the full day set) to
+    // keep memory predictable while still finding enough candidates.
+    const filtersActive =
+      duprMin !== null ||
+      rangeKm !== null ||
+      (timeSlots !== null && timeSlots.length > 0 && timeSlots.length < 3);
+    const FILTER_SCAN_BATCH = Math.min(
+      Math.max(limit * 4, 80),
+      180,
+    );
 
     // Resolve followed player IDs and user's own DUPR for scoring
     const mobileUser = await getMobileUser(req);
@@ -153,11 +166,12 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // Apply pagination slice when no filters active (filters require seeing full set)
-    const dbFetchLimit = filtersActive ? FILTER_BATCH : (limit ?? null);
-    const pagedSessions = (!filtersActive && dbFetchLimit !== null)
-      ? sessions.slice(offset, offset + dbFetchLimit)
-      : sessions;
+    // For filtered requests, scan only a capped window from offset onward.
+    // For unfiltered requests, this is equivalent to normal pagination.
+    const scanBatch = filtersActive ? FILTER_SCAN_BATCH : limit;
+    const scanStart = offset;
+    const scanEnd = Math.min(totalCount, scanStart + scanBatch);
+    const pagedSessions = sessions.slice(scanStart, scanEnd);
 
     const sessionWhere = {
       scrapedDate: date,
@@ -207,6 +221,7 @@ export async function GET(req: NextRequest) {
     console.log(
       `\n[swipe-deck] ────────────────────────────────` +
       `\n  date        : ${date}  offset=${offset}  limit=${limit}  cached=${allSessions.length}  afterMinTime=${sessions.length}` +
+      `\n  scanWindow  : ${scanStart}-${Math.max(scanStart, scanEnd - 1)}  batch=${scanBatch}` +
       `\n  FILTERS` +
       `\n  duprMin     : ${duprMin != null ? duprMin + "+" : "any"}` +
       `\n  timeSlots   : ${timeSlots?.join(", ") ?? "all"}` +
@@ -467,13 +482,14 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // When filters are active, return all matching sessions so users can swipe through the full set.
-    // When no filters, honour the page limit for lazy-loading.
-    const trimLimit = filtersActive ? filtered.length : (limit ?? filtered.length);
+    // Always cap result size; filtered mode uses pagination via offset + hasMore.
+    const trimLimit = limit;
 
     const sorted = [...filtered].sort((a, b) => b.matchScore - a.matchScore).slice(0, trimLimit);
 
-    const hasMore = !filtersActive && limit !== null ? offset + pagedSessions.length < totalCount : false;
+    const hasMore = filtersActive
+      ? filtered.length > trimLimit || scanEnd < totalCount
+      : offset + sorted.length < totalCount;
 
     const friendSessionsLogged = sorted.filter((s) => s.friendCount > 0);
     console.log(
@@ -484,7 +500,14 @@ export async function GET(req: NextRequest) {
     });
 
     return NextResponse.json(
-      { sessions: sorted, count: sorted.length, total: totalCount, filteredTotal: hasMore ? null : offset + sorted.length, offset, hasMore },
+      {
+        sessions: sorted,
+        count: sorted.length,
+        total: totalCount,
+        filteredTotal: hasMore ? null : offset + sorted.length,
+        offset,
+        hasMore,
+      },
       { headers: { "Cache-Control": CACHE_CONTROL_PRIVATE } },
     );
   } catch (err) {
