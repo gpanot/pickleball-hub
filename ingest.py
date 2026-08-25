@@ -625,8 +625,8 @@ def compute_club_daily_stats(cur):
             CASE WHEN SUM(s.max_players) > 0
                  THEN ROUND(CAST(COALESCE(SUM(ds.joined), 0) AS numeric) / SUM(s.max_players), 3)
                  ELSE 0 END AS avg_fill_rate,
-            ROUND(AVG(s.fee_amount)) AS avg_fee,
-            COALESCE(SUM(ds.joined * s.fee_amount), 0) AS revenue_estimate
+            ROUND(AVG(s.fee_amount::bigint)) AS avg_fee,
+            COALESCE(SUM(ds.joined * s.fee_amount::bigint), 0) AS revenue_estimate
         FROM sessions s
         LEFT JOIN LATERAL (
             SELECT joined, waitlisted FROM daily_snapshots
