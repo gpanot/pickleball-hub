@@ -397,6 +397,14 @@ model AdminSettings {
   @@map("admin_settings")
 }
 
+model AppConfig {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@map("app_config")
+}
+
 model LlmUsageLog {
   id           String   @id @default(uuid())
   model        String
