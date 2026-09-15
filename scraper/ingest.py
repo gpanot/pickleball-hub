@@ -797,6 +797,7 @@ def upsert_sessions_and_snapshots(cur, meets, club_id_map, venue_coord_map):
             )
             ON CONFLICT (reference_code, scraped_date) DO UPDATE SET
                 name = EXCLUDED.name,
+                venue_id = COALESCE(EXCLUDED.venue_id, sessions.venue_id),
                 max_players = EXCLUDED.max_players,
                 fee_amount = EXCLUDED.fee_amount,
                 cost_per_hour = EXCLUDED.cost_per_hour,

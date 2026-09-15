@@ -446,7 +446,10 @@ def main():
         if db_url:
             _apply_schema_migrations(db_url)
         utc_now = datetime.now(timezone.utc)
-        if is_full_scrape_slot(utc_now):
+        force_scrape = os.environ.get("FORCE_FULL_SCRAPE", "").lower() in ("1", "true", "yes")
+        if force_scrape or is_full_scrape_slot(utc_now):
+            if force_scrape and not is_full_scrape_slot(utc_now):
+                print(f"  [entrypoint] FORCE_FULL_SCRAPE=1 — running full scrape at non-standard hour {utc_now.hour}:{utc_now.minute:02d} UTC", flush=True)
             result = run_scrape()
             if not result.get("ok"):
                 sys.exit(1)
