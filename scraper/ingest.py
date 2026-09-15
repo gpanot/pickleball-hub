@@ -644,19 +644,38 @@ def upsert_clubs(cur, meets):
     return id_map
 
 
+def _extract_location(m: dict) -> tuple[str, str, float | None, float | None]:
+    """Extract (name, address, latitude, longitude) from a Reclub activity dict.
+
+    Reclub API changed its response structure (around Aug–Sep 2026):
+      OLD: m["location"] = {"name": ..., "address": ..., "latitude": ..., "longitude": ...}
+      NEW: m["venue"]    = {"name": ..., "location": {"address": ..., "latitude": ..., "longitude": ...}}
+
+    This helper tries the new structure first, then falls back to the old one.
+    """
+    venue_obj = m.get("venue") or {}
+    new_loc   = venue_obj.get("location") or {}
+    old_loc   = m.get("location") or {}
+
+    # Prefer new structure; fall back field-by-field to old structure
+    name    = venue_obj.get("name") or old_loc.get("name") or ""
+    address = new_loc.get("address") or old_loc.get("address") or ""
+    lat     = new_loc.get("latitude")  or old_loc.get("latitude")
+    lng     = new_loc.get("longitude") or old_loc.get("longitude")
+    return name, address, lat, lng
+
+
 def upsert_venues(cur, meets):
     """Deduplicate venues by proximity (<50m = same venue). Returns (lat,lng) -> db_id map."""
     raw_venues = {}
     for m in meets.values():
-        loc = m.get("location") or {}
-        lat = loc.get("latitude")
-        lng = loc.get("longitude")
+        name, address, lat, lng = _extract_location(m)
         if lat and lng:
             key = (round(lat, 6), round(lng, 6))
             if key not in raw_venues:
                 raw_venues[key] = {
-                    "name": loc.get("name") or "",
-                    "address": loc.get("address") or "",
+                    "name": name,
+                    "address": address,
                     "latitude": lat,
                     "longitude": lng,
                 }
@@ -723,7 +742,7 @@ def upsert_sessions_and_snapshots(cur, meets, club_id_map, venue_coord_map):
     skipped_duration = 0
 
     for ref_code, m in meets.items():
-        loc = m.get("location") or {}
+        _venue_name, _venue_addr, _lat, _lng = _extract_location(m)
         # VN (community 1): joined/waitlisted come from participantsStatusCount
         # KL (community 248): joined = numPlayers, waitlisted = numReserved
         psc = m.get("participantsStatusCount") or {}
@@ -753,8 +772,8 @@ def upsert_sessions_and_snapshots(cur, meets, club_id_map, venue_coord_map):
 
         venue_id = find_venue_id(
             venue_coord_map,
-            loc.get("latitude"),
-            loc.get("longitude"),
+            _lat,
+            _lng,
         )
 
         status_map = {1: "active", 2: "cancelled", 3: "ended"}
