@@ -65,12 +65,21 @@ function SearchIcon({ className }: { className?: string }) {
 
 type HomeSession = GetSessionsListItem;
 
-/** Hide sessions with no place to go (private / friend listings). Always applied — no UI toggle. */
+/** Hide sessions with no place to go (private / friend listings). Always applied — no UI toggle.
+ *
+ * A session passes if it has venue address/coordinates OR if it belongs to a named club.
+ * The "has a club" fallback prevents legitimate public sessions from disappearing when the
+ * scraper temporarily can't resolve a venue (e.g. during a Reclub API structure change).
+ * Truly private/friend sessions never have a club association, so they're still filtered out.
+ */
 function sessionHasVenueAddressOrLocation(s: HomeSession): boolean {
   const v = s.venue;
-  if (!v) return false;
-  if (v.name?.trim() || v.address?.trim()) return true;
-  return v.latitude != null && v.longitude != null;
+  if (v) {
+    if (v.name?.trim() || v.address?.trim()) return true;
+    if (v.latitude != null && v.longitude != null) return true;
+  }
+  // Fallback: show the session if it belongs to a named club (public session without resolved venue)
+  return !!s.club?.name?.trim();
 }
 
 function TimeGroupedList({
