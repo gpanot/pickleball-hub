@@ -52,7 +52,7 @@ function basicAuthCheck(request: NextRequest): NextResponse | null {
 /** Paths that must be publicly accessible even when SITE_USER/SITE_PASSWORD are set
  *  (QR scan web fallback, universal-link verification, public APIs).
  */
-const PUBLIC_PATH_PREFIXES = ["/u/", "/.well-known/", "/api/players/", "/join/"];
+const PUBLIC_PATH_PREFIXES = ["/u/", "/.well-known/", "/api/players/", "/join/", "/api/revalidate"];
 const PUBLIC_PATHS_EXACT = ["/join", "/download"];
 
 export async function middleware(request: NextRequest) {
