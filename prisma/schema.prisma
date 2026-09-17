@@ -167,7 +167,7 @@ model Player {
 
   rosters     SessionRoster[]
   followers   Follow[]              @relation("followers")
-  profile     PlayerProfile?
+  profiles    PlayerProfile[]
   duprHistory PlayerDuprHistory[]
 
   @@map("players")

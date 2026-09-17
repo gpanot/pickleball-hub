@@ -110,7 +110,7 @@ export async function setMilestoneFlag(
   value: unknown = true
 ): Promise<void> {
   try {
-    const profile = await prisma.playerProfile.findUnique({
+    const profile = await prisma.playerProfile.findFirst({
       where: { reclubUserId },
       select: { id: true, preferences: true },
     });

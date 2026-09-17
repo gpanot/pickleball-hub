@@ -118,7 +118,7 @@ export async function sendSessionFinishedKudosNotifications(): Promise<{
     const playerName = player.displayName ?? "Someone in your circle";
     const playerImageUrl = player.imageUrl ?? reclubAvatarUrl(player.userId);
 
-    const playerProfile = await prisma.playerProfile.findUnique({
+    const playerProfile = await prisma.playerProfile.findFirst({
       where: { reclubUserId: playerId },
       select: { id: true, preferences: true },
     });
@@ -533,7 +533,7 @@ async function detectPairMilestones(
         : (playerA.userId < playerB.userId ? playerA : playerB);
       const other = subject === playerA ? playerB : playerA;
 
-      const subjectPrefs = await prisma.playerProfile.findUnique({
+      const subjectPrefs = await prisma.playerProfile.findFirst({
         where: { reclubUserId: subject.userId },
         select: { preferences: true },
       });

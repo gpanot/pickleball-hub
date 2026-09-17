@@ -59,7 +59,7 @@ export async function GET(
           where: { followerId: user.profileId, followeeId: targetId }
         })
       : Promise.resolve(null),
-    prisma.playerProfile.findUnique({
+    prisma.playerProfile.findFirst({
       where: { reclubUserId: targetId },
       select: { id: true, _count: { select: { following: true } } }
     }),

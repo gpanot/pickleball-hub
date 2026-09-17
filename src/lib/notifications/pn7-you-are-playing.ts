@@ -96,7 +96,7 @@ export async function sendYouArePlayingNotifications(): Promise<{
 
     const playerImageUrl = player.imageUrl ?? reclubAvatarUrl(player.userId);
 
-    const profile = await prisma.playerProfile.findUnique({
+    const profile = await prisma.playerProfile.findFirst({
       where: { reclubUserId: playerId },
       select: { id: true, pushToken: true, pushTokenIos: true },
     });
