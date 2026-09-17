@@ -34,7 +34,7 @@ async function backfill() {
   let skipped = 0
 
   for (const player of top1000) {
-    const profile = await prisma.playerProfile.findUnique({
+    const profile = await prisma.playerProfile.findFirst({
       where: { reclubUserId: player.userId },
       select: { id: true, preferences: true },
     })
