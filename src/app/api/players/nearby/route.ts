@@ -40,7 +40,8 @@ export async function GET(req: NextRequest) {
       imageUrl: true,
       duprDoubles: true,
       lastSeenAt: true,
-      profile: {
+      profiles: {
+        take: 1,
         select: {
           id: true,
           squadMemberships: {
@@ -56,7 +57,7 @@ export async function GET(req: NextRequest) {
   // If we have a location, look up last-known venues via RadarSessions.
   let venueLatLngByProfileId = new Map<string, { lat: number; lng: number }>();
   if (hasLocation) {
-    const profileIds = players.flatMap((p) => (p.profile ? [p.profile.id] : []));
+    const profileIds = players.flatMap((p) => (p.profiles[0] ? [p.profiles[0].id] : []));
     if (profileIds.length > 0) {
       // One radar session per player — the most recent one.
       const radarRows = await prisma.radarSession.findMany({
@@ -78,9 +79,9 @@ export async function GET(req: NextRequest) {
   }
 
   const enriched = players.map((p) => {
-    const profileId = p.profile?.id ?? null;
-    const hasSquad = (p.profile?.squadMemberships?.length ?? 0) > 0;
-    const squadName = p.profile?.squadMemberships?.[0]?.squad?.name ?? null;
+    const profileId = p.profiles[0]?.id ?? null;
+    const hasSquad = (p.profiles[0]?.squadMemberships?.length ?? 0) > 0;
+    const squadName = p.profiles[0]?.squadMemberships?.[0]?.squad?.name ?? null;
 
     let distanceKm: number | null = null;
     if (hasLocation && profileId) {
