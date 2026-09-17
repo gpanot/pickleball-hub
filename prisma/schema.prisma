@@ -212,7 +212,7 @@ model PlayerProfile {
   id                    String    @id @default(uuid())
   userId                String?   @unique @map("user_id")
   zaloId                String?   @unique @map("zalo_id")
-  reclubUserId          BigInt?   @unique @map("reclub_user_id")
+  reclubUserId          BigInt?   @map("reclub_user_id")
   displayName           String?   @map("display_name")
   gender                String?
   preferences           Json      @default("{}")
